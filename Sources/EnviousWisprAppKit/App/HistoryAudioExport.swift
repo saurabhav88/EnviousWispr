@@ -384,3 +384,110 @@ final class HistoryAudioExport {
     }
   }
 }
+
+// MARK: - History surfaces
+
+extension HistoryAudioExport {
+  /// The Save audio row every History More menu uses (#4799): nil when the item has no audio
+  /// to save, a disabled "Saving audio…" while this item is being saved, else "Save audio…".
+  /// Read when the menu opens, as every More menu is built.
+  func menuItem(_ key: Key, offered: Bool, start: @escaping () -> Void) -> HistoryMenuItem? {
+    guard offered else { return nil }
+    if isExporting(key) {
+      return HistoryMenuItem(
+        id: "save-audio", title: Self.savingTitle, systemImage: "waveform", isEnabled: false,
+        kind: .action {})
+    }
+    return HistoryMenuItem(
+      id: "save-audio", title: Self.saveTitle, systemImage: "waveform", kind: .action(start))
+  }
+
+  /// A dictation card's row: offered only while its recording is available.
+  func dictationMenuItem(
+    rowID: UUID, status: DictationRecordingStatus?, start: @escaping () -> Void
+  ) -> HistoryMenuItem? {
+    let available: Bool
+    if case .available = status { available = true } else { available = false }
+    return menuItem(.dictation(rowID), offered: available, start: start)
+  }
+
+  /// A meeting's row, one rule for the card and the page: offered only while the meeting owner
+  /// would admit a Save audio now, and (on the page) no other meeting action is starting.
+  func meetingMenuItem(
+    meetingID: UUID, meetings: MeetingCoordinator, actionInFlight: Bool = false,
+    start: @escaping () -> Void
+  ) -> HistoryMenuItem? {
+    menuItem(
+      .meeting(meetingID),
+      offered: !actionInFlight && meetings.audioExportSnapshot(meetingID: meetingID) != nil,
+      start: start)
+  }
+
+  static var saveTitle: String {
+    String(
+      localized: "Save audio…",
+      comment: "History More menu: saves this item's recording as an audio file.")
+  }
+
+  static var savingTitle: String {
+    String(
+      localized: "Saving audio…",
+      comment: "History More menu, disabled: this item's recording is being saved as a file.")
+  }
+
+  /// One dictation's Save audio: the recording owner admits it after the panel and answers the
+  /// commit check against the same snapshot.
+  static func dictation(
+    rowID: UUID, defaultName: String, recordings: DictationRecordings,
+    window: @escaping @MainActor () -> NSWindow?
+  ) -> Request {
+    let held = Held<DictationRecordings.ExportSnapshot>()
+    return Request(
+      key: .dictation(rowID), defaultName: defaultName,
+      admit: {
+        held.value = await recordings.exportSnapshot(rowID: rowID)
+        return held.value.map { .file($0.url) }
+      },
+      check: {
+        guard let snapshot = held.value else { return .deleted }
+        return sourceCheck(recordings.isStillDeliverable(snapshot))
+      },
+      window: window)
+  }
+
+  /// One meeting's Save audio: the same snapshot rule the card's and the page's menus offer
+  /// it by, taken again after the panel and compared at commit.
+  static func meeting(
+    meetingID: UUID, defaultName: String, meetings: MeetingCoordinator,
+    window: @escaping @MainActor () -> NSWindow?
+  ) -> Request {
+    let held = Held<MeetingAudioExportSnapshot>()
+    return Request(
+      key: .meeting(meetingID), defaultName: defaultName,
+      admit: {
+        held.value = meetings.audioExportSnapshot(meetingID: meetingID)
+        return held.value.map { .meeting(files: $0.trackFiles, durationMs: $0.durationMs) }
+      },
+      check: {
+        guard let snapshot = held.value else { return .deleted }
+        if meetings.audioExportSnapshot(meetingID: meetingID) == snapshot { return .deliverable }
+        // A removal under way or done (the owner's live intent, before the saved record
+        // changes): deleted. Otherwise its audio changed (recovery rebuilt the inventory).
+        return meetings.isAudioRemovalUnderway(meetingID: meetingID) ? .deleted : .changed
+      },
+      window: window)
+  }
+
+  static func sourceCheck(_ check: DictationRecordings.ExportCheck) -> SourceCheck {
+    switch check {
+    case .deliverable: return .deliverable
+    case .deleted: return .deleted
+    case .changed: return .changed
+    }
+  }
+
+  /// The snapshot one request admitted, read again by its commit check.
+  @MainActor final class Held<Value> {
+    var value: Value?
+  }
+}

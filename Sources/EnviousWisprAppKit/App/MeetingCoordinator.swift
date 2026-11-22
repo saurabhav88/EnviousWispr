@@ -827,6 +827,15 @@ final class MeetingCoordinator {
       durationMs: record.recordedDurationMs)
   }
 
+  /// #4799: whether this meeting's audio is gone or going, from the owner's live state (a
+  /// deletion or Delete All mark, Delete audio, a deletion in progress), so Save audio says
+  /// "deleted" even before the saved record changes.
+  func isAudioRemovalUnderway(meetingID: UUID) -> Bool {
+    guard let record = live[meetingID] else { return true }
+    return record.deletionRequested || !record.audioKept || removingAudio.contains(meetingID)
+      || deleting.contains(meetingID)
+  }
+
   /// #4013 r3 F3: the participant list saved with the meeting, for the rename suggestions.
   /// Read on the meeting file queue. `nil` when the meeting is unknown, being deleted or losing
   /// its audio (the list goes with the audio), at the start of the read OR when it returns, or

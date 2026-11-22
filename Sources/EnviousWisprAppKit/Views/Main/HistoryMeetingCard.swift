@@ -38,6 +38,7 @@ struct HistoryMeetingCard: View {
   @Environment(TranscriptCoordinator.self) private var transcripts
   @Environment(MeetingCoordinator.self) private var meetings
   @Environment(HistoryMenuPresenter.self) private var historyMenu
+  @Environment(HistoryAudioExport.self) private var audioExport
   @State private var moreAnchor = HistoryMenuAnchorHolder()
   /// The title's rename field is open: a click on the card saves the name instead of opening.
   @State private var titleEditing = false
@@ -297,14 +298,21 @@ struct HistoryMeetingCard: View {
     .fixedSize()
   }
 
-  /// The card's More menu, built when it opens: the two deletions, each enabled by the same
-  /// rules as the meeting page's More menu. No Rename: the title's pencil renames (founder
-  /// #4611, 2026-11-17).
+  /// The card's More menu, built when it opens: Save audio (#4799, by the same rule as the
+  /// meeting page), then the two deletions, each enabled by the same rules as the meeting
+  /// page's More menu. No Rename: the title's pencil renames (founder #4611, 2026-11-17).
   private func moreItems(_ card: P.Card, record: MeetingRecord?) -> [HistoryMenuItem] {
     let offered = record.map {
       MeetingsPresentation.actions($0, isActive: isActive($0), canTranscribeAgain: false)
     }
-    return [
+    var head: [HistoryMenuItem] = []
+    if let record,
+      let saveAudio = audioExport.meetingMenuItem(
+        meetingID: record.id, meetings: meetings, start: { saveAudio(record) })
+    {
+      head = [saveAudio, .divider("d0")]
+    }
+    return head + [
       .init(
         id: "delete-recording",
         title: String(
@@ -322,6 +330,16 @@ struct HistoryMeetingCard: View {
         systemImage: "trash", isEnabled: offered?.delete == true && !deleting,
         isDestructive: true, kind: .action { confirmingDeletion = .meeting }),
     ]
+  }
+
+  /// #4799: the meeting's audio, admitted again after the panel closes; the export owner
+  /// reports every outcome, even if this card is reused meanwhile.
+  private func saveAudio(_ record: MeetingRecord) {
+    let window = moreAnchor.view?.window
+    audioExport.save(
+      HistoryAudioExport.meeting(
+        meetingID: record.id, defaultName: MeetingsPresentation.title(record), meetings: meetings,
+        window: { [weak window] in window }))
   }
 
   private func isActive(_ record: MeetingRecord) -> Bool {

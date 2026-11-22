@@ -58,6 +58,7 @@ struct HistoryDictationCard: View {
   @Environment(SettingsManager.self) private var settings
   @Environment(HistoryRepolishRunner.self) private var historyRepolish
   @Environment(HistoryMenuPresenter.self) private var historyMenu
+  @Environment(HistoryAudioExport.self) private var audioExport
   @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
   // Recording
@@ -592,6 +593,12 @@ struct HistoryDictationCard: View {
         systemImage: "square.and.arrow.down", kind: .action { saveDocument() }),
       .divider("d1"),
     ]
+    // #4799: Save audio, after Save as…, only while the recording is there.
+    if let saveAudio = audioExport.dictationMenuItem(
+      rowID: rowID, status: status, start: { saveAudio() })
+    {
+      items.insert(saveAudio, at: items.count - 1)
+    }
     let polish = HistoryPolishMenu.menuItems(
       surface: .dictation, choices: historyRepolish.choices(.dictation),
       currentProvider: row.llmProvider, currentModel: row.llmModel, currentSize: row.egOneSize,
@@ -739,6 +746,17 @@ struct HistoryDictationCard: View {
     HistoryDelivery.save(defaultName: Self.dictationWord, text: { exportText }) {
       saveError = $0
     }
+  }
+
+  /// #4799: the recording is admitted again after the panel closes, never from this card's
+  /// cached status; the export owner reports every outcome, even if this row is reused.
+  private func saveAudio() {
+    guard let recordings = transcripts.recordings else { return }
+    let window = moreAnchor.view?.window
+    audioExport.save(
+      HistoryAudioExport.dictation(
+        rowID: rowID, defaultName: Self.dictationWord, recordings: recordings,
+        window: { [weak window] in window }))
   }
 
   // MARK: - Recording lifecycle (moved from DictationRecordingSection)

@@ -1853,6 +1853,83 @@ struct MeetingCoordinatorTests {
     #expect(gate.timedOut.withLock { $0 } == false, "a held write waited out its bound")
   }
 
+  @Test("Save audio's menu row: none while recording, offered when ready, none while the page is busy (#4799)")
+  func audioExportMenuRow() async throws {
+    let harness = try Harness()
+    let coordinator = harness.coordinator
+    let export = HistoryAudioExport(
+      effects: HistoryAudioExport.Effects(
+        chooseURL: { _ in nil }, reveal: { _ in }, notify: { _, _ in }))
+    await coordinator.start(from: .history)
+    let meetingID = try onlyMeeting(harness).id
+    // The card's call and the page's call.
+    #expect(export.meetingMenuItem(meetingID: meetingID, meetings: coordinator, start: {}) == nil)
+    await coordinator.stop(reason: .user)
+    await Self.eventually("ready") {
+      coordinator.record(id: meetingID)?.state == .ready && coordinator.processing == nil
+    }
+    #expect(export.meetingMenuItem(meetingID: meetingID, meetings: coordinator, start: {}) != nil)
+    #expect(
+      export.meetingMenuItem(
+        meetingID: meetingID, meetings: coordinator, actionInFlight: true, start: {}) == nil)
+    await coordinator.deleteAudio(meetingID: meetingID)
+    #expect(export.meetingMenuItem(meetingID: meetingID, meetings: coordinator, start: {}) == nil)
+  }
+
+  @Test("a save overtaken by Delete audio or Delete All is reported deleted, not changed (#4799)")
+  func audioExportCheckSeesRemovalBeforeSave() async throws {
+    let harness = try Harness()
+    let coordinator = harness.coordinator
+    let gate = harness.writeGate
+    await coordinator.start(from: .history)
+    let meetingID = try onlyMeeting(harness).id
+    await coordinator.stop(reason: .user)
+    await Self.eventually("ready") {
+      coordinator.record(id: meetingID)?.state == .ready && coordinator.processing == nil
+    }
+
+    // Delete audio, held before its save lands: the saved record still keeps the audio.
+    let first = HistoryAudioExport.meeting(
+      meetingID: meetingID, defaultName: "Meeting", meetings: coordinator, window: { nil })
+    #expect(await first.admit() != nil)
+    #expect(first.check() == .deliverable)
+    gate.holdNext { $0.id == meetingID && !$0.audioKept }
+    let removing = Task { await coordinator.deleteAudio(meetingID: meetingID) }
+    // Off the main actor: a blocking wait there would stall the save it waits on.
+    #expect(await Task.detached { Self.waitBlocking(gate.entered) }.value == .success)
+    #expect(coordinator.record(id: meetingID)?.audioKept == true, "saved record unchanged")
+    #expect(first.check() == .deleted)
+    gate.release.signal()
+    await removing.value
+    #expect(gate.timedOut.withLock { $0 } == false, "a held write waited out its bound")
+  }
+
+  @Test("a save overtaken by History Delete All's mark is reported deleted (#4799)")
+  func audioExportCheckSeesDeleteAllMark() async throws {
+    let harness = try Harness()
+    let coordinator = harness.coordinator
+    let gate = harness.writeGate
+    await coordinator.start(from: .history)
+    let meetingID = try onlyMeeting(harness).id
+    await coordinator.stop(reason: .user)
+    await Self.eventually("ready") {
+      coordinator.record(id: meetingID)?.state == .ready && coordinator.processing == nil
+    }
+    let request = HistoryAudioExport.meeting(
+      meetingID: meetingID, defaultName: "Meeting", meetings: coordinator, window: { nil })
+    #expect(await request.admit() != nil)
+
+    gate.holdNext { $0.id == meetingID && $0.deletionRequested }
+    let marking = Task { await coordinator.deleteForHistoryDeleteAll(meetingIDs: [meetingID]) }
+    // Off the main actor: a blocking wait there would stall the mark it waits on.
+    #expect(await Task.detached { Self.waitBlocking(gate.entered) }.value == .success)
+    #expect(coordinator.record(id: meetingID)?.deletionRequested == false, "saved record unchanged")
+    #expect(request.check() == .deleted)
+    gate.release.signal()
+    _ = await marking.value
+    #expect(gate.timedOut.withLock { $0 } == false, "a held write waited out its bound")
+  }
+
   @Test("a snapshot whose inventory differs only by a frame count is not equal (#4799)")
   func audioExportSnapshotEqualityIncludesFrames() {
     let id = UUID()
