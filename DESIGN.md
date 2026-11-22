@@ -315,6 +315,7 @@ Edit values only here, then run `python3 scripts/design/generate-tokens.py`. Col
       "note": "Two-card window frame (#1296): the sidebar card and content card are each inset from the window edge by `windowFrameInset` and separated from one another by the same value, so the spacing reads uniform on all sides. Their corner radius is a touch larger than the inner setting cards so the frame cards clearly contain the content cards rather than competing with them."
     },
     "SettingsLayout.windowFrameInset": {"value": 14, "usage": "Inset of the frame cards from the window edge and from each other."},
+    "SettingsLayout.minimumHitTarget": {"value": 20, "usage": "Smallest click region of a control, in each direction.", "note": "Apple's macOS minimum control size (Human Interface Guidelines, Accessibility: default 28 x 28 pt, minimum 20 x 20 pt), #4545. `minimumHitRegion()` widens a smaller icon button's click and accessibility region to it without changing layout or look."},
     "SettingsPR1Layout.rowPaddingV": {
       "value": 10, "usage": "Dictation Settings dense row padding.",
       "note": "#3385: density belongs to Dictation Settings, not every shared consumer."
@@ -373,6 +374,7 @@ The founder reasons recorded with the palette and the type scale live in the val
 - A Settings page is `SettingsContentView` with `contentH` (24) side margins, `contentTop` (18) and `contentBottom` (32).
 - Cards are separated by `sectionSpacing` (18). Rows pad `rowPaddingH` (14) by `rowPaddingV` (12), or 10 in the denser Dictation Settings.
 - The minimum window width is 750pt. A settings row drops its control below its title when the row is too narrow (#3007).
+- Every control's click region is at least `SettingsLayout.minimumHitTarget` (20) in each direction (Apple's macOS minimum). Give a smaller icon button `.minimumHitRegion()`: it widens the click and accessibility region without moving anything (#4545).
 
 ## Corner sizes
 

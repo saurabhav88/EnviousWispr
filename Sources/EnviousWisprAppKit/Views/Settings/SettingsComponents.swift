@@ -537,6 +537,7 @@ struct SettingsInfoButton<Content: View>: View {
       showPopover = true
     } label: {
       EnviousHelpGlyph(hovering: glyphHovering)
+        .minimumHitRegion()
         .onHover {
           pointerInside = $0
           helpTrace.pointerChanged($0)

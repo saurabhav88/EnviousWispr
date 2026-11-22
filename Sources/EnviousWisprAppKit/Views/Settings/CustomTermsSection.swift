@@ -133,6 +133,8 @@ struct CustomTermsSection<Actions: View>: View {
               .accessibilityHidden(true)
             TextField(String(localized: SettingsItemCopy.Dictionary.searchWords), text: Bindable(list).query)
               .textFieldStyle(.plain)
+              // #4545: a placeholder alone gives the field no accessible name.
+              .accessibilityLabel(Text(SettingsItemCopy.Dictionary.searchWords))
               .settingsArrivalFocusControl(textEntry: true)
               .settingsMapRegistration(.yourWordsSearch)
             if !list.query.isEmpty {
@@ -284,6 +286,7 @@ struct CustomTermsSection<Actions: View>: View {
             } label: {
               Image(systemName: "chevron.left")
                 .settingsHoverQuiet(isEnabled: list.currentPage > 0)
+                .minimumHitRegion()
             }
             .buttonStyle(.plain)
             .disabled(list.currentPage == 0)
@@ -298,6 +301,7 @@ struct CustomTermsSection<Actions: View>: View {
             } label: {
               Image(systemName: "chevron.right")
                 .settingsHoverQuiet(isEnabled: list.currentPage < pageCount - 1)
+                .minimumHitRegion()
             }
             .buttonStyle(.plain)
             .disabled(list.currentPage >= pageCount - 1)

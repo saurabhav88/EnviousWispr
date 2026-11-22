@@ -227,18 +227,19 @@ private struct HistorySearchFieldFrame: View {
   let focused: FocusState<Bool>.Binding
 
   var body: some View {
+    // #2807: History holds dictations AND transcripts, so the box searches "history".
+    let placeholder = String(
+      localized: "Search history", comment: "History: the search box placeholder.")
     HStack(spacing: 6) {
       Image(systemName: "magnifyingglass")
         .foregroundStyle(.stTextTertiary)
         .accessibilityHidden(true)
-      // #2807: History holds dictations AND transcripts, so the box searches "history".
-      TextField(
-        String(localized: "Search history", comment: "History: the search box placeholder."),
-        text: text
-      )
-      .textFieldStyle(.plain)
-      .font(.stBody)
-      .focused(focused)
+      TextField(placeholder, text: text)
+        .textFieldStyle(.plain)
+        // #4545: a placeholder alone gives the field no accessible name.
+        .accessibilityLabel(Text(placeholder))
+        .font(.stBody)
+        .focused(focused)
     }
     .settingsFieldChrome(focused: focused)
   }

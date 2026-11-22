@@ -115,6 +115,7 @@ struct VocabularyPackDetailSection: View {
       } label: {
         Image(systemName: "chevron.left")
           .settingsHoverQuiet(isEnabled: page > 0)
+          .minimumHitRegion()
       }
       .buttonStyle(.plain)
       .disabled(page == 0)
@@ -129,6 +130,7 @@ struct VocabularyPackDetailSection: View {
       } label: {
         Image(systemName: "chevron.right")
           .settingsHoverQuiet(isEnabled: page < pageCount - 1)
+          .minimumHitRegion()
       }
       .buttonStyle(.plain)
       .disabled(page >= pageCount - 1)

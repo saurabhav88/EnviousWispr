@@ -333,6 +333,7 @@ struct DesignTokensSyncTests {
     "SettingsLayout.contentBottom": SettingsLayout.contentBottom,
     "SettingsLayout.windowCardRadius": SettingsLayout.windowCardRadius,
     "SettingsLayout.windowFrameInset": SettingsLayout.windowFrameInset,
+    "SettingsLayout.minimumHitTarget": SettingsLayout.minimumHitTarget,
     "SettingsPR1Layout.rowPaddingV": SettingsPR1Layout.rowPaddingV,
     "SettingsPR1Layout.headingGap": SettingsPR1Layout.headingGap,
     "DesignRadius.xs": DesignRadius.xs, "DesignRadius.sm": DesignRadius.sm,
