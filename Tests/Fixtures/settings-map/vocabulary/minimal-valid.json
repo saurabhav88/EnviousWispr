@@ -401,7 +401,6 @@
     },
     {
      "language": "es",
-     "title": "title 1 es",
      "words": [
       "word1es"
      ],
@@ -709,7 +708,6 @@
     },
     {
      "language": "es",
-     "title": "title 2 es",
      "words": [],
      "phrases": [
       "phrase 2 es"

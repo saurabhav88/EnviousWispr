@@ -29,7 +29,7 @@ import unicodedata
 PHASE0_ENDE = ("en", "de")
 # Languages whose shipped titles come from the app's own interface text, so shipped blocks carry
 # no title (#3142 French slice added "fr"; its reviewed words still come from `phase0/intl`).
-INTERFACE = ("en", "de", "fr")
+INTERFACE = ("en", "de", "es", "fr")
 DECLARED = [
     "ar", "bg", "cs", "da", "de", "el", "en", "es", "et", "fi", "fr", "hi", "hr", "hu", "it", "ja",
     "ko", "lt", "lv", "mt", "nl", "pl", "pt", "ro", "ru", "sk", "sl", "sv", "tr", "uk", "vi", "zh",

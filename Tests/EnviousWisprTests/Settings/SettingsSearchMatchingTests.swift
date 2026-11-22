@@ -42,6 +42,7 @@ struct SettingsSearchMatchingTests {
   static let english = Result { try index("en", preferred: ["en-US"]) }
   static let german = Result { try index("de", preferred: ["de-DE", "en-US"]) }
   static let french = Result { try index("fr", preferred: ["fr-FR", "en-US"]) }
+  static let spanish = Result { try index("es", preferred: ["es-MX", "en-US"]) }
 
   static func search(_ query: String, _ language: String) throws -> [SettingsSearchResult] {
     try (language == "de" ? german : english).get().results(for: query)
@@ -331,6 +332,47 @@ struct SettingsSearchMatchingTests {
     }
     #expect(checked == 21, "runtime-named searchable places: \(checked)")
     #expect(missed.isEmpty, "runtime-named places a French label does not find: \(missed)")
+  }
+
+  /// #3142 Spanish slice: Spanish is an interface language, so its titles come from the Spanish
+  /// catalog. "pulido" is only in the Spanish title "Activar Pulido con IA"; English lacks it.
+  @Test("a Spanish interface finds a place by its Spanish catalog title")
+  func spanishInterfaceTitle() throws {
+    let spanish = try Self.spanish.get()
+    #expect(spanish.appLanguage == "es")
+    #expect(try #require(spanish.results(for: "tema").first).entryID == "theme")
+    // English stays an active language under a Spanish interface.
+    #expect(try #require(spanish.results(for: "theme").first).entryID == "theme")
+    let polish = try #require(spanish.results(for: "pulido").first)
+    #expect(polish.entryID == "enableAIPolish")
+    #expect(try Self.english.get().results(for: "pulido").contains { $0.entryID == "enableAIPolish" } == false)
+  }
+
+  /// #3142 Spanish slice: the Spanish twin of the French runtime-named check: with no Spanish
+  /// vocabulary title, each place named only at run time is still found by its Spanish label.
+  @Test("a Spanish interface finds every runtime-named place by its Spanish label")
+  func spanishRuntimeNamedLabels() throws {
+    let spanish = try Self.spanish.get()
+    var checked = 0
+    var missed: [String] = []
+    for entry in SettingsSearchCatalog.entries {
+      guard case .dynamic = entry.node.title else { continue }
+      let id = entry.node.id
+      let label: String
+      if let resource = SettingsSearchPresentation.dynamicTitleResource(of: id) {
+        label = try SettingsMapExportTests.resolve(resource, "es")
+      } else {
+        label = SettingsSearchPresentation.dynamicTitle(of: id, language: "es")
+      }
+      checked += 1
+      let ids = spanish.results(for: label).map(\.entryID)
+      if !ids.prefix(5).contains(id.rawValue) {
+        let rank = ids.firstIndex(of: id.rawValue).map { "rank \($0 + 1)" } ?? "absent"
+        missed.append("\(id.rawValue) «\(label)» \(rank); top \(ids.prefix(5))")
+      }
+    }
+    #expect(checked == 21, "runtime-named searchable places: \(checked)")
+    #expect(missed.isEmpty, "runtime-named places a Spanish label does not find: \(missed)")
   }
 
   @Test("Chinese, Japanese and Thai searches are split into words; Hindi marks stay in the word")

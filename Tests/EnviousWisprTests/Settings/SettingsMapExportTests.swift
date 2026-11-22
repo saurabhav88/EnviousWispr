@@ -22,7 +22,7 @@ import Testing
   .enabled(if: ProcessInfo.processInfo.environment["EW_SETTINGS_MAP_EXPORT"] != nil))
 struct SettingsMapExportTests {
   static let formatVersion = 2
-  static let interfaceLanguages = ["en", "de", "fr"]
+  static let interfaceLanguages = ["en", "de", "es", "fr"]
   /// Repo-relative owners, cited by every exported node.
   static let mapFile = "Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift"
   static let resolverFile =
@@ -163,7 +163,8 @@ struct SettingsMapExportTests {
     [
       "source": "resource", "key": resource.key, "table": resource.table ?? "Localizable",
       "catalog": uiCatalogFile, "en": try resolve(resource, "en"),
-      "de": try resolve(resource, "de"), "fr": try resolve(resource, "fr"),
+      "de": try resolve(resource, "de"), "es": try resolve(resource, "es"),
+      "fr": try resolve(resource, "fr"),
     ]
   }
 

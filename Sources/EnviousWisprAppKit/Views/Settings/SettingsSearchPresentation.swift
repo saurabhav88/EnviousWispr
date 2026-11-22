@@ -18,7 +18,7 @@ enum SettingsSearchPresentation {
 
   /// The places whose dynamic title has a fixed context or a label; a test requires every
   /// searchable dynamic-title place to be one of them. `language` nil reads the app's language;
-  /// an interface language code ("en", "de", "fr") reads that language's text, as the search
+  /// an interface language code ("en", "de", "es", "fr") reads that language's text, as the search
   /// index does for each of its interface languages (#3545).
   static func dynamicTitle(of id: SettingsMapID, language: String? = nil) -> String {
     switch id {

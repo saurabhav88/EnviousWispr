@@ -407,8 +407,8 @@ struct SettingsSearchVocabularyTests {
         + "5:entry9:alpha.two6:absent0:5:words1:07:phrases1:111:phrase 2 en"
         + "15:phraseExemption6:absent0:")
     #expect(
-      vocabulary.canonicalText(language: "es").hasSuffix(
-        "5:entry9:alpha.two7:present10:title 2 es5:words1:07:phrases1:111:phrase 2 es"
+      vocabulary.canonicalText(language: "it").hasSuffix(
+        "5:entry9:alpha.two7:present10:title 2 it5:words1:07:phrases1:111:phrase 2 it"
           + "15:phraseExemption6:absent0:"))
   }
 
@@ -426,13 +426,13 @@ struct SettingsSearchVocabularyTests {
     let base = try Self.fixtureVocabulary()
     func with(_ phrases: [String]) -> SettingsSearchVocabulary {
       var entries = base.entries
-      entries["alpha.one"]?["es"] = .init(
-        title: "title 1 es", words: [], phrases: phrases, phraseExemption: nil)
+      entries["alpha.one"]?["it"] = .init(
+        title: "title 1 it", words: [], phrases: phrases, phraseExemption: nil)
       return SettingsSearchVocabulary(
         version: 1, languageData: base.languageData, entries: entries, byteCount: 0)
     }
     #expect(
-      with(left).contentHash(language: "es") != with(right).contentHash(language: "es"), "\(name)")
+      with(left).contentHash(language: "it") != with(right).contentHash(language: "it"), "\(name)")
   }
 
   // MARK: - Rejections
@@ -502,8 +502,8 @@ struct SettingsSearchVocabularyTests {
     .init(name: "repeated word", expected: "\"w\" appears twice") {
       editingBlock("fr", &$0) { $0["words"] = ["w", "w"] }
     },
-    .init(name: "blank title", expected: "alpha.one/es.title: missing or blank") {
-      editingBlock("es", &$0) { $0["title"] = " " }
+    .init(name: "blank title", expected: "alpha.one/it.title: missing or blank") {
+      editingBlock("it", &$0) { $0["title"] = " " }
     },
     .init(name: "English title", expected: "alpha.one/en.title: en titles come from the interface")
     {

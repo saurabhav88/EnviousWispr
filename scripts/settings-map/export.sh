@@ -153,11 +153,11 @@ node = {"id": "a.b", "structure": "item", "kind": "setting", "searchable": True,
         "title": {"source": "verbatim", "text": "T", "note": "n"}, "description": None,
         "destination": None, "dictionaryTab": None, "target": "a.b", "fallbacks": [],
         "vocabulary": {"en": {"words": [], "phrases": ["p"]}, "de": {"words": [], "phrases": ["q"]},
-                       "fr": {"words": [], "phrases": ["r"]}}}
-json.dump({"schema": "settings-map-export", "version": 2, "interfaceLanguages": ["en", "de", "fr"],
-           "languages": ["en", "de", "fr"], "sources": {"map": "M", "titleResolver": "R", "uiCatalog": "C",
+                       "es": {"words": [], "phrases": ["s"]}, "fr": {"words": [], "phrases": ["r"]}}}
+json.dump({"schema": "settings-map-export", "version": 2, "interfaceLanguages": ["en", "de", "es", "fr"],
+           "languages": ["en", "de", "es", "fr"], "sources": {"map": "M", "titleResolver": "R", "uiCatalog": "C",
            "vocabulary": "V"}, "fingerprints": {"x": "1"},
-           "counts": {"nodes": 1, "searchable": 1, "vocabularyBlocks": 3},
+           "counts": {"nodes": 1, "searchable": 1, "vocabularyBlocks": 4},
            "languageData": [{"language": "en", "stop": ["the"], "markers": ["not"]}],
            "nodes": [node]}, open(sys.argv[1], "w"), sort_keys=True, indent=2)
 PY

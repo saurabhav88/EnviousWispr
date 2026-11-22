@@ -45,8 +45,8 @@ public struct SettingsSearchFinished: Equatable, Sendable {
     self.resultCount = max(0, resultCount)
     // The shipped interface languages (the app's `SettingsSearchVocabulary.interfaceLanguages`,
     // which this lower module cannot import); anything else reports as "en". A new interface
-    // language extends this list in the same change (#3142 French slice).
-    self.appLanguage = ["de", "fr"].contains(appLanguage) ? appLanguage : "en"
+    // language extends this list in the same change (#3142 French and Spanish slices).
+    self.appLanguage = ["de", "es", "fr"].contains(appLanguage) ? appLanguage : "en"
     self.meaningElapsedMilliseconds = meaningElapsedMilliseconds
     let navigatedBySidebar = endedBy == .sidebar
     self.sidebarPage = navigatedBySidebar ? sidebarPage : nil
