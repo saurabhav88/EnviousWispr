@@ -1191,6 +1191,7 @@ struct LivePreviewCoordinatorTests {
     ("implied script dropped to Apple's spelling", ["zh-Hant-TW"], "en_TW", "zh-TW"),
     ("unusual script kept", ["sr-Latn-RS"], "en_RS", "sr-Latn-RS"),
     ("unusual script kept in its region", ["zh-Hans-TW"], "en_TW", "zh-Hans-TW"),
+    ("a regional entry's implied script survives the Mac's region", ["zh-TW"], "en_US", "zh-Hant-US"),
     ("region from the Mac's Region setting, as before", ["en-GB"], "en_US", "en-US"),
     ("language-only entry takes the Mac's region", ["es-419"], "en_MX", "es-MX"),
     ("no Mac list: today's locale", [], "fr_CA", "fr-CA"),

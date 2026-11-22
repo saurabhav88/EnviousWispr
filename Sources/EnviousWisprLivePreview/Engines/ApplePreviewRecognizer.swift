@@ -1066,11 +1066,20 @@ package enum ApplePreviewEngineResolver {
         return current.identifier(.bcp47)
       }
       let region = current.region
-      // Drop a script the region already implies (zh-Hant with TW gives "zh-TW"), so the tag
-      // is the spelling Apple's dictation and meeting lists carry (zh-TW, zh-CN, zh-HK) and
-      // the meeting chooser's exact-tag match finds it. Keep an unusual script (sr-Latn-RS,
-      // zh-Hans-TW), and keep any script when the Mac has no region.
-      var script = preferred.script
+      // The preference's script: written (zh-Hant-TW) or, when it names a region, implied by
+      // it (zh-TW is Traditional), so swapping in the Mac's region cannot change the script
+      // (zh-TW with Region United States must not become zh-US, which Apple reads as
+      // Simplified). Then drop a script the new region already implies (zh-Hant with TW gives
+      // "zh-TW"), so the tag is the spelling Apple's dictation and meeting lists carry (zh-TW,
+      // zh-CN, zh-HK) and the meeting chooser's exact-tag match finds it. Keep an unusual
+      // script (sr-Latn-RS, zh-Hans-TW), and keep any script when the Mac has no region.
+      var script =
+        preferred.script
+        ?? (preferred.region == nil
+          ? nil
+          : Locale.Language.Components(
+            identifier: Locale.Language(identifier: first).maximalIdentifier
+          ).script)
       if let explicit = script, let region {
         let implied = Locale.Language(languageCode: code, script: nil, region: region)
           .maximalIdentifier
