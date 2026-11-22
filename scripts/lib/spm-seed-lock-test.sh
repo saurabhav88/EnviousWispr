@@ -347,7 +347,7 @@ else
 fi
 # It must also SAY SO. An aged lock we decline to judge sits forever, and silent
 # refusal is indistinguishable from "there was nothing to do".
-if printf '%s' "$warn_out" | grep -q "unknown protocol version"; then
+if grep -q "unknown protocol version" <<<"$warn_out"; then
   ok "an unknown-version refusal is ANNOUNCED, not silent"
 else
   bad "unknown-version warning" "refused silently: '$warn_out'"
@@ -362,7 +362,7 @@ if [ "$rc" -ne 0 ]; then
 else
   bad "malformed pid" "reclaimed a lock with an unparseable pid"
 fi
-if printf '%s' "$warn_out" | grep -q "malformed owner record"; then
+if grep -q "malformed owner record" <<<"$warn_out"; then
   ok "a malformed-record refusal is ANNOUNCED, not silent"
 else
   bad "malformed warning" "refused silently: '$warn_out'"
@@ -498,7 +498,7 @@ if [ "$rc" -ne 0 ]; then
 else
   bad "indeterminate reclaim" "reclaimed a lock from an owner it could not check — this process is alive"
 fi
-if printf '%s' "$warn_out" | grep -q "could not determine whether pid"; then
+if grep -q "could not determine whether pid" <<<"$warn_out"; then
   ok "the could-not-check refusal is ANNOUNCED, not silent"
 else
   bad "indeterminate warning" "refused silently: '$warn_out'"
@@ -522,7 +522,7 @@ mkdir -p "$EW_SEED_ROOT/.locks/badage"
 printf 'version=%s\npid=%s\nstarted=x\n' "$EW_SEED_LOCK_VERSION" "$$" > "$EW_SEED_ROOT/.locks/badage/owner"
 warn_out="$(ew_seed_lock_is_reclaimable badage "not-a-number" 2>&1)"
 ew_seed_lock_is_reclaimable badage "not-a-number" >/dev/null 2>&1; rc=$?
-if [ "$rc" -ne 0 ] && printf '%s' "$warn_out" | grep -q "age probe failed"; then
+if [ "$rc" -ne 0 ] && grep -q "age probe failed" <<<"$warn_out"; then
   ok "a failed age probe refuses AND says so"
 else
   bad "age probe" "rc=$rc out='$warn_out'"
