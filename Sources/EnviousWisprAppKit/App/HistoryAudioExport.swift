@@ -85,7 +85,7 @@ final class HistoryAudioExport {
     var replace: @MainActor (_ destination: URL, _ staged: URL) throws -> URL = Effects.replaceFile
 
     static let live = Effects(
-      chooseURL: { HistoryDelivery.chooseSaveURL(defaultName: $0, types: [.mpeg4Audio]) },
+      chooseURL: { HistoryDelivery.chooseSaveURL(defaultName: $0, types: [HistoryAudioExport.m4aType]) },
       reveal: { NSWorkspace.shared.activateFileViewerSelecting([$0]) },
       notify: { HistoryAudioExport.presentAlert($0, on: $1) })
 
@@ -104,6 +104,10 @@ final class HistoryAudioExport {
         ?? destination
     }
   }
+
+  /// The save panel's one type. `UTType.mpeg4Audio` (public.mpeg-4-audio) prefers ".mp4", so
+  /// the panel would suggest "Dictation.mp4" (Live UAT, #4799); the M4A type prefers ".m4a".
+  static let m4aType = UTType(filenameExtension: "m4a") ?? .mpeg4Audio
 
   private(set) var inFlight: Set<Key> = []
   @ObservationIgnored private var tasks: [Key: Task<Outcome, Never>] = [:]

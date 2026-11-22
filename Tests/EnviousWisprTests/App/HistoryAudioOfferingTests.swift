@@ -2,6 +2,7 @@ import AppKit
 import EnviousWisprAppKitTestSupport
 import Foundation
 import Testing
+import UniformTypeIdentifiers
 
 @testable import EnviousWisprAppKit
 import EnviousWisprStorage
@@ -79,6 +80,12 @@ struct HistoryAudioOfferingTests {
       export.dictationMenuItem(
         rowID: id, status: .absent(RecordedAbsence(.deleted)), start: {}) == nil)
     #expect(export.dictationMenuItem(rowID: id, status: .absent(nil), start: {}) == nil)
+  }
+
+  @Test("the save panel suggests an .m4a name, not .mp4 (#4799 Live UAT)")
+  func panelSuggestsM4A() {
+    #expect(HistoryAudioExport.m4aType.preferredFilenameExtension == "m4a")
+    #expect(HistoryAudioExport.m4aType.conforms(to: .audio))
   }
 
   @Test("a dictation commit check maps the recording owner's answer one to one")
