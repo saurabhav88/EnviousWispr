@@ -61,8 +61,7 @@ struct AppWindowCoordinatorTests {
     defer { tearDown(coordinator) }
     coordinator.showWindow()
     let window = try #require(coordinator.mainWindowPresenter.window)
-    coordinator.mainWindowPresenter.windowWillClose(
-      Notification(name: NSWindow.willCloseNotification, object: window))
+    window.performClose(nil)  // the red button's path: AppKit calls the presenter as delegate
     #expect(coordinator.mainWindowPresenter.window == nil)
     #expect(effects.policies.last == .accessory)
     window.orderOut(nil)

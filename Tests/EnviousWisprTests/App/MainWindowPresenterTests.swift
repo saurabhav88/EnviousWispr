@@ -31,8 +31,9 @@ struct MainWindowPresenterTests {
   /// name turns AppKit's frame saving off, so no test leaves a saved frame behind.
   private static func throwawayFrameName() -> String { "" }
 
+  /// Closes the window the way the red button does (AppKit calls the presenter as delegate).
   private func close(_ presenter: MainWindowPresenter, _ window: NSWindow) {
-    presenter.windowWillClose(Notification(name: NSWindow.willCloseNotification, object: window))
+    window.performClose(nil)
     window.orderOut(nil)
   }
 
@@ -49,6 +50,10 @@ struct MainWindowPresenterTests {
     #expect(MainWindowLayout.frameName == "main")
     #expect(window.styleMask.contains([.titled, .closable, .miniaturizable, .resizable]))
     #expect(window.contentMinSize == NSSize(width: 750, height: 400))
+    #expect(window.contentLayoutRect.size == NSSize(width: 1100, height: 760))
+    // After the SwiftUI host lays out, the window keeps its size: the host must not resize its
+    // window to the content's ideal size (it shrank it to this tiny Text's size before).
+    window.contentView?.layoutSubtreeIfNeeded()
     #expect(window.contentLayoutRect.size == NSSize(width: 1100, height: 760))
     #expect(window.tabbingMode == .disallowed)
     #expect(window.isRestorable == false)
@@ -89,6 +94,22 @@ struct MainWindowPresenterTests {
     defer { close(sut, window) }
     #expect(askedFor == name)
     #expect(window.frame == saved)
+  }
+
+  @Test("a resized window saves its frame under the presenter's name")
+  func resizeIsSaved() throws {
+    let sut = presenter(builds: Counter())
+    // A throwaway key, removed below: never `main`, the user's own saved frame.
+    let name = "ew-4842-test-\(UUID().uuidString)"
+    sut.frameName = name
+    let key = "NSWindow Frame \(name)"
+    defer { UserDefaults.standard.removeObject(forKey: key) }
+    sut.show()
+    let window = try #require(sut.window)
+    defer { close(sut, window) }
+    #expect(window.frameAutosaveName == name)
+    window.setFrame(window.frame.insetBy(dx: 20, dy: 20), display: false)
+    #expect(UserDefaults.standard.string(forKey: key) != nil)
   }
 
   @Test("a second show brings back the same window without rebuilding it")
