@@ -113,8 +113,9 @@ enum AppRelauncher {
   /// `applicationWillTerminate` cleanup first) and only then opens the same bundle, so `open` can
   /// never activate the old copy; `-n` makes it launch this bundle even while another copy with
   /// the same bundle identifier runs. If the process never exits, the shell opens nothing and the
-  /// running app stays; the wait is bounded so a refused quit never leaves a shell that would
-  /// reopen the app whenever the user later quits it. Quit cleanup takes seconds, so an exit that
+  /// running app stays. A refused quit stops the shell at once (#4785); the wait is also bounded,
+  /// so a quit that never returns cannot leave a shell that would reopen the app whenever the user
+  /// later quits it. Quit cleanup takes seconds, so an exit that
   /// lands just after the last check is not a practical case. Terminate is requested only once the
   /// shell is running. The case left without an app is `open` itself failing after the quit; the
   /// user then opens it by hand.
@@ -138,18 +139,37 @@ enum AppRelauncher {
   /// Relaunches once the clipboard restore that follows a dictation has finished
   /// (`ClipboardCleanup.hasPending`, the window the update installer also refuses; about 200 ms),
   /// waiting up to 2 seconds. Does nothing if `stillBusy` turns true, `backgroundWorkInFlight` is
-  /// true, or the restore never settles.
+  /// true, or the restore never settles. One request at a time, from either button.
   @MainActor static func relaunchWhenSafe(stillBusy: @escaping @MainActor () -> Bool) {
+    guard !relaunchPending else { return }
+    relaunchPending = true
     Task { @MainActor in
       for _ in 0..<40 where ClipboardCleanup.hasPending {
         try? await Task.sleep(for: .milliseconds(50))
       }
-      guard !ClipboardCleanup.hasPending, !backgroundWorkInFlight(), !stillBusy() else { return }
-      relaunch()
+      // #4785: decide and quit on the next main run loop turn, outside this main-actor job. A quit
+      // owner may answer "later" and reply from a main-actor task (#4086 Custom Words saves, the
+      // #4254 DEBUG witness gate). AppKit waits for that reply in a nested loop that runs no
+      // main-queue work while the job that called `terminate` is still running, so quitting from
+      // this task (or from `DispatchQueue.main.async`) never finishes. A run loop block is not a
+      // main-queue job. The work checks run in the same block, right before the quit.
+      RunLoop.main.perform(inModes: [.default]) {
+        MainActor.assumeIsolated {
+          defer { relaunchPending = false }
+          guard !ClipboardCleanup.hasPending, !backgroundWorkInFlight(), !stillBusy() else {
+            return
+          }
+          relaunch()
+        }
+      }
     }
   }
 
-  @MainActor static func relaunch() {
+  /// True from a Settings relaunch request until its final decision has run, so a second click (or
+  /// the other button) cannot start a second helper shell before AppKit handles the first (#4785).
+  @MainActor private static var relaunchPending = false
+
+  @MainActor private static func relaunch() {
     let pid = ProcessInfo.processInfo.processIdentifier
     let process = Process()
     process.executableURL = URL(fileURLWithPath: "/bin/sh")
@@ -175,5 +195,8 @@ enum AppRelauncher {
         category: "AppLanguage")
     }
     NSApp.terminate(nil)
+    // If AppKit returns control to the running app (the quit was refused, e.g. a Custom Words save
+    // failed), disarm this restart so a later ordinary Quit does not reopen the app (#4785).
+    if process.isRunning { process.terminate() }
   }
 }
