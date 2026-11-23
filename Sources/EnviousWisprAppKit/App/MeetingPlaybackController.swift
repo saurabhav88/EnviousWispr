@@ -384,16 +384,11 @@ final class MeetingPlaybackController {
   /// Opens the audio for the first window: the meeting's tracks, or the dictation's file.
   nonisolated static func open(_ media: PlaybackMedia) throws -> any PlaybackWindowAudio {
     switch media {
-    case .meeting, .compactedMeeting: return MeetingMixedAudio(tracks: try openMeetingTracks(media))
+    case .meeting, .compactedMeeting:
+      return MeetingMixedAudio(tracks: try openMeetingTracksReport(media).tracks)
     case .dictation(let url): return try DictationPlaybackAudio(url: url)
     case .transcript(let audio): return audio
     }
-  }
-
-  /// A meeting's readable tracks for `media` (playback and History's Save audio share it, so a
-  /// compacted meeting is read through recovery's authority whichever way it is opened).
-  nonisolated static func openMeetingTracks(_ media: PlaybackMedia) throws -> [MeetingTrackAudio] {
-    try openMeetingTracksReport(media).tracks
   }
 
   /// A track that skipped a file it could not use (an overlap is not a loss).
@@ -406,7 +401,9 @@ final class MeetingPlaybackController {
     }
   }
 
-  /// `openMeetingTracks` plus whether recording audio is missing: a recorder file a track could
+  /// A meeting's readable tracks for `media` (playback and History's Save audio share it, so a
+  /// compacted meeting is read through recovery's authority whichever way it is opened), plus
+  /// whether recording audio is missing: a recorder file a track could
   /// not read, or (for a compacted meeting) a segment recovery left out as damaged. Save audio
   /// tells the user when the saved file holds silence for such a stretch.
   nonisolated static func openMeetingTracksReport(_ media: PlaybackMedia) throws
