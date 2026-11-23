@@ -253,7 +253,41 @@ struct ModelDeliveryHomeTests {
     #expect(await library.freshInstalled(.parakeet), "the held install finished")
   }
 
-  @Test("Settings' Try again warms once after a granted cycle, never after a refused one",
+  /// #4837: a download that ends admitted while the app runs loads the engine. When this fails,
+  /// Settings' Set up model and Resume leave Parakeet "not ready" until the next hotkey press or
+  /// a relaunch.
+  @Test(
+    "an admitted Parakeet download warms once; a refused one warms nothing",
+    arguments: [true, false])
+  func admittedDownloadWarms(enabled: Bool) async throws {
+    let fixture = try ParakeetHomeFixture.make()
+    defer { try? FileManager.default.removeItem(at: fixture.root) }
+    try ParakeetHomeFixture.writeBytes(
+      into: ParakeetInstallLocation.directory(for: .ultra, dataDirectory: fixture.dataDirectory))
+    let (home, _) = try await Self.upgradeHome(fixture, enabled: enabled)
+    let warmed = BoundedWait.Signal()
+    var warms = 0
+    home.warmParakeetAfterAdmission = {
+      warms += 1
+      warmed.fire()
+    }
+    let install = home.installParakeetExplicitly()
+    if enabled {
+      let answer = try await Self.awaitBounded(install)
+      guard case .attempted(.admitted) = answer else {
+        Issue.record("expected an admitted download, got \(answer)")
+        return
+      }
+      try await BoundedWait.until(warmed)
+      #expect(warms == 1)
+    } else {
+      #expect(install == nil, "a refused request starts nothing")
+      #expect(warms == 0)
+    }
+  }
+
+  @Test(
+    "Settings' Try again warms once after a granted cycle, never after a refused one",
     arguments: [(true, true), (true, false), (false, true)])
   func explicitRetryWarms(writable: Bool, enabled: Bool) async throws {
     let fixture = try ParakeetHomeFixture.make()
