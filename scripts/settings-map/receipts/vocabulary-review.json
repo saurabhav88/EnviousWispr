@@ -6897,6 +6897,7 @@
      "date": "2026-11-22",
      "method": "#4501: Codex, one fresh isolated session for this language (accuracy against the EG-1 size cards and their reviewed translations, naturalness, word collisions)",
      "prompt": "edits/4501-eg1-sizes/review-prompt-de.md",
+     "promptSHA256": "713768788d1b28cc00a93fbb1843f90b7677d2f46fc86e4f4252375589a3c47b",
      "output": {
       "path": "edits/4501-eg1-sizes/review-de.txt",
       "sha256": "58eb8df5494241103ae9383e56400c328c1f1f5eec3f7886664bfa242c27c367"
@@ -9335,6 +9336,7 @@
      "date": "2026-11-22",
      "method": "#4501: Codex, one fresh isolated session for this language (accuracy against the EG-1 size cards and their reviewed translations, naturalness, word collisions)",
      "prompt": "edits/4501-eg1-sizes/review-prompt-en.md",
+     "promptSHA256": "78f579e730d002ee941ed52df981e9b2f1cd693c331c7d2454a94dd28c4c1952",
      "output": {
       "path": "edits/4501-eg1-sizes/review-en.txt",
       "sha256": "cfc8172d27e1fbedf213926173eea4c41170ce3c6bb0e7d714309641ca864fe0"
@@ -10585,6 +10587,7 @@
      "date": "2026-11-22",
      "method": "#4501: Codex, one fresh isolated session for this language (accuracy against the EG-1 size cards and their reviewed translations, naturalness, word collisions)",
      "prompt": "edits/4501-eg1-sizes/review-prompt-es.md",
+     "promptSHA256": "bc00b3d39e67cdb114581e7dbad12f0dc79b9662a0bebde78c10f058f36940e1",
      "output": {
       "path": "edits/4501-eg1-sizes/review-es.txt",
       "sha256": "789db319ddde8199dee10cbb4688572a3f6348d0397f011288866fe634a7de1a"
@@ -14260,6 +14263,7 @@
      "date": "2026-11-22",
      "method": "#4501: Codex, one fresh isolated session for this language (accuracy against the EG-1 size cards and their reviewed translations, naturalness, word collisions)",
      "prompt": "edits/4501-eg1-sizes/review-prompt-fr.md",
+     "promptSHA256": "c7ff093c9035fc3aa6e875bb8c86e6a633690dd9f1370b8723f775413f72997d",
      "output": {
       "path": "edits/4501-eg1-sizes/review-fr.txt",
       "sha256": "25c8af6f045d1ae80ad49b153a2076eba2848cb873f97c63af3e90ecf3a21d19"

@@ -174,7 +174,8 @@ struct SettingsSearchBothLegsTests {
   /// (100), so "Micro" and "Mini" ride on phrases (45): the microphone places and S1-mini keep
   /// first place and EG-1 joins the top five where the words are unambiguous. In French and
   /// Spanish a bare "micro" means microphone and several places score 110 for it, so EG-1 does
-  /// not surface for "Micro" or "Mini" there by design; "taille" and "tamaño" work.
+  /// not surface for "Micro" or "Mini" there by design (a microphone place leads "Micro" and an
+  /// S1-mini or local-model place leads "Mini"); "taille" and "tamaño" work.
   @Test("size searches reach the EG-1 choice without displacing the microphone or S1-mini (#4501)")
   func eg1SizeWordsReachEG1Choice() async throws {
     func model(_ index: Result<SettingsSearchIndex, any Error>) throws -> SettingsSearchModel {
@@ -184,6 +185,15 @@ struct SettingsSearchBothLegsTests {
         announce: { _ in }, announcementDelay: .seconds(60))
     }
     let egOne = "aiPolishProvider.egOne"
+    func isS1Place(_ id: String) -> Bool {
+      id.hasPrefix("s1") || id.hasPrefix("localModel.") || id.localizedCaseInsensitiveContains("s1Mini")
+    }
+    /// Searches and requires the meaning pass to have finished, so a skipped pass cannot pass.
+    func search(_ model: SettingsSearchModel, _ query: String) async -> [String] {
+      let ids = await Self.search(model, query)
+      #expect(model.meaningPass == .completed, "the meaning pass did not finish for \(query)")
+      return ids
+    }
     func isMicrophone(_ id: String) -> Bool {
       id.localizedCaseInsensitiveContains("microphone") || id.hasPrefix("micReadiness")
         || id.hasPrefix("inputDevice")
@@ -198,7 +208,7 @@ struct SettingsSearchBothLegsTests {
       ("es", SettingsSearchMatchingTests.spanish, "tamaño del modelo"),
     ]
     for (language, index, query) in sizeWords {
-      let ids = Array(await Self.search(try model(index), query).prefix(3))
+      let ids = Array(await search(try model(index), query).prefix(3))
       #expect(ids.contains(egOne), "\(language) \(query): \(ids)")
     }
 
@@ -207,10 +217,10 @@ struct SettingsSearchBothLegsTests {
     for (language, index) in [
       ("en", SettingsSearchMatchingTests.english), ("de", SettingsSearchMatchingTests.german),
     ] {
-      let micro = await Self.search(try model(index), "Micro")
+      let micro = await search(try model(index), "Micro")
       #expect(micro.first.map(isMicrophone) == true, "\(language) Micro first: \(micro.prefix(5))")
       #expect(micro.prefix(5).contains(egOne), "\(language) Micro: \(micro.prefix(8))")
-      let mini = await Self.search(try model(index), "Mini")
+      let mini = await search(try model(index), "Mini")
       #expect(mini.first.map(s1Mini.contains) == true, "\(language) Mini first: \(mini.prefix(5))")
       #expect(mini.prefix(5).contains(egOne), "\(language) Mini: \(mini.prefix(8))")
     }
@@ -220,10 +230,12 @@ struct SettingsSearchBothLegsTests {
     for (language, index) in [
       ("fr", SettingsSearchMatchingTests.french), ("es", SettingsSearchMatchingTests.spanish),
     ] {
-      for query in ["Micro", "Mini"] {
-        let ids = await Self.search(try model(index), query)
-        #expect(ids.first != egOne, "\(language) \(query): EG-1 must not lead \(ids.prefix(5))")
-      }
+      let micro = await search(try model(index), "Micro")
+      #expect(micro.first.map(isMicrophone) == true, "\(language) Micro first: \(micro.prefix(5))")
+      #expect(!micro.prefix(1).contains(egOne), "\(language) Micro: EG-1 must not lead")
+      let mini = await search(try model(index), "Mini")
+      #expect(mini.first.map(isS1Place) == true, "\(language) Mini first: \(mini.prefix(5))")
+      #expect(!mini.prefix(1).contains(egOne), "\(language) Mini: EG-1 must not lead")
     }
   }
 
