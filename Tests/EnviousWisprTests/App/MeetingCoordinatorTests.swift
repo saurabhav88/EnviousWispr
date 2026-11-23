@@ -1811,10 +1811,11 @@ struct MeetingCoordinatorTests {
 
     let record = try #require(coordinator.record(id: meetingID))
     let snapshot = try #require(coordinator.audioExportSnapshot(meetingID: meetingID))
-    #expect(snapshot.segments == record.segments)
-    #expect(snapshot.durationMs == record.recordedDurationMs)
-    #expect(snapshot.durationMs > 0)
-    #expect(snapshot.folder == harness.store.folder(for: meetingID))
+    #expect(
+      snapshot.source
+        == MeetingPlaybackSource(record: record, folder: harness.store.folder(for: meetingID)))
+    #expect(snapshot.source.durationMs == record.recordedDurationMs)
+    #expect(snapshot.source.durationMs > 0)
     #expect(coordinator.audioExportSnapshot(meetingID: meetingID) == snapshot, "stable")
 
     // Delete audio claims the meeting before its save lands: no snapshot from that moment.
