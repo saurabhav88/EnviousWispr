@@ -799,12 +799,13 @@ final class PipelineSettingsSync {
     reconcilePendingOllamaUnloads(stillWanted: stillWanted, scheduled: &scheduledThisPass)
   }
 
-  /// #3853 (#4360): a local meeting summary started using `model`, which may leave it resident
-  /// for the keep-alive window. It is owed an unload once nothing holds it.
-  func summaryUsedOllamaModel(_ model: String, settings: SettingsManager) {
+  /// #3853: one-off work (a local meeting summary, a History Polish again with run) used `model`,
+  /// which may leave it resident for the keep-alive window. It is owed an unload once nothing
+  /// holds it. Records only: the caller reconciles through `retryDeferredOllamaEviction`, at a
+  /// moment when the work's own pin is already clear.
+  func recordOllamaModelUsedByOneOffWork(_ model: String) {
     guard !model.isEmpty else { return }
     pendingOllamaUnloads[Self.canonical(model)] = model
-    reconcileOllamaEviction(settings: settings)
   }
 
   /// Pays each owed unload once nothing holds the model. Same checks as a tracker departure:

@@ -83,6 +83,9 @@ final class ImportedTranscriberRig {
   var processThrowsAfter: Int?
   var identityNow = ImportedSourceIdentity(byteCount: 10, durationMs: 1000, digest: "aa")
   var languageMode: LanguageMode = .auto
+  /// The polish provider and model the frozen snapshot names (EG-1 unless a test says otherwise).
+  var polishProvider: LLMProvider = .egOne
+  var polishModelName = "eg-1"
   var installed: [ImportedASRChoice] = []
   /// #4611: the speaker step Transcribe again with runs; nil skips it.
   var speakerLabeler: (@MainActor ([Float], TimeInterval) async -> SpeakerAnalysis)?
@@ -103,7 +106,7 @@ final class ImportedTranscriberRig {
       languageMode: languageMode, wordCorrectionEnabled: true, fillerRemovalEnabled: false,
       emojiFormatterEnabled: false, spokenPunctuationEnabled: false,
       spokenPunctuationStartWords: nil, spokenPunctuationEnglishPeriodWord: nil,
-      llmProvider: LLMProvider.egOne.rawValue, llmModel: "eg-1", egOneSize: nil,
+      llmProvider: polishProvider.rawValue, llmModel: polishModelName, egOneSize: nil,
       s1Control: nil, englishSpelling: nil, casualModeEnabled: false)
   }
 
@@ -202,7 +205,8 @@ struct ImportedFileTranscriberTests {
           }
         },
         release: { rig.releases += 1 }),
-      polishDictation: { _, _ in nil }, meetingInfo: { _ in .init(echoTurnIDs: ["2"]) })
+      polishDictation: { _, _ in nil }, meetingInfo: { _ in .init(echoTurnIDs: ["2"]) },
+      ollamaModelUsed: { _ in })
 
     let result = try await runner.candidate(for: row, choice: choice)
     #expect(rig.processedParts == [[speech]])

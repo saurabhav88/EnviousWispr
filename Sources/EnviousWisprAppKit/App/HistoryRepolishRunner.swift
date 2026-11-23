@@ -21,6 +21,8 @@ final class HistoryRepolishRunner {
   private let cleanup: ImportedFileTranscriber.Cleanup
   private let polishDictation: @MainActor (String, String?) async throws -> String?
   private let meetingInfo: @MainActor (Transcript) -> MeetingHistoryInfo?
+  /// #3853 (#4851): told the Ollama model a run may have loaded, at the end of the run.
+  private let ollamaModelUsed: @MainActor (String) -> Void
   private(set) var heldRun: ImportedFileTranscriber.FrozenRun?
 
   init(
@@ -30,7 +32,8 @@ final class HistoryRepolishRunner {
     freeze: @escaping @MainActor (ASRBackendType, HistoryPolishChoice, Bool) -> ImportedFileTranscriber.FrozenRun,
     cleanup: ImportedFileTranscriber.Cleanup,
     polishDictation: @escaping @MainActor (String, String?) async throws -> String?,
-    meetingInfo: @escaping @MainActor (Transcript) -> MeetingHistoryInfo?
+    meetingInfo: @escaping @MainActor (Transcript) -> MeetingHistoryInfo?,
+    ollamaModelUsed: @escaping @MainActor (String) -> Void
   ) {
     self.choices = choices
     self.refreshAvailability = refreshAvailability
@@ -39,6 +42,7 @@ final class HistoryRepolishRunner {
     self.cleanup = cleanup
     self.polishDictation = polishDictation
     self.meetingInfo = meetingInfo
+    self.ollamaModelUsed = ollamaModelUsed
   }
 
   func candidate(for row: Transcript, choice: HistoryPolishChoice) async throws -> HistoryPolishCandidate {
@@ -51,13 +55,20 @@ final class HistoryRepolishRunner {
     guard case .granted(let token) = admission.claim() else { throw Failure.busy }
     let run = freeze(row.backendType, choice, document)
     heldRun = run
+    var enteredPolish = false
     defer {
+      // #3853 (#4851): reported before the pin clears and the release retry runs. Only once polish
+      // could have loaded the model, so an exit before it reports nothing.
+      if enteredPolish, run.settings.llmProvider == LLMProvider.ollama.rawValue {
+        ollamaModelUsed(run.settings.llmModel)
+      }
       heldRun = nil
       admission.release(token)
       cleanup.release()
     }
     guard await cleanup.prepareLocalPolish(run.configuration) else { throw Failure.unavailable }
     try Task.checkCancellation()
+    enteredPolish = true
     if document {
       return try await documentCandidate(for: row, meeting: info, run: run, choice: choice)
     }

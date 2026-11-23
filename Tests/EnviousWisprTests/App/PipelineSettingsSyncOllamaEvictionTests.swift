@@ -134,6 +134,12 @@ struct PipelineSettingsSyncOllamaEvictionTests {
     var importPin: String?
   }
 
+  /// What the summary hook does for a model a local summary used: record it, then retry once.
+  private func summaryUsed(_ sync: PipelineSettingsSync, _ model: String, settings: SettingsManager) {
+    sync.recordOllamaModelUsedByOneOffWork(model)
+    sync.retryDeferredOllamaEviction(settings: settings)
+  }
+
   private func makeWorkSync(_ work: OllamaWork, catalog: [OllamaDownloadedModel]? = nil)
     -> (PipelineSettingsSync, SettingsManager, EvictionRecorder)
   {
@@ -157,13 +163,47 @@ struct PipelineSettingsSyncOllamaEvictionTests {
     sync.applyInitialSettings(settings)
     #expect(recorder.scheduled.isEmpty, "seeding must never evict")
 
-    sync.summaryUsedOllamaModel("mistral", settings: settings)
+    summaryUsed(sync, "mistral", settings: settings)
     #expect(recorder.scheduled.isEmpty, "held while the summary work needs it")
 
     work.demand = []
     sync.retryDeferredOllamaEviction(settings: settings)
     sync.retryDeferredOllamaEviction(settings: settings)
     #expect(recorder.scheduled == ["mistral"], "the setting still names it, and it is evicted once")
+  }
+
+  /// #3853 (#4851): a Polish again with run reports its Ollama model at its end. Recording alone
+  /// schedules nothing; the release retry pays it once, and only after the run's pin clears.
+  @Test("a model a one-off run used is evicted once, only after its pin clears")
+  func oneOffRunModelIsEvictedAfterItsPinClears() {
+    let work = OllamaWork()
+    let (sync, settings, recorder) = makeWorkSync(work)
+    settings.llmProvider = .appleIntelligence
+    sync.applyInitialSettings(settings)
+
+    sync.recordOllamaModelUsedByOneOffWork("mistral")
+    #expect(recorder.scheduled.isEmpty, "recording alone never evicts")
+    work.importPin = "mistral"
+    sync.retryDeferredOllamaEviction(settings: settings)
+    #expect(recorder.scheduled.isEmpty, "the run still pins it")
+
+    work.importPin = nil
+    sync.retryDeferredOllamaEviction(settings: settings)
+    sync.retryDeferredOllamaEviction(settings: settings)
+    #expect(recorder.scheduled == ["mistral"])
+  }
+
+  @Test("a one-off run's model that dictation selects is kept")
+  func oneOffRunModelSelectedByDictationIsKept() {
+    let work = OllamaWork()
+    let (sync, settings, recorder) = makeWorkSync(work)
+    settings.llmProvider = .ollama
+    settings.ollamaModel = "mistral"
+    sync.applyInitialSettings(settings)
+
+    sync.recordOllamaModelUsedByOneOffWork("mistral")
+    sync.retryDeferredOllamaEviction(settings: settings)
+    #expect(recorder.scheduled.isEmpty)
   }
 
   @Test("the summary setting alone keeps nothing: dictation leaving its model evicts it")
@@ -243,7 +283,7 @@ struct PipelineSettingsSyncOllamaEvictionTests {
     settings.llmProvider = .appleIntelligence
     sync.applyInitialSettings(settings)
 
-    sync.summaryUsedOllamaModel("mistral", settings: settings)
+    summaryUsed(sync, "mistral", settings: settings)
     #expect(recorder.scheduled.isEmpty, "deferred while the call uses it")
 
     work.summaryPin = nil
@@ -259,7 +299,7 @@ struct PipelineSettingsSyncOllamaEvictionTests {
     settings.llmProvider = .appleIntelligence
     sync.applyInitialSettings(settings)
 
-    sync.summaryUsedOllamaModel("mistral", settings: settings)
+    summaryUsed(sync, "mistral", settings: settings)
     #expect(recorder.scheduled.isEmpty, "the import call still uses it")
 
     work.importPin = nil
@@ -274,7 +314,7 @@ struct PipelineSettingsSyncOllamaEvictionTests {
     settings.ollamaModel = "mistral:latest"
     sync.applyInitialSettings(settings)
 
-    sync.summaryUsedOllamaModel("mistral", settings: settings)
+    summaryUsed(sync, "mistral", settings: settings)
     #expect(recorder.scheduled.isEmpty, "dictation still selects it")
 
     settings.ollamaModel = "llama3"
@@ -290,7 +330,7 @@ struct PipelineSettingsSyncOllamaEvictionTests {
     settings.fileImportOllamaModel = "mistral"
     sync.applyInitialSettings(settings)
 
-    sync.summaryUsedOllamaModel("mistral", settings: settings)
+    summaryUsed(sync, "mistral", settings: settings)
     sync.retryDeferredOllamaEviction(settings: settings)
     #expect(recorder.scheduled.isEmpty, "the import still selects it")
   }
@@ -303,8 +343,8 @@ struct PipelineSettingsSyncOllamaEvictionTests {
     settings.llmProvider = .appleIntelligence
     sync.applyInitialSettings(settings)
 
-    sync.summaryUsedOllamaModel("mistral", settings: settings)
-    sync.summaryUsedOllamaModel("llama3", settings: settings)
+    summaryUsed(sync, "mistral", settings: settings)
+    summaryUsed(sync, "llama3", settings: settings)
     #expect(recorder.scheduled.isEmpty)
 
     work.demand = []
@@ -319,7 +359,7 @@ struct PipelineSettingsSyncOllamaEvictionTests {
     settings.llmProvider = .appleIntelligence
     sync.applyInitialSettings(settings)
 
-    sync.summaryUsedOllamaModel("kimi", settings: settings)
+    summaryUsed(sync, "kimi", settings: settings)
     sync.retryDeferredOllamaEviction(settings: settings)
     #expect(recorder.scheduled.isEmpty)
   }
@@ -366,7 +406,7 @@ struct PipelineSettingsSyncOllamaEvictionTests {
     settings.fileImportLLMProvider = .ollama
     settings.fileImportOllamaModel = "mistral:latest"
     sync.applyInitialSettings(settings)
-    sync.summaryUsedOllamaModel("mistral", settings: settings)
+    summaryUsed(sync, "mistral", settings: settings)
     #expect(recorder.scheduled.isEmpty)
 
     settings.ollamaModel = "llama3"
