@@ -730,9 +730,10 @@ struct OnboardingCoordinatorTests {
     #expect(c.acceptSkipAhead(pick: "eg1.mini", secondsLeft: 300, waitedSeconds: 70))
     #expect(c.state.step == .practice && c.state.deferredPolish == "eg1.mini" && c.isPracticeUsable)
     #expect(OnboardingCheckpoint.decode(world.checkpoint)?.deferredPolish == "eg1.mini")
-    #expect(rows() == [.skipped])
+    // The poll had not counted the card: the press sends offered first.
+    #expect(rows() == [.offered, .skipped])
     #expect(!c.acceptSkipAhead(pick: "eg1.mini", secondsLeft: 300, waitedSeconds: 70))
-    #expect(rows() == [.skipped])
+    #expect(rows() == [.offered, .skipped])
   }
 
   @Test("Skip ahead starts the polish waiting behind speech; a disk refusal keeps Practice open")
@@ -759,6 +760,8 @@ struct OnboardingCoordinatorTests {
           Issue.record("expected the disk block Practice's note reads")
           continue
         }
+        // The pick the person kept is still saved as the selection.
+        #expect(world.log.contains("selectPolish(egOne.mini)"), "the kept pick was not saved")
       }
     }
   }
@@ -891,5 +894,44 @@ struct OnboardingCoordinatorTests {
     c2.send(.filmFinished)
     #expect(reported?.offered == true && reported?.offerToFirstDeliverySeconds == 15)
     #expect(reported?.visit == c2.skipAheadVisitID)
+  }
+
+  @Test("one Skip ahead log per visit: a new pick or Start over sends no extra rows")
+  func skipAheadLogFollowsThePick() async throws {
+    // When this fails, one visit sends more than three Skip ahead rows (a second offered row
+    // after a changed pick or Start over), or the visit's last row names a pick it did not act on.
+    let world = World()
+    world.speechPhase[.parakeet] = .installed
+    world.polishPhase[.egOne(.mini)] = .downloading(fraction: 0.3)
+    world.polishPhase[.egOne(.full)] = .downloading(fraction: 0.1)
+    let c = try Self.atGettingReady(world)
+    var rows: [(OnboardingTelemetry.SkipAheadAction, String)] = []
+    c.onObservation = {
+      if case .skipAhead(let action, let polish, _, _, _) = $0 { rows.append((action, polish)) }
+    }
+    c.noteSkipAheadOffered(polish: "eg1.mini", secondsLeft: 300, waitedSeconds: 61)
+    c.noteSkipAheadOffered(polish: "eg1.full", secondsLeft: 900, waitedSeconds: 70)
+    c.noteSkipAheadKeptWaiting(polish: "eg1.full", secondsLeft: 880, waitedSeconds: 72)
+    c.reset()
+    c.noteSkipAheadOffered(polish: "eg1.full", secondsLeft: 900, waitedSeconds: 65)
+    c.noteSkipAheadKeptWaiting(polish: "eg1.full", secondsLeft: 880, waitedSeconds: 66)
+    #expect(rows.map(\.0) == [.offered, .keptWaiting], "a visit sent extra Skip ahead rows")
+    #expect(rows.map(\.1) == ["eg1.mini", "eg1.full"], "a row named a pick it did not act on")
+  }
+
+  @Test("a press on a card the poll had not counted sends offered first")
+  func pressBeforeThePollCountsTheOffer() async throws {
+    // When this fails, a visit reports Keep waiting or Skip ahead with no offered row, and the
+    // success share loses that visit.
+    let world = World()
+    world.speechPhase[.parakeet] = .installed
+    world.polishPhase[.egOne(.mini)] = .downloading(fraction: 0.3)
+    let c = try Self.atGettingReady(world)
+    var rows: [OnboardingTelemetry.SkipAheadAction] = []
+    c.onObservation = {
+      if case .skipAhead(let action, _, _, _, _) = $0 { rows.append(action) }
+    }
+    c.noteSkipAheadKeptWaiting(polish: "eg1.mini", secondsLeft: 300, waitedSeconds: 61)
+    #expect(rows == [.offered, .keptWaiting])
   }
 }

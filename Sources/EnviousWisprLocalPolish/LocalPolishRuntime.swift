@@ -1082,9 +1082,23 @@ public final class LocalPolishRuntime: EGOneLeaseProviding {
       isActiveProvider?() == true, let family = manifest?.promptFamily, activationBlockers.isEmpty
     else { return }
     let generation = activationGeneration
+    let epochAtSchedule = sharedEngineAdmissionEpoch?()
+    let quiet = downloadConfirmationQuietPeriod
     downloadConfirmationRequestedAgain = false
     downloadConfirmation = Task {
-      if case .ready = self.serverState {
+      // A take often follows the moment the engine frees up; the probe waits for a quiet
+      // period first, and stands aside when a take used the engine meanwhile (the next release
+      // asks again). A claim during the probe cancels it (`standDownDownloadConfirmation`), so a
+      // confirmation never makes a take wait for it.
+      if quiet > .zero { try? await Task.sleep(for: quiet) }
+      // Read again after the wait: an activation may have confirmed and spent this download.
+      let stillWaiting =
+        self.completedDownload == download
+        && (self.pendingDownloadNotice.map { !self.noticeMatchesLiveServer($0) } ?? true)
+      let quietHeld =
+        !Task.isCancelled && self.isSharedEngineBusy?() != true
+        && self.sharedEngineAdmissionEpoch?() == epochAtSchedule
+      if stillWaiting, quietHeld, case .ready = self.serverState {
         let outcome = await self.probeForDictation(family: family) {
           generation == self.activationGeneration && self.completedDownload == download
             && self.isActiveProvider?() == true
@@ -1097,6 +1111,22 @@ public final class LocalPolishRuntime: EGOneLeaseProviding {
         self.scheduleDownloadConfirmation()
       }
     }
+  }
+
+  /// How long a confirmation waits for the engine to stay free before probing (tests: zero).
+  var downloadConfirmationQuietPeriod: Duration = .seconds(5)
+
+  /// #4845: the shared engine was released (any holder, any ending, including a cancelled or
+  /// too-short take that never held the polish server): a completed download still waiting for
+  /// its confirmation asks now.
+  public func confirmPendingDownload() { scheduleDownloadConfirmation() }
+
+  /// #4845: the shared engine was just claimed. The confirmation in flight is cancelled (its
+  /// request to the helper ends at the next generation round) and asks again at the next release.
+  public func standDownDownloadConfirmation() {
+    guard let confirmation = downloadConfirmation else { return }
+    confirmation.cancel()
+    downloadConfirmationRequestedAgain = false
   }
 
   /// Tests: waits for the confirmation in flight and any one it scheduled after itself.

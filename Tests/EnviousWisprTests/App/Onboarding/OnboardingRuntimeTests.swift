@@ -540,4 +540,45 @@ struct OnboardingRuntimeTests {
     #expect(r.skipOffer == .card)
     r.stop()
   }
+
+  @Test("the offered row waits for the window to be on screen, and a refused press hides the button")
+  func offeredRowNeedsTheScreen() async throws {
+    // When this fails, the funnel counts an offer nobody saw, or a button that can no longer work
+    // stays on screen until the next poll.
+    let world = OnboardingCoordinatorTests.World()
+    world.speechPhase[.parakeet] = .installed
+    world.polishPhase[.egOne(.mini)] = .downloading(fraction: 0.3)
+    let c = try OnboardingCoordinatorTests.atGettingReady(world)
+    var rows: [OnboardingTelemetry.SkipAheadAction] = []
+    c.onObservation = { if case .skipAhead(let action, _, _, _, _) = $0 { rows.append(action) } }
+    var phase: OnboardingDownloadPhase = .downloading(fraction: nil)
+    let r = Self.runtime(
+      world, c, Facts(), clock: { Self.t0 },
+      snapshot: {
+        .init(
+          speech: Self.speechInstalled,
+          polish: .init(id: "polish:eg1.mini", phase: phase, downloadedBytes: nil, totalBytes: nil))
+      },
+      uptime: { world.uptime })
+    var onScreen = false
+    r.offerIsOnScreen = { onScreen }
+    r.start()
+    r.beginOfferVisit()
+    world.uptime = 61
+    r.tick()
+    #expect(r.skipOffer == .card && rows.isEmpty, "an offer behind other windows was counted")
+    // The window comes on screen between polls: the card is counted then, not at the next tick.
+    onScreen = true
+    r.offerVisibilityChanged()
+    #expect(rows == [.offered], "a card that came into view waited for the poll")
+    r.tick()
+    #expect(rows == [.offered], "the offered row was sent twice")
+
+    // The transfer moves on to verifying: the press is refused and the button leaves at once.
+    world.polishPhase[.egOne(.mini)] = .verifying
+    phase = .verifying
+    #expect(!r.skipAhead(visit: r.offerVisit, pick: "eg1.mini"))
+    #expect(r.skipOffer == .hidden, "a button that cannot work stayed on screen")
+    r.stop()
+  }
 }

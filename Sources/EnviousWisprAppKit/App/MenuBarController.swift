@@ -1316,8 +1316,12 @@ enum PolishDownloadMenu {
     guard setupComplete, let installState else { return nil }
     switch installState {
     case .downloading(let fraction, _): return .downloading(model: selected, fraction: fraction)
-    case .paused: return .paused(model: selected)
-    case .notInstalled, .updatePaused, .verifying, .installed, .failed: return nil
+    // An update that stopped with its partial bytes kept resumes the same way (Setup's Practice
+    // note points here). An update that never started has nothing to resume: the existing
+    // warning row keeps the slot, and Settings offers to start it.
+    case .paused, .updatePaused(resumable: true, _): return .paused(model: selected)
+    case .notInstalled, .updatePaused(resumable: false, _), .verifying, .installed, .failed:
+      return nil
     }
   }
 
@@ -1328,7 +1332,13 @@ enum PolishDownloadMenu {
     _ shown: LocalPolishModelID, selected: LocalPolishModelID, installState: EGOneInstallState?,
     start: () -> Void
   ) -> Bool {
-    guard shown == selected, case .paused? = installState else { return false }
+    guard shown == selected, let installState else { return false }
+    switch installState {
+    case .paused, .updatePaused(resumable: true, _): break
+    case .notInstalled, .updatePaused(resumable: false, _), .downloading, .verifying, .installed,
+      .failed:
+      return false
+    }
     start()
     return true
   }

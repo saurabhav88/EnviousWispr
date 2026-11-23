@@ -487,6 +487,10 @@ struct MenuBarControllerTests {
       line(true, mini, .downloading(fractionCompleted: 0.3, upgrade: nil))
         == .downloading(model: mini, fraction: 0.3))
     #expect(line(true, mini, .paused) == .paused(model: mini))
+    #expect(line(true, mini, .updatePaused(resumable: true, targetVersion: nil)) == .paused(model: mini))
+    #expect(
+      line(true, mini, .updatePaused(resumable: false, targetVersion: nil)) == nil,
+      "an update that never started said paused and hid the existing warning")
     #expect(line(true, mini, .verifying) == nil, "verification alone showed a download line")
     #expect(line(true, mini, .failed(.network)) == nil, "a failure hid the existing warning")
     #expect(line(true, mini, .installed(version: nil)) == nil)
@@ -500,6 +504,15 @@ struct MenuBarControllerTests {
     var started = 0
     #expect(PolishDownloadMenu.resume(mini, selected: mini, installState: .paused) { started += 1 })
     #expect(started == 1)
+    #expect(
+      PolishDownloadMenu.resume(
+        mini, selected: mini, installState: .updatePaused(resumable: true, targetVersion: nil)
+      ) { started += 1 }, "the paused update Practice points to had no Resume")
+    started -= 1
+    #expect(
+      !PolishDownloadMenu.resume(
+        mini, selected: mini, installState: .updatePaused(resumable: false, targetVersion: nil)
+      ) { started += 1 }, "an update that never started was offered as Resume")
     #expect(
       !PolishDownloadMenu.resume(mini, selected: .egOne(.full), installState: .paused) {
         started += 1

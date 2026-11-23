@@ -264,36 +264,45 @@ struct SetupPracticeScreenTests {
   }
 
   /// #4845. When this fails, a person who chose Skip ahead is told to try again after a take that
-  /// worked, a take that got polished mid-way is called basic cleanup, or the delivery time for
-  /// the Skip ahead summary is missed or counted for a take that did not land.
-  @Test("a take started after Skip ahead reads Dictation worked with basic cleanup")
+  /// worked on basic cleanup (including one where polish became ready just as the take started),
+  /// a real polish failure or crash is hidden as basic cleanup, or the delivery time for the Skip
+  /// ahead summary is missed or counted for a take that did not land.
+  @Test("a take after Skip ahead that missed polish waiting for the model reads Dictation worked")
   func skippedAheadTakeIsASuccess() {
     var attempt = SetupPracticeAttempt()
-    func take(_ id: String, deferred: Bool, terminal: PracticeTakeEvidence) -> Bool {
+    func take(_ id: String, skipped: Bool, terminal: PracticeTakeEvidence) -> Bool {
       attempt.observe(
         SetupPracticeTake(id: id, phase: .recording, locked: false, terminal: nil),
-        focusedEditor: "box", polishDeferred: deferred)
-      // The phase changes mid-take; only the take-start value counts.
+        focusedEditor: "box", skippedAhead: skipped)
       return attempt.observe(
         SetupPracticeTake(id: id, phase: .complete, locked: false, terminal: terminal),
-        focusedEditor: "box", polishDeferred: !deferred)
+        focusedEditor: "box", skippedAhead: skipped)
     }
     let shown = SetupPracticeRoute.shown
-    #expect(!take("a", deferred: true, terminal: .failed), "a failed take was timed")
+    func landed(polished: Bool, waited: Bool = false) -> PracticeTakeEvidence {
+      .delivered(verifiedEditor: "box", copied: false, polished: polished, waitedForModel: waited)
+    }
+    #expect(!take("a", skipped: true, terminal: .failed), "a failed take was timed")
     #expect(attempt.success == nil)
-    #expect(take("b", deferred: true, terminal: .delivered(verifiedEditor: "box", copied: false, polished: false)))
+    // Missed polish (not ready yet, or too short to polish): the promised success.
+    #expect(take("b", skipped: true, terminal: landed(polished: false, waited: true)))
     #expect(shown(attempt.state, attempt.result, true) == .workedBasicCleanup)
     #expect(SetupPracticeState.workedBasicCleanup.canContinue(hasSucceeded: attempt.success != nil))
     #expect(SetupPracticeState.workedBasicCleanup.isWorked)
     #expect(SetupPracticeState.workedBasicCleanup.headline == "Dictation worked")
-    // Polish got ready during the take: the take was polished, so it is the full success.
-    #expect(take("c", deferred: true, terminal: .delivered(verifiedEditor: "box", copied: false, polished: true)))
+    // Polish got ready in time: the take was polished, so it is the full success.
+    #expect(take("c", skipped: true, terminal: landed(polished: true)))
     #expect(shown(attempt.state, attempt.result, true) == .worked)
-    // Not skipped ahead at take start: today's honest copy.
-    #expect(take("d", deferred: false, terminal: .delivered(verifiedEditor: "box", copied: false, polished: false)))
+    // Polish ran and failed, or crashed mid-request: today's honest copy, even after Skip ahead.
+    #expect(take("d", skipped: true, terminal: landed(polished: false)))
+    #expect(shown(attempt.state, attempt.result, true) == .workedWithoutPolish)
+    // Not skipped ahead: today's honest copy.
+    #expect(take("e", skipped: false, terminal: landed(polished: false, waited: true)))
     #expect(shown(attempt.state, attempt.result, true) == .workedWithoutPolish)
     // A take outside the box is not a verified delivery.
-    #expect(!take("e", deferred: true, terminal: .delivered(verifiedEditor: "elsewhere", copied: false, polished: false)))
+    #expect(
+      !take("f", skipped: true,
+        terminal: .delivered(verifiedEditor: "elsewhere", copied: false, polished: false)))
   }
 
   @Test("the Basic cleanup note follows the skipped-ahead model's phase and hides once it is ready")
@@ -313,6 +322,11 @@ struct SetupPracticeScreenTests {
     #expect(stage(p(.loading, phase: .installed)) == .starting)
     #expect(stage(p(.failed, phase: .installed)) == .unavailable)
     #expect(stage(p(.downloadStopped, phase: .paused)) == .stopped(paused: true))
+    var neverStarted = p(.downloadStopped, phase: .paused)
+    neverStarted.polishResumable = false
+    #expect(
+      stage(neverStarted) == .stopped(paused: false),
+      "an update with nothing to resume pointed to a Resume item the menu does not show")
     #expect(stage(p(.downloadStopped, phase: .failed(.whisper("x")))) == .stopped(paused: false))
     #expect(stage(p(.downloadStopped, phase: .notStarted)) == .stopped(paused: false))
     #expect(

@@ -82,6 +82,10 @@ final class SetupSession {
     guard let components, components.coordinator.isActive else { return }
     // #4845: a window opened (not a refocus) starts a new Skip ahead visit.
     if !presenter.isVisible { components.runtime.beginOfferVisit() }
+    components.runtime.offerIsOnScreen = { [weak presenter] in presenter?.windowIsOnScreen ?? false }
+    presenter.onVisibilityChanged = { [weak runtime = components.runtime] in
+      runtime?.offerVisibilityChanged()
+    }
     beginVisit()
     var sources = components.screenSources
     let runtime = components.runtime

@@ -20,8 +20,13 @@ final class SetupWindowPresenter: NSObject, NSWindowDelegate {
   private var window: NSWindow?
   private var model: SetupScreenModel?
   var onClose: (() -> Void)?
+  /// #4845: every on-screen transition, so a Skip ahead card that comes into view is counted
+  /// then, not at the next poll.
+  var onVisibilityChanged: (() -> Void)?
 
   var isVisible: Bool { window?.isVisible ?? false }
+  /// #4845: the same on-screen reading the screen telemetry uses, for the Skip ahead offer row.
+  var windowIsOnScreen: Bool { window.map(isOnScreen) ?? false }
   /// The live screen model, for tests.
   var screenModel: SetupScreenModel? { model }
   /// Whether the window is actually on screen. Injected in tests, which have no window server
@@ -35,6 +40,7 @@ final class SetupWindowPresenter: NSObject, NSWindowDelegate {
   func updateVisibility() {
     guard let window, let model else { return }
     model.setWindowVisible(isOnScreen(window))
+    onVisibilityChanged?()
   }
 
   /// Shows (or refocuses) the Setup screens for `coordinator`. A real screen on screen is

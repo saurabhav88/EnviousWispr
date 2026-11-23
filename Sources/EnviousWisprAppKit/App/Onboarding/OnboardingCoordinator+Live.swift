@@ -181,7 +181,10 @@ extension OnboardingRuntime.Inputs {
         }.value
       },
       recheckAppleIntelligence: { owners.aiAvailability.debouncedCheck() },
-      now: { Date() })
+      now: { Date() },
+      readOfferStage: { [weak coordinator] in
+        OnboardingLiveMapping.offerStage(owners, choices: coordinator?.state.choices ?? .init())
+      })
   }
 }
 
@@ -336,6 +339,29 @@ enum OnboardingLiveMapping {
       return true
     }
     return downloads.polishPhase(polish) == .installed
+  }
+
+  /// #4845: the current polish pick's transfer stage without its progress (the runtime's
+  /// `readOfferStage`); "none" for a pick with no local runtime.
+  @MainActor
+  static func offerStage(_ owners: OnboardingLiveOwners, choices: OnboardingChoices) -> AnyHashable
+  {
+    guard let polish = choices.polish, let model = OnboardingDownloads.localModel(forPolish: polish),
+      let runtime = owners.localPolish.runtime(for: model)
+    else { return AnyHashable("none") }
+    return AnyHashable("\(polish):\(transferStage(runtime.installState))")
+  }
+
+  /// A transfer's stage without its progress.
+  static func transferStage(_ state: EGOneInstallState) -> String {
+    switch state {
+    case .notInstalled: "none"
+    case .downloading: "downloading"
+    case .verifying: "verifying"
+    case .installed: "installed"
+    case .paused, .updatePaused: "paused"
+    case .failed: "failed"
+    }
   }
 
   /// The readiness-relevant summary of every tracked owner fact (read inside observation).

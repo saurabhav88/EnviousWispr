@@ -203,6 +203,22 @@ public actor LocalPolishServerCoordinator {
     }
   }
 
+  /// The same endpoint update as `mirrorLifecycle`, applied from the manager's callback at
+  /// emission. The mirror's own resident (written in the actor turn of every residency change)
+  /// stands in for the actor's; emission order keeps the actor's later copy of the same event
+  /// from undoing a newer one.
+  private nonisolated func mirrorLifecycleAtEmission(
+    _ event: LocalPolishLifecycleEvent, for model: LocalPolishModelID
+  ) {
+    let endpoint: LocalPolishEndpoint?
+    if case .ready(let live) = event.lifecycle.state { endpoint = live } else { endpoint = nil }
+    admissionMirror.withLock {
+      guard $0.resident == model, event.order >= $0.order else { return }
+      $0.order = event.order
+      $0.endpoint = endpoint
+    }
+  }
+
   /// #4845: whether a dictation polish for `model` would be admitted on `endpoint` right now
   /// (resident, not changing, no summary holding the server, and `endpoint` the one serving),
   /// readable without a hop.
@@ -793,6 +809,10 @@ public actor LocalPolishServerCoordinator {
       // The outgoing model's stop would then arrive at the model that just
       // started, telling a live server it is stopped.
       let model = observedResident.withLock { $0 }
+      // #4845 LIFE-5: the admission mirror learns a stop at emission, in the manager's own turn,
+      // so the overlay's synchronous check before a first render never trusts an endpoint the
+      // manager already reported gone while the hop below is still queued.
+      if let model { self?.mirrorLifecycleAtEmission(state, for: model) }
       Task { await self?.publish(state, for: model) }
     }
   }

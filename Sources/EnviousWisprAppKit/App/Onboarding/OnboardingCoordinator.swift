@@ -320,7 +320,10 @@ final class OnboardingCoordinator {
       onObservation?(
         .skipAhead(
           .downloadWon, polish: transition.state.choices.polish ?? "", secondsLeft: nil,
-          waitedSeconds: log.waitedAtOffer + max(0, deps.uptime() - log.offeredAt),
+          // The same clock Skip ahead and Keep waiting report: time on this Getting ready (a
+          // Start over restarts it), not time since the visit's first offer.
+          waitedSeconds: gettingReadyEnteredAt.map { max(0, deps.uptime() - $0) }
+            ?? log.waitedAtOffer + max(0, deps.uptime() - log.offeredAt),
           visit: skipAheadVisitID))
     }
     apply(transition, after: before)
@@ -400,8 +403,19 @@ final class OnboardingCoordinator {
   }
 
   /// The offer's card is showing (the runtime calls it on every tick it shows; sent once per visit).
+  /// One log per window visit, never restarted inside it (a changed pick, Start over), so a visit
+  /// sends at most three rows: offered, kept_waiting, and one of skipped or download_won.
   func noteSkipAheadOffered(polish: String, secondsLeft: Double?, waitedSeconds: Double) {
-    guard isActive, skipAheadLog == nil else { return }
+    guard isActive else { return }
+    if var log = skipAheadLog {
+      // A card for another pick (the person went back and chose again) is the same visit's
+      // offer: no new row, and the visit's last row names the pick it acted on.
+      if !log.ended, log.polish != polish {
+        log.polish = polish
+        skipAheadLog = log
+      }
+      return
+    }
     skipAheadLog = SkipAheadVisitLog(
       polish: polish, offeredAt: deps.uptime(), waitedAtOffer: waitedSeconds)
     onObservation?(
@@ -412,6 +426,8 @@ final class OnboardingCoordinator {
 
   /// Keep waiting was pressed on a current offer (the runtime checked the visit and the form).
   func noteSkipAheadKeptWaiting(polish: String, secondsLeft: Double?, waitedSeconds: Double) {
+    // A press on a card the poll had not yet counted proves it was seen: offered comes first.
+    noteSkipAheadOffered(polish: polish, secondsLeft: secondsLeft, waitedSeconds: waitedSeconds)
     guard isActive, var log = skipAheadLog, !log.keptWaiting, !log.ended else { return }
     log.keptWaiting = true
     skipAheadLog = log
@@ -435,6 +451,9 @@ final class OnboardingCoordinator {
       onChange?()
       return false
     }
+    // A press on a card the poll had not yet counted (the window came on screen between ticks)
+    // proves the person saw it: the offered row comes first.
+    noteSkipAheadOffered(polish: pick, secondsLeft: secondsLeft, waitedSeconds: waitedSeconds)
     // The transition decides on these fresh facts, not on a re-measure still in flight.
     var fresh = state.readiness
     fresh.speech = speech
@@ -447,10 +466,7 @@ final class OnboardingCoordinator {
     guard state.step == .gettingReady else { return false }
     send(.skipAheadAccepted)
     guard state.step == .practice, state.deferredPolish == pick else { return false }
-    var log =
-      skipAheadLog
-      ?? SkipAheadVisitLog(polish: pick, offeredAt: deps.uptime(), waitedAtOffer: waitedSeconds)
-    if !log.ended {
+    if var log = skipAheadLog, !log.ended {
       log.ended = true
       skipAheadLog = log
       onObservation?(
@@ -458,6 +474,10 @@ final class OnboardingCoordinator {
           .skipped, polish: pick, secondsLeft: secondsLeft, waitedSeconds: waitedSeconds,
           visit: skipAheadVisitID))
     }
+    // The person keeps this pick through Practice and completion, so it is the selection now,
+    // whatever happens to its download (a queued start refused for disk, a transfer that began
+    // under an earlier pick of the same model).
+    deps.downloads.selectPolish(pick)
     // Speech is installed (the offer requires it), so a polish waiting behind it starts now. A
     // refusal (disk) sets the block Practice's note reads; Practice itself stays open.
     startQueuedPolishIfSpeechInstalled()
@@ -552,6 +572,8 @@ final class OnboardingCoordinator {
     deps.restartOnboarding()
     state = freshState()
     // #4845: Start over begins again at Welcome, so the next Getting ready starts a new minute.
+    // The window visit goes on (no end row is sent), so its Skip ahead log and key stay: a visit
+    // sends at most three rows.
     gettingReadyEnteredAt = nil
     startedAt = deps.now()
     resumedFromCheckpoint = false

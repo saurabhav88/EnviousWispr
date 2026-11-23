@@ -88111,6 +88111,52 @@
           }
         }
       }
+    },
+    "Keep waiting for AI polish to finish downloading" : {
+      "comment" : "Setup Getting ready: VoiceOver label of the Keep waiting button on the slow-download card.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Weiter warten, bis die KI-Nachbearbeitung heruntergeladen ist"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Continuer d’attendre la fin du téléchargement de la retouche IA"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Seguir esperando a que termine la descarga del Pulido con IA"
+          }
+        }
+      }
+    },
+    "Skip ahead and start dictating now" : {
+      "comment" : "Setup Getting ready: VoiceOver label of the Skip ahead button on the slow-download card.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Überspringen und jetzt schon diktieren"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Passer cette étape et commencer à dicter dès maintenant"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Saltar este paso y empezar a dictar ya"
+          }
+        }
+      }
     }
   },
   "version" : "1.0"

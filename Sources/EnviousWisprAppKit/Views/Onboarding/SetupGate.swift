@@ -507,6 +507,14 @@ enum SetupGate {
   static let keepWaiting = String(
     localized: "Keep waiting",
     comment: "Setup Getting ready: button that keeps waiting for the AI polish download.")
+  /// VoiceOver's full-sentence labels of the card's two buttons (plan D-C), so each says what it
+  /// does on its own, with hints off.
+  static let skipAheadLabel = String(
+    localized: "Skip ahead and start dictating now",
+    comment: "Setup Getting ready: VoiceOver label of the Skip ahead button on the slow-download card.")
+  static let keepWaitingLabel = String(
+    localized: "Keep waiting for AI polish to finish downloading",
+    comment: "Setup Getting ready: VoiceOver label of the Keep waiting button on the slow-download card.")
   /// One sentence so translators can order it; the bold words are the action.
   static var ratherNotWait: LocalizedStringKey { "Rather not wait? **Skip ahead**" }
   /// The same sentence for VoiceOver, without the emphasis marks.

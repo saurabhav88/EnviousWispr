@@ -1897,10 +1897,19 @@ package final class WisprBootstrapper {
     // #3546 A3: an activation deferred because the engine lease was held (a speed test, a
     // decode still finishing for an abandoned take) is offered again when it is released.
     // #3849: every poke re-runs every gate, so a switch deferred by gate 6c applies here too.
-    engineLease.onReleased = { [weak engineCoordinator, meetingWakes] in
+    engineLease.onReleased = { [weak engineCoordinator, meetingWakes, localPolishRuntimes] in
       engineCoordinator?.poke(.parakeetUpgradeOwed)
       // #4052: a meeting pass waiting for the engine takes its turn.
       meetingWakes.poke()
+      // #4845 LIFE-5: a completed AI polish download waiting for its readiness check asks again
+      // whenever the engine frees up, whoever held it (a take, including a cancelled or too-short
+      // one, a decode still finishing for an abandoned take, a file import, a speed test).
+      for runtime in localPolishRuntimes.all { runtime.confirmPendingDownload() }
+    }
+    // #4845 LIFE-5: that check never makes a holder wait: claiming the engine cancels it, and the
+    // helper stops the cancelled request at its next generation round.
+    engineLease.onGranted = { [localPolishRuntimes] in
+      for runtime in localPolishRuntimes.all { runtime.standDownDownloadConfirmation() }
     }
     // #3973 C1: a meeting operation waiting behind a dictation's reservation looks again when
     // that press ends without taking the turn.

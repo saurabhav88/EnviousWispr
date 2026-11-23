@@ -376,6 +376,10 @@ final class OnboardingRuntime {
     var pollInterval: Duration = .seconds(2)
     /// Telemetry's read at this tick (download ends, blockers; F2b). Read-only; no new timer.
     var observeTelemetry: () -> Void = {}
+    /// #4845: the current polish pick's transfer stage (never its progress), read inside the same
+    /// observation. A change re-decides the Skip ahead offer at once (downloading turning into
+    /// verifying, paused or failed) without clearing readiness, which it does not affect.
+    var readOfferStage: () -> AnyHashable = { AnyHashable(0) }
   }
 
   private let coordinator: OnboardingCoordinator
@@ -390,6 +394,7 @@ final class OnboardingRuntime {
   @ObservationIgnored private var advanceTask: Task<Void, Never>?
   @ObservationIgnored private var advanceScheduled = false
   @ObservationIgnored private var lastSnapshot: AnyHashable?
+  @ObservationIgnored private var lastOfferStage: AnyHashable?
   @ObservationIgnored private var speed = OnboardingSlowNetworkMonitor()
   private var advance = OnboardingAutoAdvance()
   @ObservationIgnored private var downloadsVisible = false
@@ -413,6 +418,9 @@ final class OnboardingRuntime {
   /// #4845: the Setup window is open for the current visit. Polling and downloads go on while it
   /// is closed, but the Skip ahead offer and its buttons exist only inside an open visit.
   private(set) var offerVisitOpen = false
+  /// #4845: whether the Setup window is on screen now; `SetupSession` supplies the presenter's
+  /// reading. Default true (tests and DEBUG doors without a window).
+  @ObservationIgnored var offerIsOnScreen: @MainActor () -> Bool = { true }
 
   init(coordinator: OnboardingCoordinator, facts: OnboardingLiveFacts, inputs: Inputs) {
     self.coordinator = coordinator
@@ -491,6 +499,12 @@ final class OnboardingRuntime {
     offerVisitOpen = false
   }
 
+  /// #4845: the Setup window came on or went off screen: a card now in view is counted at once.
+  func offerVisibilityChanged() {
+    guard isRunning, offerVisitOpen else { return }
+    updateSkipOffer(inputs.downloadSnapshot())
+  }
+
   /// #4845 D-B: Getting ready's Skip ahead button. `visit` and `pick` are what the screen showed;
   /// the coordinator re-reads every fact before anything changes.
   @discardableResult
@@ -504,6 +518,10 @@ final class OnboardingRuntime {
     if accepted {
       skipOffer = .hidden
       skipOfferPick = nil
+    } else {
+      // A refused press (the transfer moved on, e.g. to verifying) re-decides the offer from a
+      // fresh sample now, so a button that cannot work leaves the screen at once.
+      updateSkipOffer(inputs.downloadSnapshot())
     }
     return accepted
   }
@@ -512,9 +530,13 @@ final class OnboardingRuntime {
   @discardableResult
   func keepWaiting(visit: Int, pick: String) -> Bool {
     guard isRunning, offerVisitOpen, visit == offerVisit, offer.form == .card, offer.shownPick == pick,
-      coordinator.state.choices.polish == pick,
-      OnboardingSkipOffer.isEligible(coordinator.skipAheadFacts())
+      coordinator.state.choices.polish == pick
     else { return false }
+    guard OnboardingSkipOffer.isEligible(coordinator.skipAheadFacts()) else {
+      // The same fresh re-decision as a refused Skip ahead.
+      updateSkipOffer(inputs.downloadSnapshot())
+      return false
+    }
     offer.keepWaiting()
     skipOffer = offer.form
     skipOfferPick = offer.shownPick
@@ -649,7 +671,9 @@ final class OnboardingRuntime {
     // The poll decides on the same sample as the estimate; fresh owner reads are for presses.
     let facts = coordinator.skipAheadFacts(sampled: snapshot)
     offer.update(facts, secondsLeft: estimator.secondsLeft, at: at)
-    if offer.form == .card, let pick = facts.polishPick {
+    // The offered row counts a card the person could see: the window on screen (the screen
+    // telemetry's reading); a covered window logs it once it is shown, still latched once.
+    if offer.form == .card, let pick = facts.polishPick, offerIsOnScreen() {
       coordinator.noteSkipAheadOffered(
         polish: pick, secondsLeft: estimator.secondsLeft, waitedSeconds: offer.waitedSeconds(at: at))
     }
@@ -664,8 +688,8 @@ final class OnboardingRuntime {
   /// grant, an unloaded model) can never stand while the re-measure is pending.
   private func observe(generation: UInt64) {
     observedChoices = coordinator.state.choices
-    let snapshot = withObservationTracking {
-      inputs.readObservedFacts()
+    let (snapshot, stage) = withObservationTracking {
+      (inputs.readObservedFacts(), inputs.readOfferStage())
     } onChange: { [weak self] in
       Task { @MainActor [weak self] in
         guard let self, self.isRunning, self.observationGeneration == generation else { return }
@@ -680,8 +704,11 @@ final class OnboardingRuntime {
       // the live answer (off-main, one at a time) so Getting ready never waits on an old one.
       sampleAppleIntelligence()
       tick()
+    } else if let last = lastOfferStage, last != stage {
+      tick()
     }
     lastSnapshot = snapshot
+    lastOfferStage = stage
   }
 
   private func sampleAppleIntelligence() {

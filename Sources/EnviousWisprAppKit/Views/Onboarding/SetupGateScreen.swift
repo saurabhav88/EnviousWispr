@@ -117,10 +117,13 @@ struct SetupGateScreen: View {
             .foregroundStyle(Color.obTextSecondary)
             .fixedSize(horizontal: false, vertical: true)
           HStack(spacing: DesignSpacing.md) {
+            // VoiceOver: a full-sentence label each, so a button says what it does on its own.
             Button(SetupGate.skipAhead) { source.skip(offer.visit, pick) }
               .buttonStyle(SetupSmallButtonStyle())
+              .accessibilityLabel(Text(verbatim: SetupGate.skipAheadLabel))
             Button(SetupGate.keepWaiting) { source.keepWaiting(offer.visit, pick) }
               .buttonStyle(SetupSmallButtonStyle(quiet: true))
+              .accessibilityLabel(Text(verbatim: SetupGate.keepWaitingLabel))
           }
         }
         .padding(DesignSpacing.xxl)
@@ -151,16 +154,22 @@ struct SetupGateScreen: View {
     }
   }
 
-  /// VoiceOver hears each appearance of the card once (the header has no live region). A card that
-  /// hides and comes back (eligibility lost, then regained) is a new appearance.
+  /// VoiceOver hears each appearance of the offer once (the header has no live region): the card,
+  /// or the one line when it is what returns after eligibility was lost and regained. Keep waiting
+  /// turning the card into the line is the person's own action and is not announced.
   private func announce(_ offer: SetupSkipAheadOffer) {
-    guard offer.form == .card, offer.pick != nil else {
+    guard offer.form != .hidden, offer.pick != nil else {
       announcedOffer = nil
       return
     }
-    guard announcedOffer?.visit != offer.visit || announcedOffer?.pick != offer.pick else { return }
+    if let announced = announcedOffer, announced.visit == offer.visit, announced.pick == offer.pick {
+      return
+    }
     announcedOffer = offer
-    AccessibilityNotification.Announcement(SetupGate.offerTitle + " " + SetupGate.offerBody).post()
+    let message =
+      offer.form == .card
+      ? SetupGate.offerTitle + " " + SetupGate.offerBody : SetupGate.ratherNotWaitLabel
+    AccessibilityNotification.Announcement(message).post()
   }
 
   // MARK: Names and sizes from the owners

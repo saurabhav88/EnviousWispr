@@ -42,9 +42,6 @@ final class SetupPracticeProgress {
 struct SetupPracticeAttempt {
   private var activeID: String?
   private var expectedEditor: String?
-  /// #4845 D-C: whether the take in flight started while AI polish was skipped ahead and not yet
-  /// ready. Frozen when the take starts; a later phase change never rewrites this take's result.
-  private var deferredAtTakeStart = false
   private(set) var state: SetupPracticeState = .waiting
   private(set) var result: SetupPracticeResult = .skipped
   private(set) var success: SetupPracticeResult?
@@ -52,32 +49,34 @@ struct SetupPracticeAttempt {
   mutating func detachEditor() {
     activeID = nil
     expectedEditor = nil
-    deferredAtTakeStart = false
   }
 
   /// Returns true exactly when this observation is a take verified in the expected editor (the
-  /// delivery receipt Skip ahead's summary times).
+  /// delivery receipt Skip ahead's summary times). `skippedAhead`: this Practice was opened with
+  /// Skip ahead for the current pick (a flow fact that holds for all of Practice, never a timing
+  /// read). After Skip ahead a take that missed polish only because the model was not ready yet
+  /// (or the take was too short to polish) is the promised basic-cleanup success, decided from
+  /// the take's own polish result, so the moment polish became ready cannot change it. Any other
+  /// miss (a failure, a crash mid-request) keeps today's "AI polish didn't run" copy.
   @discardableResult
   mutating func observe(
-    _ take: SetupPracticeTake, focusedEditor: String?, polishDeferred: Bool = false
+    _ take: SetupPracticeTake, focusedEditor: String?, skippedAhead: Bool = false
   ) -> Bool {
     if take.phase.isActive {
       if activeID != take.id {
         activeID = take.id
         expectedEditor = focusedEditor
-        deferredAtTakeStart = polishDeferred
       }
       return false
     }
     guard let terminal = take.terminal, activeID == take.id else { return false }
     let editor = expectedEditor
-    let deferred = deferredAtTakeStart
     detachEditor()
     switch terminal {
-    case .delivered(let verifiedEditor, let copied, let polished):
+    case .delivered(let verifiedEditor, let copied, let polished, let waitedForModel):
       if let editor, verifiedEditor == editor {
         success = .completed(polished: polished)
-        state = deferred && !polished ? .workedBasicCleanup : .worked
+        state = skippedAhead && !polished && waitedForModel ? .workedBasicCleanup : .worked
         result = .completed(polished: polished)
         return true
       } else {
@@ -140,7 +139,7 @@ struct SetupPracticeRoute: View {
     .onChange(of: take) { _, next in
       guard isCurrent else { return }
       let delivered = progress.attempt.observe(
-        next, focusedEditor: editorOwnsFocus ? editorID : nil, polishDeferred: polishDeferredNow)
+        next, focusedEditor: editorOwnsFocus ? editorID : nil, skippedAhead: skippedAhead)
       if delivered { model.sources.practiceDelivered?() }
     }
   }
@@ -159,8 +158,11 @@ struct SetupPracticeRoute: View {
     return SetupPracticePolish.deferredStage(p)
   }
 
-  /// Practice runs on basic cleanup right now because the person skipped ahead.
-  private var polishDeferredNow: Bool { deferredStage != nil }
+  /// This Practice was opened with Skip ahead for the current pick (holds for all of Practice).
+  private var skippedAhead: Bool {
+    guard let polish = model.state.choices.polish else { return false }
+    return model.state.deferredPolish == polish
+  }
 
   private var practicePolish: SetupPracticePolish {
     if let stage = deferredStage { return .deferred(stage) }

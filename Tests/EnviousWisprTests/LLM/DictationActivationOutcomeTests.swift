@@ -98,6 +98,7 @@ struct DictationActivationOutcomeTests {
         engine: fixture.engine(engine), defaults: store, coordinator: coordinator, modelID: model)
       runtime.isActiveProvider = { facts.active }
       runtime.isSharedEngineBusy = { facts.busy }
+      runtime.downloadConfirmationQuietPeriod = .zero
       let releases = ReleaseRecorder()
       runtime.onReleaseObservedForTesting = { releases.record() }
       return (runtime, facts, releases)
@@ -366,6 +367,64 @@ struct DictationActivationOutcomeTests {
     await mini.awaitDownloadConfirmationForTesting()
     let notice = try #require(mini.pendingDownloadNotice, "the booted model was never confirmed")
     #expect(await mini.isCurrent(notice))
+  }
+
+  @Test("a confirmation stands aside when a take used the engine, and the next release asks again")
+  func confirmationNeverMakesATakeWait() async throws {
+    // When this fails, the readiness check queues a user's take behind it on the one inference
+    // slot, or a cancelled take leaves the download-complete pill stuck forever.
+    let rig = try await makeRig()
+    defer { rig.cleanup() }
+    rig.facts.busy = true
+    #expect(await rig.runtime.activateForDictation().value == .readyUnchecked)
+    #expect(await completeTransfer(rig) != nil)
+    rig.facts.busy = false
+    // A take is admitted during the quiet period (the admission counter moves): no probe.
+    var admissions = 0
+    rig.runtime.sharedEngineAdmissionEpoch = {
+      admissions += 1
+      return admissions
+    }
+    let callsBefore = rig.probe.calls
+    rig.runtime.confirmPendingDownload()
+    await rig.runtime.awaitDownloadConfirmationForTesting()
+    #expect(rig.probe.calls == callsBefore, "the check probed after a take used the engine")
+    #expect(rig.runtime.pendingDownloadNotice == nil)
+    // The take ends (cancelled, or too short for polish: no polish lease release): the engine
+    // release asks again and the quiet engine confirms.
+    rig.runtime.sharedEngineAdmissionEpoch = { 7 }
+    rig.runtime.confirmPendingDownload()
+    await rig.runtime.awaitDownloadConfirmationForTesting()
+    #expect(rig.probe.calls == callsBefore + 1)
+    #expect(rig.runtime.pendingDownloadNotice != nil, "the pill stayed stuck after a cancelled take")
+  }
+
+  @Test("claiming the engine cancels a waiting confirmation; the next release asks again")
+  func claimCancelsTheConfirmation() async throws {
+    // When this fails, a readiness check that began just before a record press keeps running on
+    // the one inference slot and the take's paste waits for it, or a cancelled check never asks
+    // again and the download-complete pill never shows.
+    let rig = try await makeRig()
+    defer { rig.cleanup() }
+    rig.facts.busy = true
+    #expect(await rig.runtime.activateForDictation().value == .readyUnchecked)
+    #expect(await completeTransfer(rig) != nil)
+    rig.facts.busy = false
+    // A long quiet period, so the check is still waiting when the press arrives.
+    rig.runtime.downloadConfirmationQuietPeriod = .seconds(60)
+    let callsBefore = rig.probe.calls
+    rig.runtime.confirmPendingDownload()
+    // A record press claims the engine while the check waits: it is cancelled at once.
+    rig.runtime.standDownDownloadConfirmation()
+    await rig.runtime.awaitDownloadConfirmationForTesting()
+    #expect(rig.probe.calls == callsBefore, "a cancelled check still probed")
+    #expect(rig.runtime.pendingDownloadNotice == nil)
+    // The engine is released: the check asks again and confirms.
+    rig.runtime.downloadConfirmationQuietPeriod = .zero
+    rig.runtime.confirmPendingDownload()
+    await rig.runtime.awaitDownloadConfirmationForTesting()
+    #expect(rig.probe.calls == callsBefore + 1)
+    #expect(rig.runtime.pendingDownloadNotice != nil, "the check never asked again after a claim")
   }
 
   @Test("every runtime hears a valid release of the shared server; a stale one is silent")

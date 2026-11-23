@@ -134,7 +134,9 @@ enum SetupPracticePolish: Equatable {
     case .downloading: return .downloading
     case .queued, .waiting: return p.block != nil ? .stopped(paused: false) : .downloading
     case .downloadStopped:
-      return .stopped(paused: p.block == nil && p.polishPhase == .paused)
+      // Only a transfer with bytes to continue points to the menu bar's Resume (the menu shows
+      // none for an update that never started).
+      return .stopped(paused: p.block == nil && p.polishPhase == .paused && p.polishResumable)
     }
   }
 
