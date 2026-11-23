@@ -113,7 +113,11 @@ struct GuidedTourCard: View {
   }
 
   private func openTitle(_ stop: GuidedTourStop) -> LocalizedStringResource {
-    let name = String(localized: stop.page.labelResource ?? "EnviousWispr")
+    // Recordings is a tab of App Settings: the button names the tab the sentence is about.
+    let name =
+      stop == .recordings
+      ? String(localized: AppSettingsTab.recordings.label)
+      : String(localized: stop.page.labelResource ?? "EnviousWispr")
     return "Open \(name)"
   }
 

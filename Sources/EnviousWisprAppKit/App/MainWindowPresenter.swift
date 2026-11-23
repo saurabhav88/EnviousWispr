@@ -42,6 +42,22 @@ final class MainWindowPresenter: NSObject, NSWindowDelegate {
   /// The closing window, held until the next main-queue turn (see the type comment).
   private var closingWindow: NSWindow?
 
+  /// #4565: what the open main window runs when the app quits (the guided tour ends its card, so
+  /// a Quit reports one end). Bound to that exact window; closing the window drops it.
+  private var quitHandler: (window: ObjectIdentifier, run: @MainActor () -> Void)?
+
+  func registerQuitHandler(for window: NSWindow, _ run: @escaping @MainActor () -> Void) {
+    guard window === self.window else { return }
+    quitHandler = (ObjectIdentifier(window), run)
+  }
+
+  /// Runs the registered handler once, from the quit path, before telemetry is torn down.
+  func runQuitHandler() {
+    let handler = quitHandler
+    quitHandler = nil
+    handler?.run()
+  }
+
   /// Shows the main window, building it (and fresh content) when none is open.
   func show() {
     let window = self.window ?? makeWindow()
@@ -94,6 +110,7 @@ final class MainWindowPresenter: NSObject, NSWindowDelegate {
   func windowWillClose(_ notification: Notification) {
     guard let closing = notification.object as? NSWindow, closing === window else { return }
     window = nil
+    quitHandler = nil
     closingWindow = closing
     onMainWindowClosed?(closing)
     DispatchQueue.main.async { [weak self] in
@@ -123,6 +140,22 @@ package struct MainWindowMenuCommand: Commands {
       // The scene-generated entry sat between two separators; the one above comes from the
       // window-arrangement group, this one keeps "Bring All to Front" apart as before.
       Divider()
+    }
+  }
+}
+
+/// Help › Take the Tour (#4565): replays the guided tour from its first stop. The menu bar icon menu
+/// has the same item for a closed window; both call one bootstrapper action.
+package struct GuidedTourMenuCommand: Commands {
+  let take: @MainActor () -> Void
+
+  package init(take: @escaping @MainActor () -> Void) {
+    self.take = take
+  }
+
+  package var body: some Commands {
+    CommandGroup(after: .help) {
+      Button("Take the Tour") { take() }
     }
   }
 }

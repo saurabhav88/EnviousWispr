@@ -110,8 +110,8 @@ final class GuidedTourModel {
   /// Finish tour, after arrival at the last stop.
   func finish() {
     guard case .stop(let stop) = phase else { return }
-    emit(.init(action: .completed, stop: stop.telemetry))
     clear()
+    emit(.init(action: .completed, stop: stop.telemetry))
   }
 
   /// "Recording saving" changed: the run's stops follow it. A Recordings target that no longer
@@ -131,12 +131,15 @@ final class GuidedTourModel {
   /// shown ends with no event.
   func end() {
     staged = false
-    switch phase {
+    let ended = phase
+    // The presentation is cleared before the terminal row goes out, so nothing on screen can
+    // outlive the row that reports it.
+    clear()
+    switch ended {
     case .offer: emit(.init(action: .endedEarly, stop: .offer))
     case .stop(let stop): emit(.init(action: .endedEarly, stop: stop.telemetry))
     case nil: break
     }
-    clear()
   }
 
   private func clear() {

@@ -302,8 +302,13 @@ struct TelemetryEmitterRegistryTests {
   /// same site, same once-per-visit cadence, two more properties (`skip_ahead_offered`,
   /// `offer_to_first_delivery_seconds`, `setup_visit_id`), and `onboardingSkipAhead` gained the
   /// same `visit:` key (same site, same cadence).
+  /// #4565: one new per_user_action guided_tour site (`trackGuidedTour`), kept whole; one row per
+  /// tour action (offered, started, stop viewed, ended early, completed, replayed), at most about
+  /// 12 per automatic run and 11 per replay, an estimated 20k rows per month at worst (497
+  /// installs and 1,319 active installs over 30 days on 2026-11-23). Two closed vocabularies
+  /// (`action`, `stop`), no content. Reader: founder first-release tour funnel.
   static let sitesFingerprint =
-    "3d4aacad89f6f2f9153dfa13bf27fa6cb57fb9c8a1c45ff590cc79503b00ad6b"
+    "4a7e4f39157a1e88477367d2a9549b77adb06b61c66e289c81f4c6d7f87cfd9f"
   /// #4721: `api_key.validation_completed` graded (per_launch, keep) when the launch key check
   /// added `source=launch`; ceiling 106 -> 105.
   static let ungradedFingerprint =

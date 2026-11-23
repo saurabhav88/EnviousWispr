@@ -156,6 +156,10 @@ struct UnifiedWindowView: View {
     .onChange(of: navigationCoordinator.pendingSharedMedia?.url, initial: true) { _, url in
       if let url { navigate(.sharedMedia(url)) }
     }
+    // #4565: a replay asked for from the Help or icon menu, accepted once (also on first mount).
+    .onChange(of: navigationCoordinator.pendingGuidedTour, initial: true) { _, pending in
+      if pending { startGuidedTourReplay() }
+    }
     // #4353 D4: a control the page on screen asked to bring into view and ring. The same
     // arrival a search result uses (scrolls only when the control is not fully visible), applied
     // to the window's state directly: it is not a search, so no search attempt is finished or
@@ -629,6 +633,8 @@ struct UnifiedWindowView: View {
       if let phase = tour.phase {
         guidedTourCard(phase)
           .padding(DesignSpacing.lg)
+          // Under the search dropdown the card is out of reach for the keyboard too.
+          .disabled(search.showsPanel)
       }
       detailContent
     }
@@ -658,6 +664,8 @@ struct UnifiedWindowView: View {
 
   private func tourWindowBecameKey(_ window: NSWindow) {
     tourWindow = window
+    // Quit ends a shown card once, before telemetry is torn down; closing drops the handler.
+    appWindow.mainWindowPresenter.registerQuitHandler(for: window) { [tour] in tour.end() }
     if canStageGuidedTourOffer { tour.stageOffer() }
     presentStagedTourOffer()
   }
@@ -677,9 +685,21 @@ struct UnifiedWindowView: View {
       tour.discardStagedOffer()
       return
     }
-    if tour.presentStagedOffer(canPresent: tourWindow?.isKeyWindow == true && !tourIsObstructed) {
+    let canPresent =
+      tourWindow?.isKeyWindow == true && !tourIsObstructed
+      && !navigationCoordinator.pendingGuidedTour
+    if tour.presentStagedOffer(canPresent: canPresent) {
       settings.consumeGuidedTourOffer()
     }
+  }
+
+  /// A replay accepted by this window replaces whatever the card shows and starts at the first
+  /// stop. An install still eligible has now been shown the tour, so the automatic offer is spent;
+  /// every other install's state is left alone.
+  private func startGuidedTourReplay() {
+    navigationCoordinator.consumeGuidedTour()
+    settings.consumeGuidedTourOffer()
+    navigate(tour.replay(recordingsOn: settings.saveDictationRecordings).intent)
   }
 
   /// The stop's page and tab are showing and the card is reachable: its first view of this run.
