@@ -543,6 +543,27 @@ struct MeetingAudioCompactionLifecycleTests {
     }
   }
 
+  @Test("a running Save audio blocks compaction, which is not parked and runs when it ends")
+  func compactionBlockedByExportRunsAfter() async throws {
+    final class Exporting { var ids: Set<UUID> = [] }
+    let harness = try Harness()
+    let record = try Self.readyMeeting(harness)
+    let coordinator = harness.coordinator
+    let exporting = Exporting()
+    coordinator.isExportingAudio = { exporting.ids.contains($0) }
+    await Self.launched(harness, record.id)
+    exporting.ids = [record.id]
+    #expect(
+      await coordinator.compactAudio(meetingID: record.id, with: MeetingAudioCompactor())
+        == .blocked)
+    #expect(try harness.store.load(id: record.id).compressedAudio == nil)
+    #expect(try Self.compactedNames(harness, record.id).isEmpty, "no compacted file left")
+    exporting.ids = []
+    #expect(
+      await coordinator.compactAudio(meetingID: record.id, with: MeetingAudioCompactor())
+        == .committed)
+  }
+
   @Test("retirement waits for an open player (even paused) and for a running Save audio")
   func retirementWaitsForPlayerAndExport() async throws {
     final class Exporting { var ids: Set<UUID> = [] }

@@ -22,6 +22,8 @@ enum MeetingAudioCompactionOutcome: Equatable, Sendable {
   case stale
   /// Nothing to do (no bytes saved, or the meeting is not eligible).
   case skipped
+  /// A Save audio of the meeting is running: nothing was published. Retried when it ends.
+  case blocked
   /// Publication failed; the previous representation stays the authority.
   case failed
 }

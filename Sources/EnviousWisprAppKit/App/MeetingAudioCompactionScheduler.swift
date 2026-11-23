@@ -111,10 +111,12 @@ final class MeetingAudioCompactionScheduler {
         settled.insert(meetingID)
       case .failed:
         settled.insert(meetingID)
+      case .blocked:
+        // Held back by a running Save audio: the candidates read the export (observed), so the
+        // meeting is tried again when it ends, not parked until the list changes.
+        break
       case .deferred, .stale:
-        // A meeting held back by a running Save audio is retried when that ends (the
-        // candidates read it, observed), so it is not parked until the list changes.
-        if !coordinator.isExportingAudio(meetingID) { deferred.insert(meetingID) }
+        deferred.insert(meetingID)
       }
     }
   }

@@ -2828,6 +2828,9 @@ final class MeetingCoordinator {
     case noSavings
     /// The meeting changed, was claimed by other work or could not be claimed: nothing done.
     case stale
+    /// A Save audio of the meeting was running: nothing published; the export's end (observed)
+    /// makes the meeting a candidate again, so it is not parked.
+    case blocked
     /// Preparation or publication failed; the previous representation stays the authority.
     case failed
   }
@@ -2901,6 +2904,14 @@ final class MeetingCoordinator {
   ) async -> MeetingAudioCompactionOutcome {
     let meetingID = ticket.meetingID
     let folder = deps.store.folder(for: meetingID)
+    if compactionClaims[meetingID] == ticket.claimID, isExportingAudio(meetingID) {
+      // Decided in the same turn as the refusal, so an export that ends right after still
+      // finds the meeting retried (the scheduler is not told "stale" and does not park it).
+      abandonAudioCompaction(ticket)
+      MeetingAudioCompactor.discard(verified, folder: folder)
+      deps.log("meeting compaction deferred reason=export_running")
+      return .blocked
+    }
     guard compactionClaims[meetingID] == ticket.claimID, isCompactionEligible(meetingID),
       let record = live[meetingID],
       record.committedTranscriptGeneration == ticket.transcriptGeneration,
@@ -2956,6 +2967,7 @@ final class MeetingCoordinator {
   func compactAudio(meetingID: UUID, with compactor: any MeetingAudioCompacting) async
     -> CompactionAttempt
   {
+    if isExportingAudio(meetingID) { return .blocked }
     guard compactionWork[meetingID] == nil, let ticket = claimAudioCompaction(meetingID: meetingID),
       let record = live[meetingID]
     else { return .stale }
@@ -2971,6 +2983,7 @@ final class MeetingCoordinator {
         case .committed: return .committed
         case .stale: return .stale
         case .skipped: return .deferred
+        case .blocked: return .blocked
         case .failed: return .failed
         }
       } catch MeetingAudioCompactor.PreparationError.noSavings {

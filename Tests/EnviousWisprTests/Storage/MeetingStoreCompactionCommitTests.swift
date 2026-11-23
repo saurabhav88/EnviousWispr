@@ -570,6 +570,21 @@ struct MeetingStoreCompactionCommitTests {
     #expect(try omitting.store.removeAbandonedCompactedAudio(meeting: omitting.id) == 0)
     for name in omitting.outputNames { #expect(omitting.exists(name), "\(name) must stay") }
 
+    // A retirement cut short after the cleaned originals went (raw ones still listed and on
+    // disk), then the inventory lost: the cleaned compacted files are the only cleaned audio.
+    let partial = try Self.fixture()
+    _ = try partial.commit()
+    for entry in partial.inventory.segments where entry.variant == .cleaned {
+      try FileManager.default.removeItem(at: partial.dir.appendingPathComponent(entry.source.fileName))
+    }
+    let partialURL = partial.store.recordURL(for: partial.id)
+    var partialJSON = try #require(
+      JSONSerialization.jsonObject(with: Data(contentsOf: partialURL)) as? [String: Any])
+    partialJSON.removeValue(forKey: "compressedAudio")
+    try JSONSerialization.data(withJSONObject: partialJSON).write(to: partialURL)
+    #expect(try partial.store.removeAbandonedCompactedAudio(meeting: partial.id) == 0)
+    for name in partial.outputNames { #expect(partial.exists(name), "\(name) must stay") }
+
     // A meeting whose originals are all still there does have abandoned candidates to remove.
     let fresh = try Self.fixture()
     try fresh.write(
