@@ -1915,27 +1915,57 @@ extension OverlayDirector: OverlayPresenting {
   }
 
   /// #4841: show a notice only on the recording presentation `presentation`
-  /// names. Returns that id when accepted; nil when no recording holds the slot
-  /// or a newer recording replaced it, so a late poll cannot reach a new take.
+  /// names. Returns that id only when the host DREW it on that pill; nil when no
+  /// recording holds the slot, a newer recording replaced it (so a late poll
+  /// cannot reach a new take), the pill has not been drawn yet, or the host
+  /// refused the update (which rolls the pill back). The caller records a
+  /// warning as shown only on a non-nil answer.
   @discardableResult
   func showInPanelNotice(
     _ reason: RecordingNoticeReason, dismissAfter: Double?, on presentation: PresentationID
   ) -> PresentationID? {
     guard currentRecordingPresentationID == presentation else { return nil }
-    update(.inPanelNotice(reason, dismissAfter: dismissAfter))
-    return presentation
+    let drawn = applyNoticeUpdate(
+      .inPanelNotice(reason, dismissAfter: dismissAfter), on: presentation,
+      landed: { $0.currentInPanelNoticeKind == reason.kind })
+    return drawn ? presentation : nil
   }
 
   /// #4841: clear a notice of `kind`, only on the recording presentation
   /// `presentation` names. Returns true only when a notice of that kind was
-  /// showing there and is now gone; a stale presentation, no notice, or another
-  /// kind's notice (which keeps its dwell) returns false.
+  /// showing there and the host drew the pill without it; a stale presentation,
+  /// no notice, another kind's notice (which keeps its dwell), an undrawn pill or
+  /// a refused update returns false.
   @discardableResult
   func clearInPanelNotice(_ kind: RecordingNoticeKind, on presentation: PresentationID) -> Bool {
     guard currentRecordingPresentationID == presentation, currentInPanelNoticeKind == kind
     else { return false }
-    update(.clearInPanelNotice(kind))
-    return true
+    return applyNoticeUpdate(
+      .clearInPanelNotice(kind), on: presentation,
+      landed: { $0.currentInPanelNoticeKind != kind })
+  }
+
+  /// #4841: run one notice event through the same render-acceptance relay
+  /// `present` uses, and answer whether it reached the screen on `presentation`.
+  /// A same-id morph renders synchronously once the pill has been drawn, so the
+  /// relay answers in this call. A pill still waiting for its first render
+  /// defers the answer, which counts as not drawn yet (the next poll retries).
+  /// An event that changed nothing renders nothing; it counts as drawn only when
+  /// the drawn pill already shows the wanted state.
+  private func applyNoticeUpdate(
+    _ event: OverlayEvent, on presentation: PresentationID,
+    landed: (OverlayDirector) -> Bool
+  ) -> Bool {
+    var outcome: Bool?
+    let relay = PresentationRelay { outcome = $0 }
+    handle(event, binding: .none, relay: relay)
+    if let outcome {
+      return outcome && currentRecordingPresentationID == presentation && landed(self)
+    }
+    relay.disarm()
+    if relay.isDeferred || pendingFirstAcceptance?.id == presentation { return false }
+    return presentedID == presentation && currentRecordingPresentationID == presentation
+      && landed(self)
   }
 
   func update(_ update: PillUpdate) {

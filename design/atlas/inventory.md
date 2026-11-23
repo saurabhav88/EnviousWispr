@@ -106,9 +106,9 @@ Each picture is the whole page, top to bottom, at the 820pt window (a 578pt page
 ## page-dictation-microphone
 **Dictation > Microphone.** Picks the microphone and sets what media does and how long the mic stays ready.
 - **Top to bottom:** tab strip (Microphone selected), INPUT & BEHAVIOR (with mic icon, "Changes apply to the next recording").
-- **Controls:** Input device: dropdown "Choose a microphone / Auto". Media during dictation: choice bar (Continue, Lower, Mute, Pause; Continue selected). Microphone readiness: choice bar (Off, 10 sec, 30 sec, 60 sec, Always; 30 sec selected). Using a Bluetooth microphone?: text row.
+- **Controls:** Input device: dropdown "Choose a microphone / Auto". Media during dictation: choice bar (Continue, Lower, Mute, Pause; Continue selected). Microphone readiness: choice bar (Off, 10 sec, 30 sec, 60 sec, Always; 30 sec selected). Warn when the microphone is silent: switch (on), "Shows a notice on the pill when no sound arrives." (#4841). Using a Bluetooth microphone?: text row.
 - **Buttons:** Learn more (outlined, chevron).
-- **Parts:** SettingsTabStrip, SettingsSectionHeading, BrandedSection, SettingsRow, SettingsRowIcon, SettingsInfoButton, BrandedSegmentedPicker.
+- **Parts:** SettingsTabStrip, SettingsSectionHeading, BrandedSection, SettingsRow, SettingsRowIcon, SettingsInfoButton, BrandedSegmentedPicker, BrandedToggleStyle.
 
 ## page-dictation-pill
 **Dictation > Recording Pill.** Sets where the floating recording pill sits and what it shows.
@@ -250,7 +250,7 @@ The pill floats over other apps while you dictate. Three designs exist; the user
 **Reading Well, silent microphone (5 s).** The strip shows the crossed-out microphone mark and "We’re not hearing anything from your microphone."
 
 ## pill-readingWell-silentStrong
-**Reading Well, silent microphone (15 s).** The strip takes a soft amber tint (`stWarningSoft`) with amber text and mark.
+**Reading Well, silent microphone (15 s).** The strip takes a soft amber tint (`stWarningSoft`) with an amber mark; the text is dark in light mode (founder decision 2026-11-22) and amber in dark mode.
 
 ## pill-readingWell-silentBottom
 **Reading Well at the bottom of the screen, silent microphone (15 s).** The strip stays inside the panel; the panel grows upward from the screen edge.

@@ -96,7 +96,8 @@ struct RenderedPillFreezeTests {
       // Measured 2026-09-05 at 52; 68 on the 2026-10-17 re-take.
       (
         "advisory.zeroSignal.hinted",
-        .advisory(reason: .zeroSignal, hint: MultiInputAdvisoryHint(deviceName: "Scarlett 2i2 USB")),
+        .advisory(
+          reason: .zeroSignal, hint: MultiInputAdvisoryHint(deviceName: "Scarlett 2i2 USB")),
         360, 68
       ),
       ("interruption.deviceRemoved", .interruption(reason: .deviceRemoved), 320, 44),
@@ -511,11 +512,31 @@ struct RenderedPillFreezeTests {
     // copy change fails here rather than passing on the new value), typed so the
     // silence lines measure with their mark.
     (.secureInputActive, "Sichere Tastatureingabe aktiv: einige Tastaturfunktionen pausiert"),
-    (.micSilent(.strong),
-      "Dein Mikrofon liefert keinen Ton. Beende die Aufnahme und prüfe es in den Einstellungen."),
-    (.micSilent(.strong), "Tu micrófono no envía sonido. Detén la grabación y revísalo en Ajustes."),
-    (.micSilent(.strong),
-      "Votre micro n’envoie aucun son. Arrêtez l’enregistrement et vérifiez-le dans Réglages."),
+    // The longest translation of each remaining reason (character counts read from
+    // Localizable.xcstrings): French cap 88, Spanish Secure Input 88, Spanish auto-stop 75.
+    (
+      .approachingCap,
+      "L’enregistrement s’arrête automatiquement dans moins d’une minute (limite de 60 minutes)"
+    ),
+    (
+      .secureInputActive,
+      "La entrada segura está activada, por lo que algunas funciones del teclado están en pausa"
+    ),
+    (
+      .autoStopUnavailable,
+      "La detención automática al detectar silencio no está disponible ahora mismo"
+    ),
+    (
+      .micSilent(.strong),
+      "Dein Mikrofon liefert keinen Ton. Beende die Aufnahme und prüfe es in den Einstellungen."
+    ),
+    (
+      .micSilent(.strong), "Tu micrófono no envía sonido. Detén la grabación y revísalo en Ajustes."
+    ),
+    (
+      .micSilent(.strong),
+      "Votre micro n’envoie aucun son. Arrêtez l’enregistrement et vérifiez-le dans Réglages."
+    ),
   ]
 
   @Test(
