@@ -851,6 +851,19 @@ public final class ASRManager: ASRManagerInterface {
     await task.value
   }
 
+  /// #4859: unload for a Parakeet Remove. A load that is running is joined first and left to
+  /// finish (the same single-flight join `loadModel()` gives a second caller), then the normal
+  /// unload frees what it loaded, so the files are deleted only after the load ended. Plain
+  /// `unloadModel()` would cancel the load task and return at its not-loaded guard while the
+  /// vendor call keeps running orphaned. Only Remove asks for this wait: idle unload and the
+  /// Ultra activation keep `unloadModel()`, since a vendor call that never returns must not
+  /// stall them. Never starts a load. A wedge release (`cancelInFlightLoad()`) resumes the
+  /// joined task early; its error is ignored here and the unload then runs.
+  package func unloadAfterInFlightLoad() async {
+    if let load = inFlightLoadTask { _ = try? await load.value }
+    await unloadModel()
+  }
+
   private var inFlightUnloadTask: Task<Void, Never>?
 
   /// #4052: whether this manager's own load or unload of the Parakeet backend is running now.
