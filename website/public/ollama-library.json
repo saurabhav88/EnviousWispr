@@ -1,6 +1,6 @@
 {
   "schema": 1,
-  "updated": "2026-11-16",
+  "updated": "2026-11-23",
   "models": [
     {
       "name": "gemma4:e4b",
@@ -78,6 +78,13 @@
       "parameterCount": "7B",
       "sizeBytes": 4372823897,
       "reason": "Well-known general chat model that many users ask for, at a mid size for 16 GB Macs."
+    },
+    {
+      "name": "olmo2:7b",
+      "displayName": "OLMo 2 (7B)",
+      "parameterCount": "7B",
+      "sizeBytes": 4472031918,
+      "reason": "A fully open 7B chat model from the Allen Institute for AI, a family we do not offer yet, small enough for 8 GB Macs."
     }
   ]
 }
