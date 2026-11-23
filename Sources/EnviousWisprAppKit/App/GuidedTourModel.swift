@@ -23,6 +23,8 @@ final class GuidedTourModel {
   /// An eligible key visit staged one offer; it waits for search and leave questions to clear.
   private(set) var staged = false
 
+  /// Counts runs started, so a replay that lands on the same first stop is still a new run.
+  private(set) var run = 0
   private var viewed: Set<GuidedTourStop> = []
   @ObservationIgnored private let emit: (GuidedTourTelemetry) -> Void
 
@@ -82,6 +84,7 @@ final class GuidedTourModel {
   private func begin(recordingsOn: Bool, action: GuidedTourTelemetry.Action) -> GuidedTourStop {
     plan = GuidedTourPlan(recordingsOn: recordingsOn)
     viewed = []
+    run += 1
     phase = .stop(plan.first)
     emit(.init(action: action, stop: plan.first.telemetry))
     return plan.first

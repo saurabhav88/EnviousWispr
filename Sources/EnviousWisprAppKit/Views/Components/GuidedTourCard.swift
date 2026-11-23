@@ -6,6 +6,8 @@ import SwiftUI
 struct GuidedTourCard: View {
   let phase: GuidedTourModel.Phase
   let plan: GuidedTourPlan
+  /// Which run the card is showing; a new run announces its first stop again.
+  let run: Int
   /// The stop's page, and the tab holding the control its sentence names, are what the window shows.
   let showing: Bool
   let showingHistory: Bool
@@ -56,6 +58,10 @@ struct GuidedTourCard: View {
     .onAppear { announce() }
     .onChange(of: phase) { _, _ in announce() }
     .onChange(of: showing) { _, _ in announce() }
+    .onChange(of: run) { _, _ in
+      announced = nil
+      announce()
+    }
   }
 
   /// One announcement per stop, made once the stop's page is actually showing: a stop blocked by

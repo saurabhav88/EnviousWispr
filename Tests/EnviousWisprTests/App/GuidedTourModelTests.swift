@@ -118,6 +118,17 @@ struct GuidedTourModelTests {
       "a new run counts its stops again")
   }
 
+  @Test("a replay from the first stop is still a new run, so its card can announce again")
+  func replayFromTheFirstStopIsANewRun() {
+    let (tour, _) = make()
+    #expect(tour.run == 0)
+    _ = tour.replay(recordingsOn: true)
+    #expect(tour.run == 1)
+    _ = tour.replay(recordingsOn: true)
+    #expect(tour.run == 2)
+    #expect(tour.currentStop == .keybinds)
+  }
+
   @Test("a replay with a staged offer waiting discards that offer")
   func replayDiscardsTheStagedOffer() {
     let (tour, _) = make()

@@ -721,7 +721,7 @@ struct UnifiedWindowView: View {
       $0.isShowing(in: navigationState, showingDictationsTab: showingDictationsTab)
     } ?? false
     return GuidedTourCard(
-      phase: phase, plan: tour.plan, showing: showing, showingHistory: showingHistory,
+      phase: phase, plan: tour.plan, run: tour.run, showing: showing, showingHistory: showingHistory,
       dictationsFiltered: !dictations.query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
         || dictations.listFilter != .none,
       start: {
