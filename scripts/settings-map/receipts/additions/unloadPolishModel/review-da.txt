@@ -1,0 +1,13 @@
+{
+  "language": "da",
+  "title": "fjern tekstforbedringsmodellen fra hukommelsen efter",
+  "words": [
+    "RAM til tekstforbedring",
+    "EG-1 hukommelse",
+    "S1-mini hukommelse"
+  ],
+  "phrases": [
+    "hvor længe skal modellen til tekstforbedring blive i hukommelsen",
+    "spar RAM, når den lokale tekstforbedring ikke er i brug"
+  ]
+}

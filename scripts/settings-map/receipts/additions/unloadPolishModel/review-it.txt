@@ -1,0 +1,13 @@
+{
+  "language": "it",
+  "title": "libera la memoria del modello di correzione dopo",
+  "words": [
+    "RAM correzione",
+    "inattività EG-1",
+    "inattività S1-mini"
+  ],
+  "phrases": [
+    "dopo quanto si libera la memoria del modello locale che corregge il testo",
+    "libera la RAM di EG-1 o S1-mini quando non sto dettando"
+  ]
+}

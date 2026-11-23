@@ -1,0 +1,12 @@
+{
+  "language": "lv",
+  "title": "atbrīvot teksta uzlabošanas modeļa atmiņu pēc",
+  "words": [
+    "EG-1 atmiņa",
+    "S1-mini atmiņa"
+  ],
+  "phrases": [
+    "atbrīvot teksta uzlabošanas modeļa atmiņu, kad nediktēju",
+    "cik ilgi teksta uzlabošanas modelis paliek atmiņā"
+  ]
+}

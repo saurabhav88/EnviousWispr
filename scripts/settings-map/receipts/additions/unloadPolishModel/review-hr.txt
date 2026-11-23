@@ -1,0 +1,11 @@
+{
+  "language": "hr",
+  "title": "kada osloboditi memoriju modela za doradu teksta",
+  "words": [
+    "memorija modela za doradu"
+  ],
+  "phrases": [
+    "koliko dugo model za doradu teksta ostaje u memoriji kad ne diktiram",
+    "oslobodi RAM koji koristi model za doradu teksta"
+  ]
+}

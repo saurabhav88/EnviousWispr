@@ -39,6 +39,7 @@ enum SettingsProjection {
     case vadSensitivity = "vad_sensitivity"
     case vadEnergyGate = "vad_energy_gate"
     case modelUnloadPolicy = "model_unload_policy"
+    case localPolishUnloadPolicy = "local_polish_unload_policy"
     case restoreClipboard = "restore_clipboard"
     case keepDictationsOutOfClipboardHistory = "keep_dictations_out_of_clipboard_history"
     /// Quick Add's clipboard fallback (#2465). Instrumented from the start rather than added later,
@@ -197,6 +198,7 @@ enum SettingsProjection {
     case .vadSensitivity: return [.vadSensitivity]
     case .vadEnergyGate: return [.vadEnergyGate]
     case .modelUnloadPolicy: return [.modelUnloadPolicy]
+    case .localPolishUnloadPolicy: return [.localPolishUnloadPolicy]
     case .restoreClipboardAfterPaste: return [.restoreClipboard]
     case .keepDictationsOutOfClipboardHistory: return [.keepDictationsOutOfClipboardHistory]
     case .quickAddClipboardFallback: return [.quickAddClipboardFallback]
@@ -328,6 +330,7 @@ enum SettingsProjection {
     case .vadSensitivity: return sensitivityBucket(settings.vadSensitivity)
     case .vadEnergyGate: return onOff(settings.vadEnergyGate)
     case .modelUnloadPolicy: return settings.modelUnloadPolicy.rawValue
+    case .localPolishUnloadPolicy: return settings.localPolishUnloadPolicy.rawValue
     case .restoreClipboard: return onOff(settings.restoreClipboardAfterPaste)
     case .keepDictationsOutOfClipboardHistory:
       return onOff(settings.keepDictationsOutOfClipboardHistory)

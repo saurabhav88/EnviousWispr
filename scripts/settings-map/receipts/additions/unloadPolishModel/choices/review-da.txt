@@ -1,0 +1,79 @@
+{
+  "unloadPolishModel.never": {
+    "language": "da",
+    "title": "aldrig",
+    "words": [
+      "tekstforbedringsmodellen altid indlæst",
+      "behold AI Polish i RAM"
+    ],
+    "phrases": [
+      "behold modellen til tekstforbedring i hukommelsen, også når jeg ikke dikterer"
+    ]
+  },
+  "unloadPolishModel.immediately": {
+    "language": "da",
+    "title": "straks (ca. 10 sekunder)",
+    "words": [
+      "tekstforbedring 10 sek",
+      "AI Polish ca. 10 sekunder"
+    ],
+    "phrases": [
+      "frigør den RAM, tekstforbedringsmodellen bruger, ca. 10 sekunder efter sidste brug"
+    ]
+  },
+  "unloadPolishModel.twoMinutes": {
+    "language": "da",
+    "title": "efter 2 minutter",
+    "words": [
+      "tekstforbedring 2 min",
+      "AI Polish to minutter"
+    ],
+    "phrases": [
+      "frigør RAM, når tekstforbedringsmodellen har været inaktiv i 2 minutter"
+    ]
+  },
+  "unloadPolishModel.fiveMinutes": {
+    "language": "da",
+    "title": "efter 5 minutter",
+    "words": [
+      "tekstforbedring 5 min",
+      "AI Polish fem minutter"
+    ],
+    "phrases": [
+      "frigør RAM, når tekstforbedringsmodellen har været inaktiv i 5 minutter"
+    ]
+  },
+  "unloadPolishModel.tenMinutes": {
+    "language": "da",
+    "title": "efter 10 minutter",
+    "words": [
+      "tekstforbedring 10 min",
+      "AI Polish ti minutter"
+    ],
+    "phrases": [
+      "frigør RAM, når tekstforbedringsmodellen har været inaktiv i 10 minutter"
+    ]
+  },
+  "unloadPolishModel.fifteenMinutes": {
+    "language": "da",
+    "title": "efter 15 minutter",
+    "words": [
+      "tekstforbedring 15 min",
+      "AI Polish et kvarter"
+    ],
+    "phrases": [
+      "frigør RAM, når tekstforbedringsmodellen har været inaktiv i et kvarter"
+    ]
+  },
+  "unloadPolishModel.oneHour": {
+    "language": "da",
+    "title": "efter 1 time",
+    "words": [
+      "tekstforbedring 60 min",
+      "AI Polish en time"
+    ],
+    "phrases": [
+      "frigør RAM, når tekstforbedringsmodellen har været inaktiv i en time"
+    ]
+  }
+}

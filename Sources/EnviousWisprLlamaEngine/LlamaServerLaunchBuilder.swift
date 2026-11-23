@@ -90,12 +90,15 @@ package struct LlamaServerLaunchBuilder: Sendable {
   /// a spec WITHOUT the adapter, so the endpoint never claims a checker the launch did not load.
   package static func makeSpec(
     modelID: LocalPolishModelID, artifactIdentity: ModelIdentity, serverBinaryURL: URL,
-    modelURL: URL, contextTokens: Int, learnedWordAdapterURL: URL?
+    modelURL: URL, contextTokens: Int, learnedWordAdapterURL: URL?, sleepIdleSeconds: Int? = nil
   ) -> LocalPolishLaunchSpec {
-    let baseArguments = engineArguments(for: modelID.provider)
+    // #3853: the idle-sleep flag is an engine flag, so a different choice is a different spec and
+    // the runtime replaces a resident server launched with another one.
+    let baseArguments =
+      engineArguments(for: modelID.provider) + LocalPolishSleepIdle.arguments(seconds: sleepIdleSeconds)
     let adapterArguments = launchArguments(
       for: modelID.provider, learnedWordAdapterURL: learnedWordAdapterURL
-    ).dropFirst(baseArguments.count)
+    ).dropFirst(engineArguments(for: modelID.provider).count)
     return LocalPolishLaunchSpec(
       engineKind: .llamaServer, modelID: modelID, artifactIdentity: artifactIdentity,
       serverBinaryURL: serverBinaryURL, modelURL: modelURL, contextTokens: contextTokens,
@@ -108,13 +111,13 @@ package struct LlamaServerLaunchBuilder: Sendable {
   /// `LocalPolishLaunchConfigurationFactory`; it adds no rule of its own.
   package static func makeConfiguration(
     modelID: LocalPolishModelID, artifactIdentity: ModelIdentity, serverBinaryURL: URL,
-    modelURL: URL, contextTokens: Int, learnedWordAdapterURL: URL?
+    modelURL: URL, contextTokens: Int, learnedWordAdapterURL: URL?, sleepIdleSeconds: Int? = nil
   ) -> LocalPolishProcessManager.Configuration {
     LocalPolishProcessManager.Configuration(
       spec: makeSpec(
         modelID: modelID, artifactIdentity: artifactIdentity, serverBinaryURL: serverBinaryURL,
         modelURL: modelURL, contextTokens: contextTokens,
-        learnedWordAdapterURL: learnedWordAdapterURL),
+        learnedWordAdapterURL: learnedWordAdapterURL, sleepIdleSeconds: sleepIdleSeconds),
       makeLaunch: launch)
   }
 

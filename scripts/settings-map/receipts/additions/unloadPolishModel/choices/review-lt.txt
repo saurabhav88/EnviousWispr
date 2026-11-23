@@ -1,0 +1,79 @@
+{
+  "unloadPolishModel.never": {
+    "language": "lt",
+    "title": "niekada",
+    "words": [
+      "teksto tvarkymo modelis visada atmintyje"
+    ],
+    "phrases": [
+      "visada laikyti teksto tvarkymo modelį atmintyje"
+    ]
+  },
+  "unloadPolishModel.immediately": {
+    "language": "lt",
+    "title": "iškart (po maždaug 10 sek.)",
+    "words": [
+      "teksto tvarkymo modelis 10 sek.",
+      "teksto tvarkymo modelis 10 sekundžių"
+    ],
+    "phrases": [
+      "pašalinti teksto tvarkymo modelį iš atminties praėjus maždaug 10 sekundžių nuo paskutinio naudojimo"
+    ]
+  },
+  "unloadPolishModel.twoMinutes": {
+    "language": "lt",
+    "title": "po 2 minučių",
+    "words": [
+      "teksto tvarkymo modelis 2 min",
+      "teksto tvarkymo modelis dvi minutės",
+      "teksto tvarkymo modelis 120 sekundžių"
+    ],
+    "phrases": [
+      "pašalinti teksto tvarkymo modelį iš atminties, kai jis nenaudojamas 2 minutes"
+    ]
+  },
+  "unloadPolishModel.fiveMinutes": {
+    "language": "lt",
+    "title": "po 5 minučių",
+    "words": [
+      "teksto tvarkymo modelis 5 min",
+      "teksto tvarkymo modelis penkios minutės"
+    ],
+    "phrases": [
+      "pašalinti teksto tvarkymo modelį iš atminties, kai jis nenaudojamas 5 minutes"
+    ]
+  },
+  "unloadPolishModel.tenMinutes": {
+    "language": "lt",
+    "title": "po 10 minučių",
+    "words": [
+      "teksto tvarkymo modelis 10 min",
+      "teksto tvarkymo modelis dešimt minučių"
+    ],
+    "phrases": [
+      "pašalinti teksto tvarkymo modelį iš atminties, kai jis nenaudojamas 10 minučių"
+    ]
+  },
+  "unloadPolishModel.fifteenMinutes": {
+    "language": "lt",
+    "title": "po 15 minučių",
+    "words": [
+      "teksto tvarkymo modelis 15 min",
+      "teksto tvarkymo modelis ketvirtis valandos"
+    ],
+    "phrases": [
+      "pašalinti teksto tvarkymo modelį iš atminties, kai jis nenaudojamas 15 minučių"
+    ]
+  },
+  "unloadPolishModel.oneHour": {
+    "language": "lt",
+    "title": "po 1 valandos",
+    "words": [
+      "teksto tvarkymo modelis 1 val.",
+      "teksto tvarkymo modelis 60 minučių"
+    ],
+    "phrases": [
+      "pašalinti teksto tvarkymo modelį iš atminties, kai jis nenaudojamas valandą"
+    ]
+  }
+}

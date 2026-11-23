@@ -1,0 +1,79 @@
+{
+  "unloadPolishModel.never": {
+    "language": "fi",
+    "title": "ei koskaan",
+    "words": [
+      "viimeistelymalli aina muistissa",
+      "pidä viimeistelymalli ladattuna"
+    ],
+    "phrases": [
+      "pidä tekstin viimeistelymalli muistissa sanelun jälkeenkin"
+    ]
+  },
+  "unloadPolishModel.immediately": {
+    "language": "fi",
+    "title": "heti (noin 10 sekuntia)",
+    "words": [
+      "viimeistelymalli 10 s",
+      "viimeistelymalli 10 sekuntia"
+    ],
+    "phrases": [
+      "vapauta viimeistelymallin käyttämä muisti noin 10 sekuntia viimeisen käyttökerran jälkeen"
+    ]
+  },
+  "unloadPolishModel.twoMinutes": {
+    "language": "fi",
+    "title": "2 minuutin kuluttua",
+    "words": [
+      "viimeistelymalli 2 min",
+      "viimeistelymalli kaksi minuuttia"
+    ],
+    "phrases": [
+      "vapauta viimeistelymallin käyttämä muisti, kun mallia ei ole käytetty kahteen minuuttiin"
+    ]
+  },
+  "unloadPolishModel.fiveMinutes": {
+    "language": "fi",
+    "title": "5 minuutin kuluttua",
+    "words": [
+      "viimeistelymalli 5 min",
+      "viimeistelymalli viisi minuuttia"
+    ],
+    "phrases": [
+      "vapauta viimeistelymallin käyttämä muisti, kun mallia ei ole käytetty viiteen minuuttiin"
+    ]
+  },
+  "unloadPolishModel.tenMinutes": {
+    "language": "fi",
+    "title": "10 minuutin kuluttua",
+    "words": [
+      "viimeistelymalli 10 min",
+      "viimeistelymalli kymmenen minuuttia"
+    ],
+    "phrases": [
+      "vapauta viimeistelymallin käyttämä muisti, kun mallia ei ole käytetty kymmeneen minuuttiin"
+    ]
+  },
+  "unloadPolishModel.fifteenMinutes": {
+    "language": "fi",
+    "title": "15 minuutin kuluttua",
+    "words": [
+      "viimeistelymalli 15 min",
+      "viimeistelymalli vartti"
+    ],
+    "phrases": [
+      "vapauta viimeistelymallin käyttämä muisti, kun mallia ei ole käytetty varttiin"
+    ]
+  },
+  "unloadPolishModel.oneHour": {
+    "language": "fi",
+    "title": "1 tunnin kuluttua",
+    "words": [
+      "viimeistelymalli 1 h",
+      "viimeistelymalli 60 minuuttia"
+    ],
+    "phrases": [
+      "vapauta viimeistelymallin käyttämä muisti, kun mallia ei ole käytetty tuntiin"
+    ]
+  }
+}

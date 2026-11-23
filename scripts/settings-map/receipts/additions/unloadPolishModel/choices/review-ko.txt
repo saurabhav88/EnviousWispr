@@ -1,0 +1,73 @@
+{
+  "unloadPolishModel.fifteenMinutes": {
+    "language": "ko",
+    "title": "15분 후",
+    "words": [],
+    "phrases": [
+      "15분 동안 받아쓰기를 안 하면 문장 다듬기 모델을 메모리에서 내리기"
+    ]
+  },
+  "unloadPolishModel.fiveMinutes": {
+    "language": "ko",
+    "title": "5분 후",
+    "words": [
+      "다듬기 모델 5분",
+      "AI Polish 5분 뒤"
+    ],
+    "phrases": [
+      "텍스트 다듬기 모델을 5분 동안 사용하지 않으면 메모리에서 해제"
+    ]
+  },
+  "unloadPolishModel.immediately": {
+    "language": "ko",
+    "title": "즉시(약 10초 후)",
+    "words": [
+      "다듬기 모델 10초",
+      "AI Polish 즉시 해제"
+    ],
+    "phrases": [
+      "텍스트 다듬기 모델을 마지막으로 사용한 뒤 약 10초 후에 메모리에서 해제"
+    ]
+  },
+  "unloadPolishModel.never": {
+    "language": "ko",
+    "title": "메모리에 유지",
+    "words": [
+      "다듬기 모델 해제 안 함",
+      "AI Polish 모델 계속 유지"
+    ],
+    "phrases": [
+      "받아쓰기를 안 할 때도 텍스트 다듬기 모델을 메모리에 계속 두기"
+    ]
+  },
+  "unloadPolishModel.oneHour": {
+    "language": "ko",
+    "title": "1시간 후",
+    "words": [
+      "다듬기 모델 60분",
+      "AI Polish 한 시간"
+    ],
+    "phrases": [
+      "한 시간 동안 받아쓰기를 안 하면 텍스트 다듬기 모델을 메모리에서 해제"
+    ]
+  },
+  "unloadPolishModel.tenMinutes": {
+    "language": "ko",
+    "title": "10분 후",
+    "words": [],
+    "phrases": [
+      "10분 동안 받아쓰기 안 하면 텍스트 다듬기 모델 메모리 해제"
+    ]
+  },
+  "unloadPolishModel.twoMinutes": {
+    "language": "ko",
+    "title": "2분 후",
+    "words": [
+      "다듬기 모델 2분",
+      "AI Polish 120초"
+    ],
+    "phrases": [
+      "텍스트 다듬기 모델을 2분 동안 사용하지 않으면 메모리에서 해제"
+    ]
+  }
+}

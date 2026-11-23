@@ -34,6 +34,10 @@ final class PipelineSettingsSync {
   /// because the two mean different things — "stop previewing" versus "preview
   /// with something else" — and a single hook would have to re-derive which.
   var onLivePreviewEngineChanged: () -> Void = {}
+  /// #3853: the idle time both bundled polish helpers are launched with. The composition root
+  /// binds the one value its launch factories read; a change of the setting updates it here and
+  /// then reconciles the selected local engine, which relaunches it when the spec differs.
+  var localPolishSleepIdle: LocalPolishSleepIdleSetting?
   /// #3242: the Dictionary switch or a polish engine choice (dictation's or Transcribe a
   /// File's) changed, so whether the shared word check is needed may have changed. The
   /// composition root binds this to `WordCheckRuntime.refresh`.
@@ -398,6 +402,12 @@ final class PipelineSettingsSync {
       if settings.modelUnloadPolicy == .never {
         asrManager.cancelIdleTimer()
       }
+    case .localPolishUnloadPolicy:
+      // #3853: a new idle time is a new launch spec. The ordinary reconciliation relaunches the
+      // selected bundled engine when its spec differs, and defers while a take, import or
+      // summary pins it (the same deferral a provider or size change gets). The launch value
+      // changes only when the reconciliation goes through, so nothing relaunches under a pin.
+      reconcileLocalPolishUnloadPolicy(settings: settings)
     case .emojiFormatterEnabled:
       kernelDriver.emojiFormatter.emojiFormatterEnabled = settings.emojiFormatterEnabled
       whisperKernelDriver.emojiFormatter.emojiFormatterEnabled = settings.emojiFormatterEnabled
@@ -550,9 +560,17 @@ final class PipelineSettingsSync {
     // #4473: the selection is an exact model. A pinned take on another size of the same
     // provider defers the change like a pinned take on another engine.
     let selected = settings.polishModelID(for: settings.llmProvider)
-    if isLocalPolishPinnedInFlight(), pinnedLocalModel() != selected {
+    let pinned = pinnedLocalModel()
+    if let pinned, pinned != selected {
       egOneDeactivationPending = true
       return
+    }
+    // #3853: the idle time is part of every launch from here on. Under a pin on the selected
+    // model the value stays as it is (a relaunch under a take that froze the engine would skip
+    // that take's polish); the end-of-pin retry applies it.
+    if pinned == nil {
+      localPolishSleepIdle?.seconds = LocalPolishSleepIdle.seconds(
+        for: settings.localPolishUnloadPolicy)
     }
     // #2649: BOTH local engines are reconciled on every switch, and the order
     // is load-bearing. The outgoing model is stopped FIRST, so the incoming one
@@ -564,6 +582,42 @@ final class PipelineSettingsSync {
     }
     for runtime in localRuntimes {
       reconcile(runtime: runtime, isSelected: runtime.modelID == selected)
+    }
+  }
+
+  /// #3853: a change of "Unload polish model after". The idle time is part of the helper's launch,
+  /// so the selected engine is relaunched, but ONLY when it is running or starting: an edit to a
+  /// timer must never bring a stopped helper back (critical memory pressure, an outside stop, a
+  /// failed start) and must never wait on or break a take, import or summary that holds it. Under
+  /// a pin nothing changes now; `retryDeferredEGOneDeactivation` runs this again when work ends.
+  private func reconcileLocalPolishUnloadPolicy(settings: SettingsManager) {
+    guard pinnedLocalModel() == nil, let launchValue = localPolishSleepIdle else { return }
+    let idleSeconds = LocalPolishSleepIdle.seconds(for: settings.localPolishUnloadPolicy)
+    guard launchValue.seconds != idleSeconds else { return }
+    let selected = settings.polishModelID(for: settings.llmProvider)
+    guard let runtime = localRuntimes.first(where: { $0.modelID == selected }) else {
+      // No local engine is selected: nothing runs; the value is for the next launch.
+      launchValue.seconds = idleSeconds
+      return
+    }
+    Task { @MainActor [weak self] in
+      let lifecycle = await runtime.serverCoordinator.lifecycle(for: selected)
+      // Everything can change while the lifecycle is read: a take starting, another provider
+      // being selected, the choice being changed again. The launch value moves only when this
+      // task can act, so an edit that could not act stays pending for the retry at the end of
+      // the work that held it.
+      guard let self, self.pinnedLocalModel() == nil,
+        settings.polishModelID(for: settings.llmProvider) == selected,
+        LocalPolishSleepIdle.seconds(for: settings.localPolishUnloadPolicy) == idleSeconds,
+        launchValue.seconds != idleSeconds
+      else { return }
+      launchValue.seconds = idleSeconds
+      switch lifecycle.state {
+      case .starting, .ready:
+        runtime.activateAndProbe()
+      case .stopped, .pausedForMemoryPressure, .failed, .stoppedOutside:
+        return
+      }
     }
   }
 
@@ -632,8 +686,12 @@ final class PipelineSettingsSync {
         runtime.retryPendingAdapterReconfiguration()
       }
     }
-    guard forceReconciliation || egOneDeactivationPending else { return }
-    reconcileEGOneActivation(settings: settings)
+    if forceReconciliation || egOneDeactivationPending {
+      reconcileEGOneActivation(settings: settings)
+    } else {
+      // #3853: a change of the idle time made under a pin applies when the work ends.
+      reconcileLocalPolishUnloadPolicy(settings: settings)
+    }
   }
 
   /// #1386 PR-2c: true while a Whisper dictation session is in flight —

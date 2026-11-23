@@ -1,0 +1,79 @@
+{
+  "unloadPolishModel.never": {
+    "language": "nl",
+    "title": "nooit",
+    "words": [
+      "opschoonmodel altijd geladen",
+      "AI Polish in het geheugen houden"
+    ],
+    "phrases": [
+      "laat het opschoonmodel altijd in het geheugen staan"
+    ]
+  },
+  "unloadPolishModel.immediately": {
+    "language": "nl",
+    "title": "direct (na ongeveer 10 seconden)",
+    "words": [
+      "opschoonmodel 10 sec",
+      "AI Polish 10 seconden"
+    ],
+    "phrases": [
+      "haal het opschoonmodel ongeveer 10 seconden na het laatste gebruik uit het geheugen"
+    ]
+  },
+  "unloadPolishModel.twoMinutes": {
+    "language": "nl",
+    "title": "na 2 minuten",
+    "words": [
+      "opschoonmodel 2 min",
+      "AI Polish twee minuten"
+    ],
+    "phrases": [
+      "haal het opschoonmodel uit het geheugen als het 2 minuten niet is gebruikt"
+    ]
+  },
+  "unloadPolishModel.fiveMinutes": {
+    "language": "nl",
+    "title": "na 5 minuten",
+    "words": [
+      "opschoonmodel 5 min",
+      "AI Polish vijf minuten"
+    ],
+    "phrases": [
+      "haal het opschoonmodel uit het geheugen als het 5 minuten niet is gebruikt"
+    ]
+  },
+  "unloadPolishModel.tenMinutes": {
+    "language": "nl",
+    "title": "na 10 minuten",
+    "words": [
+      "opschoonmodel 10 min",
+      "AI Polish tien minuten"
+    ],
+    "phrases": [
+      "haal het opschoonmodel uit het geheugen als het 10 minuten niet is gebruikt"
+    ]
+  },
+  "unloadPolishModel.fifteenMinutes": {
+    "language": "nl",
+    "title": "na 15 minuten",
+    "words": [
+      "opschoonmodel 15 min",
+      "AI Polish een kwartier"
+    ],
+    "phrases": [
+      "haal het opschoonmodel uit het geheugen als het een kwartier niet is gebruikt"
+    ]
+  },
+  "unloadPolishModel.oneHour": {
+    "language": "nl",
+    "title": "na 1 uur",
+    "words": [
+      "opschoonmodel 60 minuten",
+      "AI Polish een uur"
+    ],
+    "phrases": [
+      "haal het opschoonmodel uit het geheugen als het een uur niet is gebruikt"
+    ]
+  }
+}

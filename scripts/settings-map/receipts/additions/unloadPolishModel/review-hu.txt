@@ -1,0 +1,12 @@
+{
+  "language": "hu",
+  "title": "szövegjavító modell eltávolítása a memóriából tétlenség után",
+  "words": [
+    "szövegjavító modell memóriája",
+    "EG-1 memóriája",
+    "S1-mini memóriája"
+  ],
+  "phrases": [
+    "meddig maradjon a szövegjavító modell a memóriában, ha nem diktálok"
+  ]
+}

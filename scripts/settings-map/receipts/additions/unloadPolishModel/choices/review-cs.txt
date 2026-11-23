@@ -1,0 +1,80 @@
+{
+  "unloadPolishModel.fifteenMinutes": {
+    "language": "cs",
+    "title": "po 15 minutách",
+    "words": [
+      "AI Polish 15 min",
+      "úprava textu čtvrt hodiny"
+    ],
+    "phrases": [
+      "uvolnit model pro úpravu textu z paměti po 15 minutách bez diktování"
+    ]
+  },
+  "unloadPolishModel.fiveMinutes": {
+    "language": "cs",
+    "title": "po 5 minutách",
+    "words": [
+      "AI Polish 5 min",
+      "úprava textu pět minut"
+    ],
+    "phrases": [
+      "uvolnit model pro úpravu textu z paměti po 5 minutách bez diktování"
+    ]
+  },
+  "unloadPolishModel.immediately": {
+    "language": "cs",
+    "title": "ihned (asi po 10 sekundách)",
+    "words": [
+      "AI Polish hned",
+      "AI Polish 10 sekund"
+    ],
+    "phrases": [
+      "uvolnit model pro úpravu textu z paměti asi 10 sekund po posledním použití"
+    ]
+  },
+  "unloadPolishModel.never": {
+    "language": "cs",
+    "title": "nikdy",
+    "words": [
+      "AI Polish pořád v paměti",
+      "model pro úpravu textu stále načtený"
+    ],
+    "phrases": [
+      "nechat model pro úpravu textu stále v paměti"
+    ]
+  },
+  "unloadPolishModel.oneHour": {
+    "language": "cs",
+    "title": "po 1 hodině",
+    "words": [
+      "AI Polish 1 hodina",
+      "AI Polish 60 minut",
+      "úprava textu po hodině"
+    ],
+    "phrases": [
+      "uvolnit model pro úpravu textu z paměti po hodině bez diktování"
+    ]
+  },
+  "unloadPolishModel.tenMinutes": {
+    "language": "cs",
+    "title": "po 10 minutách",
+    "words": [
+      "AI Polish 10 min",
+      "úprava textu deset minut"
+    ],
+    "phrases": [
+      "uvolnit model pro úpravu textu z paměti po 10 minutách bez diktování"
+    ]
+  },
+  "unloadPolishModel.twoMinutes": {
+    "language": "cs",
+    "title": "po 2 minutách",
+    "words": [
+      "AI Polish 2 min",
+      "úprava textu dvě minuty"
+    ],
+    "phrases": [
+      "uvolnit model pro úpravu textu z paměti po 2 minutách bez diktování"
+    ]
+  }
+}
