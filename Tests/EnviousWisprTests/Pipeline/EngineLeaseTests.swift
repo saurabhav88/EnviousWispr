@@ -275,6 +275,7 @@ struct EngineLeaseTests {
     if case .granted = lease.admit(.dictation) { Issue.record("a held engine granted") }
     #expect(grants == 1, "a refusal fired the grant hook")
     guard let parked = await parkDictation(lease) else { return }
+    #expect(grants == 1, "reserving the next turn fired the grant hook before the hand-off")
     lease.release(first)
     #expect(grants == 2, "a reserved hand-off did not fire the grant hook")
     let handedOff = await parked.task.value
