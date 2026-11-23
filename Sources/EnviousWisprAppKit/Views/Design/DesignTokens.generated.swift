@@ -74,6 +74,48 @@ extension Color {
   /// Error and destructive actions (#c0392b / #ef7c89).
   static let stError = stDynamic(
     lightRGB: (0.753, 0.224, 0.169, 1), darkRGB: (0.937, 0.486, 0.537, 1))
+  // Speakers
+  /// Speaker 1 (blue): turn name and bar (#2f6fd0 / #6fa8f7).
+  ///
+  /// Six speaker colors (founder, #4611, 2026-11-16): a turn's name and the thin bar beside its words. Speakers take them in order of first appearance; a seventh reuses the first. Not status colors: never use them for success, warning or error.
+  static let stSpeaker1 = stDynamic(
+    lightRGB: (0.184, 0.435, 0.816, 1), darkRGB: (0.435, 0.659, 0.969, 1))
+  /// Speaker 2 (amber): turn name and bar (#b07800 / #e9b54e).
+  static let stSpeaker2 = stDynamic(
+    lightRGB: (0.69, 0.471, 0.0, 1), darkRGB: (0.914, 0.71, 0.306, 1))
+  /// Speaker 3 (teal): turn name and bar (#0e8f80 / #45cdbb).
+  static let stSpeaker3 = stDynamic(
+    lightRGB: (0.055, 0.561, 0.502, 1), darkRGB: (0.271, 0.804, 0.733, 1))
+  /// Speaker 4 (pink): turn name and bar (#c23c82 / #f27db7).
+  static let stSpeaker4 = stDynamic(
+    lightRGB: (0.761, 0.235, 0.51, 1), darkRGB: (0.949, 0.49, 0.718, 1))
+  /// Speaker 5 (coral): turn name and bar (#c85a1e / #f29a64).
+  static let stSpeaker5 = stDynamic(
+    lightRGB: (0.784, 0.353, 0.118, 1), darkRGB: (0.949, 0.604, 0.392, 1))
+  /// Speaker 6 (indigo): turn name and bar (#5b4bd6 / #a99bfa).
+  static let stSpeaker6 = stDynamic(
+    lightRGB: (0.357, 0.294, 0.839, 1), darkRGB: (0.663, 0.608, 0.98, 1))
+  // Overlay pills
+  /// The learned-word pill's icon glyph and Undo word (#6b2bcc / #c4a8ff).
+  ///
+  /// Brand purple for TEXT and GLYPHS on a floating pill, tuned to read on the opaque `PillPalette` fills in both appearances (founder #4675: layout from the approved mock, colors from this book). Not the settings accent: the pill sits on its own opaque ground, and the dark value is lighter so the small Undo word keeps its contrast.
+  static let pillAccent = stDynamic(
+    lightRGB: (0.42, 0.169, 0.8, 1), darkRGB: (0.769, 0.659, 1.0, 1))
+  /// The wash behind the learned-word pill's icon disc and Undo button.
+  ///
+  /// A translucent wash over the pill's own opaque fill, so the composited color is the same wherever the pill floats.
+  static let pillAccentWash = stDynamic(
+    lightRGB: (0.486, 0.227, 0.929, 0.1), darkRGB: (0.545, 0.361, 0.929, 0.3))
+  /// The quieter second line of a pill and its icon-less buttons, such as the learned-word pill's subtitle and ×.
+  ///
+  /// Black or white at a fixed opacity over the pill's own opaque fill (`PillPalette`), so it reads as the pill's text one step quieter in either appearance.
+  static let pillSecondaryText = stDynamic(
+    lightRGB: (0, 0, 0, 0.55), darkRGB: (1, 1, 1, 0.62))
+  /// The hover fill of a quiet round pill button such as the learned-word pill's ×.
+  ///
+  /// A translucent fill over the pill's own opaque ground, so the composited color is the same wherever the pill floats.
+  static let pillQuietHover = stDynamic(
+    lightRGB: (0, 0, 0, 0.08), darkRGB: (1, 1, 1, 0.14))
   // Settings controls
   /// Every field, picker box and segmented track (#f6f4fb / #2a2536).
   ///
@@ -144,6 +186,77 @@ extension Color {
   /// Onboarding card borders.
   static let obBorder = stDynamic(
     lightRGB: (0.541, 0.169, 0.886, 0.06), darkRGB: (0.722, 0.667, 0.839, 0.14))
+  // First-run Setup
+  /// Setup quiet text (eyebrows, hints). Mockup t3, raised from obTextTertiary to pass 4.5:1 on obSurface and obCardBg in both modes.
+  static let firstRunTextTertiary = stDynamic(
+    lightRGB: (0.4, 0.345, 0.502, 1), darkRGB: (0.627, 0.596, 0.714, 1))
+  /// Setup success text (key valid, checks). Mockup success-text, 4.5:1 on light cards.
+  static let firstRunSuccessText = stDynamic(
+    lightRGB: (0.0, 0.459, 0.29, 1), darkRGB: (0.361, 0.788, 0.604, 1))
+  /// Setup error text (failed key check, download stopped). Mockup error-text, 4.5:1.
+  static let firstRunErrorText = stDynamic(
+    lightRGB: (0.784, 0.118, 0.192, 1), darkRGB: (0.937, 0.486, 0.537, 1))
+  /// Setup primary button fill while hovered.
+  static let firstRunButtonHover = stDynamic(
+    lightRGB: (0.169, 0.133, 0.251, 1), darkRGB: (0.486, 0.38, 0.871, 1))
+  /// Setup small accent button fill while hovered (permission and recovery buttons). Dark is lighter than obAccent so firstRunOnAccent text keeps 9.0:1; firstRunButtonHover gave 4.07:1 there (#4590).
+  static let firstRunSmallButtonHover = stDynamic(
+    lightRGB: (0.169, 0.133, 0.251, 1), darkRGB: (0.745, 0.659, 1.0, 1))
+  /// Setup primary button fill while it cannot be pressed.
+  static let firstRunButtonDisabled = stDynamic(
+    lightRGB: (0.89, 0.871, 0.925, 1), darkRGB: (0.212, 0.188, 0.278, 1))
+  /// Text on firstRunButtonDisabled (4.26:1 in both modes; disabled controls are exempt from WCAG 1.4.3, kept readable).
+  static let firstRunButtonDisabledText = stDynamic(
+    lightRGB: (0.435, 0.38, 0.537, 1), darkRGB: (0.604, 0.573, 0.69, 1))
+  /// Text or icon on an obAccent fill (selected tab, step dot).
+  static let firstRunOnAccent = stDynamic(
+    lightRGB: (1.0, 1.0, 1.0, 1), darkRGB: (0.082, 0.071, 0.11, 1))
+  /// Setup accent wash (selected card, greeting bubble). Dark alpha 0.12 instead of obAccentSoft 0.16 so text on it keeps 4.5:1.
+  static let firstRunAccentSoft = stDynamic(
+    lightRGB: (0.486, 0.227, 0.929, 0.1), darkRGB: (0.655, 0.545, 0.98, 0.12))
+  /// Setup hairline (mockup --rule): unreached step-strip segments, dividers and keycap edges. obBorder (accent at 6%) is too faint for these.
+  static let firstRunRule = stDynamic(
+    lightRGB: (0.0, 0.0, 0.0, 0.1), darkRGB: (1.0, 1.0, 1.0, 0.12))
+  // First-run film (film scenes only)
+  /// Closing film Mac desktop (#4528 chunk E): wallpaper gradient, top-left stop (mockup --wall, 160deg).
+  static let firstRunFilmWallTop = stDynamic(
+    lightRGB: (0.796, 0.725, 0.965, 1.0), darkRGB: (0.173, 0.137, 0.337, 1.0))
+  /// Film wallpaper gradient, middle stop at 55% (mockup --wall).
+  static let firstRunFilmWallMid = stDynamic(
+    lightRGB: (0.604, 0.722, 0.949, 1.0), darkRGB: (0.114, 0.169, 0.341, 1.0))
+  /// Film wallpaper gradient, bottom-right stop (mockup --wall).
+  static let firstRunFilmWallBottom = stDynamic(
+    lightRGB: (0.953, 0.761, 0.855, 1.0), darkRGB: (0.231, 0.129, 0.251, 1.0))
+  /// Film menu bar fill over the wallpaper (mockup --menubar).
+  static let firstRunFilmMenuBar = stDynamic(
+    lightRGB: (1, 1, 1, 0.55), darkRGB: (0.118, 0.102, 0.157, 0.6))
+  /// Film menu bar text and the held-key label (mockup --menuink).
+  static let firstRunFilmMenuInk = stDynamic(
+    lightRGB: (0.114, 0.106, 0.133, 1.0), darkRGB: (0.933, 0.918, 0.957, 1.0))
+  /// Film Dock shelf fill (mockup --dockbg).
+  static let firstRunFilmDock = stDynamic(
+    lightRGB: (1, 1, 1, 0.45), darkRGB: (0.157, 0.141, 0.204, 0.55))
+  /// Film active window close light (gen_film.py lights nth-child(1) #FF5F57).
+  static let firstRunFilmLightRed = stDynamic(
+    lightRGB: (1.0, 0.373, 0.341, 1.0), darkRGB: (1.0, 0.373, 0.341, 1.0))
+  /// Film active window minimize light (gen_film.py lights nth-child(2) #FEBC2E).
+  static let firstRunFilmLightYellow = stDynamic(
+    lightRGB: (0.996, 0.737, 0.18, 1.0), darkRGB: (0.996, 0.737, 0.18, 1.0))
+  /// Film active window zoom light (gen_film.py lights nth-child(3) #28C840).
+  static let firstRunFilmLightGreen = stDynamic(
+    lightRGB: (0.157, 0.784, 0.251, 1.0), darkRGB: (0.157, 0.784, 0.251, 1.0))
+  /// Film Slack window sidebar (gen_film.py slack mwin #4A154B).
+  static let firstRunFilmSlack = stDynamic(
+    lightRGB: (0.29, 0.082, 0.294, 1.0), darkRGB: (0.29, 0.082, 0.294, 1.0))
+  /// Film wash behind the misheard word (mockup #fc56851c).
+  static let firstRunFilmMistakeWash = stDynamic(
+    lightRGB: (0.988, 0.337, 0.522, 0.11), darkRGB: (0.988, 0.337, 0.522, 0.11))
+  /// Film misheard word text (mockup #b12755).
+  static let firstRunFilmMistakeText = stDynamic(
+    lightRGB: (0.694, 0.153, 0.333, 1.0), darkRGB: (0.694, 0.153, 0.333, 1.0))
+  /// Film line through the misheard word (mockup #d4436b).
+  static let firstRunFilmMistakeStrike = stDynamic(
+    lightRGB: (0.831, 0.263, 0.42, 1.0), darkRGB: (0.831, 0.263, 0.42, 1.0))
 }
 
 // MARK: - Fonts (SF Pro)
@@ -163,6 +276,10 @@ extension Font {
   static let stBody = Font.system(size: 14, weight: .regular)
   /// Caption / hint / status microcopy: footnotes, link hints, status lines. Same 14pt floor as body; it reads quieter through colour, not size.
   static let stHelper = Font.system(size: 14)
+  /// History day heading ("Sunday, November 15"), as the approved diary mock draws it (founder 2026-11-15, #4611). History only.
+  static let stDayTitle = Font.system(size: 26, weight: .bold)
+  /// The dictated words on a History dictation card, larger than settings body copy because they are the card's content (founder 2026-11-15, #4611). History only.
+  static let stCardText = Font.system(size: 16, weight: .regular)
   /// A settings row's short grey line under its name (#3385). Held at the 14pt floor by founder decision (2026-10-02) rather than the mockup's 13px; kept as its own token so the row line has one owner.
   static let stRowHelper = Font.system(size: 14)
   /// Onboarding step headline.
@@ -177,6 +294,28 @@ extension Font {
   static let obCaptionSmall = Font.system(size: 11, weight: .regular)
   /// Onboarding label.
   static let obLabel = Font.system(size: 13, weight: .medium)
+  /// Setup big number (the speed card).
+  static let firstRunHero = Font.system(size: 64, weight: .heavy, design: .rounded)
+  /// Setup screen title.
+  static let firstRunDisplay = Font.system(size: 28, weight: .heavy, design: .rounded)
+  /// Setup card title and film caption title.
+  static let firstRunTitle = Font.system(size: 20, weight: .heavy, design: .rounded)
+  /// Setup practice sentence the person reads aloud.
+  static let firstRunSay = Font.system(size: 17, weight: .semibold)
+  /// Setup reading copy under a title.
+  static let firstRunBody = Font.system(size: 15, weight: .regular)
+  /// Setup primary button text (founder 2026-11-13).
+  static let firstRunButton = Font.system(size: 19, weight: .bold, design: .rounded)
+  /// Setup card name and option name.
+  static let firstRunLabel = Font.system(size: 15, weight: .semibold)
+  /// Setup card detail lines, hints and film caption subtitle.
+  static let firstRunCaption = Font.system(size: 13, weight: .regular)
+  /// Setup uppercase eyebrow and badge (RECOMMENDED).
+  static let firstRunEyebrow = Font.system(size: 11, weight: .semibold)
+  /// Text of a recording pill notice (bubble or strip).
+  ///
+  /// #4841, approved mockup 2026-11-22 (Option 2): the notice bubble beside the Capsule and Level Rail and the strip inside the Reading Well.
+  static let pillNotice = Font.system(size: 11, weight: .semibold)
 }
 
 // MARK: - Layout (points)
@@ -204,6 +343,10 @@ enum SettingsLayout {
   static let windowCardRadius: CGFloat = 18
   /// Inset of the frame cards from the window edge and from each other.
   static let windowFrameInset: CGFloat = 14
+  /// Smallest click region of a control, in each direction.
+  ///
+  /// Apple's macOS minimum control size (Human Interface Guidelines, Accessibility: default 28 x 28 pt, minimum 20 x 20 pt), #4545. `minimumHitRegion()` widens a smaller icon button's click and accessibility region to it without changing layout or look.
+  static let minimumHitTarget: CGFloat = 20
 }
 
 enum SettingsPR1Layout {
@@ -213,6 +356,29 @@ enum SettingsPR1Layout {
   static let rowPaddingV: CGFloat = 10
   /// Dictation Settings dense heading gap.
   static let headingGap: CGFloat = 8
+}
+
+enum PillNoticeLayout {
+  /// Gap between the recording pill and its notice bubble.
+  ///
+  /// #4841 Option 2: a separate bubble 4 pt from the pill, below it at Top and above it at Bottom.
+  static let gap: CGFloat = 4
+  /// Top and bottom padding inside a pill notice bubble.
+  static let paddingV: CGFloat = 8
+  /// Side padding inside a pill notice bubble.
+  static let paddingH: CGFloat = 12
+  /// Gap between the notice mark and its text.
+  static let iconGap: CGFloat = 6
+  /// Widest a Level Rail notice bubble may be, inside the rail's 288 pt panel.
+  ///
+  /// #4841 §14 Q2: the Capsule bubble takes the Capsule's own 185 pt width so the window never widens; the rail bubble is capped narrower than its panel so it reads as a bubble, not a second pill.
+  static let railMaxWidth: CGFloat = 210
+  /// Corner radius of a recording pill notice bubble.
+  ///
+  /// #4841 approved mockup (Option 2, founder 2026-11-22): a 13 pt rounded bubble in the pill's solid dark fill. Scoped to this one part; it is not a general radius.
+  static let radius: CGFloat = 13
+  /// Width of the amber edge on a strong (15 s) silent-mic notice.
+  static let strongEdge: CGFloat = 1
 }
 
 enum DesignRadius {
@@ -260,4 +426,12 @@ enum DesignMotion {
   static let standard = Animation.easeInOut(duration: 0.3)
   /// Larger panels appearing or moving.
   static let gentle = Animation.easeInOut(duration: 0.35)
+  /// Setup screen entering (slide and fade).
+  ///
+  /// The approved mockup's --ease-out, cubic-bezier(.22,1,.36,1): fast start, long settle.
+  static let firstRunScreenIn = Animation.timingCurve(0.22, 1, 0.36, 1, duration: 0.32)
+  /// Setup card, caption or check rising into place.
+  ///
+  /// The approved mockup (the founder's source of truth, 2026-11-12) rises rows and cards with obRise 0.4s on cubic-bezier(.22,1,.36,1).
+  static let firstRunRise = Animation.timingCurve(0.22, 1, 0.36, 1, duration: 0.4)
 }

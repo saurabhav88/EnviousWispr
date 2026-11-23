@@ -144,7 +144,7 @@ struct HistoryDictationPresentationTests {
       })
   }
 
-  @Test("passage times carry from the speech-engine text onto the original, then the polished text")
+  @Test("passage times carry from the speech-engine text onto the original text")
   func timesProject() {
     // The processing changed "twenty" to "20" in the first sentence only.
     let exact = "we have twenty items. then we ship."
@@ -154,18 +154,6 @@ struct HistoryDictationPresentationTests {
     // The first passage starts on "we" (unchanged) and ends on "items." (unchanged): kept.
     #expect(spans.map(\.seconds) == [0.0, 4.5])
     #expect(P.slice(original, spans[1].range) == "then we ship.")
-    // Onto polished text that capitalised both first words: neither passage start is literal.
-    let polished = "We have 20 items. Then we ship it."
-    let alignment = WordDiff.alignment(original: original, cleaned: polished)
-    let onPolished = P.polishedTimeline(
-      spans, original: original, polished: polished, alignment: alignment)
-    #expect(onPolished.isEmpty)
-    // A polish that leaves both ends of a passage alone keeps its time.
-    let kind = "we have 20 good items. then we ship."
-    let kept = P.polishedTimeline(
-      spans, original: original, polished: kind,
-      alignment: WordDiff.alignment(original: original, cleaned: kind))
-    #expect(kept.map(\.seconds) == [0.0, 4.5])
   }
 
   @Test("the card flags a dictation cut short by a removed microphone, and a recovered one")
@@ -213,17 +201,6 @@ struct HistoryDictationPresentationTests {
       original: original)
     #expect(collapsed.map(\.seconds) == [9.0])
     #expect(P.slice(original, collapsed[0].range) == "thanks.")
-
-    // Original to polished: a passage repeated in the original stays untimed there too.
-    let twice = [
-      P.TimedSpan(range: 0..<14, seconds: 1.0), P.TimedSpan(range: 15..<29, seconds: 6.0),
-    ]
-    let polished = "send the file. send the file."
-    #expect(
-      P.polishedTimeline(
-        twice, original: polished, polished: polished,
-        alignment: WordDiff.alignment(original: polished, cleaned: polished)
-      ).isEmpty)
   }
 
   @Test("anchors for another text version, out of range or unplaceable stay untimed")
@@ -244,18 +221,6 @@ struct HistoryDictationPresentationTests {
     #expect(
       P.timeline(RecordingTiming(exactASRText: nil, textVersion: "x", anchors: []), original: exact)
         .isEmpty)
-  }
-
-  @Test("a block's time is the first passage starting inside it")
-  func blockTimes() {
-    let spans = [P.TimedSpan(range: 0..<10, seconds: 0), P.TimedSpan(range: 12..<20, seconds: 3)]
-    #expect(P.time(of: 0..<11, in: spans) == 0)
-    #expect(P.time(of: 11..<20, in: spans) == 3)
-    #expect(P.time(of: 21..<30, in: spans) == nil)
-    let block = [P.MarkRun(kind: .same, text: "abc", change: nil, originalOffset: 12)]
-    #expect(P.time(ofMarkedUp: block, in: spans) == 3)
-    let addedOnly = [P.MarkRun(kind: .added, text: "abc", change: 0, originalOffset: nil)]
-    #expect(P.time(ofMarkedUp: addedOnly, in: spans) == nil)
   }
 
   // MARK: - Inspector

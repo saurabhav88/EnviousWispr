@@ -78,8 +78,12 @@ public enum SharedEngineHolder: String, Sendable, Equatable, CaseIterable {
 public enum RecordingWarningReason: Equatable, Sendable {
   /// The SELECTED ASR engine isn't downloaded yet. Carries its display name.
   case modelNotDownloaded(engineLabel: String)
+  /// The selected engine is installed but its automatic load stopped pending Try Again.
+  case modelRequiresExplicitRetry(engineLabel: String)
   /// AI polish failed; the raw transcript was pasted instead.
   case polishFailed
+  case translationFailed(message: String)
+  case clipboardPolishFailed(copied: Bool, reason: String)
   /// The dictation was pasted but the history write threw. Carries the reason.
   case historySaveFailed(reason: String)
   /// #2087: Escape Recovery was on and the take could NOT be kept, so the
@@ -113,11 +117,17 @@ public enum RecordingWarningReason: Equatable, Sendable {
 
 /// Events the recording driver handles.
 public enum PipelineEvent: Sendable {
-  case preWarm
+  /// #4601 §3a: carries the press's microphone-start deadline (`MicrophoneStartBudget`), which the
+  /// take's own `.toggleRecording` start then carries too, so both share one budget.
+  case preWarm(microphoneStartDeadline: ContinuousClock.Instant)
   /// Toggle recording. Carries the per-recording configuration snapshot; pipelines
   /// consume the config on start transitions and ignore it on stop transitions.
   /// Settings mutated mid-recording apply to the next recording's snapshot.
-  case toggleRecording(DictationSessionConfig)
+  /// #4601 §3a: `microphoneStartDeadline` is the press's microphone-start deadline; the
+  /// production producer (`RecordingStarter`) always supplies it. Nil (an event built with no
+  /// press, test drivers only) gives the start one budget from the kernel's start.
+  case toggleRecording(
+    DictationSessionConfig, microphoneStartDeadline: ContinuousClock.Instant? = nil)
   case requestStop
   case cancelRecording
   case reset
@@ -390,9 +400,4 @@ public enum RecordingRecoveryEnding: Equatable, Sendable {
 @MainActor
 public protocol HeartPathTelemetryTarget: AnyObject {
   func handleCaptureStall(_ ctx: CaptureStallContext)
-
-  /// #1578: the zero-signal discriminator refused to fire capture-stall
-  /// recovery, and this is WHY. Observation only — unlike `handleCaptureStall`,
-  /// nothing on this path may move the recording state machine.
-  func handleZeroSignalRefusal(_ context: ZeroSignalRefusalContext)
 }

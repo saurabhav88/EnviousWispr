@@ -51,6 +51,18 @@ public enum ModifierKeyCodes {
     flagsByKeyCode[keyCode]
   }
 
+  /// Caps Lock (`kVK_CapsLock`). Not a standalone modifier hotkey, and never a held key.
+  package static let capsLock: UInt16 = 57
+
+  /// Whether this key's down state means an ordinary key is being held: the ONE membership test
+  /// for held-ordinary-key tracking (event admission, boundary readings and the keys a boundary
+  /// asks about). Standalone modifiers are tracked by their flags instead. Caps Lock is excluded
+  /// because `CGEventSource.keyState` answers it down for as long as Caps Lock is switched on, which
+  /// refused every push-to-talk start until it was switched off (#4642).
+  package static func isHeldOrdinaryKey(_ keyCode: UInt16) -> Bool {
+    flag(for: keyCode) == nil && keyCode != capsLock
+  }
+
 }
 
 /// Converts key codes and modifiers to human-readable symbols

@@ -29,7 +29,7 @@ struct HistoryTranscriptPresentationTests {
 
   // MARK: - Card inventory
 
-  @Test("the card keeps every status the legacy row showed, in its order")
+  @Test("the card footer keeps every status the legacy row showed, in the Dictations footer order")
   func chipInventory() {
     let row = Transcript(
       text: "hello there", polishedText: "Hello there.", backendType: .parakeet,
@@ -37,23 +37,51 @@ struct HistoryTranscriptPresentationTests {
       importedFileName: "call.m4a", speakerNames: ["s2": "Zach", "s1": "Ariana"])
     #expect(
       P.chips(for: row) == [
-        .file("call.m4a"), .speakers("Ariana, Zach"), .recovered, .interrupted,
-        .polish(model: "gpt-x"), .backend(ASRBackendType.parakeet.displayName),
+        .recovered, .interrupted, .backend(ASRBackendType.parakeet.displayName),
+        .polish(model: "gpt-x"), .speakers("2 speakers"),
       ])
-    // No polish, no speakers, no flags: only the file and the engine.
+    // #4611: one voice reads "1 speaker", as the page's facts line does.
+    let single = Transcript(text: "x", importedFileName: "a.wav", speakerAnalysis: .single)
+    #expect(P.chips(for: single).contains(.speakers("1 speaker")))
+    // No polish, no speakers, no flags: only the engine. The file name is the card's title, so
+    // the footer never repeats it (#4611).
     let plain = Transcript(text: "x", backendType: .whisper, importedFileName: "a.wav")
-    #expect(P.chips(for: plain) == [.file("a.wav"), .backend(ASRBackendType.whisper.displayName)])
+    #expect(P.chips(for: plain) == [.backend(ASRBackendType.whisper.displayName)])
     // A recorded model without polished text is not polish provenance.
     let unpolished = Transcript(text: "x", llmModel: "gpt-x", importedFileName: "a.wav")
     #expect(P.chips(for: unpolished).contains(.polish(model: "gpt-x")) == false)
   }
 
-  @Test("the card's title is the file name and its length is the source duration")
+  @Test("a transcript's card, its catalog summary and its page say the same number of speakers")
+  func speakerCountAgrees() {
+    let names = ["s1": "Ariana", "s2": "Zach"]
+    let cases: [(TranscriptSpeakerAnalysis?, [String: String]?, Int?)] = [
+      (nil, nil, nil), (.unanalyzed, nil, nil), (.failed(.timedOut), nil, nil),
+      (.single, nil, 1), (.labeled(count: 0), nil, nil), (.labeled(count: 3), nil, 3),
+      // An older import with names but no usable analysis counts its names.
+      (nil, names, 2), (.failed(.timedOut), names, 2), (.labeled(count: 0), names, 2),
+      // The analysis wins over the names.
+      (.single, names, 1), (.labeled(count: 3), names, 3),
+    ]
+    for (analysis, speakerNames, expected) in cases {
+      let row = Transcript(
+        text: "x", importedFileName: "a.wav", speakerAnalysis: analysis,
+        speakerNames: speakerNames)
+      #expect(P.speakerNumber(analysis, names: speakerNames?.count) == expected)
+      // The card drawn from the catalog reads only the stored analysis.
+      let stored = P.catalogSpeakerAnalysis(row)
+      #expect(
+        P.speakerCount(stored, names: nil)
+          == P.speakerCount(analysis, names: speakerNames?.count))
+    }
+  }
+
+  @Test("the card's title is the file name and its footer length is the source duration")
   func titleAndLength() {
     let row = Transcript(text: "x", duration: 724, importedFileName: "talk.mp4")
     #expect(P.title(for: row) == "talk.mp4")
-    #expect(P.lengthLine(for: row)?.contains("12:04") == true)
-    #expect(P.lengthLine(for: Transcript(text: "x", importedFileName: "a.wav")) == nil)
+    #expect(P.footerClock(seconds: row.duration) == "12:04")
+    #expect(P.footerClock(seconds: 0) == nil)
   }
 
   // MARK: - Original file copy
@@ -80,7 +108,6 @@ struct HistoryTranscriptPresentationTests {
     #expect(P.offersLocate(.checking) == false)
     #expect(P.offersLocate(.removed) == false)
     #expect(P.offersLocate(.unavailable(.missing)))
-    #expect(P.cardLine(.checking) == nil, "nothing is claimed before the lookup answers")
   }
 
   @Test("no line claims a moved file or a verified one")
@@ -89,7 +116,7 @@ struct HistoryTranscriptPresentationTests {
       .missing, .changed, .unreadable, .unproven, .unsupported, .cannotPlay,
     ]
     let lines =
-      reasons.map(P.unavailableLine) + reasons.map(P.dockUnavailableLine)
+      reasons.map(P.unavailableLine)
       + [ImportedRelocationOutcome.linked, .wrongFile, .stale, .removed].compactMap(
         P.relocationLine)
     for line in lines {
@@ -99,7 +126,6 @@ struct HistoryTranscriptPresentationTests {
       #expect(lower.contains("renamed") == false, "\(line)")
     }
     #expect(P.unavailableLine(.missing).contains("unavailable"))
-    #expect(P.dockUnavailableLine(.missing).contains("reading only"))
   }
 
   @Test("Locate original asks first only for a row with no stored identity")
@@ -190,19 +216,88 @@ struct HistoryTranscriptPresentationTests {
     #expect(P.needsNewPlayer(current: player, currentSource: a, resolved: a))
   }
 
-  @Test("the dock is the mock's 88 points, playing or not")
-  func dockHeight() {
-    let player = MeetingPlaybackController(
-      media: .transcript(Tone()), durationMs: 90_000,
-      output: MeetingPlaybackControllerTests.FakeOutput())
-    for content in [
-      HistoryTranscriptPlayerBar.Content.player(player),
-      .unavailable(.missing, onLocate: {}),
-    ] {
-      let host = NSHostingView(
-        rootView: HistoryTranscriptPlayerBar(content: content).frame(width: 750))
-      #expect(host.fittingSize.height == HistoryTranscriptPlayerBar.height)
+  @Test("#4808: the same original found at a new place keeps the player's place and play state")
+  func movedOriginalKeepsPlace() {
+    let rowID = UUID()
+    let identity = ImportedSourceIdentity(byteCount: 1, durationMs: 60_000, digest: "a")
+    let reference = ImportedSourceReference(bookmark: nil, fingerprint: nil)
+    let before = ResolvedImportedSource(
+      rowID: rowID, reference: reference, url: URL(fileURLWithPath: "/tmp/Desktop/a.m4a"),
+      identity: identity)
+    let moved = ResolvedImportedSource(
+      rowID: rowID, reference: reference, url: URL(fileURLWithPath: "/tmp/Study/a.m4a"),
+      identity: identity)
+    func player() -> (MeetingPlaybackController, MeetingPlaybackControllerTests.FakeOutput) {
+      let output = MeetingPlaybackControllerTests.FakeOutput()
+      return (
+        MeetingPlaybackController(media: .transcript(Tone()), durationMs: 60_000, output: output),
+        output
+      )
     }
+
+    // Paused part-way: the new player is at the same place and does not play.
+    let (paused, _) = player()
+    paused.seek(toMs: 11_500)
+    let pausedCarry = P.carryOver(
+      live: P.place(of: paused, source: before), retained: nil, to: moved)
+    #expect(pausedCarry == P.PlaybackCarryOver(positionMs: 11_500, resume: false))
+    let (next, nextOutput) = player()
+    P.apply(pausedCarry, to: next)
+    #expect(next.positionMs == 11_500)
+    #expect(next.hasPosition)
+    #expect(next.state == .idle)
+    #expect(nextOutput.starts == 0, "a paused place never starts the output")
+
+    // Playing: the new player plays on from the same place.
+    let (playing, _) = player()
+    playing.seek(toMs: 3_000)
+    playing.play()
+    #expect(playing.state == .playing)
+    let playingCarry = P.carryOver(
+      live: P.place(of: playing, source: before), retained: nil, to: moved)
+    #expect(playingCarry == P.PlaybackCarryOver(positionMs: 3_000, resume: true))
+    let (resumed, resumedOutput) = player()
+    P.apply(playingCarry, to: resumed)
+    #expect(resumed.state == .playing)
+    #expect(resumed.positionMs == 3_000)
+    #expect(resumedOutput.starts == 1)
+
+    // A gap with no player (the original read missing, then came back): the retained place is
+    // used, and never resumes, even when it says playing. A live place wins over a retained one.
+    let retained = P.PlaybackPlace(rowID: rowID, identity: identity, positionMs: 8_000, playing: true)
+    #expect(
+      P.carryOver(live: nil, retained: retained, to: moved)
+        == P.PlaybackCarryOver(positionMs: 8_000, resume: false))
+    #expect(
+      P.carryOver(live: P.place(of: paused, source: before), retained: retained, to: moved)?
+        .positionMs == 11_500)
+
+    // A player never played or moved has no place, so the new one starts at 0.
+    let (untouched, _) = player()
+    #expect(P.place(of: untouched, source: before) == nil)
+    #expect(P.carryOver(live: nil, retained: nil, to: moved) == nil)
+    let (fresh, _) = player()
+    P.apply(nil, to: fresh)
+    #expect(fresh.positionMs == 0)
+    #expect(fresh.state == .idle)
+
+    // Another file (fingerprint differs) or another row never inherits the place.
+    let otherFile = ResolvedImportedSource(
+      rowID: rowID, reference: reference, url: moved.url,
+      identity: ImportedSourceIdentity(byteCount: 2, durationMs: 60_000, digest: "b"))
+    let otherRow = ResolvedImportedSource(
+      rowID: UUID(), reference: reference, url: moved.url, identity: identity)
+    #expect(P.carryOver(live: P.place(of: paused, source: before), retained: nil, to: otherFile) == nil)
+    #expect(P.carryOver(live: P.place(of: paused, source: before), retained: nil, to: otherRow) == nil)
+
+    // A player that stopped for good (read failure) keeps its place but does not resume.
+    let (failed, _) = player()
+    failed.seek(toMs: 4_000)
+    failed.stopForDeletion()
+    #expect(failed.state == .unavailable)
+    #expect(
+      P.carryOver(live: P.place(of: failed, source: before), retained: nil, to: moved)
+        == P.PlaybackCarryOver(positionMs: 4_000, resume: false))
   }
 
   // MARK: - Turn time buttons
@@ -306,6 +401,67 @@ struct HistoryTranscriptPresentationTests {
 
   // MARK: - Card lookup
 
+  @Test("a transcript without saved turns exports its selected version")
+  func flatVersionExport() async throws {
+    try await withCoordinator { coordinator in
+      let row = Transcript(
+        text: "raw words", polishedText: "Polished words.", importedFileName: "file.m4a")
+      try await coordinator.saveAndShow(row)
+      #expect(
+        HistoryTranscriptExport.text(
+          rowID: row.id, coordinator: coordinator, mode: .original, timesOn: true) == row.text)
+      #expect(
+        HistoryTranscriptExport.text(
+          rowID: row.id, coordinator: coordinator, mode: .markedUp, timesOn: true)
+          == row.displayText)
+    }
+  }
+
+  @Test("Show in Finder is offered only while the original plays, on card, page and window (#4799)")
+  func showInFinderOffering() throws {
+    let sources = FakeSources()
+    let id = UUID()
+    // The card's line is verified availability; the page's needs an opened player. Both reach
+    // this rule through `sourceLine(state:playable:)`.
+    let file = URL(filePath: "/tmp/call.m4a")
+    let available = ImportedSourceState.available(
+      ResolvedImportedSource(
+        rowID: id, reference: ImportedSourceReference(bookmark: Data(), fingerprint: nil),
+        url: file, identity: ImportedSourceIdentity(byteCount: 1, durationMs: 1, digest: "a")))
+    let plays = P.sourceLine(state: available, playable: true)
+    let item = try #require(P.showInFinderItem(rowID: id, line: plays, sources: sources))
+    #expect(item.id == "show-in-finder")
+    #expect(item.systemImage == "folder")
+    #expect(item.title == P.showInFinderLabel)
+    // A page whose player did not open does not offer it.
+    #expect(
+      P.showInFinderItem(
+        rowID: id, line: P.sourceLine(state: available, playable: false), sources: sources)
+        == nil)
+    for state: ImportedSourceState in [
+      .missing, .changed, .unreadable, .unverifiable(file), .unsupportedIdentity, .removed,
+    ] {
+      #expect(
+        P.showInFinderItem(
+          rowID: id, line: P.sourceLine(state: state, playable: false), sources: sources)
+          == nil)
+    }
+    #expect(P.showInFinderItem(rowID: id, line: .checking, sources: sources) == nil)
+  }
+
+  @Test("Show in Finder reveals nothing and says nothing when the fresh look finds no original (#4799)")
+  func showInFinderMissing() async {
+    let sources = FakeSources()
+    sources.answer = .missing
+    var revealed: [URL] = []
+    let shown = await P.showOriginalInFinder(
+      rowID: UUID(), sources: sources, reveal: { revealed.append($0) })
+    #expect(shown == false)
+    #expect(revealed.isEmpty)
+    #expect(sources.freshLookups == 1)
+    #expect(sources.lookups == 0, "never the cached answer")
+  }
+
   @Test("the card looks up the original when it appears and again when the owner bumps the row")
   func cardLookup() async throws {
     try await withCoordinator { coordinator in
@@ -313,11 +469,14 @@ struct HistoryTranscriptPresentationTests {
       try await coordinator.saveAndShow(row)
       let sources = FakeSources()
       sources.answer = .missing
+      let panels = RecordingDesktopPresentationEffects()
       let host = NSHostingView(
         rootView: HistoryTranscriptCard(
           rowID: row.id, sources: sources, onOpen: {}, onLocate: {}
         )
         .environment(coordinator)
+        // The card's "···" menu reads the shared presenter, as in the app (AppHomesEnvironment).
+        .environment(HistoryMenuPresenter(panels: panels))
         .frame(width: 600))
       host.frame = CGRect(x: 0, y: 0, width: 600, height: 300)
       let window = NSWindow(
@@ -356,6 +515,11 @@ struct HistoryTranscriptPresentationTests {
     func revision(for rowID: UUID) -> Int { revisions[rowID, default: 0] }
     func state(for rowID: UUID) async -> ImportedSourceState {
       lookups += 1
+      return answer
+    }
+    private(set) var freshLookups = 0
+    func freshState(for rowID: UUID) async -> ImportedSourceState {
+      freshLookups += 1
       return answer
     }
     func playbackSource(for rowID: UUID) async throws -> ImportedPlaybackSource? {

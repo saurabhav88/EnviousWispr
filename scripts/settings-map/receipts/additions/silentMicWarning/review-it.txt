@@ -1,0 +1,10 @@
+{
+  "language": "it",
+  "title": "avvisa se il microfono non rileva suoni",
+  "words": [
+    "avviso microfono muto"
+  ],
+  "phrases": [
+    "come attivo l’avviso se non arriva audio dal microfono mentre detto"
+  ]
+}

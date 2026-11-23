@@ -21,6 +21,8 @@ enum CallPromptContent: Equatable {
   case needsAttention
   /// The Start after Yes was refused (low disk, microphone off) or taken over.
   case couldNotStart
+  /// #4578: no speech engine is downloaded; nothing records. One action: Open Settings.
+  case noTranscriptionEngine
   case firstTip
   case lastTip(appName: String)
   /// #4249 silence backstop: no new words for 10 minutes; the recording stops when the seconds
@@ -76,6 +78,7 @@ extension CallPromptActions {
     case ("endRecording", .countdown), ("endRecording", .stillInMeeting): endRecording
     case ("startNewRecording", .switchNotConfirmed): startNewRecording
     case ("openSettings", .needsAttention), ("openSettings", .couldNotStart),
+      ("openSettings", .noTranscriptionEngine),
       ("openSettings", .firstTip), ("openSettings", .lastTip):
       openSettings
     case ("open", .notesReady): open

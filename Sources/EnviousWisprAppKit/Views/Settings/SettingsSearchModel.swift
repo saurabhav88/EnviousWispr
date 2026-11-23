@@ -10,11 +10,17 @@ import Observation
 @MainActor
 @Observable
 final class SettingsSearchModel {
-  /// The index search answers from (#3545 plan §3.5). The first non-empty query builds a
-  /// title-only index synchronously and answers from it while the full index (with the bundled
-  /// vocabulary) loads; the full index then replaces it and the current query runs again.
+  /// The index search answers from (#3545 plan §3.5). Opening the window (or the first non-empty
+  /// query) builds a title-only index off the main actor (#4772); it answers while the full index
+  /// (with the bundled vocabulary) loads, and the full index then replaces it and the current
+  /// query runs again.
   enum IndexState {
     case notLoaded
+    /// The title-only index is being built off the main actor; nothing answers yet, so the panel
+    /// shows no rows and never "No settings match" (#4772). On a Mac that lists German, each
+    /// German lookup re-reads the whole strings table, so this build took 1.6 s on an M5 Max and
+    /// froze the window when it ran on the first keystroke (ENVIOUSWISPR-92).
+    case preparingTitles
     /// Answering from the title-only index while the full index loads.
     case loading(titleOnly: SettingsSearchIndex)
     case ready(SettingsSearchIndex)
@@ -22,13 +28,18 @@ final class SettingsSearchModel {
     case titleOnly(SettingsSearchIndex)
   }
 
-  /// The index answering now, nil before the first non-empty query.
+  /// The index answering now, nil until the title-only index has been built.
   var answeringIndex: SettingsSearchIndex? {
     switch indexState {
-    case .notLoaded: nil
+    case .notLoaded, .preparingTitles: nil
     case .loading(let index), .ready(let index), .titleOnly(let index): index
     }
   }
+
+  /// The dropdown and its outside-click surface show: the panel is open and an index answers, so
+  /// it shows rows or "No settings match". While the title-only index is still being built the
+  /// panel stays hidden, so an invisible surface never swallows clicks on the window (#4772).
+  var showsPanel: Bool { isPanelPresented && answeringIndex != nil }
 
   /// The meaning pass (plan §3.7 item 8): word results show at once; a final "no results" waits
   /// until the pass completes, is skipped or is abandoned at its deadline (#3545).
@@ -80,8 +91,9 @@ final class SettingsSearchModel {
   private var selectionMovedByUser = false
   private var announcement: Task<Void, Never>?
   private let loadIndex: @Sendable () async -> SettingsSearchIndex?
-  /// Builds the title-only index on the main actor, before the full index exists.
-  private let titleIndex: @MainActor () -> SettingsSearchIndex
+  /// Builds the title-only index, before the full index exists. Always called off the main
+  /// actor (`buildTitles`, #4772).
+  private let titleIndex: @Sendable () -> SettingsSearchIndex
   /// The meaning pass (plan §3.7a): nil means words only. Skipped for the rest of the window
   /// session after any skip the worker reports.
   private let meaningWorker: SettingsSearchMeaningWorker?
@@ -116,9 +128,22 @@ final class SettingsSearchModel {
     var meaningPending = false
     var meaningElapsedMilliseconds: Double?
     var frozen = false
+    /// #4843: some of this search's text came from an EnviousWispr dictation into our own app.
+    /// Sticky until the attempt ends; a dictated search sends counts only, never its words.
+    var dictated = false
   }
 
   private(set) var attempt: Attempt?
+  /// #4843: the text of the last few dictations EnviousWispr delivered into its own windows while
+  /// this model was listening, folded by `foldedForMatch`, kept in memory and never sent or
+  /// logged. A key paste into our own app can land after the delivery notice, so a search's text
+  /// is matched against these. Hand-pasted text follows the same search checks.
+  @ObservationIgnored private(set) var recentDictations: [String] = []
+  static let recentDictationsKept = 8
+  /// #4843: whether a dictation is recording, transcribing or polishing now. A take stays active
+  /// until its delivery returns, so a field change while it is true may be that take's paste
+  /// (including a direct write that sends no delivery notice). The window sets it.
+  @ObservationIgnored var dictationInFlight: @MainActor () -> Bool = { false }
   /// Reads "Share usage metrics" now; the window sets it once its settings are in scope.
   @ObservationIgnored var usageMetricsOn: @MainActor () -> Bool
   private let emitFinished: @MainActor (SettingsSearchFinished) -> Void
@@ -129,7 +154,7 @@ final class SettingsSearchModel {
   /// be used. `announce` speaks the result count after typing pauses.
   init(
     loadIndex: @escaping @Sendable () async -> SettingsSearchIndex?,
-    titleIndex: @escaping @MainActor () -> SettingsSearchIndex = SettingsSearchModel
+    titleIndex: @escaping @Sendable () -> SettingsSearchIndex = SettingsSearchModel
       .windowTitleIndex,
     meaningWorker: SettingsSearchMeaningWorker? = nil,
     meaningDeadlineElapses: @escaping @Sendable () async -> Void = {
@@ -152,7 +177,7 @@ final class SettingsSearchModel {
   }
 
   /// The title-only index for this app's languages: the same inputs as the full index.
-  static func windowTitleIndex() -> SettingsSearchIndex {
+  nonisolated static func windowTitleIndex() -> SettingsSearchIndex {
     SettingsSearchIndex.titleOnly(
       appLanguage: Bundle.main.preferredLocalizations.first ?? "en",
       preferredLanguages: Locale.preferredLanguages)
@@ -164,7 +189,7 @@ final class SettingsSearchModel {
     SettingsSearchModel(
       loadIndex: {
         // The interface language the app launched in (interface-localization.md FACT:
-        // app-language-drives-locale-current): "en" or "de".
+        // app-language-drives-locale-current), one of `SettingsSearchVocabulary.interfaceLanguages`.
         let appLanguage = Bundle.main.preferredLocalizations.first ?? "en"
         switch SettingsSearchIndex.load(
           appLanguage: appLanguage, preferredLanguages: Locale.preferredLanguages)
@@ -229,23 +254,60 @@ final class SettingsSearchModel {
       return
     }
     if attempt == nil { attempt = Attempt(eligible: usageMetricsOn()) }
+    if dictationInFlight() || containsRecentDictation(text) { attempt?.dictated = true }
     isPanelPresented = true
     attempt?.frozen = false
     refresh()
     recordSnapshot()
   }
 
+  /// Starts building the title-only index off the main actor, once per model (#4772). The window
+  /// calls it when it appears, so the index is usually ready before the first keystroke; the first
+  /// query calls it too.
+  func prepareIndex() {
+    guard case .notLoaded = indexState else { return }
+    indexState = .preparingTitles
+    let build = titleIndex
+    Task { [weak self] in
+      let titles = await Self.buildTitles(build)
+      self?.titlesBuilt(titles)
+    }
+  }
+
+  /// Runs the title-only build on the concurrent pool, never on the main actor (#4772).
+  @concurrent
+  private static func buildTitles(
+    _ build: @Sendable () -> SettingsSearchIndex
+  ) async -> SettingsSearchIndex {
+    build()
+  }
+
+  /// The title-only index exists: it answers the query on screen now (the live query and
+  /// generation, not the one typed when the build started).
+  private func titlesBuilt(_ titles: SettingsSearchIndex) {
+    guard case .preparingTitles = indexState else { return }
+    indexState = .loading(titleOnly: titles)
+    refresh()
+  }
+
+  /// The full index loads once, off the main actor, and only when someone searches: it repeats
+  /// the per-language lookups, so a window opened without a search never pays for it (#4772).
+  private(set) var fullIndexRequested = false
+
   private func refresh() {
-    if case .notLoaded = indexState {
-      // Answers now from titles; the full index loads once, off the main actor.
-      indexState = .loading(titleOnly: titleIndex())
+    prepareIndex()
+    guard let index = answeringIndex,
+      !query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    else { return }
+    if !fullIndexRequested {
+      fullIndexRequested = true
       let load = loadIndex
       Task { [weak self] in
         let index = await load()
         self?.indexLoaded(index)
       }
     }
-    if let index = answeringIndex { deliver(index.results(for: query), for: generation) }
+    deliver(index.results(for: query), for: generation)
   }
 
   /// The full index arrived (or could not be built): it replaces the title-only answers by running
@@ -323,6 +385,14 @@ final class SettingsSearchModel {
     cancelAnnouncement()
   }
 
+  /// Keyboard focus left the search field. A dropdown still waiting for the title-only index is
+  /// closed, keeping the search for Cmd+F, so it never appears later over the control the person
+  /// moved to (#4772). A dropdown that is showing keeps its own rule: focus stays in it (§3.4).
+  func searchFocusLeft() {
+    guard isPanelPresented, answeringIndex == nil else { return }
+    dismissPanel()
+  }
+
   /// Typing or Cmd+F with a retained non-empty search shows it again.
   func reopenPanel() {
     guard !query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return }
@@ -349,7 +419,7 @@ final class SettingsSearchModel {
     // final either way: it is recorded as pending, as before.
     switch indexState {
     case .ready, .titleOnly: current.meaningPending = meaningPass == .pending
-    case .notLoaded, .loading: current.meaningPending = true
+    case .notLoaded, .preparingTitles, .loading: current.meaningPending = true
     }
     current.meaningElapsedMilliseconds =
       meaningPass == .completed ? meaningElapsedMilliseconds : nil
@@ -369,7 +439,9 @@ final class SettingsSearchModel {
       SettingsSearchFinished(
         outcome: outcome, endedBy: endedBy, resultCount: ended.resultCount,
         appLanguage: appLanguageCode, meaningElapsedMilliseconds: ended.meaningElapsedMilliseconds,
-        sidebarPage: sidebarPage, sidebarTab: sidebarTab, typedQuery: ended.query))
+        sidebarPage: sidebarPage, sidebarTab: sidebarTab,
+        typedQuery: ended.dictated ? nil : ended.query,
+        typedQueryWordCount: SearchText.words(ended.query).count))
   }
 
   static func outcome(
@@ -389,7 +461,8 @@ final class SettingsSearchModel {
 
   private var appLanguageCode: String {
     if let index = answeringIndex { return index.appLanguage }
-    return Bundle.main.preferredLocalizations.first == "de" ? "de" : "en"
+    let launched = Bundle.main.preferredLocalizations.first ?? "en"
+    return SettingsSearchVocabulary.interfaceLanguages.contains(launched) ? launched : "en"
   }
 
   // MARK: - Meaning pass
@@ -631,7 +704,11 @@ final class SettingsSearchModel {
     generation &+= 1
     cancelAnnouncement()
     cancelMeaning()
-    if endedBy == .windowClose { startNewWindowSession() }
+    if endedBy == .windowClose {
+      // #4843: the remembered dictation texts live only while the window is open.
+      recentDictations.removeAll()
+      startNewWindowSession()
+    }
   }
 
   /// A closed window's transient meaning failure is retried in the next window session (#3545
@@ -669,5 +746,35 @@ final class SettingsSearchModel {
   private func cancelAnnouncement() {
     announcement?.cancel()
     announcement = nil
+  }
+}
+
+// MARK: - Dictated text (#4843)
+
+extension SettingsSearchModel: PasteCompletionObserver {
+  /// A dictation was delivered. Only one delivered into our own app can be in this search: it
+  /// marks an open search as dictated and is remembered for a search whose text lands after it.
+  /// Marking a search when the dictation went into another of our fields is the safe direction.
+  func pasteCompleted(_ event: PasteCompletionEvent) {
+    guard AppBundleIdentity.isOurs(event.destinationBundleID) else { return }
+    let text = Self.foldedForMatch(event.pastedText)
+    guard !text.isEmpty else { return }
+    recentDictations.append(text)
+    if recentDictations.count > Self.recentDictationsKept {
+      recentDictations.removeFirst(recentDictations.count - Self.recentDictationsKept)
+    }
+    if attempt != nil { attempt?.dictated = true }
+  }
+
+  /// Lowercased with every run of white space (a single-line field turns line breaks into
+  /// spaces) as one space, trimmed.
+  static func foldedForMatch(_ text: String) -> String {
+    text.lowercased().split(whereSeparator: \.isWhitespace).joined(separator: " ")
+  }
+
+  private func containsRecentDictation(_ text: String) -> Bool {
+    guard !recentDictations.isEmpty else { return false }
+    let folded = Self.foldedForMatch(text)
+    return recentDictations.contains { folded.contains($0) }
   }
 }

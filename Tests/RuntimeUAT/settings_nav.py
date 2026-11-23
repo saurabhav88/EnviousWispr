@@ -721,7 +721,7 @@ def choose_engine(ax, root_of, label, timeout=5.0):
 # ── The app's stored settings ──────────────────────────────────────────────
 
 # Both builds read and write ONE preference domain, `com.enviouswispr.app`: the dev build
-# redirects there (`SettingsDefaults.store`, Sources/EnviousWisprServices/SettingsDefaults.swift).
+# redirects there (`SettingsDefaults.store`, Sources/EnviousWisprCore/SettingsDefaults.swift).
 # The connected bundle's own domain (`com.enviouswispr.app.dev`) holds only pre-#923 leftovers,
 # so reading it reads a value the app ignores. `ptt_binding.read_domain()` owns exporting the
 # domain; this owns reading the keys the Settings harness needs the way `SettingsManager`
@@ -1108,7 +1108,7 @@ PARAKEET_ACTIONS = ("Cancel", "Resume", "Try Again")
 PREVIEW_LANGUAGE = "Change dictation language: %@, %@"
 ENGINE_DISCLOSURE = (CHANGE_ENGINE, ENGINE_LABELS, "Keep current engine")
 PREVIEW_DISCLOSURE = ("Change preview engine", ("Apple", "Universal"), "Keep current preview engine")
-WHISPER_ACTIONS = ("Set up model", "Cancel", "Resume", "Remove Model", "Try Again")
+WHISPER_ACTIONS = ("Set up model", "Cancel", "Resume", "Remove", "Try Again")
 INSTALL_ROW_TITLES = ("Install new languages", "Checking which languages are on this Mac",
                       "Could not read the language list from macOS. Reopen this page to try again.")
 DICTIONARY_SECTIONS = ("Your Words", "Vocabulary Packs", "Learn from...", "Quick Add")
@@ -1207,7 +1207,7 @@ SCAN = [
         ("toggle", "Enable Dictionary", None),
         ("section", ("Your Words", "button", "Add word"), None),
         ("section", ("Vocabulary Packs", "named", "Vocabulary Packs"), None),
-        ("section", ("Learn from...", "toggle", "Self-Learning Dictionary"), None),
+        ("section", ("Learn from...", "toggle", "Learn new words"), None),
         ("section", ("Quick Add", "named", "Highlight a word"), None),
     ]),
     ("Snippets", None, [("button", "Add snippet", None), ("button", "Import", None),

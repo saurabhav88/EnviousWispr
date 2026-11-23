@@ -77,7 +77,7 @@ struct RecordingReconciliationTests {
         wordsCapability: { capability() ? .available : .previewOff },
         display: { .off }),
       grantAccessibility: {},
-      openMicrophoneSettings: {},
+      openMicrophoneSettings: {}, openMicrophoneHelp: {},
       advisoryHint: { _ in nil },
       selections: selections,
       firstRenderSchedule: { $0() },

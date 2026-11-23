@@ -62,6 +62,27 @@ struct LearnFromEditsSettingTests {
     #expect(SettingsManager(defaults: suite).learnFromEdits == false)
   }
 
+  @Test("learned fixes default on and keep their saved choice when learning or Dictionary changes")
+  func learnedFixingChoiceIsIndependent() {
+    let suite = Self.freshSuite()
+    let settings = SettingsManager(defaults: suite)
+    #expect(settings.fixLearnedWords == true)
+
+    var changed: [SettingsManager.SettingKey] = []
+    settings.onChange = { changed.append($0) }
+    settings.fixLearnedWords = false
+    #expect(changed == [.fixLearnedWords])
+
+    settings.learnFromEdits = false
+    settings.wordCorrectionEnabled = false
+    settings.wordCorrectionEnabled = true
+
+    let restored = SettingsManager(defaults: suite)
+    #expect(restored.fixLearnedWords == false)
+    #expect(restored.learnFromEdits == false)
+    #expect(restored.wordCorrectionEnabled == true)
+  }
+
   @Test("the key is unified across builds")
   func inUnifiedKeySet() {
     #expect(SettingsManager.unifiedDefaultsKeys.contains("learnFromEdits"))
@@ -137,7 +158,7 @@ struct LearnFromEditsRowTests {
 
   @Test("the row is the founder's 2026-09-21 copy, word for word, with the help article behind Learn more")
   func rowCopy() {
-    #expect(LearnFromEditsSettingsPresentation.rowTitle == "Self-Learning Dictionary")
+    #expect(LearnFromEditsSettingsPresentation.rowTitle == "Learn new words")
     let copy = LearnFromEditsSettingsPresentation.rowCopy
     #expect(
       copy
@@ -194,8 +215,7 @@ struct LearnFromEditsRowTests {
             manifest: nil, serverBinaryURL: nil, delivery: nil,
             engine: TestLocalPolishEngine()),
           debugThreshold: nil)
-      ],
-      currentModel: { .singleModel(for: $0) })
+      ])
     let enabled = host(
       LearningSection().environment(settings).environment(contacts).environment(checker)
         .environment(words)
@@ -205,7 +225,7 @@ struct LearnFromEditsRowTests {
         .environment(words)
         .environment(LearnFromEditsAvailability(presentation: .unwired)))
     #expect(enabled.fittingSize.height > 0)
-    #expect(disabled.fittingSize.height > enabled.fittingSize.height, "the reason line adds a line")
+    #expect(disabled.fittingSize.height >= enabled.fittingSize.height, "the reason line replaces the available status")
 
     // #3975 §3.4: the learning memory row appears only while the memory holds
     // something, and Forget clears it from the same place. The mutations go

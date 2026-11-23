@@ -12,7 +12,7 @@ import Foundation
 /// Each caller keeps its OWN existing plain-text fallback for the `turns == nil` case; this
 /// type answers only "given real turns, what do they look like and what gets exported."
 ///
-/// Module-internal, matching `FileImportCoordinator`/`TranscriptDetailView`'s own convention
+/// Module-internal, matching `FileImportCoordinator`/`HistoryTranscriptView`'s own convention
 /// — both this type's callers live in `EnviousWisprAppKit`, so nothing here needs to be
 /// `public`.
 enum TranscriptDocumentPresenter {
@@ -44,6 +44,9 @@ enum TranscriptDocumentPresenter {
     /// Where the turn starts on its recording's timeline, when known (#3972: EnviousMeet's
     /// "play from here"). Display never reads it.
     var startMs: Int? = nil
+    /// Draw the text's list lines as dots (`HistoryListText`, founder #4611): the Polished
+    /// view only. Original and Marked up keep every character as written.
+    var showsListBullets = false
 
     enum Content: Equatable, Sendable {
       case plain(String)
@@ -90,7 +93,8 @@ enum TranscriptDocumentPresenter {
         timeLabel: timesOn ? timeLabel(for: turn) : nil,
         content: content,
         isUncleaned: documentFinished && !turn.wasPolished,
-        startMs: turn.startMs)
+        startMs: turn.startMs,
+        showsListBullets: mode == .cleaned)
     }
   }
 
@@ -108,6 +112,11 @@ enum TranscriptDocumentPresenter {
     let blocks = turns.map { turn -> String in
       let original = slice(rawText, turn.originalTextRange)
       let text = effectiveMode == .original ? original : (turn.processedText ?? original)
+      // #4611 T4: a one-voice paragraph carries no name; its time alone heads it.
+      if turn.speakerId == SingleSpeakerParagraphs.speakerID {
+        if timesOn, let label = timeLabel(for: turn) { return "(\(label))\n\(text)" }
+        return text
+      }
       let name =
         displayName(for: turn.speakerId, in: speakerNames)
         ?? String(
@@ -185,7 +194,7 @@ enum TranscriptDocumentPresenter {
   }
 
   /// Internal, not private (#2811, phase 4 of #2807): both callers preparing a turn's diff
-  /// input off-main — `FileImportCoordinator.turnDiffInput` and `TranscriptDetailView`'s own
+  /// input off-main — `FileImportCoordinator.turnDiffInput` and `TranscriptTurnsDocument`'s own
   /// equivalent — need the SAME slice this type uses for rendering, so this is the one owner
   /// rather than a third private copy.
   static func slice(_ text: String, _ range: Range<Int>) -> String {

@@ -23,8 +23,10 @@ import Testing
 @Suite("Escape Recovery row connectors (#2087)", .tags(.productOutcome))
 struct EscapeRecoveryRowConnectorTests {
 
+  /// #4611: a held recovery is a dictation card in the diary; its Paste, Keep and Delete live
+  /// in the card.
   private static let detailPath =
-    "Sources/EnviousWisprAppKit/Views/Main/TranscriptDetailView.swift"
+    "Sources/EnviousWisprAppKit/Views/Main/HistoryDictationCard.swift"
   private static let historyPath =
     "Sources/EnviousWisprAppKit/Views/Main/HistoryDiaryView.swift"
   /// #3972: History's Paste transaction, shared by the transcript and meeting details.
@@ -48,54 +50,41 @@ struct EscapeRecoveryRowConnectorTests {
       source.contains("EscapeRecoveryRowPresentation.accessibilityLabel("),
       "the spoken form must come from the policy, not be re-derived in the view")
     #expect(
-      source.contains("transcriptCoordinator.expiryPulse"),
+      source.contains("transcriptCoordinator.expiry.expiryPulse"),
       "reading the pulse is what re-renders the countdown; without it the row freezes")
   }
 
-  /// History is the other door back to a held recovery, and it was uncounted.
-  ///
-  /// `EscapeRecoveryRestoreSource` has two cases and only `.pill` had a producer,
-  /// so the restore rate was measured over the people who happened to catch a
-  /// three-second offer. The behaviour of the reporter is pinned next door in
-  /// `EscapeRecoveryRestoreTests`; what this asserts is that the view ASKS,
-  /// which is the half that was missing and the half a behavioural test cannot
-  /// see.
+  /// History is the other door back to a held recovery: its Paste counts as a restore.
   @Test("History's Paste reports the restore")
   func historyPasteReportsTheRestore() throws {
     let source = try source(Self.detailPath)
 
     #expect(
-      source.contains("transcriptCoordinator.reportRestoredFromHistory("),
+      source.contains("transcripts.reportRestoredFromHistory("),
       "a restore nobody counts makes the feature look less used than it is")
   }
 
-  @Test("Copy and Paste both route through the delivery guard")
+  @Test("Copy, Save, Share and Paste route through the delivery guard")
   func deliveryActionsRouteThroughTheCoordinator() throws {
     let source = try source(Self.detailPath)
 
-    let guarded = source.components(separatedBy: "transcriptCoordinator.textForDelivery(").count - 1
-    // Two sites in the view: Paste, and Save and Share's enabled state (#4001 H10, which only
-    // decides whether the buttons are enabled). Copy/Save/Share's `exportText` reads the live
-    // row through the shared export owner (#3147 PR3), checked below.
-    #expect(
-      guarded == 2,
-      """
-      Copy and Paste must BOTH ask for the text by id, and the toolbar's enabled state too; \
-      found \(guarded). A button reading `transcript.displayText` directly would paste a row \
-      that lapsed between render and click.
-      """)
-    #expect(
-      source.contains("HistoryTranscriptExport.text("),
-      "Copy, Save and Share go through the shared export owner")
-    let export = try String(
-      contentsOf: RepoRoot.sourceURL("Sources/EnviousWisprAppKit/App/HistoryTranscriptExport.swift"),
+    // #4609: the card draws from catalog display data, so delivery asks by id through the
+    // verified on-demand read: `exportText` (Copy, Save, Paste) and Share's provider.
+    #expect(source.contains("transcripts.dictationTextForDelivery(id: rowID)"))
+    #expect(source.contains("text: { exportText }"), "Paste reads the guarded text at the press")
+    #expect(source.contains("history.dictationTextForDelivery(id: id)"), "Share asks when the receiver asks")
+    let coordinator = try String(
+      contentsOf: RepoRoot.sourceURL("Sources/EnviousWisprAppKit/App/TranscriptCoordinator.swift"),
       encoding: .utf8)
+    let entry = try #require(
+      coordinator.components(separatedBy: "func dictationTextForDelivery(id: UUID)").last?
+        .components(separatedBy: "func textForDelivery(").first)
     #expect(
-      export.contains("coordinator.textForDelivery(live)"),
-      "Copy, Save and Share deliver the LIVE row's text, never the displayed snapshot")
+      entry.contains("liveHistoryRow(id: id)") && entry.contains("current.historyText"),
+      "the delivered text is the LIVE, verified row's, never the displayed snapshot")
     #expect(
-      source.contains("PasteService.copyToClipboard(transcript.displayText)") == false,
-      "the unguarded snapshot read must not come back")
+      source.contains("copyToClipboard(display.displayText)") == false,
+      "the drawn snapshot must never be delivered")
   }
 
   @Test("Keep is present, routed to the coordinator, and shown only for a held row")
@@ -103,7 +92,7 @@ struct EscapeRecoveryRowConnectorTests {
     let source = try source(Self.detailPath)
 
     #expect(
-      source.contains("transcriptCoordinator.keep("),
+      source.contains("transcripts.keep("),
       "Keep must route through the coordinator, which revalidates through the store")
     #expect(
       source.contains("EscapeRecoveryRowPresentation.keepLabel"),
@@ -113,18 +102,8 @@ struct EscapeRecoveryRowConnectorTests {
       "and appear only while the offer stands, not for every row")
   }
 
-  /// The in-flight guard, at BOTH layers, and routed through the POLICY.
-  ///
-  /// `.disabled` alone is a hint: a dictation can start after the button is
-  /// drawn, so the press must stand down too. A press-time guard alone leaves a
-  /// live-looking button that silently does nothing.
-  ///
-  /// This asserts only that the view CALLS the policy and uses the exact
-  /// expressions. Polarity is not checkable here — `.disabled(!allowed)` and
-  /// `.disabled(allowed)` differ by one character and an earlier version of this
-  /// test counted a substring both forms contain, passing while the behaviour
-  /// was inverted. Whether "allowed" means allowed is asserted behaviourally in
-  /// `EscapeRecoveryRowPresentationTests`, which is the only place it can be.
+  /// The in-flight guard, at BOTH layers, and routed through the POLICY. Polarity is asserted
+  /// behaviourally in `EscapeRecoveryRowPresentationTests`.
   @Test("Paste and Keep route their availability through the policy, at both layers")
   func inFlightGuardIsWiredThroughThePolicy() throws {
     let source = try source(Self.detailPath)
@@ -138,54 +117,44 @@ struct EscapeRecoveryRowConnectorTests {
     #expect(
       source.contains("EscapeRecoveryRowPresentation.allowsKeep("),
       "and so must Keep's")
-
-    // Exact expressions, so an inverted modifier is a source change this test
-    // sees rather than a substring it still matches.
-    // #3972 moved the press-time and after-hide checks into `HistoryPaste`, which the
-    // meeting detail shares; the row hands it exactly this policy.
+    // #3972: the press-time and after-hide checks live in `HistoryPaste`; the card hands it the
+    // policy over the live row.
     #expect(
-      source.contains("allowed: { pasteAllowed },"), "Paste hands the policy to History's paste")
+      source.contains("return EscapeRecoveryRowPresentation.allowsPaste(\n          for: live,"),
+      "Paste hands the policy, over the live row, to History's paste")
     let paste = try self.source(Self.pastePath)
     #expect(
       paste.contains("guard allowed() else { return nil }"), "Paste must stand down at press time")
-    // #4101: after the destination is confirmed, with no await before the write.
     #expect(
       paste.contains("guard allowed(), effects.accessibilityGrantedLive(), let text = text() else {"),
       "and again after History is hidden")
+    #expect(source.contains("guard keepAllowed(row) else { return }"), "and so must Keep")
     #expect(
-      source.contains("guard keepAllowed else { return }"),
-      "and so must Keep")
-    #expect(
-      source.contains(".disabled(!permissions.accessibilityGranted || !pasteAllowed)"),
+      source.contains("isEnabled: pasteAllowed(row) || !permissions.accessibilityGranted,"),
       "Paste availability must be the exact compound condition")
-    #expect(source.contains(".disabled(!keepAllowed)"), "Keep must be unavailable when not allowed")
+    #expect(source.contains(".disabled(!keepAllowed(row))"), "Keep must be unavailable when not allowed")
   }
 
-  /// The scope limit, pinned as a connector because it is about what the view
-  /// does NOT do.
-  ///
-  /// The in-flight restriction belongs to this feature's two entry points. An
-  /// earlier version applied it to Copy and to every row's Paste, which changes
-  /// shipped behaviour for users who never switch Escape Recovery on.
+  /// The in-flight restriction belongs to this feature's two entry points; Copy keeps shipped
+  /// behaviour.
   @Test("Copy carries no in-flight restriction")
   func copyIsNotRestrictedByDictation() throws {
     let source = try source(Self.detailPath)
-    let copyBlock = try #require(
-      source.components(separatedBy: "Label(\"Copy\"").first,
+    // #4586: the card's Copy is the shared `HistoryIconCopyButton`; its trailing closure is
+    // the text read at the press, up to the card's focus binding for Copy.
+    let start = try #require(
+      source.range(of: "HistoryIconCopyButton(label: Self.copyLabel)"),
       "the Copy button must still exist")
-    let copyAction = try #require(
-      copyBlock.components(separatedBy: "Button {").last,
-      "and have an action body")
+    let end = try #require(
+      source.range(of: ".focused($focus, equals: .control(\"copy\"))", range: start.upperBound..<source.endIndex),
+      "and keep its focus binding right after its text closure")
+    let copyAction = String(source[start.upperBound..<end.lowerBound])
 
     #expect(
-      copyAction.contains("isDictationInFlight") == false,
+      copyAction.contains("pipelineState") == false,
       "Copy is not one of this feature's entry points and must keep shipped behaviour")
-    #expect(
-      copyAction.contains("pasteAllowed") == false,
-      "and must not borrow Paste's policy either")
-    #expect(
-      copyAction.contains("exportText"),
-      "control: it still routes through the lapse guard (exportText reads textForDelivery through HistoryTranscriptExport), which IS in scope")
+    #expect(copyAction.contains("pasteAllowed") == false, "and must not borrow Paste's policy either")
+    #expect(copyAction.contains("exportText"), "control: it still routes through the lapse guard")
   }
 
 }

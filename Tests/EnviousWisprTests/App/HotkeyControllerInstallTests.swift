@@ -85,7 +85,8 @@ import Testing
       heartControlRecovery: hcr,
       recordingLockedAccess: lockAccess,
       languageSuggestionPresenter: nil,
-      pendingRequests: pendingRequests
+      pendingRequests: pendingRequests,
+      abandonPendingStart: {}
     )
     let starter = RecordingStarter(
       audioCapture: audio,
@@ -102,7 +103,7 @@ import Testing
       dictationLifecycleCoordinator: nil,
       // #3973 C1: a recovery arm that lets a row act while start-up is parked after the wait.
       recovery: RecordingStarter.RecoveryAccess(
-        makeDirective: { _, _, _, _, _ in
+        makeDirective: { _, _, _, _, _, _ in
           await duringRecoveryArm?()
           return nil
         },

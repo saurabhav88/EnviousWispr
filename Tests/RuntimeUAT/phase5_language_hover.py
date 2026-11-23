@@ -14,7 +14,7 @@ comparison is what carries the claim:
     arm B (hover)     ->  still present well past 6s, then gone after leaving
 
 The dwell is the catalog's, not a number invented here:
-`.after(seconds: 6, pausesOnHover: true)` at `PillCatalog.swift:242`, on a chip
+`.after(seconds: 6, hover: .restartFull)` at `PillCatalog.swift:242`, on a chip
 requesting `.fixed(340)` width and 56pt height.
 
 **Staging it needs a real non-English dictation, not a seam.** The presenter

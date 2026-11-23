@@ -45,7 +45,7 @@ struct TelemetryEmitterRegistryTests {
 
   /// Grandfathered rows at the freeze. The count must EQUAL this: grade a row, lower the
   /// number in the same change. Slack here is a free `ungraded` slot for a new emitter.
-  static let ungradedCeiling = 106
+  static let ungradedCeiling = 105
   /// SHA-256 of the sorted, newline-joined `ungraded` event names. The count alone lets a
   /// retired row be swapped for a new `ungraded` one; the fingerprint pins the IDENTITIES.
   /// The failure message prints the new value; paste it only when grading or retiring.
@@ -263,10 +263,51 @@ struct TelemetryEmitterRegistryTests {
   /// parameters, which changes the enclosing-function identity of their existing sites. No new
   /// site or event: optional content-free properties on existing rows (a closed size name, an
   /// engine name and counts).
+  /// #4528 F1: four new single sites (`onboardingScreenViewed`, `onboardingChoiceMade`,
+  /// `onboardingDownloadFinished`, `onboardingFilmFinished`), each a graded registry row with its
+  /// checklist answered (per_user_action, keep, about 10-12k rows/month total at 427 installs per
+  /// 30 days); `onboardingCompleted` gained the optional `summary:` parameter, which changes its
+  /// existing site's identity (same event, same once-per-visit cadence, optional content-free
+  /// fields: closed typed values and one Bool). F1 repair (M65): `onboardingChoiceMade` and
+  /// `onboardingDownloadFinished` take typed values (`OnboardingTelemetry.Choice`,
+  /// `DownloadModel`), which changes those two sites' identities only; same events and rows.
+  /// F2b (M68): `onboardingChoiceMade` takes `followedRecommendation: Bool?` (unknown agreement
+  /// is omitted, never sent as false); that one site's identity only, same event and row.
+  /// D6b (M84): step_completed gains optional polish_ran on the existing Practice result;
+  /// one content-free boolean, same event and once-per-visit cadence.
+  /// #4578 C6: `appLaunched` gains the optional `speechModelsInstalled:` parameter (closed
+  /// `parakeet`/`whisper`/`both`/`none`, omitted while unknown), which changes its existing
+  /// site's identity only; same event, same per_launch cadence, no new row.
+  /// #4021: one NEW site, `coreAudioReadStuck` for the new `audio.core_audio_read_stuck` row.
+  /// Checklist: rare_failure (zero rows on a healthy Mac; at most one `timed_out` and one
+  /// `recovered` per abandoned Core Audio lane read, because the lane refuses new reads while one
+  /// is stuck; no daily cap is claimed). No existing row carries it: it fires between takes, with
+  /// no take. Reader: the #4021 post-release check (timed_out per install per day, recovered
+  /// separately, beside the #4599 app-hang outcome metric). Closed `read`/`phase` String tokens
+  /// and Int milliseconds only, no device names or UIDs; launch-scoped (no `take_id`); registry
+  /// row `keep`.
+  /// #4601 C5A: `audioInputResolution` takes `defaultPresent: Bool?`, `enumerationOutcome:
+  /// String?` and `bindOutcome: String?` (unknown at a timed-out or refused start is omitted,
+  /// never sent as false or `not_attempted`); that one site's identity only, same event, same
+  /// per-cold-attempt cadence, no new row or field.
+  /// #4601 C8A: `audioInputResolution` takes `skippedDefaultTransport: String?` (a closed
+  /// transport label, only when Auto bypassed a proven non-microphone default; omitted
+  /// otherwise); that one site's identity only, same event and cadence, no new row. The
+  /// audio-unit lane's stuck jobs reuse the existing `coreAudioReadStuck` site (new closed
+  /// `read` tokens), so no new site.
+  /// #4845: one new event, `onboarding.skip_ahead`, at one site (`TelemetryService.onboardingSkipAhead`),
+  /// graded in its own registry row (per_user_action, keep; at most 3 per Setup visit, latched by
+  /// OnboardingCoordinator). No existing site moved. Then `onboarding.abandoned`'s one site
+  /// (`TelemetryService.onboardingAbandoned`) gained the optional `skipAhead:` summary argument:
+  /// same site, same once-per-visit cadence, two more properties (`skip_ahead_offered`,
+  /// `offer_to_first_delivery_seconds`, `setup_visit_id`), and `onboardingSkipAhead` gained the
+  /// same `visit:` key (same site, same cadence).
   static let sitesFingerprint =
-    "1fc27947a9d91679cd2833cd019f1b50c9b98f967d3bf352dba16bee1dbf19e6"
+    "3d4aacad89f6f2f9153dfa13bf27fa6cb57fb9c8a1c45ff590cc79503b00ad6b"
+  /// #4721: `api_key.validation_completed` graded (per_launch, keep) when the launch key check
+  /// added `source=launch`; ceiling 106 -> 105.
   static let ungradedFingerprint =
-    "676fe038e6e688fa79c33aae8cec75e5996979f10c3f79775755ec23c5dba168"
+    "ca38571027084be0602e8a51e30333a8587307ae0982c55fdbd01f1635d20286"
 
   /// The closed cadence vocabulary. Deliberately no `per_chunk`, `per_buffer`, `per_frame`,
   /// `per_second`: an event finer than a take folds into the take's terminal row.

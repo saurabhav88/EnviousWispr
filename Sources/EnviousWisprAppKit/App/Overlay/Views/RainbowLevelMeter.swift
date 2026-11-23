@@ -56,6 +56,11 @@ struct RainbowLevelMeter: View {
   /// identical samples on successive poll ticks.
   var onHistoryChange: ([CGFloat]) -> Void = { _ in }
 
+  /// #4841: draw every bar at the silence floor while the silent-mic notice
+  /// shows. Display only: the history keeps recording, so the meter resumes with
+  /// real audio the moment the notice clears.
+  let isFlat: Bool
+
   /// #2216: the last `barCount` levels, oldest first. Bar `i` is a MOMENT, not a
   /// position on a shape.
   ///
@@ -111,8 +116,10 @@ struct RainbowLevelMeter: View {
     barWidth: CGFloat = 2,
     spacing: CGFloat = 1.5,
     onHistoryChange: @escaping ([CGFloat]) -> Void = { _ in },
-    initialHistory: [CGFloat] = []
+    initialHistory: [CGFloat] = [],
+    isFlat: Bool = false
   ) {
+    self.isFlat = isFlat
     self.audioLevel = audioLevel
     self.tick = tick
     self.height = height
@@ -209,7 +216,7 @@ struct RainbowLevelMeter: View {
 
   var body: some View {
     Canvas { context, size in
-      let levels = Self.bars(history: history)
+      let levels = isFlat ? Array(repeating: 0, count: Self.barCount) : Self.bars(history: history)
       for i in 0..<Self.barCount {
         let barHeight = size.height * Self.fill(level: levels[i])
         let x = CGFloat(i) * (barWidth + spacing)

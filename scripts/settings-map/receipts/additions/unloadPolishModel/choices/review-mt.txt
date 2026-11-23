@@ -1,0 +1,77 @@
+{
+  "unloadPolishModel.fifteenMinutes": {
+    "language": "mt",
+    "title": "wara 15-il minuta",
+    "words": [
+      "kwart ta’ siegħa",
+      "15 min"
+    ],
+    "phrases": [
+      "neħħi l-mudell għat-titjib tat-test mill-memorja wara 15-il minuta mingħajr ma tiddetta"
+    ]
+  },
+  "unloadPolishModel.fiveMinutes": {
+    "language": "mt",
+    "title": "wara 5 minuti",
+    "words": [
+      "5 min",
+      "AI Polish 5 minuti"
+    ],
+    "phrases": [
+      "illibera l-memorja li juża l-mudell tal-irfinar wara 5 minuti bla dettatura"
+    ]
+  },
+  "unloadPolishModel.immediately": {
+    "language": "mt",
+    "title": "minnufih (madwar 10 sekondi)",
+    "words": [
+      "10 sekondi",
+      "AI Polish 10 sekondi"
+    ],
+    "phrases": [
+      "neħħi l-mudell tal-irfinar mill-memorja madwar 10 sekondi wara li nieqaf niddetta"
+    ]
+  },
+  "unloadPolishModel.never": {
+    "language": "mt",
+    "title": "qatt",
+    "words": [
+      "żomm il-mudell tal-irfinar fil-memorja"
+    ],
+    "phrases": [
+      "żomm il-mudell li jtejjeb it-test fil-memorja anki meta ma nkunx qed niddetta"
+    ]
+  },
+  "unloadPolishModel.oneHour": {
+    "language": "mt",
+    "title": "wara siegħa",
+    "words": [
+      "AI Polish 60 minuta"
+    ],
+    "phrases": [
+      "illibera l-memorja li juża l-mudell tal-irfinar wara siegħa bla dettatura"
+    ]
+  },
+  "unloadPolishModel.tenMinutes": {
+    "language": "mt",
+    "title": "wara 10 minuti",
+    "words": [
+      "10 min",
+      "AI Polish 10 minuti"
+    ],
+    "phrases": [
+      "neħħi l-mudell li jtejjeb it-test mill-memorja wara għaxar minuti bla dettatura"
+    ]
+  },
+  "unloadPolishModel.twoMinutes": {
+    "language": "mt",
+    "title": "wara 2 minuti",
+    "words": [
+      "2 min",
+      "AI Polish 2 minuti"
+    ],
+    "phrases": [
+      "neħħi l-mudell li jtejjeb it-test mill-memorja wara żewġ minuti bla dettatura"
+    ]
+  }
+}

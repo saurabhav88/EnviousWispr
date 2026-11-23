@@ -10,6 +10,7 @@ extension DictationSessionConfig {
     inputMode: RecordingMode = .pushToTalk,
     triggerSource: TriggerSource = .programmatic,
     autoPasteToActiveApp: Bool = false,
+    copyOnlyByPreference: Bool = false,
     restoreClipboardAfterPaste: Bool = false,
     keepDictationsOutOfClipboardHistory: Bool = false,
     // Defaults OFF here while production defaults ON: every existing suite keeps
@@ -34,13 +35,17 @@ extension DictationSessionConfig {
     escapeRecoveryEnabled: Bool = false,
     recoverySessionID: String? = nil,
     s1Control: S1ControlSettings = .default,
-    englishSpelling: EnglishSpelling = .american
+    englishSpelling: EnglishSpelling = .american,
+    translationTarget: DictationTranslationTarget? = nil,
+    // #4841: on, like production, so a suite that never mentions it keeps the shipped value.
+    silentMicWarningsEnabled: Bool = true
   ) -> DictationSessionConfig {
     DictationSessionConfig(
       autoCopyToClipboard: autoCopyToClipboard,
       inputMode: inputMode,
       triggerSource: triggerSource,
       autoPasteToActiveApp: autoPasteToActiveApp,
+      copyOnlyByPreference: copyOnlyByPreference,
       restoreClipboardAfterPaste: restoreClipboardAfterPaste,
       keepDictationsOutOfClipboardHistory: keepDictationsOutOfClipboardHistory,
       smartInsertion: smartInsertion,
@@ -48,6 +53,7 @@ extension DictationSessionConfig {
       vadSilenceTimeout: vadSilenceTimeout,
       vadSensitivity: vadSensitivity,
       vadEnergyGate: vadEnergyGate,
+      silentMicWarningsEnabled: silentMicWarningsEnabled,
       languageMode: languageMode,
       englishSpelling: englishSpelling,
       useStreamingASR: useStreamingASR,
@@ -60,7 +66,8 @@ extension DictationSessionConfig {
       preferredInputDeviceIDOverride: preferredInputDeviceIDOverride,
       recoverySessionID: recoverySessionID,
       escapeRecoveryEnabled: escapeRecoveryEnabled,
-      s1Control: s1Control
+      s1Control: s1Control,
+      translationTarget: translationTarget
     )
   }
 }

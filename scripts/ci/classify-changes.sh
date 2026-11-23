@@ -178,7 +178,7 @@ push_diff() {
   echo "==> Detecting changed files (push before..after): before=$before after=$after"
   # All-zeroes BEFORE = a new ref / first push / branch create with no prior
   # tip to diff against -> fail safe to a full build.
-  if printf '%s' "$before" | grep -qE '^0+$'; then
+  if grep -qE '^0+$' <<<"$before"; then  # no pipe into grep -q under pipefail (#4817)
     echo "==> before is all-zeroes (new ref) — failing safe to a full build"
     printf 'needs_build=true\n' >>"$GITHUB_OUTPUT"
     printf 'needs_website=true\n' >>"$GITHUB_OUTPUT"

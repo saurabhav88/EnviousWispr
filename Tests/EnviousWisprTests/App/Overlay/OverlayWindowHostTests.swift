@@ -710,9 +710,18 @@ struct OverlayWindowHostTests {
   @Test("a continuation is clamped against the display it is on, not the pointer's")
   func continuationKeepsItsOwnScreen() throws {
     var pointer = Self.screen
+    var freshLookups = 0
     let recorder = OverlayPanelCommandRecorder()
-    let h = Self.splitHost(
-      pointer: { pointer }, containing: { _ in Self.screen }, effects: recorder.makeEffects())
+    let h = OverlayWindowHost(
+      screens: {
+        OverlayScreenResolver(
+          containing: { _ in Self.screen },
+          fresh: {
+            freshLookups += 1
+            return pointer
+          },
+          current: { pointer })
+      }, effects: recorder.makeEffects())
     defer { recorder.panel?.orderOut() }
 
     h.present(
@@ -731,6 +740,7 @@ struct OverlayWindowHostTests {
       after.origin.y == first.origin.y,
       "the pill was dragged down its own display by a clamp read off the pointer's screen")
     #expect(after.origin.x == first.origin.x, "a continuation must preserve X (#2195)")
+    #expect(freshLookups == 1, "the continuation asked for a new display")
   }
 
   /// **The fallback is the disconnected-display case.** When nothing contains
@@ -846,31 +856,38 @@ struct OverlayWindowHostTests {
       "the drag was recorded against a display the panel never touched")
   }
 
-  /// A FRESH presentation still belongs where the POINTER is, which is the
-  /// shipped target resolution and must not be collateral damage of the fix
-  /// above. Without this, anchoring everything to the containing screen would
-  /// look correct and quietly stop new pills following the user.
-  ///
-  /// Asserted on Y, not X: both fixtures span the same horizontal range, so a
-  /// centre-X assertion cannot tell them apart and would pass either way.
-  @Test("a fresh presentation still follows the pointer's screen")
-  func freshPresentationFollowsThePointer() throws {
+  @Test(
+    "a fresh pill uses the foreground window's display or falls back to the pointer",
+    .bug("https://github.com/saurabhav88/EnviousWispr/issues/3367", "Fresh pill target display"),
+    arguments: [true, false])
+  func freshPresentationChoosesTarget(windowOnDisplay: Bool) throws {
+    let above = ScreenGeometry(
+      id: ScreenID(rawValue: 2),
+      frame: CGRect(x: 0, y: 982, width: 1512, height: 400),
+      visibleFrame: CGRect(x: 0, y: 982, width: 1512, height: 380))
+    let displays = [Self.screen, above]
+    // Negative Quartz Y puts the window above the primary display. The
+    // fallback case gives it the same size and height, but no attached screen.
+    let window = CGRect(x: windowOnDisplay ? 200 : 4000, y: -320, width: 800, height: 240)
     let recorder = OverlayPanelCommandRecorder()
-    let h = Self.splitHost(
-      pointer: { Self.shortSecondary }, containing: { _ in Self.screen },
-      effects: recorder.makeEffects())
+    let h = OverlayWindowHost(
+      screens: {
+        OverlayScreenResolver(
+          fresh: {
+            let index = OverlayScreenResolver.freshDisplayIndex(
+              windowBounds: window, displayFrames: displays.map(\.frame), fallback: 0)
+            return displays[index]
+          },
+          current: { Self.screen })
+      }, effects: recorder.makeEffects())
     defer { recorder.panel?.orderOut() }
 
-    h.present(
+    #expect(h.present(
       Self.view(width: 185, height: 44), width: .fixed(185), fixedHeight: 92, isFresh: true,
-      position: .top)
+      position: .top))
 
     let panel = try #require(recorder.panel)
-    let expected = OverlayPlacementState.clampedOriginY(
-      requestedY: OverlayPlacementState.freshOriginY(for: .top, on: Self.shortSecondary),
-      height: 92, on: Self.shortSecondary)
-    #expect(
-      panel.frame.origin.y == expected,
-      "a fresh pill was placed on the containing screen instead of the pointer's")
+    let expected = windowOnDisplay ? above.visibleFrame : Self.screen.visibleFrame
+    #expect(expected.contains(panel.frame), "expected the whole pill inside the target display")
   }
 }

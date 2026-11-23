@@ -35,7 +35,6 @@ extension WisprBootstrapper: LaunchTarget {}
 /// properties return these same values, so there is one definition.
 package enum LaunchWindowIdentity {
   package static let mainTitle = AppConstants.appName
-  package static let onboardingTitle = AppConstants.onboardingWindowTitle
   package static let onboardingID = AppConstants.onboardingWindowID
 }
 

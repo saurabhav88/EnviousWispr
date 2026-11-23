@@ -1,6 +1,6 @@
 {
   "schema": 1,
-  "updated": "2026-11-05",
+  "updated": "2026-11-20",
   "models": [
     {
       "provider": "openAI",
@@ -826,6 +826,82 @@
       "supportsChatCompletions": false,
       "allowsFileBatch": true,
       "medianPolishMs": 2807
+    },
+    {
+      "provider": "claude",
+      "id": "claude-fable-5-2",
+      "released": "2026-11-09",
+      "recommended": false,
+      "hidden": false,
+      "request": {
+        "claudeShape": "effortLow"
+      },
+      "supportsChatCompletions": false,
+      "allowsFileBatch": true,
+      "medianPolishMs": 956
+    },
+    {
+      "provider": "gemini",
+      "id": "gemini-4-hydrogen",
+      "recommended": false,
+      "hidden": false,
+      "request": {
+        "geminiThinking": "none"
+      },
+      "supportsChatCompletions": false,
+      "allowsFileBatch": true,
+      "medianPolishMs": 2260
+    },
+    {
+      "provider": "gemini",
+      "id": "gemini-4-carbon",
+      "recommended": false,
+      "hidden": false,
+      "request": {
+        "geminiThinking": "none"
+      },
+      "supportsChatCompletions": false,
+      "allowsFileBatch": true
+    },
+    {
+      "provider": "openAI",
+      "id": "gpt-6.2-sol",
+      "released": "2026-11-02",
+      "recommended": false,
+      "hidden": false,
+      "request": {
+        "openAIEffort": "low",
+        "temperature": "omit"
+      },
+      "supportsChatCompletions": true,
+      "allowsFileBatch": true,
+      "medianPolishMs": 2691
+    },
+    {
+      "provider": "openAI",
+      "id": "gpt-6.2-astra",
+      "released": "2026-10-31",
+      "recommended": false,
+      "hidden": false,
+      "request": {
+        "openAIEffort": "low",
+        "temperature": "omit"
+      },
+      "supportsChatCompletions": true,
+      "allowsFileBatch": true,
+      "medianPolishMs": 2145
+    },
+    {
+      "provider": "gemini",
+      "id": "gemini-4-neon",
+      "recommended": false,
+      "hidden": false,
+      "request": {
+        "geminiThinking": "none"
+      },
+      "supportsChatCompletions": false,
+      "allowsFileBatch": true,
+      "medianPolishMs": 6242
     }
   ]
 }

@@ -48,6 +48,25 @@ import Testing
     #expect(ModifierKeyCodes.flag(for: ModifierKeyCodes.globe) == .function)
   }
 
+  /// #4642: Caps Lock reads down while it is switched on, so it must never count as held.
+  @Test("held ordinary-key membership is exact across virtual key codes below 128")
+  func heldOrdinaryKeyMembership() {
+    // Independent literal oracle: nine standalone modifiers plus Caps Lock.
+    let excluded: Set<UInt16> = [54, 55, 56, 57, 58, 59, 60, 61, 62, 63]
+
+    for code in UInt16(0)..<UInt16(128) {
+      let expected = excluded.contains(code) == false
+      #expect(
+        ModifierKeyCodes.isHeldOrdinaryKey(code) == expected,
+        "unexpected held-ordinary membership for key code \(code)")
+    }
+
+    #expect(ModifierKeyCodes.capsLock == 57)
+    #expect(ModifierKeyCodes.flag(for: 57) == nil)
+    #expect(ModifierKeyCodes.isModifierOnly(57) == false)
+    #expect(ModifierKeyCodes.all == Set<UInt16>([54, 55, 56, 58, 59, 60, 61, 62, 63]))
+  }
+
   @Test("Membership is exactly nine keys, so nothing was added or lost")
   func membershipCount() {
     #expect(ModifierKeyCodes.all.count == 9)

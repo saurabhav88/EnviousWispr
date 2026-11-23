@@ -197,7 +197,9 @@ final class CenteredRelocationPresenter: RelocationPresenting {
     let panel = makeCardPanel(card)
     application.activate(.ignoringOtherApps)
     panels.makeKeyAndOrderFront(panel)
-    let response = NSApp.runModal(for: panel)
+    // #4825: the offer waits for the person inside a main-actor task, before the app is built;
+    // that wait is not a freeze, so it files no freeze report.
+    let response = ObservabilityBootstrap.withoutAppHangReports { NSApp.runModal(for: panel) }
     panel.orderOut(nil)
     return response == Self.moveResponse ? .move : .notNow
   }

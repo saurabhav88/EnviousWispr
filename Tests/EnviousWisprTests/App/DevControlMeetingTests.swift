@@ -61,7 +61,7 @@
       init() throws {
         harness = try MeetingCoordinatorTests.Harness()
         history = MeetingHistoryPresentationTests.Rig()
-        history.coordinator.meetingInfo = { [unowned self] id in
+        history.coordinator.meetingPresenter.meetingInfo = { [unowned self] id in
           harness.coordinator.record(id: id).flatMap { MeetingHistoryInfo.paired(with: $0) }
         }
       }
@@ -89,7 +89,7 @@
       #expect(Self.code(await unwired.stop(["meetingID": id])) == "notWired")
       #expect(Self.code(unwired.status([:])) == "notWired")
       #expect(Self.code(unwired.list([:])) == "notWired")
-      #expect(Self.code(unwired.get(["meetingID": id])) == "notWired")
+      #expect(Self.code(await unwired.get(["meetingID": id])) == "notWired")
       #expect(Self.code(await unwired.retry(["meetingID": id])) == "notWired")
       #expect(Self.code(await unwired.deleteAudio(["meetingID": id])) == "notWired")
       #expect(Self.code(await unwired.delete(["meetingID": id])) == "notWired")
@@ -330,7 +330,7 @@
       let coordinator = rig.harness.coordinator
       coordinator.summaries = summaryRig.makeOwner(documents: coordinator.documents)
       let meetingID = try await Self.readyMeeting(rig)
-      rig.history.coordinator.meetingInfo = { id in
+      rig.history.coordinator.meetingPresenter.meetingInfo = { id in
         coordinator.record(id: id).flatMap { MeetingHistoryInfo.paired(with: $0) }
       }
       summaryRig.world.transcript = "You: ship it"

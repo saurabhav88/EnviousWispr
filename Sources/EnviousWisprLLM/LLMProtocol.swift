@@ -288,8 +288,9 @@ public enum LLMError: LocalizedError, Sendable, Equatable {
   /// gets deterministic-cleaned raw text, no provider stamp, no "AI polish
   /// failed" pill. The runner adds this to `isSilentPolishSkip` and emits
   /// `llm.polish_skipped` with the carried reason. NON-retryable by
-  /// `LLMRetryPolicy` (the connector already performs the single
-  /// connection-refused retry that covers the restart-once window).
+  /// `LLMRetryPolicy` (#4496: single attempt on `LocalPolishTransport`,
+  /// immediate silent bypass on helper failure while background restart runs
+  /// for subsequent dictations).
   case egOneSkipped(EGOneSkipReason)
   /// #2649 (cloud review): the same bypass, stamped with the ENGINE that
   /// produced it. Connectors throw `egOneSkipped` because they share one

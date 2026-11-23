@@ -60,7 +60,6 @@
    ]
   },
   "es": {
-   "title": "detectar el idioma automáticamente",
    "words": [],
    "phrases": [
     "activar la detección automática del idioma en la transcripción final de la reunión",
@@ -84,7 +83,6 @@
    ]
   },
   "fr": {
-   "title": "détecter automatiquement la langue",
    "words": [],
    "phrases": [
     "détecter automatiquement la langue pour transcrire la réunion une fois terminée",

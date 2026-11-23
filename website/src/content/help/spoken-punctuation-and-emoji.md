@@ -10,7 +10,7 @@ seeAlso: "speak-emoji-dictation"
 updated: 2026-11-05
 deflection: "can_resolve"
 ---
-You can speak a phrase and get a symbol, an emoji or a line break instead of the words you said. Emoji and slash work by default. Spoken punctuation is off until you turn it on. The settings are under **Dictation Settings** > **Engine**.
+Emoji and slash commands work by default. Spoken punctuation is off until you turn it on under **Dictation Settings** > **Engine**.
 
 ### Dictate an emoji
 

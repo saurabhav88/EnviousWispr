@@ -6,7 +6,7 @@ section: "EnviousMeet"
 order: 10
 keywords: ["enviousmeet", "record a meeting", "meeting recorder", "record a call", "zoom transcript", "google meet transcript", "teams transcript", "meeting notes", "who said what", "speaker labels", "speaker names", "meeting summary", "summary engine", "call sound", "system audio", "record without a bot", "consent", "calendar meeting names", "invited people", "meeting audio", "probable echo", "echo", "mute", "leave my voice out when muted", "turn off dictation during meetings", "live preview", "live words", "transcript engine", "transcript language", "long meeting summary"]
 related: ["enviousmeet-when-a-call-starts", "transcript-history", "transcribe-a-file-speaker-labels", "ai-polish-and-cloud-data", "privacy-overview"]
-updated: 2026-11-06
+updated: 2026-11-20
 deflection: "show_but_always_send"
 ---
 EnviousMeet records a call or a meeting on your Mac and writes a transcript that shows who said what. No bot joins your call. The audio stays on your Mac, and the transcript is written on your Mac.
@@ -99,14 +99,14 @@ On the **Models** tab, **Transcript engine** offers Parakeet and, once downloade
 
 ### What you get after a meeting
 
-Your meetings are in **History** under **M**, for Meetings. On the EnviousMeet page, **Show recordings** takes you there.
+Your meetings are on the **Meetings** tab of **History**. Click **Open** on a meeting to see it. On the EnviousMeet page, **Show recordings** takes you there.
 
 - **Transcript.** The transcript with who said what is written when you stop. When the call sound has speech in it, everything your microphone hears is marked **You**, with or without headphones. Someone in the room with you is also marked **You**, because the microphone does not split voices during a call. The people on the call get numbered speaker labels, or names from supported call apps (the Zoom app, the Teams app, Google Meet, and Teams and Zoom on the web) when EnviousMeet has enough evidence. If the voices in the call sound cannot be told apart, their words are marked **Call**. When the call sound has no transcribed speech, such as an in-person meeting recorded on the microphone, voices the app can tell apart get numbered speaker labels.
-- **Notes.** Type your own notes on the **Notes** tab.
-- **Summary.** When automatic summaries are on, your EnviousMeet summary engine writes one on the meeting's **Summary** tab.
+- **Notes.** Type your own notes on the **Your notes** tab, beside the transcript. While the meeting records, **Mark moment** adds a timed marker and **Action item** turns the current note into a task, or back.
+- **Summary.** When automatic summaries are on, your EnviousMeet summary engine writes one on the meeting's **AI summary** tab.
 - **If a change cannot be saved.** History says **Your notes could not be saved.** or **Your summary changes could not be saved.** Click **Try again**. Your typing stays in the app until a save works.
-- **Audio.** Each recording keeps its audio until you delete it. **Delete audio** removes only the audio and keeps the transcript. **Delete meeting** removes everything.
-- **Transcribe again** writes the transcript again from the kept audio, with any ready transcript engine. Your current transcript stays until the new one is ready.
+- **Audio.** Each recording keeps its audio for the period set in **Keep meeting audio** in **Settings** > **App Settings** > **Recordings**, or until you delete it. **Delete recording, keep text** in the **···** menu removes only the audio and keeps the transcript and notes. **Delete meeting** removes everything.
+- **Transcribe again with** in the **···** menu writes the transcript again from the kept audio, with any ready transcript engine. It asks you first, because the new text replaces the transcript, including speaker names. Your current transcript stays until the new one is ready.
 
 ### How meetings are named
 
@@ -122,7 +122,7 @@ The calendar is only read, never changed. EnviousMeet reads the matching calenda
 
 ### Get a meeting summary, and where the text goes
 
-Choose the engine under **Summary engine** on the **Summaries** tab of the EnviousMeet page. It is separate from dictation's AI Polish. With **Write a summary when a meeting ends** on, that engine writes a summary from the transcript and your notes. In History, for a meeting with transcript text, you can also click **Write summary**, or **Write again** to replace a summary. Replacing a summary you edited asks you first. Without a summary engine, no summary is written.
+Choose the engine under **Summary engine** on the **Summaries** tab of the EnviousMeet page. It is separate from dictation's AI Polish. With **Write a summary when a meeting ends** on, that engine writes a summary from the transcript and your notes. In History, for a meeting with transcript text and no summary yet, click **Write summary with** and your model on the **AI summary** tab; that first summary is saved straight away. To write a new version, click **···**, choose **Write summary again with** and pick a model. A **Compare summaries** window shows the current and the new summary side by side: click **Keep new** or **Keep current**. Without a summary engine, no summary is written.
 
 | Summary engine | Where the transcript, notes and meeting details go |
 | --- | --- |
@@ -134,7 +134,7 @@ Choose the engine under **Summary engine** on the **Summaries** tab of the Envio
 
 The meeting details a summary uses are the start time, recorded length, call app, and, when available, the calendar event's title and invited people.
 
-**Long meetings with Apple Intelligence.** Apple Intelligence can read only part of a long meeting at once, so it writes the summary in parts. When that happens, and while Apple Intelligence is still your summary engine, the **Summary** tab says **Long meeting: this summary was written in parts.** and adds that some cloud models can fit longer meetings in one piece. Click **Open Summaries settings** to choose another summary engine. This does not change dictation's AI Polish.
+**Long meetings with Apple Intelligence.** Apple Intelligence can read only part of a long meeting at once, so it writes the summary in parts. When that happens, and while Apple Intelligence is still your summary engine, the **AI summary** tab says **Long meeting: this summary was written in parts.** and adds that some cloud models can fit longer meetings in one piece. Click **Open Summaries settings** to choose another summary engine. This does not change dictation's AI Polish.
 
 Summaries with Ollama need Ollama 0.12.6 or later. Turning summaries off does not stop a summary that has already started.
 

@@ -26,24 +26,16 @@ struct MeetingModelsTabTests {
         ])
   }
 
-  @Test("Apple says Coming soon and can never be picked; Whisper only once it is downloaded")
+  @Test("Apple says Coming soon and can never be picked; both speech engines always can (#4578)")
   func transcriptSelectability() {
-    for ready in [false, true] {
-      #expect(!MeetingTranscriptEngineCards.isSelectable(.appleComingSoon, whisperReady: ready))
-      #expect(
-        MeetingTranscriptEngineCards.unavailability(.appleComingSoon, whisperReady: ready)
-          == String(localized: MeetingsCopy.engineComingSoon))
-      #expect(MeetingTranscriptEngineCards.isSelectable(.engine(.parakeet), whisperReady: ready))
-      #expect(
-        MeetingTranscriptEngineCards.unavailability(.engine(.parakeet), whisperReady: ready) == nil)
+    #expect(!MeetingTranscriptEngineCards.isSelectable(.appleComingSoon))
+    #expect(
+      MeetingTranscriptEngineCards.unavailability(.appleComingSoon)
+        == String(localized: MeetingsCopy.engineComingSoon))
+    for engine in MeetingEngineChoice.allCases {
+      #expect(MeetingTranscriptEngineCards.isSelectable(.engine(engine)))
+      #expect(MeetingTranscriptEngineCards.unavailability(.engine(engine)) == nil)
     }
-    #expect(!MeetingTranscriptEngineCards.isSelectable(.engine(.whisper), whisperReady: false))
-    #expect(
-      MeetingTranscriptEngineCards.unavailability(.engine(.whisper), whisperReady: false)
-        == String(localized: MeetingsCopy.whisperNotDownloaded))
-    #expect(MeetingTranscriptEngineCards.isSelectable(.engine(.whisper), whisperReady: true))
-    #expect(
-      MeetingTranscriptEngineCards.unavailability(.engine(.whisper), whisperReady: true) == nil)
   }
 
   @Test("the spec tables match dictation's Engine cards for the same model, without times")

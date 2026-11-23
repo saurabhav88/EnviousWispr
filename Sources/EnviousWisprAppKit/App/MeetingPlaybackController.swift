@@ -71,6 +71,9 @@ final class MeetingPlaybackController {
   private(set) var state: State = .idle
   /// Where playback is on the meeting timeline: the end of the last window that has played.
   private(set) var positionMs = 0
+  /// Whether `positionMs` is a place the user chose: true once the recording has played or been
+  /// moved. A player never played or moved has no real position (a note typed then gets no time).
+  private(set) var hasPosition = false
   /// Window reads that came back after a seek, pause or stop and were dropped unplayed.
   private(set) var staleReadsDropped = 0
   let durationMs: Int
@@ -164,6 +167,7 @@ final class MeetingPlaybackController {
     // #3147 PR4B: no start while the recording's files are being switched.
     if let sourceID, arbiter?.mayStart(sourceID) == false { return }
     if state == .finished { positionMs = 0 }
+    hasPosition = true
     do {
       try output.start()
     } catch {
@@ -192,6 +196,7 @@ final class MeetingPlaybackController {
     let wasPlaying = state == .playing
     halt()
     positionMs = min(max(0, ms), durationMs)
+    hasPosition = true
     guard positionMs < durationMs else {
       state = .finished
       return
@@ -224,6 +229,74 @@ final class MeetingPlaybackController {
     halt()
     audio = nil
     state = .unavailable
+  }
+
+  /// A small preview of the actual recording. Use the same media source as playback, but
+  /// an independent reader so preview seeks never move the player's decode position.
+  func waveform() async -> [Float] {
+    guard state != .unavailable, durationMs > 0 else { return [] }
+    return await Self.readWaveform(media: media, durationMs: durationMs)
+  }
+
+  /// #4611: bar heights from RMS levels, on a decibel scale relative to the loudest bar: the
+  /// loudest is 1, anything 35 dB or more below it is 0, so speech rises and pauses stay flat.
+  nonisolated static func loudness(_ levels: [Float]) -> [Float] {
+    let peak = levels.max() ?? 0
+    guard peak > 0 else { return levels }
+    let floorDecibels: Float = -35
+    return levels.map { level in
+      let decibels = 20 * log10(max(level / peak, 1e-6))
+      return max(0, 1 - decibels / floorDecibels)
+    }
+  }
+
+  @concurrent
+  private static func readWaveform(media: PlaybackMedia, durationMs: Int) async -> [Float] {
+    do {
+      let source: any PlaybackWindowAudio
+      if case .transcript(let audio) = media {
+        guard let imported = audio as? ImportedFilePlaybackAudio else { return [] }
+        source = imported.independentReader()
+      } else {
+        source = try open(media)
+      }
+      // #4611: the voice's shape. A short recording (a dictation) is read whole, so each bar
+      // is the loudness of its whole slice; a long one (a meeting) reads six short windows
+      // spread at least 2.5 s apart across each slice, so drawing stays quick. Loudness is shown on a decibel
+      // scale, the way ears hear it, so speech rises and pauses stay flat.
+      let readsWhole = durationMs <= 180_000
+      // A long recording's slices are at least 2.5 s wide too, so sampled windows never sit
+      // closer than an imported reader's 2 s read-through gap (Codex r2 on #4611).
+      let count = min(120, max(1, durationMs / (readsWhole ? 20 : 2_500)))
+      var levels: [Float] = []
+      levels.reserveCapacity(count)
+      for index in 0..<count {
+        try Task.checkCancellation()
+        let lower = durationMs * index / count
+        let upper = durationMs * (index + 1) / count
+        var power: Float = 0
+        var samplesRead = 0
+        if readsWhole {
+          let samples = try source.window(startMs: lower, count: max(1, upper - lower))
+          power = samples.reduce(Float(0)) { $0 + $1 * $1 }
+          samplesRead = samples.count
+        } else {
+          // Windows at least 2.5 s apart: an imported file's reader decodes straight through
+          // gaps under 2 s, which would read the whole file (Codex r1 on #4611).
+          let windows = max(1, min(6, (upper - lower) / 2_500))
+          let span = max(1, (upper - lower) / windows)
+          for part in 0..<windows {
+            let samples = try source.window(startMs: lower + part * span, count: min(60, span))
+            power += samples.reduce(Float(0)) { $0 + $1 * $1 }
+            samplesRead += samples.count
+          }
+        }
+        levels.append((power / Float(max(1, samplesRead))).squareRoot())
+      }
+      return loudness(levels)
+    } catch {
+      return []
+    }
   }
 
   // MARK: - Windows
@@ -340,20 +413,26 @@ final class MeetingPlaybackController {
     return tracks
   }
 
-  /// `count` ms from `startMs`, every track summed and clipped to the sample range. A gap is
-  /// silence; a file the window needs that can no longer be read (deleted while playing)
-  /// throws.
+  /// `count` ms from `startMs`: playback's millisecond view of `mixSamples`.
   nonisolated static func mix(_ tracks: [MeetingTrackAudio], startMs: Int, count: Int) throws
     -> [Float]
   {
-    let start = startMs * samplesPerMs
-    let samples = count * samplesPerMs
-    var out = [Float](repeating: 0, count: samples)
+    try mixSamples(tracks, start: startMs * samplesPerMs, count: count * samplesPerMs)
+  }
+
+  /// `count` samples from timeline sample `start`, every track summed and clipped to the sample
+  /// range: the one mix both playback (through `mix`) and History's Save audio (#4799) use, so
+  /// a saved file holds what playback plays. A gap is silence; a file the window needs that can
+  /// no longer be read (deleted while playing or saving) throws.
+  nonisolated static func mixSamples(_ tracks: [MeetingTrackAudio], start: Int, count: Int) throws
+    -> [Float]
+  {
+    var out = [Float](repeating: 0, count: count)
     for track in tracks {
-      let part = try track.read(from: start, count: samples)
-      for i in 0..<samples { out[i] += part[i] }
+      let part = try track.read(from: start, count: count)
+      for i in 0..<count { out[i] += part[i] }
     }
-    for i in 0..<samples { out[i] = min(1, max(-1, out[i])) }
+    for i in 0..<count { out[i] = min(1, max(-1, out[i])) }
     return out
   }
 }

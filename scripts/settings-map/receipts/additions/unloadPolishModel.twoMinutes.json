@@ -1,0 +1,338 @@
+{
+ "id": "unloadPolishModel.twoMinutes",
+ "blocks": {
+  "ar": {
+   "title": "بعد دقيقتين",
+   "words": [
+    "خمول نموذج تحسين النص لمدة ٢ د",
+    "تفريغ نموذج التنقيح بعد 120 ثانية"
+   ],
+   "phrases": [
+    "حرّر ذاكرة نموذج تحسين النص بعد دقيقتين من دون استخدام"
+   ]
+  },
+  "bg": {
+   "title": "след 2 минути",
+   "words": [
+    "2 мин",
+    "AI Polish 2 минути"
+   ],
+   "phrases": [
+    "освободи модела за подобряване на текста от паметта след 2 минути без диктовка"
+   ]
+  },
+  "cs": {
+   "title": "po 2 minutách",
+   "words": [
+    "AI Polish 2 min",
+    "úprava textu dvě minuty"
+   ],
+   "phrases": [
+    "uvolnit model pro úpravu textu z paměti po 2 minutách bez diktování"
+   ]
+  },
+  "da": {
+   "title": "efter 2 minutter",
+   "words": [
+    "tekstforbedring 2 min",
+    "AI Polish to minutter"
+   ],
+   "phrases": [
+    "frigør RAM, når tekstforbedringsmodellen har været inaktiv i 2 minutter"
+   ]
+  },
+  "de": {
+   "words": [
+    "AI Polish 2 Min.",
+    "KI-Nachbearbeitung zwei Minuten"
+   ],
+   "phrases": [
+    "das Nachbearbeitungsmodell nach 2 Minuten Leerlauf entladen"
+   ]
+  },
+  "el": {
+   "title": "μετά από 2 λεπτά",
+   "words": [
+    "βελτίωση κειμένου 2 λεπτά",
+    "AI Polish δύο λεπτά",
+    "AI Polish 120 δευτερόλεπτα"
+   ],
+   "phrases": [
+    "βγάλε το μοντέλο βελτίωσης κειμένου από τη μνήμη μετά από 2 λεπτά χωρίς υπαγόρευση"
+   ]
+  },
+  "en": {
+   "words": [
+    "2 min",
+    "two minutes",
+    "120 seconds"
+   ],
+   "phrases": [
+    "unload the polish model after 2 minutes without dictating",
+    "free up memory used by AI Polish after 2 minutes of inactivity"
+   ]
+  },
+  "es": {
+   "words": [
+    "2 min",
+    "modelo de corrección tras dos minutos"
+   ],
+   "phrases": [
+    "liberar la memoria del modelo de corrección tras 2 minutos sin dictar"
+   ]
+  },
+  "et": {
+   "title": "2 minuti pärast",
+   "words": [
+    "2 min",
+    "kaks minutit",
+    "120 sekundit",
+    "viimistlusmudel 2 minutit"
+   ],
+   "phrases": [
+    "vabasta viimistlusmudel mälust, kui ma pole kaks minutit dikteerinud"
+   ]
+  },
+  "fi": {
+   "title": "2 minuutin kuluttua",
+   "words": [
+    "viimeistelymalli 2 min",
+    "viimeistelymalli kaksi minuuttia"
+   ],
+   "phrases": [
+    "vapauta viimeistelymallin käyttämä muisti, kun mallia ei ole käytetty kahteen minuuttiin"
+   ]
+  },
+  "fr": {
+   "words": [
+    "2 min",
+    "correction de texte 2 minutes",
+    "modèle de correction deux minutes"
+   ],
+   "phrases": [
+    "libérer la mémoire du modèle de correction de texte après 2 minutes d’inactivité"
+   ]
+  },
+  "hi": {
+   "title": "2 मिनट बाद",
+   "words": [
+    "AI Polish 2 मिनट",
+    "टेक्स्ट सुधार मॉडल दो मिनट",
+    "AI Polish 120 सेकंड",
+    "AI Polish २ मिनट"
+   ],
+   "phrases": [
+    "2 मिनट तक डिक्टेशन न करने पर टेक्स्ट सुधार मॉडल की मेमोरी खाली करें"
+   ]
+  },
+  "hr": {
+   "title": "nakon 2 minute",
+   "words": [
+    "dorada teksta 2 min",
+    "AI Polish dvije minute"
+   ],
+   "phrases": [
+    "oslobodi memoriju modela za doradu teksta nakon 2 minute bez diktiranja"
+   ]
+  },
+  "hu": {
+   "title": "2 perc után",
+   "words": [
+    "szövegjavító modell két perc",
+    "AI Polish 2 perc",
+    "szövegjavító modell 120 másodperc"
+   ],
+   "phrases": [
+    "a szövegjavító modell 2 perc tétlenség után kerüljön ki a memóriából"
+   ]
+  },
+  "it": {
+   "title": "dopo 2 minuti",
+   "words": [
+    "AI Polish 2 min",
+    "correzione del testo due minuti",
+    "AI Polish 120 secondi"
+   ],
+   "phrases": [
+    "libera la RAM del modello di correzione del testo dopo 2 minuti di inattività"
+   ]
+  },
+  "ja": {
+   "title": "2分後",
+   "words": [
+    "文章整形 2分",
+    "文章整形 120秒"
+   ],
+   "phrases": [
+    "2分間音声入力しなかったら文章整形モデルのメモリを解放したい"
+   ]
+  },
+  "ko": {
+   "title": "2분 후",
+   "words": [
+    "다듬기 모델 2분",
+    "AI Polish 120초"
+   ],
+   "phrases": [
+    "텍스트 다듬기 모델을 2분 동안 사용하지 않으면 메모리에서 해제"
+   ]
+  },
+  "lt": {
+   "title": "po 2 minučių",
+   "words": [
+    "teksto tvarkymo modelis 2 min",
+    "teksto tvarkymo modelis dvi minutės",
+    "teksto tvarkymo modelis 120 sekundžių"
+   ],
+   "phrases": [
+    "pašalinti teksto tvarkymo modelį iš atminties, kai jis nenaudojamas 2 minutes"
+   ]
+  },
+  "lv": {
+   "title": "pēc 2 minūtēm",
+   "words": [
+    "2 min",
+    "divas minūtes",
+    "teksta uzlabošanas modelis 2 min"
+   ],
+   "phrases": [
+    "atbrīvot teksta uzlabošanas modeļa aizņemto atmiņu pēc 2 minūtēm bez diktēšanas"
+   ]
+  },
+  "mt": {
+   "title": "wara 2 minuti",
+   "words": [
+    "2 min",
+    "AI Polish 2 minuti"
+   ],
+   "phrases": [
+    "neħħi l-mudell li jtejjeb it-test mill-memorja wara żewġ minuti bla dettatura"
+   ]
+  },
+  "nl": {
+   "title": "na 2 minuten",
+   "words": [
+    "opschoonmodel 2 min",
+    "AI Polish twee minuten"
+   ],
+   "phrases": [
+    "haal het opschoonmodel uit het geheugen als het 2 minuten niet is gebruikt"
+   ]
+  },
+  "pl": {
+   "title": "po 2 minutach",
+   "words": [
+    "korekta tekstu 2 min",
+    "model korekty po dwóch minutach"
+   ],
+   "phrases": [
+    "zwolnij pamięć modelu korekty tekstu po 2 minutach bez dyktowania"
+   ]
+  },
+  "pt": {
+   "title": "após 2 minutos",
+   "words": [
+    "revisão de texto 2 min",
+    "AI Polish 2 minutos"
+   ],
+   "phrases": [
+    "liberar da memória o modelo de revisão de texto após 2 minutos de inatividade"
+   ]
+  },
+  "ro": {
+   "title": "după 2 minute",
+   "words": [
+    "AI Polish 2 min",
+    "corectare text două minute"
+   ],
+   "phrases": [
+    "scoate modelul de corectare a textului din memorie după 2 minute fără dictare"
+   ]
+  },
+  "ru": {
+   "title": "через 2 минуты",
+   "words": [
+    "правка текста 2 мин",
+    "правка текста две минуты"
+   ],
+   "phrases": [
+    "выгружать модель правки текста из памяти через 2 минуты простоя"
+   ]
+  },
+  "sk": {
+   "title": "po 2 minútach",
+   "words": [
+    "AI Polish 2 min",
+    "úprava textu dve minúty"
+   ],
+   "phrases": [
+    "uvoľniť model na úpravu textu z pamäte po 2 minútach nečinnosti"
+   ]
+  },
+  "sl": {
+   "title": "po 2 minutah",
+   "words": [
+    "AI Polish 2 min",
+    "izboljšanje besedila 2 minuti",
+    "izboljšanje besedila dve minuti"
+   ],
+   "phrases": [
+    "sprosti pomnilnik modela za izboljšanje besedila po 2 minutah neuporabe"
+   ]
+  },
+  "sv": {
+   "title": "efter 2 minuter",
+   "words": [
+    "AI Polish efter 2 min",
+    "frigör minne för textbearbetning efter två minuter"
+   ],
+   "phrases": [
+    "frigör minnet som modellen för textbearbetning använder när den inte har använts på två minuter"
+   ]
+  },
+  "tr": {
+   "title": "2 dakika sonra",
+   "words": [
+    "metin düzenleme 2 dk",
+    "AI Polish iki dakika"
+   ],
+   "phrases": [
+    "metin düzenleme modeli 2 dakika boşta kalınca bellekten çıkarılsın"
+   ]
+  },
+  "uk": {
+   "title": "через 2 хвилини",
+   "words": [
+    "2 хв",
+    "AI Polish 2 хвилини",
+    "120 секунд"
+   ],
+   "phrases": [
+    "вивантажувати модель редагування тексту з пам’яті після двох хвилин без диктування"
+   ]
+  },
+  "vi": {
+   "title": "sau 2 phút",
+   "words": [
+    "AI Polish 2 phút",
+    "AI Polish 2p",
+    "AI Polish hai phút",
+    "AI Polish 120 giây"
+   ],
+   "phrases": [
+    "giải phóng bộ nhớ của mô hình chỉnh văn bản sau 2 phút không dùng đến"
+   ]
+  },
+  "zh": {
+   "title": "2 分钟后",
+   "words": [
+    "润色闲置2分钟",
+    "润色闲置两分钟",
+    "润色闲置120秒"
+   ],
+   "phrases": [
+    "润色模型闲置两分钟后释放内存"
+   ]
+  }
+ }
+}

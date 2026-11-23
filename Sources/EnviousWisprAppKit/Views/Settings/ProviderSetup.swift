@@ -4,7 +4,6 @@ import EnviousWisprLLM
 import EnviousWisprLocalPolish
 import EnviousWisprServices
 import OSLog
-import Security
 import CryptoKit
 import SwiftUI
 
@@ -685,18 +684,10 @@ enum ProviderSetupKeys {
           let readAt = ContinuousClock.now
           let result = await CredentialIO.perform(.read(credential.keyID), using: keychainManager)
           guard presence.revision(for: provider) == revision else { continue }
-          let value: String
-          let flag: Bool?
-          switch result {
-          case .success(let stored): value = stored ?? ""; flag = !value.isEmpty
-          case .failure(let error):
-            value = ""
-            if let failure = error as? KeyStoreError,
-              case .retrieveFailed(let status) = failure, status == errSecItemNotFound {
-              flag = false
-            } else { flag = nil }
-          }
-          presence.recordRead(.from(flag), for: provider, readAt: readAt)
+          let value = (try? result.get()) ?? ""
+          let state = SavedKeyState.fromRead(result)
+          let flag = state.asSavedFlag
+          presence.recordRead(state, for: provider, readAt: readAt)
           guard model.keyReadID == readID else { continue }
           let mayReplaceDraft = preserveDrafts == false
             && inputs[provider]?.pending == false
@@ -915,7 +906,7 @@ struct ProviderSetupSection: View {
 @ViewBuilder
 private var egOneSizeCards: some View {
   let actions = EGOneSizeActions(runtimes: localPolishRuntimes)
-  let recommendation = EGOneSizeRecommendation.forThisMac(language: settings.languageMode)
+  let recommendation = SetupAdvice.recommendedEGOneSize(languageMode: settings.languageMode)
   let memory = ProcessInfo.processInfo.physicalMemory
   EGOneSizeCards(
     cards: EGOneSizeCardPresenter.cards(
@@ -1042,6 +1033,7 @@ private var providerRows: some View {
     // #4473: EG-1 is three sizes, each a card (founder's design, 2026-11). S1-mini keeps the
     // single card below.
     egOneSizeCards
+    localPolishUnloadRow
   case .s1Mini:
     LocalEngineStatusCard(
       runtime: localPolishRuntimes.s1Mini, engine: .s1Mini,
@@ -1061,8 +1053,56 @@ private var providerRows: some View {
         s1ControlRows
       }
     }
+    localPolishUnloadRow
   case .none:
     EmptyView()
+  }
+}
+
+/// #3853: how long the bundled polish model may sit unused before it frees its memory. Same
+/// choices and the same shape as the speech model's "Unload model after" row, for the two
+/// bundled engines (EG-1 and S1-mini) on the dictation surface only: Transcribe a File and
+/// summaries use the same running model but are not where this is chosen.
+@ViewBuilder
+private var localPolishUnloadRow: some View {
+  if surface == .dictation {
+    @Bindable var settings = settings
+    PolishRowDivider()
+    SettingsRow(
+      map: .id(.unloadPolishModelAfter), icon: "memorychip", help: LocalPolishUnloadCopy.help
+    ) {
+      SettingsMenuPicker(
+        title: String(localized: LocalPolishUnloadCopy.title),
+        selection: $settings.localPolishUnloadPolicy,
+        valueLabel: settings.localPolishUnloadPolicy.displayName
+      ) {
+        ForEach(ModelUnloadPolicy.allCases, id: \.self) { policy in
+          Text(policy.displayName).tag(policy)
+        }
+      }
+      .settingsArrivalFocusControl()
+      .accessibilityLabel(Text(LocalPolishUnloadCopy.title))
+    }
+    .padding(.horizontal, PolishSectionLayout.rowPaddingH)
+    .padding(.vertical, PolishSectionLayout.rowPaddingV)
+    // Kept visible as well as in the row's help: it says what the chosen time costs on the next
+    // dictation, a consequence of the current value rather than an explanation of the control.
+    if settings.localPolishUnloadPolicy != .never {
+      PolishIndented {
+        Text(LocalPolishUnloadCopy.help)
+          .font(.stRowHelper)
+          .foregroundStyle(Color.stTextSecondary)
+          .fixedSize(horizontal: false, vertical: true)
+      }
+    }
+    if settings.localPolishUnloadPolicy == .immediately {
+      PolishIndented {
+        Text(LocalPolishUnloadCopy.immediatelyWarning)
+          .font(.stHelper)
+          .foregroundStyle(.stWarning)
+          .fixedSize(horizontal: false, vertical: true)
+      }
+    }
   }
 }
 
@@ -1522,6 +1562,7 @@ private func keyField(_ descriptor: APIKeyDescriptor) -> some View {
           .font(.system(size: 13, weight: .medium))
           .foregroundStyle(Color.stTextSecondary)
           .settingsHoverQuiet()
+          .minimumHitRegion()
       }
       .buttonStyle(.plain)
       .help(revealKeyTitle)
@@ -2208,7 +2249,7 @@ private var ollamaBrowseModelsCard: some View {
       .foregroundStyle(Color.white)
       .padding(.horizontal, 14)
       .padding(.vertical, 6)
-      .background(Capsule().fill(Color.stAccentSolid))
+      .background(Color.stAccentSolid, in: EnviousButtonFace.roundedRectangle)
     }
   .settingsArrivalFocusControl()
   .settingsMapRegistration(.ollamaBrowseModels)

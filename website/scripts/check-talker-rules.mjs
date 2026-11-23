@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// Talker rules check (#4013). Runs from `npm run check:help` after `npm run build`.
+// Talker rules check (#4013). Runs from `npm run check:site` after `npm run build`.
 //
 // The app downloads public/meet/talker-rules.json at most once a day and decodes it with
 // TalkerRules.decode (Sources/EnviousWisprServices/TalkerRules.swift). A hosted file that decoder

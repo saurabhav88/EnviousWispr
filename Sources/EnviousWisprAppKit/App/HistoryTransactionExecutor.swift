@@ -29,22 +29,25 @@ import Foundation
     durableWritesInFlight.remove(id)
   }
 
-  func write(_ transcript: Transcript) async throws {
+  func write(_ transcript: Transcript) async throws -> [HistoryCatalog.SourceVersion]? {
     let operations = store.operations()
+    let proof = store.historyRowProofReader()
     #if DEBUG
       let willWrite = ordinaryWriteWillStartForTesting
     #endif
     #if DEBUG
       let didWrite = ordinaryWriteDidFinishForTesting
     #endif
-    try await runOnStorageWorker {
+    return try await runOnStorageWorker {
       #if DEBUG
         willWrite?()
       #endif
       try operations.save(transcript)
+      let versions = transcript.isImported ? try? proof(transcript.id) : nil
       #if DEBUG
         didWrite?()
       #endif
+      return versions
     }
   }
 
@@ -77,6 +80,28 @@ import Foundation
     }
   }
 
+  func allRowsForGlobalDeletion() async throws -> [Transcript] { try await store.loadAll() }
+
+  func savedRowIDs(ofMeeting id: UUID, now: Date) async throws -> [UUID] {
+    let read = try await readCompleteHistory(now: now)
+    return read.permanent.filter { $0.meetingID == id }.map(\.id)
+  }
+
+  #if DEBUG
+    func readSavedHistory(now: Date) async throws -> [Transcript] {
+      let read = try await readCompleteHistory(now: now)
+      let permanent = Set(read.permanent.map(\.id))
+      let pending = read.pending.filter { !permanent.contains($0.id) }
+      return (read.permanent + pending).sorted { $0.createdAt > $1.createdAt }
+    }
+  #endif
+
+  private func readCompleteHistory(now: Date) async throws -> TranscriptHistoryRead {
+    let read = try await store.readHistory(now: now)
+    guard read.isComplete, read.freshness != nil else { throw CocoaError(.fileReadUnknown) }
+    return read
+  }
+
   func deleteAll() throws {
     try store.deleteAll()
   }
@@ -98,6 +123,27 @@ import Foundation
   func readRow(id: UUID) async throws -> Transcript? {
     let read = store.rowReader()
     return try await runOnStorageWorker { try read(id) }
+  }
+
+  func readHistoryRow(id: UUID, now: Date, includePending: Bool = true) async throws -> Transcript? {
+    let read = store.historyRowReader(includePending: includePending)
+    return try await runOnStorageWorker { try read(id, now) }
+  }
+
+  struct VerifiedHistoryRow: Sendable {
+    let row: Transcript
+    let versions: [HistoryCatalog.SourceVersion]
+  }
+
+  func readVerifiedHistoryRow(id: UUID, now: Date) async throws -> VerifiedHistoryRow? {
+    let read = store.historyRowReader()
+    let proof = store.historyRowProofReader()
+    return try await runOnStorageWorker {
+      let versions = try proof(id)
+      let row = try read(id, now)
+      guard versions == (try proof(id)) else { throw CocoaError(.fileReadUnknown) }
+      return row.map { VerifiedHistoryRow(row: $0, versions: versions) }
+    }
   }
 
   private func runOnStorageWorker<T: Sendable>(

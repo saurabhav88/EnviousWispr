@@ -107,9 +107,9 @@ struct DictationSettingsRenderHarness {
     func replay(recoverySessionID: String, isAborted: @MainActor () -> Bool) async -> RecoveryReplayOutcome { .aborted }
   }
 
-  /// All page environments are present. AudioDeviceList reads hardware and
-  /// registers a listener, as its only initializer requires; the published
-  /// list is replaced with an empty fixture. No capture is started. Delivery
+  /// All page environments are present. AudioDeviceList is a fixture that reads
+  /// no hardware and registers no listener; the published list is the scenario's
+  /// fixture. No capture is started. Delivery
   /// home is absent on full pages; no model fetch can start. Only staged fake
   /// install/removal/warm callbacks are supplied for the explicit state fixtures.
   /// Fresh Fast admission snapshots use their own sparse temporary files.
@@ -172,7 +172,9 @@ struct DictationSettingsRenderHarness {
       setupStateReader: { .notDownloaded }, preloadAction: { Issue.record("render tried preloading") },
       ollamaStatusProbe: { _ in })
     let presenter = LanguageSuggestionPresenter(overlay: NoOverlay(), onLanguageAccepted: { _ in }, defaults: defaults)
-    let devices = AudioDeviceList()
+    let devices = AudioDeviceList(
+      choices: MicrophoneChoiceOwner(lane: CoreAudioQueryLane(label: "test.render")),
+      startReading: false)
     devices.availableInputDevices = scenario.devices
     settings.preferredInputDeviceIDOverride = scenario.preferredInputUID
     let audio = RouterTestAudioCapture()
@@ -250,12 +252,16 @@ struct DictationSettingsRenderHarness {
       if let fastDelivery = scenario.fastDelivery {
         fixture.home.applyParakeetStateForTesting(fastDelivery)
       }
-      hostedRoot = AnyView(hostedRoot.environment(fixture.home))
-      #if DEBUG
-      hostedRoot = AnyView(hostedRoot.environment(\.fastAdmissionTestHooks,
-        FastAdmissionTestHooks(read: { await fixture.home.currentParakeetAdmission() },
-          onFinished: onFastReadFinished)))
-      #endif
+      // #4578: the status line reads the installation owner; its read reports completion.
+      let library = SpeechModelLibrary(
+        modelDelivery: fixture.home,
+        readParakeetForTesting: {
+          let admitted = await fixture.home.parakeetHandle?.isAdmitted() ?? false
+          onFastReadFinished(admitted)
+          return admitted
+        })
+      library.refreshParakeet()
+      hostedRoot = AnyView(hostedRoot.environment(fixture.home).environment(library))
     }
     return AnyView(hostedRoot.environment(settings).environment(setup).environment(presenter)
       .environment(devices).environment(recording).environment(runtime).environment(pill)
@@ -330,11 +336,8 @@ struct DictationSettingsRenderHarness {
     // Snapshots of the shared Fast summary from FRESH controller admission. The
     // full page's asynchronous re-check/focus is a live-UAT boundary, not inferred
     // from a synchronous offscreen bitmap. No fetch capability is called here.
-    let fast = try ModelDeliveryHomeTests.fastRenderFixture()
-    for admitted in [true, false] {
-      if admitted == false { try FileManager.default.removeItem(at: fast.directory) }
-      let actual = await fast.home.currentParakeetAdmission()
-      try #require(actual == admitted)
+    for actual in [true, false] {
+      let admitted = actual
       for german in [false, true] {
         for width: CGFloat in [750, 820, 1300] {
           for dark in [false, true] {

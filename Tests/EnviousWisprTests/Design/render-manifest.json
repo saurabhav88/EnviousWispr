@@ -1402,7 +1402,7 @@
       "scroll": 0,
       "appearance": "light",
       "locale": "en_US",
-      "state": "scroll position 1 of 2"
+      "state": "scroll position 1 of 3"
     },
     {
       "name": "page-aiPolish-egOne-820-light-s1",
@@ -1414,7 +1414,19 @@
       "scroll": 1,
       "appearance": "light",
       "locale": "en_US",
-      "state": "scroll position 2 of 2"
+      "state": "scroll position 2 of 3"
+    },
+    {
+      "name": "page-aiPolish-egOne-820-light-s2",
+      "producer": "DesignRenderHarness",
+      "fixture": "page:aiPolish.egOne",
+      "window": 820,
+      "pageWidth": 578,
+      "viewport": 560,
+      "scroll": 2,
+      "appearance": "light",
+      "locale": "en_US",
+      "state": "scroll position 3 of 3"
     },
     {
       "name": "page-aiPolish-egOne-820-dark-s0",
@@ -1426,7 +1438,7 @@
       "scroll": 0,
       "appearance": "dark",
       "locale": "en_US",
-      "state": "scroll position 1 of 2"
+      "state": "scroll position 1 of 3"
     },
     {
       "name": "page-aiPolish-egOne-820-dark-s1",
@@ -1438,7 +1450,19 @@
       "scroll": 1,
       "appearance": "dark",
       "locale": "en_US",
-      "state": "scroll position 2 of 2"
+      "state": "scroll position 2 of 3"
+    },
+    {
+      "name": "page-aiPolish-egOne-820-dark-s2",
+      "producer": "DesignRenderHarness",
+      "fixture": "page:aiPolish.egOne",
+      "window": 820,
+      "pageWidth": 578,
+      "viewport": 560,
+      "scroll": 2,
+      "appearance": "dark",
+      "locale": "en_US",
+      "state": "scroll position 3 of 3"
     },
     {
       "name": "page-aiPolish-openAI-savedKey-750-light-s0",
@@ -3127,6 +3151,60 @@
       "state": "recording, in-pill notice: secure input active, level 0.4, 2:07 elapsed"
     },
     {
+      "name": "pill-classic-silent-light",
+      "producer": "DesignRenderHarness",
+      "fixture": "pill-classic-silent",
+      "pageWidth": 0,
+      "appearance": "light",
+      "locale": "en_US",
+      "state": "recording, silent mic, calm notice (5 s), pill at the top, level 0.4, 2:07 elapsed"
+    },
+    {
+      "name": "pill-classic-silent-dark",
+      "producer": "DesignRenderHarness",
+      "fixture": "pill-classic-silent",
+      "pageWidth": 0,
+      "appearance": "dark",
+      "locale": "en_US",
+      "state": "recording, silent mic, calm notice (5 s), pill at the top, level 0.4, 2:07 elapsed"
+    },
+    {
+      "name": "pill-classic-silentStrong-light",
+      "producer": "DesignRenderHarness",
+      "fixture": "pill-classic-silentStrong",
+      "pageWidth": 0,
+      "appearance": "light",
+      "locale": "en_US",
+      "state": "recording, silent mic, strong notice (15 s), pill at the top, level 0.4, 2:07 elapsed"
+    },
+    {
+      "name": "pill-classic-silentStrong-dark",
+      "producer": "DesignRenderHarness",
+      "fixture": "pill-classic-silentStrong",
+      "pageWidth": 0,
+      "appearance": "dark",
+      "locale": "en_US",
+      "state": "recording, silent mic, strong notice (15 s), pill at the top, level 0.4, 2:07 elapsed"
+    },
+    {
+      "name": "pill-classic-silentBottom-light",
+      "producer": "DesignRenderHarness",
+      "fixture": "pill-classic-silentBottom",
+      "pageWidth": 0,
+      "appearance": "light",
+      "locale": "en_US",
+      "state": "recording, silent mic, strong notice (15 s), pill at the bottom, level 0.4, 2:07 elapsed"
+    },
+    {
+      "name": "pill-classic-silentBottom-dark",
+      "producer": "DesignRenderHarness",
+      "fixture": "pill-classic-silentBottom",
+      "pageWidth": 0,
+      "appearance": "dark",
+      "locale": "en_US",
+      "state": "recording, silent mic, strong notice (15 s), pill at the bottom, level 0.4, 2:07 elapsed"
+    },
+    {
       "name": "pill-readingWell-words-light",
       "producer": "DesignRenderHarness",
       "fixture": "pill-readingWell-words",
@@ -3181,6 +3259,60 @@
       "state": "recording, in-pill notice: secure input active, level 0.4, 2:07 elapsed"
     },
     {
+      "name": "pill-readingWell-silent-light",
+      "producer": "DesignRenderHarness",
+      "fixture": "pill-readingWell-silent",
+      "pageWidth": 0,
+      "appearance": "light",
+      "locale": "en_US",
+      "state": "recording, silent mic, calm notice (5 s), pill at the top, level 0.4, 2:07 elapsed"
+    },
+    {
+      "name": "pill-readingWell-silent-dark",
+      "producer": "DesignRenderHarness",
+      "fixture": "pill-readingWell-silent",
+      "pageWidth": 0,
+      "appearance": "dark",
+      "locale": "en_US",
+      "state": "recording, silent mic, calm notice (5 s), pill at the top, level 0.4, 2:07 elapsed"
+    },
+    {
+      "name": "pill-readingWell-silentStrong-light",
+      "producer": "DesignRenderHarness",
+      "fixture": "pill-readingWell-silentStrong",
+      "pageWidth": 0,
+      "appearance": "light",
+      "locale": "en_US",
+      "state": "recording, silent mic, strong notice (15 s), pill at the top, level 0.4, 2:07 elapsed"
+    },
+    {
+      "name": "pill-readingWell-silentStrong-dark",
+      "producer": "DesignRenderHarness",
+      "fixture": "pill-readingWell-silentStrong",
+      "pageWidth": 0,
+      "appearance": "dark",
+      "locale": "en_US",
+      "state": "recording, silent mic, strong notice (15 s), pill at the top, level 0.4, 2:07 elapsed"
+    },
+    {
+      "name": "pill-readingWell-silentBottom-light",
+      "producer": "DesignRenderHarness",
+      "fixture": "pill-readingWell-silentBottom",
+      "pageWidth": 0,
+      "appearance": "light",
+      "locale": "en_US",
+      "state": "recording, silent mic, strong notice (15 s), pill at the bottom, level 0.4, 2:07 elapsed"
+    },
+    {
+      "name": "pill-readingWell-silentBottom-dark",
+      "producer": "DesignRenderHarness",
+      "fixture": "pill-readingWell-silentBottom",
+      "pageWidth": 0,
+      "appearance": "dark",
+      "locale": "en_US",
+      "state": "recording, silent mic, strong notice (15 s), pill at the bottom, level 0.4, 2:07 elapsed"
+    },
+    {
       "name": "pill-levelRail-notice-light",
       "producer": "DesignRenderHarness",
       "fixture": "pill-levelRail-notice",
@@ -3197,6 +3329,60 @@
       "appearance": "dark",
       "locale": "en_US",
       "state": "recording, in-pill notice: secure input active, level 0.4, 2:07 elapsed"
+    },
+    {
+      "name": "pill-levelRail-silent-light",
+      "producer": "DesignRenderHarness",
+      "fixture": "pill-levelRail-silent",
+      "pageWidth": 0,
+      "appearance": "light",
+      "locale": "en_US",
+      "state": "recording, silent mic, calm notice (5 s), pill at the top, level 0.4, 2:07 elapsed"
+    },
+    {
+      "name": "pill-levelRail-silent-dark",
+      "producer": "DesignRenderHarness",
+      "fixture": "pill-levelRail-silent",
+      "pageWidth": 0,
+      "appearance": "dark",
+      "locale": "en_US",
+      "state": "recording, silent mic, calm notice (5 s), pill at the top, level 0.4, 2:07 elapsed"
+    },
+    {
+      "name": "pill-levelRail-silentStrong-light",
+      "producer": "DesignRenderHarness",
+      "fixture": "pill-levelRail-silentStrong",
+      "pageWidth": 0,
+      "appearance": "light",
+      "locale": "en_US",
+      "state": "recording, silent mic, strong notice (15 s), pill at the top, level 0.4, 2:07 elapsed"
+    },
+    {
+      "name": "pill-levelRail-silentStrong-dark",
+      "producer": "DesignRenderHarness",
+      "fixture": "pill-levelRail-silentStrong",
+      "pageWidth": 0,
+      "appearance": "dark",
+      "locale": "en_US",
+      "state": "recording, silent mic, strong notice (15 s), pill at the top, level 0.4, 2:07 elapsed"
+    },
+    {
+      "name": "pill-levelRail-silentBottom-light",
+      "producer": "DesignRenderHarness",
+      "fixture": "pill-levelRail-silentBottom",
+      "pageWidth": 0,
+      "appearance": "light",
+      "locale": "en_US",
+      "state": "recording, silent mic, strong notice (15 s), pill at the bottom, level 0.4, 2:07 elapsed"
+    },
+    {
+      "name": "pill-levelRail-silentBottom-dark",
+      "producer": "DesignRenderHarness",
+      "fixture": "pill-levelRail-silentBottom",
+      "pageWidth": 0,
+      "appearance": "dark",
+      "locale": "en_US",
+      "state": "recording, silent mic, strong notice (15 s), pill at the bottom, level 0.4, 2:07 elapsed"
     },
     {
       "name": "notice-processing-transcribing-light",
@@ -3475,7 +3661,7 @@
       "pageWidth": 0,
       "appearance": "light",
       "locale": "en_US",
-      "state": "overlay notice from PillCatalog: correction-learned"
+      "state": "learned-word offer, production face, countdown rail at 40 percent"
     },
     {
       "name": "notice-correction-learned-dark",
@@ -3484,7 +3670,25 @@
       "pageWidth": 0,
       "appearance": "dark",
       "locale": "en_US",
-      "state": "overlay notice from PillCatalog: correction-learned"
+      "state": "learned-word offer, production face, countdown rail at 40 percent"
+    },
+    {
+      "name": "notice-correction-learned-removed-light",
+      "producer": "DesignRenderHarness",
+      "fixture": "notice-correction-learned-removed",
+      "pageWidth": 0,
+      "appearance": "light",
+      "locale": "en_US",
+      "state": "learned-word result after Undo (phase undone), production face, no countdown"
+    },
+    {
+      "name": "notice-correction-learned-removed-dark",
+      "producer": "DesignRenderHarness",
+      "fixture": "notice-correction-learned-removed",
+      "pageWidth": 0,
+      "appearance": "dark",
+      "locale": "en_US",
+      "state": "learned-word result after Undo (phase undone), production face, no countdown"
     },
     {
       "name": "notice-language-chip-light",

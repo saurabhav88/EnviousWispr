@@ -501,9 +501,6 @@ import Testing
         MemberSignature(
           condition: nil, signature: "var publishedModelIdentity: ASRModelIdentity? { get }"),
         MemberSignature(condition: nil, signature: "var isStreaming: Bool { get }"),
-        MemberSignature(condition: nil, signature: "var downloadProgress: Double { get }"),
-        MemberSignature(condition: nil, signature: "var downloadPhase: String { get }"),
-        MemberSignature(condition: nil, signature: "var downloadDetail: String { get }"),
         // #3546: `parakeetCacheOnly` and `parakeetModelDirectory` removed; the
         // Parakeet load request is a package `ParakeetModelSelection`.
         MemberSignature(condition: nil, signature: "func loadModel() async throws"),

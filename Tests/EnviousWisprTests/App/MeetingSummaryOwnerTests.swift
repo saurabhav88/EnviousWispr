@@ -65,6 +65,8 @@ struct MeetingSummaryOwnerTests {
     /// When set, replaces `localTurn` (production also waits for final-pass work).
     @ObservationIgnored var localTurnCheck: (@MainActor () -> Bool)?
     var finished: [MeetingSummaryFinishedTelemetry] = []
+    var shownLimits: [MeetingSummaryOwner.LimitFailure] = []
+    @ObservationIgnored var limitIsCurrent: (@MainActor () -> Bool)?
     /// #4012: titles the owner handed to the coordinator, in order.
     var titles: [String] = []
     var calls: [String] = []
@@ -218,6 +220,10 @@ struct MeetingSummaryOwnerTests {
           wakes: nil,
           emitFinished: { world.finished.append($0) },
           log: { _ in },
+          presentLimit: { failure, isCurrent in
+            world.shownLimits.append(failure)
+            world.limitIsCurrent = isCurrent
+          },
           assignTitle: { _, title in world.titles.append(title) },
           referenceSources: { _ in world.sources },
           writesReferences: { _, _ in world.referencing },
@@ -231,6 +237,18 @@ struct MeetingSummaryOwnerTests {
 
     func summaryOnDisk(_ id: UUID) -> String? {
       try? String(contentsOf: store.summaryURL(for: id), encoding: .utf8)
+    }
+
+    func preview(_ id: UUID) async throws -> MeetingSummaryOwner.Candidate {
+      await MeetingSummaryOwnerTests.eventually("preview ready") {
+        // The attempt also ends, so a Keep right after is not refused as still writing.
+        if case .comparing = self.owner.previews[id] { return !self.owner.isWriting(id) }
+        return false
+      }
+      guard case .comparing(let candidate) = owner.previews[id] else {
+        throw CocoaError(.fileReadUnknown)
+      }
+      return candidate
     }
 
     func manifest(_ id: UUID) throws -> MeetingDocumentsManifest {
@@ -381,6 +399,295 @@ struct MeetingSummaryOwnerTests {
     await Self.eventually("third") { rig.world.finished.count == 3 }
     #expect(rig.world.finished.last == Self.row(.written, .hosted))
     #expect(rig.summaryOnDisk(id) == "## Overview\nShip Friday.")
+  }
+
+  @Test("the manual summary preview leaves the edited original untouched until Keep new")
+  func manualSummaryPreservesTheOriginalUntilKept() async throws {
+    let rig = try Rig()
+    let id = try rig.readyMeeting()
+    _ = try rig.store.saveSummary("My own summary.", origin: .userEdited, inputs: nil, meeting: id)
+    let choice = HistoryPolishChoice(provider: .claude, model: "claude-test", sendsTextOffMac: true)
+    rig.owner.startPreview(id, with: choice)
+    let preview = try await rig.preview(id)
+    #expect(preview.current == "My own summary.")
+    #expect(rig.summaryOnDisk(id) == preview.current)
+    #expect(try rig.manifest(id).summaryPending == nil)
+    rig.owner.discardPreview(id)
+    #expect(rig.summaryOnDisk(id) == "My own summary.")
+
+    rig.owner.startPreview(id, with: choice)
+    let keep = try await rig.preview(id)
+    rig.world.provider = .openAI
+    rig.world.model = "a-different-default"
+    #expect(await rig.owner.keepPreview(id, candidateID: keep.id))
+    #expect(rig.summaryOnDisk(id) == keep.text)
+    #expect(try rig.manifest(id).summary?.inputs?.modelOverride?.model == choice.model)
+    #expect(rig.owner.isOutOfDate(id) == false)
+    #expect(rig.world.titles.isEmpty)
+  }
+
+  @Test("a newer summary on disk wins against a first summary still being written, keeping the owed mark")
+  func manualSummaryRefusesANewerSave() async throws {
+    let rig = try Rig()
+    let id = try rig.readyMeeting()
+    let choice = HistoryPolishChoice(provider: .claude, model: "claude-test", sendsTextOffMac: true)
+    rig.world.holdCalls = true
+    rig.owner.startPreview(id, with: choice)
+    await Self.eventually("calling") { rig.world.callsWaiting == 1 }
+    _ = try rig.store.saveSummary("A newer summary.", origin: .userEdited, inputs: nil, meeting: id)
+    await rig.documents.load(id)
+    _ = try rig.store.setSummaryPending(true, meeting: id)
+    rig.world.releaseCall()
+    await Self.eventually("attempt ended") { !rig.owner.isWriting(id) }
+
+    #expect(rig.summaryOnDisk(id) == "A newer summary.")
+    #expect(try rig.manifest(id).summaryPending == true)
+  }
+
+  /// #4703 M1: when this fails, a History meeting page shows another meeting's "Saving…" or
+  /// "The saved summary changed.", or keeps that warning after a successful Keep or a new preview.
+  @Test("the meeting page's Keep busy and refusal belong to the meeting they happened on")
+  func pageKeepStateIsPerMeeting() async throws {
+    let base = try Rig()
+    // Parks a Keep's save after its store write, so a page reset lands while it is in flight.
+    // Once opened it stays open, so the parked Keep runs first.
+    let gate = MeetingDocumentsOwnerTests.DebounceGate()
+    defer { gate.open() }
+    let rig = try Rig(
+      sharing: base,
+      documents: Rig.documents(base.store, afterGeneratedWrite: { await gate.wait() }))
+    let kept = try rig.readyMeeting()
+    let refused = try rig.readyMeeting()
+    let choice = HistoryPolishChoice(provider: .claude, model: "claude-test", sendsTextOffMac: true)
+    let page = MeetingSummaryEditState()
+    // #4719: with no saved summary a new one is kept at once; these test the comparison's Keep.
+    for id in [kept, refused] {
+      _ = try rig.store.saveSummary("Saved before.", origin: .userEdited, inputs: nil, meeting: id)
+      await rig.documents.load(id)
+    }
+
+    page.beginPreview(choice, meetingID: kept, summaries: rig.owner)
+    let candidate = try await rig.preview(kept)
+    page.keep(candidateID: UUID(), meetingID: kept, summaries: rig.owner)
+    await Self.eventually("wrong-candidate Keep settled") { !page.isKeeping(kept) }
+    #expect(page.keepFailed(kept))
+    #expect(!page.keepFailed(refused), "another meeting never shows this meeting's refusal")
+    // No preview on this meeting, so the owner refuses before the gate.
+    page.keep(candidateID: UUID(), meetingID: refused, summaries: rig.owner)
+    await Self.eventually("other meeting's refused Keep settled") { !page.isKeeping(refused) }
+    #expect(page.keepFailed(refused))
+
+    page.keep(candidateID: candidate.id, meetingID: kept, summaries: rig.owner)
+    await Self.eventually("Keep parked after its write") { gate.waiting == 1 }
+    page.reset()
+    #expect(page.isKeeping(kept), "a page reset keeps the saving meeting's Saving…")
+    #expect(!page.isKeeping(refused), "another meeting never shows this meeting's Saving…")
+    gate.open()
+    await Self.eventually("Keep settled") { !page.isKeeping(kept) }
+    #expect(!page.keepFailed(kept), "a successful Keep clears that meeting's refusal")
+    #expect(rig.summaryOnDisk(kept) == candidate.text)
+    #expect(page.keepFailed(refused), "a Keep on one meeting leaves another meeting's refusal")
+
+    page.beginPreview(choice, meetingID: refused, summaries: rig.owner)
+    let stale = try await rig.preview(refused)
+    _ = try rig.store.saveSummary(
+      "A newer summary.", origin: .userEdited, inputs: nil, meeting: refused)
+    page.keep(candidateID: stale.id, meetingID: refused, summaries: rig.owner)
+    #expect(page.isKeeping(refused))
+    #expect(!page.isKeeping(kept))
+    await Self.eventually("refused Keep settled") { !page.isKeeping(refused) }
+    #expect(page.keepFailed(refused))
+    #expect(!page.keepFailed(kept))
+
+    page.beginPreview(choice, meetingID: refused, summaries: rig.owner)
+    #expect(!page.keepFailed(refused), "a new preview clears the refusal")
+    page.discardPreview(refused, summaries: rig.owner)
+    #expect(rig.owner.previews[refused] == nil)
+  }
+
+  /// #4719: when this fails, writing a meeting's first summary opens a comparison against "No
+  /// summary yet", or a summary is saved over an existing one (even one the user emptied)
+  /// without Keep new.
+  @Test("a first summary is kept at once; a summary that replaces one waits for Keep new")
+  func firstSummaryIsKeptWithoutComparing() async throws {
+    let rig = try Rig()
+    let first = try rig.readyMeeting()
+    let replaced = try rig.readyMeeting()
+    let emptied = try rig.readyMeeting()
+    _ = try rig.store.saveSummary("My own summary.", origin: .userEdited, inputs: nil, meeting: replaced)
+    _ = try rig.store.saveSummary("", origin: .userEdited, inputs: nil, meeting: emptied)
+    let choice = HistoryPolishChoice(provider: .claude, model: "claude-test", sendsTextOffMac: true)
+
+    rig.owner.startPreview(first, with: choice)
+    // `eventually` re-checks on observable changes, so it waits on the owner, then reads disk.
+    await Self.eventually("first summary kept") {
+      rig.owner.previews[first] == nil && !rig.owner.savingFirst.contains(first)
+        && !rig.owner.isWriting(first)
+    }
+    #expect(rig.summaryOnDisk(first) == "## Overview\nShip Friday.")
+    #expect(try rig.manifest(first).summary?.inputs?.modelOverride?.model == choice.model)
+    #expect(!rig.owner.firstSaveRefused.contains(first))
+
+    for id in [replaced, emptied] {
+      let before = rig.summaryOnDisk(id)
+      rig.owner.startPreview(id, with: choice)
+      let candidate = try await rig.preview(id)
+      #expect(!candidate.replacesNoSummary)
+      #expect(rig.summaryOnDisk(id) == before, "a saved summary is replaced only by Keep new")
+      #expect(!rig.owner.savingFirst.contains(id))
+    }
+  }
+
+  /// #4724: when this fails, the new-summary notice says it waits for dictation while a hosted
+  /// model only prepares, or says it writes while a model on this Mac waits its turn.
+  @Test("only an attempt queued for a model on this Mac reads as waiting its turn")
+  func waitingMeansQueuedLocally() async throws {
+    let rig = try Rig()
+    let hosted = try rig.readyMeeting()
+    let choice = HistoryPolishChoice(provider: .claude, model: "claude-test", sendsTextOffMac: true)
+    rig.world.holdPrepare = true
+    defer {
+      rig.world.holdPrepare = false
+      rig.world.releasePrepare()
+    }
+    rig.owner.startPreview(hosted, with: choice)
+    await Self.eventually("preparing") { rig.world.preparing }
+    #expect(rig.owner.activity[hosted] == .waiting)
+    #expect(!rig.owner.waitsForLocalTurn(hosted), "preparing is not waiting for a turn")
+    rig.world.holdPrepare = false
+    rig.world.releasePrepare()
+    await Self.eventually("hosted ended") { !rig.owner.isWriting(hosted) }
+
+    let first = try rig.readyMeeting()
+    let second = try rig.readyMeeting()
+    rig.world.execution = .local
+    rig.world.borrowAnswers = []
+    rig.world.holdCalls = true
+    defer {
+      rig.world.holdCalls = false
+      rig.world.releaseCall()
+      rig.world.releaseCall()
+    }
+    rig.owner.startPreview(first, with: choice)
+    await Self.eventually("first calling") { rig.world.callsWaiting == 1 }
+    rig.owner.startPreview(second, with: choice)
+    await Self.eventually("second queued") { rig.owner.waitsForLocalTurn(second) }
+    #expect(!rig.owner.waitsForLocalTurn(first), "the call that runs is not waiting")
+  }
+
+  /// #4722: when this fails, Keep new clicked while the model still cleans up closes the
+  /// comparison and saves nothing.
+  @Test("the comparison opens once the attempt has ended, so Keep new is never refused as writing")
+  func comparisonWaitsForCleanup() async throws {
+    let rig = try Rig()
+    let id = try rig.readyMeeting()
+    _ = try rig.store.saveSummary("My own summary.", origin: .userEdited, inputs: nil, meeting: id)
+    let choice = HistoryPolishChoice(provider: .claude, model: "claude-test", sendsTextOffMac: true)
+    rig.world.holdFinish = true
+    defer {
+      rig.world.holdFinish = false
+      rig.world.releaseFinish()
+    }
+    rig.owner.startPreview(id, with: choice)
+    await Self.eventually("cleaning up") { rig.world.finishWaiting }
+    guard case .generating? = rig.owner.previews[id] else {
+      Issue.record("the comparison must not open while the attempt is still ending")
+      return
+    }
+    rig.world.holdFinish = false
+    rig.world.releaseFinish()
+    let candidate = try await rig.preview(id)
+    #expect(await rig.owner.keepPreview(id, candidateID: candidate.id))
+    #expect(rig.summaryOnDisk(id) == candidate.text)
+
+    // The meeting changes during cleanup: no comparison of a stale summary opens.
+    rig.world.holdFinish = true
+    rig.owner.startPreview(id, with: choice)
+    await Self.eventually("cleaning up again") { rig.world.finishWaiting }
+    rig.world.speakerNames = ["mic:you": "Priya"]
+    rig.world.holdFinish = false
+    rig.world.releaseFinish()
+    await Self.eventually("stale attempt ended") { !rig.owner.isWriting(id) }
+    guard case .failed? = rig.owner.previews[id] else {
+      Issue.record("a meeting changed during cleanup must not open a comparison")
+      return
+    }
+    #expect(rig.summaryOnDisk(id) == candidate.text)
+  }
+
+  /// #4719: when this fails, clicking Back while a first summary is written loses it, or closing
+  /// the page keeps a replacement summary nobody chose.
+  @Test("closing the page keeps writing a first summary and drops a replacement")
+  func closingThePageKeepsAFirstSummary() async throws {
+    let rig = try Rig()
+    let first = try rig.readyMeeting()
+    let replaced = try rig.readyMeeting()
+    _ = try rig.store.saveSummary("My own summary.", origin: .userEdited, inputs: nil, meeting: replaced)
+    await rig.documents.load(replaced)
+    let choice = HistoryPolishChoice(provider: .claude, model: "claude-test", sendsTextOffMac: true)
+    rig.world.holdCalls = true
+
+    rig.owner.startPreview(first, with: choice)
+    await Self.eventually("first calling") { rig.world.callsWaiting == 1 }
+    rig.owner.closePreview(first)
+    rig.world.releaseCall()
+    await Self.eventually("first summary kept after the page closed") {
+      rig.owner.previews[first] == nil && !rig.owner.savingFirst.contains(first)
+        && !rig.owner.isWriting(first)
+    }
+    #expect(rig.summaryOnDisk(first) == "## Overview\nShip Friday.")
+
+    rig.owner.startPreview(replaced, with: choice)
+    await Self.eventually("replacement calling") { rig.world.callsWaiting == 1 }
+    rig.owner.closePreview(replaced)
+    #expect(rig.owner.previews[replaced] == nil)
+    rig.world.releaseCall()
+    await Self.eventually("replacement ended") { !rig.owner.isWriting(replaced) }
+    #expect(rig.summaryOnDisk(replaced) == "My own summary.")
+    rig.world.holdCalls = false
+
+    // Closed after the summary was written, while the attempt still cleans up: still kept.
+    let late = try rig.readyMeeting()
+    rig.world.holdFinish = true
+    rig.owner.startPreview(late, with: choice)
+    await Self.eventually("cleaning up") { rig.world.finishWaiting }
+    rig.owner.closePreview(late)
+    rig.world.holdFinish = false
+    rig.world.releaseFinish()
+    await Self.eventually("late first summary kept") {
+      rig.owner.previews[late] == nil && !rig.owner.savingFirst.contains(late)
+        && !rig.owner.isWriting(late)
+    }
+    #expect(rig.summaryOnDisk(late) == "## Overview\nShip Friday.")
+
+    // Closed before the meeting's documents were read: nothing says it is a first summary, so
+    // the new summary is dropped as Cancel does, and no failure waits on the page.
+    let unread = try rig.readyMeeting()
+    rig.world.holdPrepare = true
+    rig.owner.startPreview(unread, with: choice)
+    await Self.eventually("preparing") { rig.world.preparing }
+    rig.owner.closePreview(unread)
+    #expect(rig.owner.previews[unread] == nil)
+    rig.world.holdPrepare = false
+    rig.world.releasePrepare()
+    await Self.eventually("unread attempt ended") { !rig.owner.isWriting(unread) }
+    #expect(rig.owner.previews[unread] == nil)
+    #expect(rig.summaryOnDisk(unread) == nil)
+
+    // Documents read and no summary: a first summary closed before its model starts is kept.
+    let read = try rig.readyMeeting()
+    await rig.documents.load(read)
+    rig.world.holdPrepare = true
+    rig.owner.startPreview(read, with: choice)
+    await Self.eventually("preparing the read meeting") { rig.world.preparing }
+    rig.owner.closePreview(read)
+    rig.world.holdPrepare = false
+    rig.world.releasePrepare()
+    await Self.eventually("read first summary kept") {
+      rig.owner.previews[read] == nil && !rig.owner.savingFirst.contains(read)
+        && !rig.owner.isWriting(read)
+    }
+    #expect(rig.summaryOnDisk(read) == "## Overview\nShip Friday.")
   }
 
   @Test("a meeting that changes while its summary is written keeps no stale answer")
@@ -557,6 +864,164 @@ struct MeetingSummaryOwnerTests {
     rig.world.releaseCall()
     await Self.eventually("finished") { rig.world.finished.count == 1 }
     #expect(rig.owner.summaryPinnedOllamaModel == nil)
+  }
+
+  // MARK: - Ollama demand and use (#3853, #4360)
+
+  /// What the owner tells `PipelineSettingsSync` about Ollama models, in order: a model name when
+  /// a local attempt reaches the queue for it, nil when an attempt's demand ends.
+  @MainActor final class OllamaHookLog { var events: [String?] = [] }
+
+  static func ollamaRig(
+    provider: LLMProvider = .ollama, model: String = "mistral",
+    execution: MeetingSummary.Execution = .local
+  ) throws -> (Rig, UUID, OllamaHookLog) {
+    let rig = try Rig()
+    let id = try rig.readyMeeting()
+    let log = OllamaHookLog()
+    rig.owner.onOllamaSummaryWorkChanged = { log.events.append($0) }
+    rig.world.provider = provider
+    rig.world.model = model
+    rig.world.execution = execution
+    return (rig, id, log)
+  }
+
+  @Test("a local Ollama summary demands its model from start to end and reports its use once")
+  func localOllamaDemandAndUse() async throws {
+    let (rig, id, log) = try Self.ollamaRig()
+    rig.world.holdCalls = true
+    _ = await Self.schedule(rig, id)
+    #expect(rig.owner.ollamaSummaryDemand == ["mistral"])
+    await Self.eventually("calling") { rig.world.callsWaiting == 1 }
+    #expect(log.events == ["mistral"])
+
+    rig.world.holdFinish = true
+    defer {
+      rig.world.holdFinish = false
+      rig.world.releaseFinish()
+    }
+    rig.world.releaseCall()
+    await Self.eventually("prepared cleanup held") { rig.world.finishWaiting }
+    #expect(rig.owner.ollamaSummaryDemand == ["mistral"], "still demanded until the attempt ends")
+    #expect(log.events == ["mistral"])
+    rig.world.holdFinish = false
+    rig.world.releaseFinish()
+    await Self.eventually("finished") { rig.world.finished.count == 1 }
+    #expect(rig.world.finished.map(\.outcome) == [.written])
+    #expect(rig.owner.ollamaSummaryDemand.isEmpty)
+    #expect(log.events == ["mistral", nil])
+  }
+
+  @Test("a hosted Ollama summary demands its model but never reports local use")
+  func hostedOllamaDemandOnly() async throws {
+    let (rig, id, log) = try Self.ollamaRig(execution: .hosted)
+    rig.world.holdCalls = true
+    _ = await Self.schedule(rig, id)
+    await Self.eventually("calling") { rig.world.callsWaiting == 1 }
+    #expect(rig.owner.ollamaSummaryDemand == ["mistral"])
+    #expect(log.events.isEmpty)
+
+    rig.world.releaseCall()
+    await Self.eventually("finished") { rig.world.finished.count == 1 }
+    #expect(rig.owner.ollamaSummaryDemand.isEmpty)
+    #expect(log.events == [nil])
+  }
+
+  @Test("a local Apple Intelligence summary registers no Ollama demand and reports nothing")
+  func appleIntelligenceHasNoOllamaDemand() async throws {
+    let (rig, id, log) = try Self.ollamaRig(provider: .appleIntelligence, model: "apple")
+    rig.world.holdCalls = true
+    _ = await Self.schedule(rig, id)
+    await Self.eventually("calling") { rig.world.callsWaiting == 1 }
+    #expect(rig.owner.ollamaSummaryDemand.isEmpty)
+
+    rig.world.releaseCall()
+    await Self.eventually("finished") { rig.world.finished.count == 1 }
+    #expect(log.events.isEmpty)
+  }
+
+  @Test("a summary whose model preparation fails still clears its demand")
+  func preparationFailureClearsDemand() async throws {
+    let (rig, id, log) = try Self.ollamaRig()
+    rig.world.unavailable = .notReady
+    _ = await Self.schedule(rig, id)
+    #expect(rig.owner.ollamaSummaryDemand == ["mistral"], "registered at start")
+    await Self.eventually("settled") { rig.world.finished.count == 1 }
+    #expect(rig.owner.ollamaSummaryDemand.isEmpty)
+    #expect(log.events == [nil], "no local use: the model was never reached")
+  }
+
+  @Test("a summary that cannot write its owed mark still clears its demand")
+  func owedMarkFailureClearsDemand() async throws {
+    let (rig, _, log) = try Self.ollamaRig()
+    let missingID = UUID()
+    rig.owner.writeAgain(missingID, replacing: nil)
+    #expect(rig.owner.ollamaSummaryDemand == ["mistral"])
+    await Self.eventually("demand cleared") { rig.owner.ollamaSummaryDemand.isEmpty }
+    #expect(log.events == [nil])
+    #expect(rig.owner.activity[missingID] == .failed(.storageFailed))
+    #expect(rig.world.preparedLists.isEmpty, "failed before preparation")
+  }
+
+  @Test("a cancelled local summary waiting for its turn clears its demand")
+  func cancelledSummaryClearsDemand() async throws {
+    let (rig, id, log) = try Self.ollamaRig()
+    rig.world.localTurn = false
+    _ = await Self.schedule(rig, id)
+    await Self.eventually("waiting") { rig.lane.summaryWaiting == 1 }
+    #expect(log.events == ["mistral"], "queued: it may load the model once it runs")
+
+    await rig.owner.cancelAndWait(id)
+    #expect(rig.owner.ollamaSummaryDemand.isEmpty)
+    #expect(log.events == ["mistral", nil])
+  }
+
+  @Test("a replacement's demand is registered before the replaced attempt exits")
+  func replacementDemandHasNoGap() async throws {
+    let (rig, id, log) = try Self.ollamaRig()
+    rig.world.localTurn = false
+    _ = await Self.schedule(rig, id)
+    await Self.eventually("waiting") { rig.lane.summaryWaiting == 1 }
+
+    rig.world.holdPrepare = true
+    defer {
+      rig.world.holdPrepare = false
+      rig.world.releasePrepare()
+    }
+    rig.world.model = "llama3"
+    rig.owner.writeAgain(id, replacing: nil)
+    #expect(
+      rig.owner.ollamaSummaryDemand == ["mistral", "llama3"],
+      "both demanded synchronously: no moment in which neither model is needed")
+
+    // The setting changes again: a second read of it in `run` would be caught here.
+    rig.world.model = "qwen3"
+    await Self.eventually("old attempt ended while the replacement prepares") {
+      rig.world.preparing && rig.owner.ollamaSummaryDemand == ["llama3"]
+    }
+    #expect(log.events == ["mistral", nil])
+
+    rig.world.model = "llama3"
+    rig.world.localTurn = true
+    rig.world.holdPrepare = false
+    rig.world.releasePrepare()
+    await Self.eventually("both ended") { rig.owner.ollamaSummaryDemand.isEmpty }
+    #expect(log.events == ["mistral", nil, "llama3", nil])
+  }
+
+  @Test("a preview demands and reports the model it was asked to use, not the setting")
+  func previewDemandsItsOwnModel() async throws {
+    let (rig, id, log) = try Self.ollamaRig(provider: .openAI, model: "gpt-4o-mini")
+    rig.world.execution = .local
+    rig.world.localTurn = false
+    rig.owner.startPreview(id, with: HistoryPolishChoice(provider: .ollama, model: "qwen3"))
+    #expect(rig.owner.ollamaSummaryDemand == ["qwen3"])
+    await Self.eventually("waiting") { rig.lane.summaryWaiting == 1 }
+    #expect(log.events == ["qwen3"])
+
+    await rig.owner.cancelAndWait(id)
+    #expect(rig.owner.ollamaSummaryDemand.isEmpty)
+    #expect(log.events == ["qwen3", nil])
   }
 
   @Test("a local Ollama call's end asks for the deferred eviction once; a local Apple call does not")
@@ -1412,16 +1877,29 @@ struct MeetingSummaryOwnerTests {
   @Test("a queued meeting the queue cannot run never holds summaries back")
   func unrunnableQueueDoesNotBlock() async throws {
     let harness = try MeetingCoordinatorTests.Harness()
+    let rig = try Rig()
+    rig.world.execution = .local
     var record = MeetingRecord(engine: .parakeet, trackStatus: [.microphone: .captured])
     try harness.store.create(record)
     record.state = .queued
     try harness.store.save(record)
+    var ready = MeetingRecord(engine: .parakeet, trackStatus: [.microphone: .captured])
+    try harness.store.create(ready)
+    ready.state = .ready
+    try harness.store.save(ready)
+    _ = try harness.store.setSummaryPending(true, meeting: ready.id)
     // Too little disk: the queue stops and leaves the meeting queued.
     harness.freeBytes = 10_000_000
     let coordinator = harness.coordinator
+    rig.world.localTurnCheck = { !coordinator.hasFinalPassWork }
+    coordinator.summaries = rig.makeOwner(documents: coordinator.documents)
     coordinator.launch()
     await Self.eventually("listed") { coordinator.record(id: record.id) != nil }
-    await Self.eventually("queue stopped") { !coordinator.hasFinalPassWork }
+    await Self.eventually("queue stopped") {
+      coordinator.queueWaitsForSpace && !coordinator.hasFinalPassWork
+    }
+    await Self.eventually("summary written") { rig.world.finished.count == 1 }
+    #expect(rig.world.finished == [Self.row(.written, .local)])
     #expect(coordinator.record(id: record.id)?.state == .queued)
   }
 
@@ -1541,8 +2019,9 @@ struct MeetingSummaryOwnerTests {
   @Test("every summary problem has its own message, and the engine ones open Summaries settings")
   func problemCopy() {
     let problems: [MeetingSummaryOwner.Problem] = [
-      .noProvider, .notForSummaries, .notReady, .ollamaTooOld, .tooLong, .providerFailed,
-      .notesUnreadable, .storageFailed,
+      .noProvider, .notForSummaries, .notReady, .ollamaTooOld,
+      .modelLimit(.init(reason: .tooLong, provider: .egOne, attempt: UUID())),
+      .providerFailed, .notesUnreadable, .storageFailed,
     ]
     let messages = problems.map(MeetingSummaryView.message)
     #expect(Set(messages).count == problems.count)
@@ -1550,6 +2029,81 @@ struct MeetingSummaryOwnerTests {
     #expect(
       problems.filter(MeetingSummaryView.opensSummarySettings)
         == [.noProvider, .notForSummaries, .notReady, .ollamaTooOld])
+  }
+
+  @Test("model limits keep the attempted engine and preserve existing outcomes")
+  func modelLimits() async throws {
+    let cases: [(MeetingSummary.Failure, MeetingSummaryOwner.LimitFailure.Reason?,
+                 MeetingSummaryFinishedTelemetry.Outcome)] = [
+      (.tooLong, .tooLong, .unsupported),
+      (.truncated, .truncated, .failed),
+      (.providerFailed, nil, .failed),
+    ]
+    for (failure, expectedReason, outcome) in cases {
+      let rig = try Rig()
+      let (id, saved) = try await Self.writtenMeeting(rig)
+      rig.world.holdCalls = true
+      rig.world.callFailures = [failure]
+      rig.owner.writeAgain(id, replacing: nil)
+      await Self.eventually("call held") { rig.world.callsWaiting == 1 }
+      rig.world.provider = .claude
+      rig.world.model = "claude-new"
+      rig.world.releaseCall()
+      await Self.eventually("settled failure") { rig.world.finished.count == 1 }
+      #expect(rig.world.finished == [Self.row(outcome, .hosted)])
+      #expect(rig.summaryOnDisk(id) == saved)
+      if let expectedReason {
+        let limit = try #require(rig.world.shownLimits.first)
+        #expect(rig.world.shownLimits == [limit])
+        #expect(limit.reason == expectedReason)
+        #expect(limit.provider == .openAI)
+        #expect(rig.owner.activity[id] == .failed(.modelLimit(limit)))
+        #expect(rig.world.limitIsCurrent?() == true)
+        await rig.owner.settleBeforeNewTranscript(id)
+        #expect(rig.world.limitIsCurrent?() == false)
+      } else {
+        #expect(rig.world.shownLimits.isEmpty)
+        #expect(rig.owner.activity[id] == .failed(.providerFailed))
+      }
+    }
+  }
+
+  @Test("replacing the transcript during limit cleanup does not publish the old failure")
+  func transcriptReplacementSuppressesLimit() async throws {
+    let rig = try Rig()
+    let (id, saved) = try await Self.writtenMeeting(rig)
+    rig.world.callFailures = [MeetingSummary.Failure.truncated]
+    rig.world.holdFinish = true
+    rig.owner.writeAgain(id, replacing: nil)
+    await Self.eventually("attempt entered cleanup") { rig.world.finishWaiting }
+    // Replacement cancels the attempt before suspending to drain it.
+    Task { rig.world.releaseFinish() }
+    await rig.owner.settleBeforeNewTranscript(id)
+    #expect(rig.world.finished == [Self.row(.failed, .hosted)])
+    #expect(rig.world.shownLimits.isEmpty)
+    #expect(rig.owner.activity[id] == nil)
+    #expect(rig.summaryOnDisk(id) == saved)
+  }
+
+  @Test("closing History keeps the settled model limit until the user dismisses it")
+  func previewLimitSurvivesClosingHistory() async throws {
+    let rig = try Rig()
+    let (id, saved) = try await Self.writtenMeeting(rig)
+    rig.world.callFailures = [MeetingSummary.Failure.truncated]
+    rig.owner.startPreview(id, with: HistoryPolishChoice(provider: .claude, model: "claude-test"))
+    await Self.eventually("limit settled") { rig.world.shownLimits.count == 1 }
+    let failure = try #require(rig.world.shownLimits.first)
+    rig.owner.closePreview(id)
+    guard case .modelLimit(let retained)? = rig.owner.previews[id] else {
+      Issue.record("the actionable failure disappeared on closing History")
+      return
+    }
+    #expect(retained == failure)
+    #expect(retained.provider == .claude)
+    #expect(rig.summaryOnDisk(id) == saved)
+    rig.owner.discardPreview(id)
+    #expect(rig.owner.previews[id] == nil)
+    #expect(rig.world.limitIsCurrent?() == false)
   }
 
   // MARK: - Summary tab review fixes (Codex C13b-1 r1)

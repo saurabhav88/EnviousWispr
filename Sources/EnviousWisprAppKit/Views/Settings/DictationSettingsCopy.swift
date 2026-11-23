@@ -56,6 +56,16 @@ enum DictationSettingsCopy {
     static let readinessHelp = LocalizedStringResource(
       "Keep the microphone engine active for a short time after dictation so the next recording starts instantly and captures your first words.",
       comment: "Microphone settings: explains microphone readiness.")
+    // #4841: the silent-mic notice switch.
+    static let silentMicTitle = LocalizedStringResource(
+      "Warn when the microphone is silent",
+      comment: "Microphone settings: title of the switch that shows a notice on the recording pill when the microphone sends no sound.")
+    static let silentMicShort = LocalizedStringResource(
+      "Shows a notice on the pill when no sound arrives.",
+      comment: "Microphone settings: short line under Warn when the microphone is silent.")
+    static let silentMicHelp = LocalizedStringResource(
+      "If your microphone sends only silence while you dictate, the pill shows a notice after a few seconds, and a stronger one after 15 seconds. Dictation keeps recording either way; to stop recording when you pause, use Stop recording on silence.",
+      comment: "Microphone settings: explains the silent-microphone notice. Names the separate auto-stop setting by its English title; translate that title exactly as the app's own label for it.")
   }
 
   /// The Engine tab (#3385). Short lines from the approved copy table; every
@@ -306,6 +316,12 @@ enum DictationSettingsCopy {
   /// Restore, Smart insertion and Quick Add explanations are the sentences the page
   /// showed before, now behind "?".
   enum Clipboard {
+    static let automaticPasteTitle = LocalizedStringResource(
+      "Paste dictations automatically", comment: "Clipboard settings: automatic paste switch title.")
+    static let automaticPasteShort = LocalizedStringResource(
+      "Turn this off to keep your latest dictation on the clipboard for manual paste.",
+      comment: "Clipboard settings: explains what happens when automatic paste is off.")
+
     static let autoCopyTitle = LocalizedStringResource(
       "Auto-copy to clipboard", comment: "Clipboard settings: switch title.")
     static let autoCopyShort = LocalizedStringResource(

@@ -1,3 +1,4 @@
+import AppKit
 import EnviousWisprCore
 import EnviousWisprServices
 import SwiftUI
@@ -12,6 +13,7 @@ struct HistoryContentView: View {
   @Environment(ImportedSources.self) private var importedSources
   @Environment(TranscriptRetranscription.self) private var retranscription
   @Environment(ImportedModelCatalog.self) private var modelCatalog
+  @Environment(HistoryRepolishRunner.self) private var historyRepolish
   @Environment(\.openWindow) private var openWindow
   @Environment(NavigationCoordinator.self) private var navigation
   @Environment(AppWindowCoordinator.self) private var appWindow
@@ -40,24 +42,14 @@ struct HistoryContentView: View {
 
       HistoryDiaryView(
         coordinator: transcriptCoordinator,
-        dictationCard: { rowID in
-          if let row = row(rowID, in: .dictations) {
-            if row.escapeRecoveredAt != nil {
-              // A held Escape Recovery dictation keeps its own Paste, Keep and Delete (#2087):
-              // it has no recording and no polish history for the dictation card to show.
-              VStack(alignment: .leading, spacing: 6) {
-                // The countdown says this text expires unless kept (#2087).
-                EscapeRecoveryBadge(transcript: row)
-                TranscriptDetailView(transcript: row, showPasteNotice: pasteNotice.show)
-              }
-              .id(rowID)
-            } else {
-              HistoryDictationCard(rowID: rowID, showPasteNotice: pasteNotice.show)
-                .id(rowID)
-            }
-          }
+        dictationCard: { row, query in
+          // A held Escape Recovery dictation (#2087) is a dictation card too: its countdown
+          // chip, Keep, Paste and Delete live in the card.
+          HistoryDictationCard(
+            display: row, query: query, showPasteNotice: pasteNotice.show)
+            .id(row.id)
         },
-        transcriptDestination: { rowID in
+        transcriptDestination: { rowID, back, neighbors in
           HistoryTranscriptView(
             rowID: rowID, context: .history, sources: importedSources,
             retranscription: retranscription,
@@ -66,37 +58,48 @@ struct HistoryContentView: View {
             restorePasteSurface: {
               navigation.request(.history)
               appWindow.showWindow()
-            }
+            },
+            back: back, neighbors: neighbors
           )
           .id(rowID)
         },
-        meetingDestination: { meetingID in
+        meetingDestination: { meetingID, back, neighbors in
           // #3147 PR4A: every meeting, live or finished, opens the meeting page; the live
           // recording, its live words and the notes sit on it while it records.
-          if meeting(meetingID) != nil {
-            HistoryMeetingAfterView(
-              meetingID: meetingID, notes: meetings.documents,
-              references: meetings.summaryReferences ?? NoMeetingSummaryReferences(),
-              showPasteNotice: pasteNotice.show,
-              restorePasteSurface: {
-                navigation.request(.history)
-                appWindow.showWindow()
-              }
-            )
-            .id(meetingID)
-          }
+          HistoryMeetingAfterView(
+            meetingID: meetingID, notes: meetings.documents,
+            references: meetings.summaryReferences ?? NoMeetingSummaryReferences(),
+            showPasteNotice: pasteNotice.show,
+            restorePasteSurface: {
+              navigation.request(.history)
+              appWindow.showWindow()
+            },
+            back: back, neighbors: neighbors
+          )
+          .id(meetingID)
         }
       )
       .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
     .frame(maxWidth: .infinity, maxHeight: .infinity)
     .background(Color.stPageBg)
+    // Every History button is a rounded rectangle (founder #4611, 2026-11-17).
+    .environment(\.enviousButtonShape, .roundedRect)
+    .task { await historyRepolish.refreshAvailability() }
     .task {
-      transcriptCoordinator.loadIfNeeded()
+      transcriptCoordinator.startHistoryCatalog()
       // #3147 PR3: a file deleted or moved while History was away is seen before Play, and the
       // Transcribe again with menu lists what is installed now.
       importedSources.invalidateAll()
       await modelCatalog.refresh()
+    }
+    .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
+      meetings.launch()
+      if let catalog = transcriptCoordinator.catalogSession {
+        catalog.sourceMayHaveChanged()
+      } else if transcriptCoordinator.historyReadAvailability != .ready {
+        transcriptCoordinator.loadIfNeeded()
+      }
     }
     .alert(
       actionFailureTitle,
@@ -117,19 +120,6 @@ struct HistoryContentView: View {
         pasteNotice.dismiss()
       }
     }
-  }
-
-  /// The listed row `rowID` in `tab`, as the coordinator holds it now.
-  private func row(_ rowID: UUID, in tab: HistoryTab) -> Transcript? {
-    transcriptCoordinator.matchingHistoryItems(in: tab).first { $0.id == .transcript(rowID) }?.row
-  }
-
-  /// The listed meeting `meetingID`, as the coordinator holds it now.
-  private func meeting(_ meetingID: UUID) -> HistoryMeetingItem? {
-    for item in transcriptCoordinator.matchingHistoryItems(in: .meetings) {
-      if case .meeting(let meeting) = item, meeting.meetingID == meetingID { return meeting }
-    }
-    return nil
   }
 
   /// #4075 G10: the sentence for the failed action. Empty when none is showing.

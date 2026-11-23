@@ -1,0 +1,13 @@
+{
+  "language": "pl",
+  "title": "czas do zwolnienia pamięci modelu korekty tekstu",
+  "words": [
+    "pamięć modelu korekty",
+    "pamięć EG-1",
+    "pamięć S1-mini"
+  ],
+  "phrases": [
+    "po jakim czasie bez dyktowania model poprawiania tekstu zwalnia pamięć",
+    "zwalniaj pamięć modelu korekty od razu po dyktowaniu"
+  ]
+}

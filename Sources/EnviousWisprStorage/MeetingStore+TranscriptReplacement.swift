@@ -23,6 +23,8 @@ extension MeetingStore {
   /// and one a newer build wrote.
   public func saveTranscriptReplacement(_ receipt: MeetingTranscriptReplacement) throws {
     let id = receipt.meetingID
+    historyChanges?.begin()
+    defer { historyChanges?.finish(.meeting(id)) }
     guard FileManager.default.fileExists(atPath: recordURL(for: id).path) else {
       throw StoreError.meetingMissing
     }
@@ -51,6 +53,8 @@ extension MeetingStore {
 
   /// Removes the receipt once its commit is settled. Absent already is success.
   public func clearTranscriptReplacement(meeting id: UUID) throws {
+    historyChanges?.begin()
+    defer { historyChanges?.finish(.meeting(id)) }
     do {
       try FileManager.default.removeItem(at: transcriptReplacementURL(for: id))
     } catch let error as CocoaError where error.code == .fileNoSuchFile {

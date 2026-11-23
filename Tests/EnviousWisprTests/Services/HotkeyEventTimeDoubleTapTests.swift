@@ -71,7 +71,7 @@ struct HotkeyEventTimeDoubleTapTests {
 
     var sink: HotkeyTelemetrySink {
       HotkeyTelemetrySink(
-        registrationFailed: { _, _, _, _ in },
+        registrationFailed: { _, _, _, _, _ in },
         pressed: { [weak self] _, _, _, _, action, timing in
           self?.presses.append((action, timing))
         },

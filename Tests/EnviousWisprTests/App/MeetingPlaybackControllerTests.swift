@@ -1,3 +1,4 @@
+import AVFoundation
 import Foundation
 import Testing
 
@@ -125,6 +126,74 @@ struct MeetingPlaybackControllerTests {
     // 1000..1500 ms: no file covers it on either track.
     #expect(output.windows[2].allSatisfy { $0 == 0 })
     player.stop()
+  }
+
+  /// A 16 kHz mono 16-bit segment holding one constant level, for clipping.
+  private static func writeLevel(
+    _ level: Float, in folder: URL, track: MeetingTrackKind, frames: Int
+  ) throws -> URL {
+    let url = folder.appendingPathComponent(
+      MeetingSegmentNaming.fileName(
+        track: track, variant: .raw, index: 1, startMs: 0, partial: false))
+    let file = try AVAudioFile(
+      forWriting: url,
+      settings: [
+        AVFormatIDKey: kAudioFormatLinearPCM, AVSampleRateKey: 16_000.0, AVNumberOfChannelsKey: 1,
+        AVLinearPCMBitDepthKey: 16, AVLinearPCMIsFloatKey: false,
+      ],
+      commonFormat: .pcmFormatFloat32, interleaved: false)
+    let buffer = try #require(
+      AVAudioPCMBuffer(pcmFormat: file.processingFormat, frameCapacity: AVAudioFrameCount(frames)))
+    buffer.frameLength = AVAudioFrameCount(frames)
+    for i in 0..<frames { buffer.floatChannelData![0][i] = level }
+    try file.write(from: buffer)
+    return url
+  }
+
+  @Test("Save audio's sample mix equals playback's and the values the files hold (#4799)")
+  func sampleMixMatchesPlaybackAndFiles() throws {
+    let folder = try MeetingAudioFixture.folder("sample-mix")
+    let mic = try MeetingAudioFixture.writeSegment(in: folder, index: 1, startMs: 0, frames: 8_000)
+    let call = try MeetingAudioFixture.writeSegment(
+      in: folder, track: .callSound, index: 1, startMs: 0, frames: 16_000, seed: 1)
+    let tracks = try MeetingPlaybackController.load([
+      .microphone: [(mic, 0)], .callSound: [(call, 0)],
+    ])
+
+    // An offset that falls between milliseconds, across the end of the microphone file.
+    let start = 7_990
+    let mixed = try MeetingPlaybackController.mixSamples(tracks, start: start, count: 20)
+    for k in 0..<20 {
+      let i = start + k
+      let expected = (i < 8_000 ? Self.value(i, seed: 0) : 0) + Self.value(i, seed: 1)
+      #expect(abs(mixed[k] - expected) <= 2 * MeetingAudioFixture.tolerance)
+    }
+    // Playback's millisecond view reads the same samples.
+    #expect(
+      try MeetingPlaybackController.mix(tracks, startMs: 100, count: 2)
+        == MeetingPlaybackController.mixSamples(tracks, start: 1_600, count: 32))
+    // Past both files: silence.
+    #expect(
+      try MeetingPlaybackController.mixSamples(tracks, start: 16_000, count: 64)
+        .allSatisfy { $0 == 0 })
+  }
+
+  @Test("two loud tracks are clipped to the sample range in the sample mix (#4799)")
+  func sampleMixClips() throws {
+    let folder = try MeetingAudioFixture.folder("sample-mix-clip")
+    let mic = try Self.writeLevel(0.75, in: folder, track: .microphone, frames: 4_000)
+    let call = try Self.writeLevel(0.75, in: folder, track: .callSound, frames: 4_000)
+    let tracks = try MeetingPlaybackController.load([
+      .microphone: [(mic, 0)], .callSound: [(call, 0)],
+    ])
+
+    // 0.75 + 0.75 = 1.5, clipped to 1, through both entry points at a millisecond boundary.
+    #expect(
+      try MeetingPlaybackController.mixSamples(tracks, start: 1_600, count: 96)
+        == [Float](repeating: 1, count: 96))
+    #expect(
+      try MeetingPlaybackController.mix(tracks, startMs: 100, count: 6)
+        == [Float](repeating: 1, count: 96))
   }
 
   @Test("a seek or a pause fences every window and completion from before it")
@@ -356,6 +425,19 @@ struct MeetingPlaybackControllerTests {
     #expect(MeetingPlaybackSource.change(from: nil, to: first) == .replace)
     #expect(MeetingPlaybackSource.change(from: first, to: nil) == .drop)
     #expect(recovered.durationMs > first.durationMs)
+  }
+
+  /// When this fails, a note typed after the meeting shows a fake 0:00, or ignores where the
+  /// user moved the play bar.
+  @Test("a player never played or moved has no position; a seek gives it the seek place")
+  func positionIsKnownOnlyAfterPlayOrSeek() throws {
+    let folder = try MeetingAudioFixture.folder("playback-known")
+    let mic = try MeetingAudioFixture.writeSegment(in: folder, index: 1, startMs: 0, frames: 16_000)
+    let player = MeetingPlaybackController(
+      files: [.microphone: [(mic, 0)]], durationMs: 1_000, output: FakeOutput(), windowMs: 250)
+    #expect(!player.hasPosition)
+    player.seek(toMs: 600)
+    #expect(player.hasPosition && player.positionMs == 600 && player.state == .idle)
   }
 
   @Test("a seek to the end finishes in every state; the next Play starts over")

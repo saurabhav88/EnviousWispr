@@ -12,6 +12,10 @@ public struct TextProcessingContext: Sendable {
   public var text: String
   /// Optional polished/enhanced version of the text.
   public var polishedText: String?
+  /// The live take's selected written language. Other processing paths leave it unset.
+  var requestedTranslationTarget: DictationTranslationTarget?
+  /// Set only when a directed result survives validation. The source language stays separate.
+  var acceptedTranslationTarget: DictationTranslationTarget?
   /// The RESOLVED dictation language (#2614): the user's lock, an engine that
   /// really detects, or the text itself at `DictationLanguageResolver`'s
   /// confidence floor — or nil when nothing established it. Seeded once by
@@ -59,6 +63,7 @@ public struct TextProcessingContext: Sendable {
   /// same words even when `CustomWordsPropagator` broadcasts mid-take. Nil
   /// means the caller froze nothing; each step then reads its own lane.
   public var frozenCorrectorVocabulary: CorrectorVocabulary?
+  package var fixLearnedWords = true
   /// Frozen when this context is built, before any processing step can suspend.
   public var frozenLearnedWordChecker: LearnedWordCheckerSelection?
   /// LLM provider used for polishing (e.g. "openai", "ollama").

@@ -624,6 +624,51 @@ struct KeyboardListenerIngressTests {
     #expect(rig.effects == ["start"])
   }
 
+  /// #4642: `CGEventSource.keyState` answers Caps Lock (57) down for as long as Caps Lock is
+  /// switched on, so a boundary reading must not count it as a held key. A really held letter read
+  /// at the same boundary still refuses the start. Literal 57 so this compiles on the parent.
+  @Test(
+    "a switched-on Caps Lock read at a recovery boundary never refuses a push-to-talk start",
+    .bug("https://github.com/saurabhav88/EnviousWispr/issues/4642", "Caps Lock blocks push-to-talk"))
+  func capsLockAcrossReplacementDoesNotRefuseStart() async {
+    let rig = Rig()
+    rig.readings.withLock { $0[57] = .down }
+    rig.replace(8, start: false)
+
+    await rig.key(Self.option, held: [Self.option], at: 0.2)
+    #expect(rig.effects == ["start"])
+    #expect(rig.observations.withLock { $0 }.isEmpty)
+
+    await rig.key(Self.option, held: [], at: 2.2)
+    #expect(rig.effects == ["start", "holdStop"])
+    #expect(rig.observations.withLock { $0 }.isEmpty)
+
+    // Caps Lock must not hide a genuinely held ordinary key.
+    let typing = Rig()
+    typing.readings.withLock {
+      $0[57] = .down
+      $0[Self.letterA] = .down
+    }
+    typing.replace(8, start: false)
+
+    await typing.key(Self.option, held: [Self.option], at: 0.2)
+    await typing.key(Self.option, held: [], at: 0.4)
+    #expect(typing.effects.isEmpty)
+    #expect(
+      typing.observations.withLock { $0 }
+        == [.startRefusedKeyHeld(keyCode: Self.option)])
+
+    await ordinary(typing, .keyUp, Self.letterA, at: 0.6)
+    await typing.key(Self.option, held: [Self.option], at: 1)
+    #expect(typing.effects == ["start"])
+
+    await typing.key(Self.option, held: [], at: 3)
+    #expect(typing.effects == ["start", "holdStop"])
+    #expect(
+      typing.observations.withLock { $0 }
+        == [.startRefusedKeyHeld(keyCode: Self.option)])
+  }
+
   @Test("a non-repeat ordinary key after a boundary dismisses an early hold")
   func resyncKeepsTheEventsOwnKey() async {
     let rig = Rig()

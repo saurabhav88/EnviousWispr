@@ -176,6 +176,22 @@ struct MeetingLanguageControlsTests {
       false, model: model, engine: .parakeet, systemLanguage: "ja")
     #expect(settings.meetingLanguageMode == .locked("en"), "Parakeet cannot write Japanese")
 
+    MeetingTranscriptLanguageSection.setAuto(
+      true, model: model, engine: .parakeet, systemLanguage: "fr", localeLanguage: "en")
+    MeetingTranscriptLanguageSection.setAuto(
+      false, model: model, engine: .parakeet, systemLanguage: "fr", localeLanguage: "en")
+    #expect(
+      settings.meetingLanguageMode == .locked("fr"),
+      "#4529: Mac language wins over the app locale")
+
+    MeetingTranscriptLanguageSection.setAuto(
+      true, model: model, engine: .parakeet, systemLanguage: nil, localeLanguage: "de")
+    MeetingTranscriptLanguageSection.setAuto(
+      false, model: model, engine: .parakeet, systemLanguage: nil, localeLanguage: "de")
+    #expect(
+      settings.meetingLanguageMode == .locked("de"),
+      "#4529: app locale is used only when the Mac language is missing or unsupported")
+
     let after = Languages(settings)
     #expect(after.dictation == before.dictation && after.live == before.live)
   }
@@ -186,8 +202,8 @@ struct MeetingLanguageControlsTests {
     #expect(MeetingTranscriptLanguageSection.coverage(.whisper) == "99+ languages")
   }
 
-  /// Plan §3.3 / §11 item 3: an engine switch that finishes while the window is open re-lists it.
-  @Test("the open transcript window follows a Whisper switch that finishes while it is open")
+  /// Plan §3.3 / §11 item 3: an engine switch made while the window is open re-lists it.
+  @Test("the open transcript window follows a Whisper switch made while it is open")
   func transcriptWindowFollowsAPendingSwitch() async throws {
     _ = NSApplication.shared
     let settings = MeetingLiveWordsChoiceInitializerTests.freshSettings()
@@ -205,7 +221,7 @@ struct MeetingLanguageControlsTests {
         }
       })
     let engine = MeetingTranscriptEngineRowModel(
-      environment: .init(settings: settings, whisperSetup: setup, isMeetingActive: { false }))
+      environment: .init(settings: settings, whisperSetup: setup))
     let live = MeetingLiveWordsRowModel.renderFixture(settings: settings)
     let built = FastAdmissionReadSignals()
     final class Last { var rows = 0 }
@@ -232,12 +248,9 @@ struct MeetingLanguageControlsTests {
     let parakeetRows = try #require(LanguageLockOptions.lockableCodes(for: .parakeet)).count
     #expect(last.rows == parakeetRows)
 
-    let switching = Task { await engine.select(.whisper) }
-    try #require(await gate.parked.wait(after: 0), "the Whisper readiness read never parked")
+    // #4578: the pick is saved at once (downloaded or not); the open window follows it.
     let baseline = built.count
-    gate.reply?.resume(returning: .ready)
-    gate.reply = nil
-    await switching.value
+    engine.select(.whisper)
     #expect(settings.meetingTranscriptEngine == .whisper)
     host.layoutSubtreeIfNeeded()
     try #require(await built.wait(after: baseline), "the open window did not re-list")

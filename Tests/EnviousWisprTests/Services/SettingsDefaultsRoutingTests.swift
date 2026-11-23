@@ -22,14 +22,36 @@ struct SettingsDefaultsRoutingTests {
 
   // MARK: - Canonical defaults (piece 0)
 
+  @Test("Translation target round-trips through unified defaults and clears to Same as spoken")
+  func dictationTranslationTargetRoundTrips() {
+    let defaults = Self.freshSuite()
+    let key = "dictationTranslationTarget"
+    #expect(SettingsManager.unifiedDefaultsKeys.contains(key))
+    #expect(SettingsManager(defaults: defaults).dictationTranslationTarget == nil)
+    defaults.set("unknown", forKey: key)
+    let settings = SettingsManager(defaults: defaults)
+    #expect(settings.dictationTranslationTarget == nil)
+
+    settings.dictationTranslationTarget = .hindi
+    let reloaded = SettingsManager(defaults: defaults)
+    #expect(reloaded.dictationTranslationTarget == .hindi)
+    reloaded.dictationTranslationTarget = nil
+    #expect(defaults.object(forKey: key) == nil)
+  }
+
   @Test("fresh install yields the founder-ratified canonical defaults")
   func canonicalDefaults() {
-    let settings = SettingsManager(defaults: Self.freshSuite())
+    let defaults = Self.freshSuite()
+    let settings = SettingsManager(defaults: defaults)
     // The two #923 corrections:
     #expect(settings.emojiFormatterEnabled == true)
     // #1794: the ONE Text-cleanup toggle that ships OFF.
     #expect(settings.spokenPunctuation == SpokenPunctuationSettings.off)
-    #expect(settings.llmProvider == .appleIntelligence)
+    // #4528 D1 (unreleased, pending founder review): a FRESH install starts on the provider Setup
+    // recommends (EG-1); the canonical Apple Intelligence default remains for installs that
+    // completed onboarding (SetupAdviceConsumerTests).
+    #expect(settings.llmProvider == .egOne)
+    #expect(SettingsDefaultValues.llmProvider == .appleIntelligence)
     // Unchanged canonical values (lock them so an accidental flip fails here):
     #expect(settings.recordingMode == .pushToTalk)
     #expect(settings.toggleKeyCode == ModifierKeyCodes.rightOption)
@@ -37,6 +59,8 @@ struct SettingsDefaultsRoutingTests {
     #expect(settings.selectedBackend == .parakeet)
     #expect(settings.wordCorrectionEnabled == true)
     #expect(settings.fillerRemovalEnabled == true)
+    #expect(settings.automaticDictationPasteEnabled == true)
+    #expect(defaults.object(forKey: "automaticDictationPasteEnabled") == nil)
     #expect(settings.autoCopyToClipboard == true)
     #expect(settings.meetingCaptureCallSound == true)
     #expect(settings.meetingCallSoundExplained == false)
@@ -759,11 +783,13 @@ struct SettingsDefaultsRoutingTests {
   func lastLLMProviderFreshSeed() {
     let suite = Self.freshSuite()
     let settings = SettingsManager(defaults: suite)
-    #expect(settings.lastLLMProvider == SettingsDefaultValues.lastLLMProvider)
+    // #4528 D1: the fresh-install engine is the Setup recommendation (EG-1), and the remembered
+    // engine is seeded from it, as it is from any resolved provider.
+    #expect(settings.lastLLMProvider == settings.llmProvider)
+    #expect(settings.lastLLMProvider == .egOne)
     // Write-through: init must persist the seed even though didSet does not fire
     // on init assignment (the upgrade-toggle-off-then-quit data-loss guard).
-    #expect(
-      suite.string(forKey: "lastLLMProvider") == SettingsDefaultValues.lastLLMProvider.rawValue)
+    #expect(suite.string(forKey: "lastLLMProvider") == LLMProvider.egOne.rawValue)
   }
 
   // MARK: - Migration (effective-state, dev-store sentinel)
@@ -891,5 +917,26 @@ struct SettingsDefaultsRoutingTests {
       SettingsManager(defaults: suite).claimGlobeKeyGuidancePresentation(
         for: ModifierKeyCodes.globe))
     #expect(suite.bool(forKey: "hasClaimedGlobeKeyGuidance"))
+  }
+
+  // MARK: - Domain routing by bundle (#4596)
+
+  // Pure decision, no preference writes: only the dev build opens the shared production domain
+  // by name; Release uses its own (identical) standard domain; every other bundle stays on its
+  // own standard domain, so a test runner or a renamed measurement copy never touches the
+  // production preferences.
+  @Test("only the dev bundle opens the shared domain by name", arguments: [
+    ("com.enviouswispr.app.dev", "com.enviouswispr.app"),
+    ("com.enviouswispr.app", nil),
+    ("com.enviouswispr.app.historyspeed", nil),
+    ("com.apple.dt.xctest.tool", nil),
+  ] as [(String, String?)])
+  func domainRouting(bundle: String, expected: String?) {
+    #expect(SettingsDefaults.domainName(forBundle: bundle) == expected)
+  }
+
+  @Test("a process without a bundle identifier stays on its standard domain")
+  func domainRoutingWithoutBundle() {
+    #expect(SettingsDefaults.domainName(forBundle: nil) == nil)
   }
 }

@@ -1,0 +1,447 @@
+import EnviousWisprAudio
+import EnviousWisprCore
+import EnviousWisprServices
+import SwiftUI
+
+enum SetupPracticeState: Equatable {
+  case preparing, waiting
+  case listening(handsFree: Bool)
+  case transcribing, polishing
+  case worked, noSpeech
+  /// #4590: the take reached the box but AI polish did not run on it (failed, skipped, or the
+  /// dictation was too short), while polish is on. Counts as success; the copy stays honest.
+  case workedWithoutPolish
+  /// #4845: the take reached the box on basic cleanup because the person chose Skip ahead while
+  /// AI polish downloads. A success, like `.worked`.
+  case workedBasicCleanup
+  case missedBox(copiedToClipboard: Bool)
+  case pipelineFailed
+  /// #4601: the microphone did not answer (a first press with no session, or a failed take).
+  /// Shows the narrator's sentence and "How to fix"; neither success nor in flight.
+  case microphoneNotResponding
+  case microphoneOff, accessibilityOff
+
+  var inFlight: Bool {
+    switch self {
+    case .listening, .transcribing, .polishing: true
+    default: false
+    }
+  }
+
+  /// Either success state: the take landed in the box.
+  var isWorked: Bool {
+    self == .worked || self == .workedWithoutPolish || self == .workedBasicCleanup
+  }
+
+  var needsPermission: Bool { self == .microphoneOff || self == .accessibilityOff }
+  var acceptsFocus: Bool { self != .preparing && !needsPermission }
+
+  func canContinue(hasSucceeded: Bool) -> Bool {
+    hasSucceeded && acceptsFocus && !inFlight
+  }
+
+  func canSkip(hasSucceeded: Bool) -> Bool {
+    !hasSucceeded && !inFlight
+  }
+
+  var headline: LocalizedStringKey {
+    switch self {
+    case .preparing: "Almost ready"
+    case .waiting: "Time for your first dictation!"
+    case .listening: "Listening…"
+    case .transcribing: "Transcribing…"
+    case .polishing: "Polishing…"
+    case .worked: "That is it. You are set."
+    case .workedWithoutPolish: "Dictation worked"
+    case .workedBasicCleanup: "Dictation worked"
+    case .noSpeech: "Let’s try that again"
+    case .missedBox(copiedToClipboard: true): "Your words were copied"
+    case .missedBox(copiedToClipboard: false): "Click the box, then talk"
+    case .pipelineFailed: "One more time"
+    case .microphoneNotResponding: "Let’s try that again"
+    case .microphoneOff: "Turn the microphone back on"
+    case .accessibilityOff: "Turn Accessibility back on"
+    }
+  }
+
+  func subtitle(key: String) -> LocalizedStringKey {
+    switch self {
+    case .preparing: "Getting dictation ready…"
+    case .waiting: "Hold \(key) and say the line below.\nLet go when you are done."
+    case .listening(handsFree: false):
+      "Go ahead, say the line.\nLet go of \(key) when you are done."
+    case .listening(handsFree: true):
+      "Hands-free is on. Talk as long as you like.\nPress \(key) once when you are done."
+    case .transcribing: "Turning your voice into text,\nright here on this Mac."
+    case .polishing: "Cleaning up your words.\nAlmost there."
+    case .worked:
+      "Those are your words, typed for you.\nIn any other app, click into a text box first."
+    case .workedWithoutPolish:
+      "AI polish didn’t run on this one.\nHold \(key) and say the line again to see it."
+    case .workedBasicCleanup:
+      "Those are your words, with basic cleanup.\nAI polish takes over by itself when it is ready."
+    case .noSpeech:
+      "EnviousWispr didn’t hear any speech.\nPick another microphone, or hold \(key) and speak."
+    case .missedBox(copiedToClipboard: true):
+      "Click the box and try again. If Paste dictations automatically is off, turn it on in Dictation Settings > Clipboard first, or skip."
+    case .missedBox(copiedToClipboard: false):
+      "EnviousWispr types where your cursor is.\nClick here and try again."
+    case .pipelineFailed: "That one was on us, not you.\nHold \(key) and say it again."
+    // #4601: shown through `DictationNarrator` (the one copy owner); see `subtitleText`.
+    case .microphoneNotResponding: ""
+    case .microphoneOff:
+      "macOS has the microphone switched off for EnviousWispr.\nFlip it on and you are right back here."
+    case .accessibilityOff:
+      "EnviousWispr needs this switch to type your words for you.\nFlip it on and you are right back here."
+    }
+  }
+
+  var lips: LipsAnimationState {
+    switch self {
+    case .waiting: .welcome
+    case .listening: .equalizer
+    case .transcribing, .polishing: .shimmer
+    case .worked, .workedBasicCleanup: .triumph
+    case .workedWithoutPolish: .smile
+    default: .idle
+    }
+  }
+}
+
+enum SetupPracticePolish: Equatable {
+  case live, off
+  case cloudLater(providerName: String)
+  /// #4845 D-C: the person chose Skip ahead and the picked AI polish is not ready yet.
+  case deferred(DeferredStage)
+
+  /// Where the skipped-ahead AI polish model stands, from its live phase.
+  enum DeferredStage: Equatable {
+    case downloading, starting, unavailable
+    /// The download stopped: `paused` points to the menu bar's Resume; otherwise (failed, or a
+    /// start refused for disk) to AI Polish in Settings.
+    case stopped(paused: Bool)
+  }
+
+  /// The stage from Getting ready's own presentation of the current pick; nil once polish is
+  /// ready (or for a pick that downloads nothing).
+  /// The current pick's live readiness and transfer decide first; a saved refusal (disk) explains
+  /// the note only while the model is still not moving.
+  static func deferredStage(_ p: OnboardingDownloadsPresentation) -> DeferredStage? {
+    switch p.polishPreparation {
+    case .ready, .none, .off, .appleIntelligence, .cloud: return nil
+    case .loading: return .starting
+    case .failed: return .unavailable
+    case .downloading: return .downloading
+    case .queued, .waiting: return p.block != nil ? .stopped(paused: false) : .downloading
+    case .downloadStopped:
+      // Only a transfer with bytes to continue points to the menu bar's Resume (the menu shows
+      // none for an update that never started).
+      return .stopped(paused: p.block == nil && p.polishPhase == .paused && p.polishResumable)
+    }
+  }
+
+  var note: LocalizedStringKey? {
+    switch self {
+    case .live: nil
+    case .off: "AI polish is off. You can turn it on in Settings."
+    case .cloudLater(let provider): "Add your \(provider) key in Settings to turn on AI polish."
+    case .deferred: nil
+    }
+  }
+
+  /// #4845: the "Basic cleanup for now" note's explanation, shown for the whole practice.
+  var deferredBody: LocalizedStringKey? {
+    guard case .deferred(let stage) = self else { return nil }
+    switch stage {
+    case .downloading:
+      return
+        "AI polish is still downloading, so this practice fixes filler words and formatting only. Full AI polish turns on by itself when the download is done."
+    case .starting:
+      return
+        "AI polish is getting ready, so this practice fixes filler words and formatting only. It turns on by itself in a moment."
+    case .unavailable:
+      return
+        "AI polish could not start, so this practice fixes filler words and formatting only. You can check it in Settings after setup."
+    case .stopped(paused: true):
+      return
+        "The AI polish download stopped, so this practice fixes filler words and formatting only. You can resume it from the menu bar after setup."
+    case .stopped(paused: false):
+      return
+        "The AI polish download stopped, so this practice fixes filler words and formatting only. Open AI Polish in Settings after setup to finish the download."
+    }
+  }
+}
+
+/// Practice receives the real editor binding. The parent decides whether a take reached that
+/// editor and owns the normal overlay, readiness, recovery and flow actions.
+///
+/// Historical rationale from the original Practice screen:
+/// Deliberately quiet while recording: the pill is NOT suppressed during
+/// onboarding (nothing under App/Overlay/ reads `onboardingState`), so it
+/// appears over this window and carries the recording state — which is what
+/// this person will see in every other app forever after. A second waveform
+/// here would teach them a UI that only exists during setup.
+struct SetupPracticeScreen: View {
+  let state: SetupPracticeState
+  @Binding var text: String
+  let hasSucceeded: Bool
+  let key: String
+  let polish: SetupPracticePolish
+  let settings: SettingsManager
+  let microphone: MicrophoneFacts
+  let microphoneChoices: MicrophoneChoiceOwner
+  let onSucceeded: () -> Void
+  let onSkip: () -> Void
+  let onBack: () -> Void
+  let onOpenPermissions: () -> Void
+  var onFocusChange: (Bool) -> Void = { _ in }
+  var editorIdentifier: String = "Your first dictation"
+  var mayFocusEditor: @MainActor () -> Bool = { true }
+  /// #4590: the live microphone level; the lips follow it while listening.
+  var voiceLevel: (@MainActor () -> Double)? = nil
+  @Environment(\.accessibilityReduceMotion) private var systemReduceMotion
+  @Environment(\.overlayReduceMotionOverride) private var reduceMotionOverride
+  @Environment(\.openURL) private var openURL
+  private var reduceMotion: Bool { reduceMotionOverride ?? systemReduceMotion }
+
+  @FocusState private var editorFocused: Bool
+
+  /// The voice level reaches the lips only while listening.
+  private var lipsLevel: (@MainActor () -> Double)? {
+    if case .listening = state { return voiceLevel }
+    return nil
+  }
+  @State private var burst = 0
+  @State private var glow = false
+
+  /// The screen scrolls only when it does not fit (long German copy), and otherwise fills the
+  /// height. #3147 C9's recording note no longer shows here (founder 2026-11-13: recordings are
+  /// taught in the post-install tour, #4565; #3147 plan §17).
+  var body: some View {
+    GeometryReader { proxy in
+      ScrollView {
+        practiceContent
+          .frame(maxWidth: .infinity, minHeight: proxy.size.height)
+      }
+      .scrollBounceBehavior(.basedOnSize)
+    }
+  }
+
+  private var practiceContent: some View {
+    VStack(spacing: DesignSpacing.xl) {
+      RainbowLipsView(
+        animationState: state.lips, size: SetupMetrics.screenLips,
+        levelSource: lipsLevel,
+        burst: burst)
+        .accessibilityHidden(true)
+        .onAppear { if !reduceMotion { burst += 1 } }  // mockup: a happy bounce on arrival
+      VStack(spacing: DesignSpacing.md) {
+        Text(state.headline)
+          .font(.firstRunDisplay)
+          .multilineTextAlignment(.center)
+          .fixedSize(horizontal: false, vertical: true)  // a long German title wraps, never truncates
+          .foregroundStyle(Color.obTextPrimary)
+          .accessibilityAddTraits(.isHeader)
+        subtitleText
+          .font(.firstRunBody)
+          .foregroundStyle(Color.obTextSecondary)
+          .fixedSize(horizontal: false, vertical: true)
+        if state == .microphoneNotResponding {
+          // #4601: the same help action as the pill and the meeting notice.
+          SetupLinkButton(title: LocalizedStringKey(DictationNarrator.microphoneHelpButtonLabel)) {
+            openURL(DictationNarrator.microphoneNotRespondingHelpURL)
+          }
+          .accessibilityLabel(Text(verbatim: DictationNarrator.microphoneHelpAccessibilityLabel))
+          .accessibilityIdentifier("setup.practice.microphoneHelp")
+        }
+      }
+      .multilineTextAlignment(.center)
+
+      if state.needsPermission {
+        permissionGuide
+      } else if state.acceptsFocus {
+        prompt
+      }
+      if state != .preparing {
+        editor
+      }
+      if state.acceptsFocus, let body = polish.deferredBody {
+        deferredNote(body)
+      }
+      if state.acceptsFocus {
+        if state.isWorked, let note = polish.note {
+          Text(note)
+            .font(.firstRunCaption)
+            .foregroundStyle(Color.obTextSecondary)
+            .multilineTextAlignment(.center)
+        } else if !state.isWorked && !state.inFlight {
+          MicrophoneDevicePicker(
+            model: MicrophonePickerModel(
+              settingsManager: settings, facts: microphone, choices: microphoneChoices))
+        }
+      }
+      Spacer(minLength: 0)
+      footer
+    }
+    .onDisappear { onFocusChange(false) }
+    .onChange(of: editorFocused) { _, focused in onFocusChange(focused) }
+    .onChange(of: state) { _, new in
+      if !new.acceptsFocus { editorFocused = false }
+    }
+  }
+
+  /// The narrator owns the not-responding sentence; every other state uses its own subtitle.
+  private var subtitleText: Text {
+    if state == .microphoneNotResponding {
+      return Text(verbatim: DictationNarrator.copy(for: .micNotResponding))
+    }
+    return Text(state.subtitle(key: key))
+  }
+
+  /// #4845 D-C: "Basic cleanup for now" under the box (mockup Practice).
+  private func deferredNote(_ body: LocalizedStringKey) -> some View {
+    HStack(alignment: .firstTextBaseline, spacing: DesignSpacing.md) {
+      Image(systemName: "sparkle")
+        .foregroundStyle(Color.obAccent)
+        .accessibilityHidden(true)
+      VStack(alignment: .leading, spacing: DesignSpacing.xxs) {
+        Text("Basic cleanup for now")
+          .font(.firstRunCaption.weight(.semibold))
+          .foregroundStyle(Color.obTextPrimary)
+        Text(body)
+          .font(.firstRunCaption)
+          .foregroundStyle(Color.obTextSecondary)
+          .fixedSize(horizontal: false, vertical: true)
+      }
+      .frame(maxWidth: .infinity, alignment: .leading)
+    }
+    .padding(DesignSpacing.xl)
+    .background(
+      RoundedRectangle(cornerRadius: DesignRadius.xl, style: .continuous)
+        .strokeBorder(Color.firstRunRule, lineWidth: 1)
+    )
+    .accessibilityElement(children: .combine)
+  }
+
+  private var permissionGuide: some View {
+    SetupCard {
+      VStack(alignment: .leading, spacing: DesignSpacing.xl) {
+        SetupSettingsPreview(
+          pane: state == .microphoneOff
+            ? "Privacy & Security › Microphone" : "Privacy & Security › Accessibility",
+          reduceMotion: reduceMotion)
+        Text(
+          "Flip this switch on. EnviousWispr notices by itself. If it still shows off, quit and reopen EnviousWispr."
+        )
+        .font(.firstRunCaption)
+        .foregroundStyle(Color.obTextSecondary)
+        .fixedSize(horizontal: false, vertical: true)
+      }
+    }
+  }
+
+  private var prompt: some View {
+    VStack(alignment: .leading, spacing: DesignSpacing.md) {
+      Text("Try saying")
+        .font(.firstRunEyebrow)
+        .textCase(.uppercase)
+        .foregroundStyle(Color.obAccent)
+      Text("“Um, I think we should, uh, meet tomorrow morning.”")
+        .font(.firstRunSay)
+        .foregroundStyle(Color.obTextPrimary)
+    }
+    .frame(maxWidth: .infinity, minHeight: 84, alignment: .leading)
+    .padding(DesignSpacing.xxl)
+    .background(Color.firstRunAccentSoft, in: RoundedRectangle(cornerRadius: DesignRadius.xxl))
+  }
+
+  private var editor: some View {
+    let shape = RoundedRectangle(cornerRadius: DesignRadius.xl)
+    return TextEditor(text: $text)
+      .font(.firstRunSay)
+      .foregroundStyle(Color.obTextPrimary)
+      .scrollContentBackground(.hidden)
+      .padding(DesignSpacing.md)
+      .frame(height: 116)
+      .background(Color.obSurface, in: shape)
+      .overlay(alignment: .topLeading) {
+        if text.isEmpty {
+          Text("Your words land here")
+            .font(.firstRunBody)
+            .foregroundStyle(Color.firstRunTextTertiary)
+            .padding(DesignSpacing.xl)
+            .accessibilityHidden(true)
+            .allowsHitTesting(false)
+        }
+      }
+      .overlay {
+        shape.strokeBorder(
+          state.isWorked
+            ? Color.firstRunSuccessText : editorFocused ? Color.obAccent : Color.firstRunRule,
+          lineWidth: 1
+        ).allowsHitTesting(false)
+          // Mockup: the border turns green over 0.2 s on success.
+          .animation(reduceMotion ? nil : .easeInOut(duration: 0.2), value: state.isWorked)
+      }
+      // Mockup obGlow 0.7 s: on success a green ring grows to 8 points and fades back.
+      .background {
+        shape.stroke(Color.obSuccessSoft, lineWidth: glow && !reduceMotion ? 16 : 0)
+          .allowsHitTesting(false)
+      }
+      .onChange(of: state.isWorked) { _, worked in
+        guard worked, !reduceMotion else { return }
+        // Out to 8 points, then back: the second step starts when the first one finishes.
+        withAnimation(SetupMotion.rise(0.28), completionCriteria: .logicallyComplete) {
+          glow = true
+        } completion: {
+          withAnimation(reduceMotion ? nil : SetupMotion.rise(0.42)) { glow = false }
+        }
+      }
+      .background {
+        SetupPracticeEditorFocus(
+          canFocus: state.acceptsFocus,
+          mayFocusNow: { !state.inFlight && mayFocusEditor() }
+        )
+        .frame(width: 0, height: 0)
+        .accessibilityHidden(true)
+      }
+      .focused($editorFocused)
+      .accessibilityLabel("Your first dictation")
+      .accessibilityIdentifier(editorIdentifier)
+  }
+
+  private var footer: some View {
+    SetupFooter(
+      title: state.needsPermission ? "Open System Settings" : "Continue",
+      isEnabled: state.needsPermission || state.canContinue(hasSucceeded: hasSucceeded),
+      action: primary
+    ) {
+      // A visible way back (founder 2026-11-13: Escape alone traps mouse-only people); never
+      // while a take is in flight.
+      SetupLinkButton(title: "Back", quiet: true, action: back)
+        .keyboardShortcut(.cancelAction)
+        .disabled(state.inFlight)
+      if state.canSkip(hasSucceeded: hasSucceeded) {
+        SetupLinkButton(title: "Skip practice", quiet: true) {
+          if state.canSkip(hasSucceeded: hasSucceeded) { onSkip() }
+        }
+      } else if hasSucceeded && !state.inFlight && state.acceptsFocus {
+        Text("Next: a few quick tips.")
+          .font(.firstRunCaption)
+          .foregroundStyle(Color.obTextSecondary)
+      }
+    }
+  }
+
+  private func primary() {
+    if state.needsPermission {
+      onOpenPermissions()
+    } else if state.canContinue(hasSucceeded: hasSucceeded) {
+      onSucceeded()
+    }
+  }
+
+  private func back() {
+    if !state.inFlight { onBack() }
+  }
+}

@@ -59,6 +59,8 @@ final class AppLifecycleCoordinator {
   private let keychainManager: KeychainManager
   /// #4353 D6: the cloud model list in use now; each warm-up reads it once.
   private let cloudModelList: @MainActor () -> CloudModelList?
+  /// #4578 §3.9: `app.launched` `speech_models_installed`, nil when unknown (omitted).
+  private let speechModelsInstalled: @MainActor () -> String?
   /// #2997: the launch `settings.snapshot` emitter, built by the bootstrapper, which holds
   /// every coordinator the snapshot reads. Replaces the `customWordsCoordinator` this type
   /// stored only to build the same emitter here.
@@ -103,6 +105,18 @@ final class AppLifecycleCoordinator {
   /// `applicationDidFinishLaunching`, after `init` has returned; one narrow
   /// callback rather than a second pipeline observer.
   private let onRecordingStarted: @MainActor () -> Void
+  /// #4021: asks the device list for a fresh snapshot (read off the main actor). An OS audio
+  /// event requests one; the Bluetooth card is re-judged after that snapshot is applied, never
+  /// on facts that may be stale.
+  private let requestDeviceRefresh: @MainActor () -> Void
+  /// #4721: told of every activation; the launch key check owns whether it retries.
+  private let onBecameActive: @MainActor () -> Void
+  /// #4021: DEBUG `force_core_audio_stall` target, forwarded into `DebugFaultEndpoint`; nil in
+  /// Release.
+  private let coreAudioStall: ((Duration) -> Void)?
+  /// #4601: DEBUG `force_core_audio_stall(N,unit:...)` target, forwarded the same way; nil in
+  /// Release.
+  private let audioUnitStall: ((AudioUnitLane.Operation, Duration) -> Void)?
 
   init(
     wheelScrollSmoother: WheelScrollSmoother,
@@ -111,6 +125,7 @@ final class AppLifecycleCoordinator {
     permissions: PermissionsService,
     keychainManager: KeychainManager,
     cloudModelList: @escaping @MainActor () -> CloudModelList?,
+    speechModelsInstalled: @escaping @MainActor () -> String?,
     standingSnapshotBuilder: StandingSnapshotBuilder,
     contactsImportCoordinator: ContactsImportCoordinator,
     aiAvailability: AIAvailabilityCoordinator,
@@ -127,23 +142,29 @@ final class AppLifecycleCoordinator {
     hotkeyService: HotkeyService,
     applicationRelocationCoordinator: ApplicationRelocationCoordinator,
     bluetoothAwarenessPresenter: BluetoothAwarenessPresenter,
-    // #1176: captured in the onboarding-dismiss closure below (NOT stored — keeps
-    // this coordinator's stored properties lean).
-    onboardingProgress: OnboardingProgress,
     transcriptionCheckpointStore: TranscriptionCheckpointStore,
     batchDecodeFaultController: BatchDecodeFaultController? = nil,
     whisperMemoryPressure: (@MainActor () async -> Bool)? = nil,
+    requestDeviceRefresh: @escaping @MainActor () -> Void,
+    onBecameActive: @escaping @MainActor () -> Void,
+    coreAudioStall: ((Duration) -> Void)? = nil,
+    audioUnitStall: ((AudioUnitLane.Operation, Duration) -> Void)? = nil,
     // Required and non-defaulted (review r1): a composition that forgets it
     // must fail to compile, not silently drop the watcher's cancellation.
     onRecordingStarted: @escaping @MainActor () -> Void
   ) {
     self.onRecordingStarted = onRecordingStarted
+    self.requestDeviceRefresh = requestDeviceRefresh
+    self.onBecameActive = onBecameActive
+    self.coreAudioStall = coreAudioStall
+    self.audioUnitStall = audioUnitStall
     self.wheelScrollSmoother = wheelScrollSmoother
     self.previousApplicationTracker = previousApplicationTracker
     self.settings = settings
     self.permissions = permissions
     self.keychainManager = keychainManager
     self.cloudModelList = cloudModelList
+    self.speechModelsInstalled = speechModelsInstalled
     self.standingSnapshotBuilder = standingSnapshotBuilder
     self.contactsImportCoordinator = contactsImportCoordinator
     self.aiAvailability = aiAvailability
@@ -163,29 +184,14 @@ final class AppLifecycleCoordinator {
     self.batchDecodeFaultController = batchDecodeFaultController
     self.whisperMemoryPressure = whisperMemoryPressure
     self.transcriptionCheckpointStore = transcriptionCheckpointStore
-    // Icon-refresh seam: the window coordinator's two onboarding-dismiss
-    // callsites route through this closure. Was wired in `AppDelegate.attach`
-    // before PR-B.4.
-    appWindowCoordinator.onOnboardingDismissed = {
-      [weak menuBarController, onboardingProgress, permissions] in
-      menuBarController?.updateIcon()
-      // #1176: the window closed before completion → record the abandon (deduped
-      // by the box's terminal guard, so a clean finish or a prior quit suppresses it).
-      onboardingProgress.emitAbandonIfInFlight(
-        reason: "window_closed",
-        micStatus: permissions.microphoneStatusString,
-        // Live read (not the cached `accessibilityGranted`): a grant made in System
-        // Settings just before this close may not have hit the poll yet (cloud Codex
-        // review r3). Pure no-prompt read, no side effects.
-        accessibilityStatus: permissions.accessibilityGrantedLive ? "granted" : "denied")
-    }
+
   }
 
   func runDidFinishLaunching() {
     // #2480: no Dock-policy write here. Launch used to force `.accessory` once
     // onboarding was done, which left the launch window behind other apps with no
     // app menu or Cmd-Tab entry. `AppWindowCoordinator` owns the policy now
-    // (`beginLaunch` / `finishLaunch`, called by the bootstrapper).
+    // (`beginLaunch`, then `openFirstSurfaceAtLaunch`, whose window activates the app; #4842).
 
     // #1451: App Translocation recovery. Runs on EVERY launch (NOT gated by
     // onboarding — the 14 stuck users already finished onboarding), is synchronous and
@@ -297,13 +303,18 @@ final class AppLifecycleCoordinator {
     let build = Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String ?? "?"
     let osVer = ProcessInfo.processInfo.operatingSystemVersion
     let osVersion = "\(osVer.majorVersion).\(osVer.minorVersion).\(osVer.patchVersion)"
+    // #4578 §3.9: the row also says which speech models are installed when the speech
+    // library's first reads have already settled; omitted, never guessed, when they have not.
+    let speechModelsInstalled = speechModelsInstalled
     Task.detached(priority: .utility) {
       let snap = AppleIntelligenceDiagnosticsService.launchSnapshot()
+      let installed = await MainActor.run { speechModelsInstalled() }
       await TelemetryService.shared.appLaunched(
         version: version, build: build, osVersion: osVersion,
         hardware: snap.hardwareClass, deviceModel: snap.deviceModel,
         isFreshInstall: isFreshInstall,
-        aiCapable: snap.isCapable, aiEnabled: snap.isEnabled)
+        aiCapable: snap.isCapable, aiEnabled: snap.isEnabled,
+        speechModelsInstalled: installed)
     }
 
     // Check Accessibility permission on launch (query only — never auto-prompt).
@@ -346,8 +357,8 @@ final class AppLifecycleCoordinator {
       Task { await contactsImportCoordinator.syncNewContacts() }
     }
 
-    // Onboarding auto-open is handled by ActionWirer inside the main Window
-    // scene. No deferred dispatch required here.
+    // Onboarding auto-open is the bootstrapper's `openFirstSurfaceAtLaunch` call, right after
+    // this method returns (#4842). No deferred dispatch required here.
 
     #if DEBUG
       // V2 fault-injection (issue #291). Only when explicitly opted in via env var.
@@ -361,7 +372,9 @@ final class AppLifecycleCoordinator {
           },
           batchDecodeFaultController: batchDecodeFaultController,
           whisperMemoryPressure: whisperMemoryPressure,
-          qualificationChildTrap: qualificationChildTrap
+          qualificationChildTrap: qualificationChildTrap,
+          coreAudioStall: coreAudioStall,
+          audioUnitStall: audioUnitStall
         )
         endpoint.start()
         debugFaultEndpoint = endpoint
@@ -391,7 +404,11 @@ final class AppLifecycleCoordinator {
         self?.audioEnvironmentSnapshotter?.audioDeviceEventOccurred()
         // #1480: a device connect/disconnect/default-change re-evaluates the
         // Bluetooth card (covers connect-later, and route-off dismissal).
-        self?.bluetoothAwarenessPresenter.reconcile(trigger: .deviceChanged)
+        // #4021: by refreshing the device snapshot first; the card is reconciled
+        // when that snapshot is applied (wired by the bootstrapper), so it never
+        // judges stale facts. Covers default-OUTPUT changes too, which the device
+        // list's own listener does not hear.
+        self?.requestDeviceRefresh()
       }
     )
 
@@ -460,6 +477,7 @@ final class AppLifecycleCoordinator {
     // changed while the app was away (the user fixed it in System Settings). Every activation
     // is forwarded; the coordinator owns eligibility and the retry budget.
     aiAvailability.applicationDidBecomeActive()
+    onBecameActive()
   }
 
   func runWillTerminate() {

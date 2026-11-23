@@ -77,6 +77,29 @@ struct WordCheckRuntimeResidencyTests {
     #expect(inputs.statusChanges > before, "an admitted refresh still updates the Dictionary row")
   }
 
+  @Test("settings shows the shared checker download only after delivery starts")
+  func settingsDistinguishesIdleDelivery() throws {
+    let (runtime, _) = try makeRuntime()
+    #expect(runtime.settingsStatus() == LearnedCheckerSettingsStatus(
+      selection: .init(absence: .serverUnavailable, judge: WordCheckRuntime.judge)))
+
+    runtime.deliveryStateChangedForTests(.preparing(validatingExistingCache: false))
+    #expect(runtime.settingsStatus() == LearnedCheckerSettingsStatus(
+      selection: .init(absence: .adapterDownloading, judge: WordCheckRuntime.judge)))
+  }
+
+  @Test("a scoring failure blocks later warm-ups for this session")
+  func mlxFailureStaysUnavailable() throws {
+    let (runtime, inputs) = try admittedIdle()
+    let statusChanges = inputs.statusChanges
+    runtime.recordMLXFailure(revision: runtime.wordCheckRevisionForTests)
+    #expect(inputs.statusChanges == statusChanges + 1)
+    runtime.recordingStarted(needsWordCheckForRecording: true)
+    runtime.retryDownload()
+    #expect(runtime.loadAttemptsForTests == 0)
+    #expect(runtime.settingsStatus().canRetry == false)
+  }
+
   @Test("the model finishing its download while wanted loads nothing when no work needs it")
   func admissionLoadsNothing() throws {
     let (runtime, _) = try makeRuntime()

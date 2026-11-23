@@ -8,17 +8,18 @@ import os
 @testable import EnviousWisprLLM
 @testable import EnviousWisprLocalPolish
 
-/// #4473: the local polish transport carries prepared bytes and reports one neutral failure.
+/// #4473, #4496: the local polish transport carries prepared bytes on one attempt and reports
+/// one neutral failure.
 ///
 /// Customer harm when it is wrong. A changed request (body, address, bearer, content type)
 /// makes the local model answer the wrong input or refuse the call, so polish silently stops.
 /// A transport failure that is not the one neutral case reaches the screen as "AI polish
-/// failed" for what is only a local hiccup. A lost retry drops the polish of the take that
-/// lands while a crashed server restarts; an extra retry delays every failing take. A
-/// cancellation turned into a failure keeps abandoned work alive. Encounter: every dictation
-/// polished by a bundled model. Owner: plan #4473 phase P1. Rig: the transport's own injected
-/// request and pause, scripted per attempt; no network and no real wait.
-@Suite("Local polish transport: bytes in, bytes out (#4473)", .tags(.productOutcome))
+/// failed" for what is only a local hiccup. A blind retry against the captured dead endpoint
+/// after a helper crash delays fallback by 750 ms on a connection that cannot succeed (#4496).
+/// A cancellation turned into a failure keeps abandoned work alive. Encounter: every dictation
+/// polished by a bundled model. Owner: plan #4473 phase P1 (#4496 retry removal). Rig: the
+/// transport's own injected request seam, scripted per attempt; no network and no real wait.
+@Suite("Local polish transport: bytes in, bytes out (#4473, #4496)", .tags(.productOutcome))
 struct LocalPolishTransportTests {
   static let endpoint = LocalPolishEndpoint(socketPath: "/t/4242.sock", authToken: "tok-1", contextTokens: 4096)
   /// Not JSON, on purpose: the transport must send and return bytes it cannot read.
@@ -41,19 +42,15 @@ struct LocalPolishTransportTests {
       var steps: [Step]
       var requests: [LocalPolishHelperRequest] = []
       var endpoints: [LocalPolishEndpoint] = []
-      var pauses = 0
     }
     private let state: OSAllocatedUnfairLock<State>
-    private let pauseIsCancelled: Bool
 
-    init(_ steps: [Step], pauseIsCancelled: Bool = false) {
+    init(_ steps: [Step]) {
       state = OSAllocatedUnfairLock(initialState: State(steps: steps))
-      self.pauseIsCancelled = pauseIsCancelled
     }
 
     var requests: [LocalPolishHelperRequest] { state.withLock { $0.requests } }
     var endpoints: [LocalPolishEndpoint] { state.withLock { $0.endpoints } }
-    var pauses: Int { state.withLock { $0.pauses } }
 
     func perform(_ request: LocalPolishHelperRequest, _ endpoint: LocalPolishEndpoint) throws
       -> LocalPolishHelperResponse
@@ -74,18 +71,12 @@ struct LocalPolishTransportTests {
         throw Unrelated()
       }
     }
-
-    func pause() throws {
-      state.withLock { $0.pauses += 1 }
-      if pauseIsCancelled { throw CancellationError() }
-    }
   }
 
   private static func send(_ wire: Wire) async throws -> Data {
     try await LocalPolishTransport.send(
       endpoint: endpoint, body: body,
-      perform: { request, endpoint in try wire.perform(request, endpoint) },
-      retryPause: { try wire.pause() })
+      perform: { request, endpoint in try wire.perform(request, endpoint) })
   }
 
   @Test("the request goes out as prepared and the answer bytes come back untouched")
@@ -93,7 +84,6 @@ struct LocalPolishTransportTests {
     let wire = Wire([.http(200)])
     let data = try await Self.send(wire)
     #expect(data == Self.answer)
-    #expect(wire.pauses == 0)
     let requests = wire.requests
     try #require(requests.count == 1)
     #expect(
@@ -104,38 +94,18 @@ struct LocalPolishTransportTests {
   }
 
   @Test(
-    "a failure that is not a dropped connection is unavailable at once, with no second try",
-    arguments: [Step.http(500), .http(404), .fail(.timedOut), .fail(.failed)])
+    "every transport error is unavailable at once with a single attempt (#4496)",
+    arguments: [
+      Step.http(500), .http(404), .fail(.timedOut), .fail(.failed),
+      .fail(.notConnectable), .fail(.connectionLost),
+    ])
   func failuresAreUnavailableWithoutRetry(_ step: Step) async {
-    let wire = Wire([step])
+    let wire = Wire([step, .http(200)])
     await #expect(throws: LocalPolishTransportError.unavailable) {
       try await Self.send(wire)
     }
     #expect(wire.requests.count == 1)
-    #expect(wire.pauses == 0)
-  }
-
-  static let droppedConnections: [LocalPolishHelperClientError] = [.notConnectable, .connectionLost]
-
-  @Test(
-    "a dropped connection is tried once more and the second answer is used",
-    arguments: droppedConnections)
-  func droppedConnectionRecovers(_ error: LocalPolishHelperClientError) async throws {
-    let wire = Wire([.fail(error), .http(200)])
-    #expect(try await Self.send(wire) == Self.answer)
-    #expect(wire.requests.count == 2)
-    #expect(wire.pauses == 1)
-    #expect(wire.requests.map(\.body) == [Self.body, Self.body])
-  }
-
-  @Test("a connection dropped twice stops after two attempts", arguments: droppedConnections)
-  func droppedConnectionGivesUpAfterTwo(_ error: LocalPolishHelperClientError) async {
-    let wire = Wire([.fail(error), .fail(error), .http(200)])
-    await #expect(throws: LocalPolishTransportError.unavailable) {
-      try await Self.send(wire)
-    }
-    #expect(wire.requests.count == 2)
-    #expect(wire.pauses == 1)
+    #expect(wire.endpoints == [Self.endpoint])
   }
 
   @Test("a cancelled request stays a cancellation and is not tried again")
@@ -145,17 +115,6 @@ struct LocalPolishTransportTests {
       try await Self.send(wire)
     }
     #expect(wire.requests.count == 1)
-    #expect(wire.pauses == 0)
-  }
-
-  @Test("a cancellation during the wait before the second try stops there")
-  func cancelledPauseStaysCancelled() async {
-    let wire = Wire([.fail(.notConnectable), .http(200)], pauseIsCancelled: true)
-    await #expect(throws: CancellationError.self) {
-      try await Self.send(wire)
-    }
-    #expect(wire.requests.count == 1)
-    #expect(wire.pauses == 1)
   }
 
   @Test("an error the transport does not know passes through unchanged")

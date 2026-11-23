@@ -28,6 +28,7 @@ struct KernelTerminalProjectionsTests {
       (.modelLoadFailed, "model_load_failed"),
       (.captureStartFailed, "capture_start_failed"),
       (.noMicrophoneFound, "no_microphone_found"),
+      (.micNotResponding, "mic_not_responding"),
       (.noAudioCaptured, "no_audio_captured"),
       (.asrEmpty, "asr_empty_with_speech"),
       (.asrFailed, "asr_failed"),
@@ -37,7 +38,7 @@ struct KernelTerminalProjectionsTests {
       (.zeroSignal, "zero_signal"),
     ]
 
-    #expect(expected.count == 13, "13 RecordingFailureReason cases exist; update this table")
+    #expect(expected.count == 14, "14 RecordingFailureReason cases exist; update this table")
 
     for (reason, code) in expected {
       #expect(

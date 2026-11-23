@@ -1,5 +1,6 @@
 import CoreGraphics
 import EnviousWisprCore
+import EnviousWisprStorage
 import Foundation
 
 /// The decisions behind the Meetings tab card and a finished meeting's after view (#3147 PR4A,
@@ -62,10 +63,11 @@ enum MeetingAfterPresentation {
   struct CardInputs {
     var record: MeetingRecord?
     var row: Transcript?
+    var catalog: HistoryCatalog.Summary? = nil
     /// `MeetingCoordinator.processing?.meetingID`.
     var processingID: UUID?
     var queueWaitsForSpace = false
-    /// `TranscriptCoordinator.meetingPreviewText(of:)` for `row`: the projection's text.
+    /// `HistoryMeetingPresenter.meetingPreviewText(of:)` for `row`: the projection's text.
     var previewText: String?
     /// The meeting's current summary text, when it has one.
     var summary: String?
@@ -78,15 +80,15 @@ enum MeetingAfterPresentation {
       // A row whose meeting EnviousMeet no longer holds: its transcript only (legacy orphan).
       let row = inputs.row
       return Card(
-        title: fallbackTitle, isUntitled: true, startedAt: row?.createdAt ?? .distantPast,
+        title: fallbackTitle, isUntitled: true, startedAt: row?.createdAt ?? inputs.catalog?.date ?? .distantPast,
         callApp: nil, length: nil,
-        speakers: MeetingsPresentation.speakers(row?.speakerAnalysis), status: nil,
+        speakers: MeetingsPresentation.speakers(row?.speakerAnalysis ?? inputs.catalog?.meetingAnalysis), status: nil,
         line: .preview(inputs.previewText ?? MeetingHistoryPresentation.unavailableMessage),
-        attentionLine: nil, footer: row.map { [$0.backendType.displayName] } ?? [], audioLine: nil, canRename: false)
+        attentionLine: nil, footer: (row?.backendType.displayName ?? inputs.catalog?.backendName).map { [$0] } ?? [], audioLine: nil, canRename: false)
     }
     let status = MeetingsPresentation.status(record, processingID: inputs.processingID)
     let committed = record.committedTranscriptGeneration != nil
-    let hasRow = committed && inputs.row != nil
+    let hasRow = committed && (inputs.row != nil || inputs.catalog?.rowID != nil)
     return Card(
       title: MeetingsPresentation.title(record),
       isUntitled: (record.title ?? "").isEmpty,
@@ -94,7 +96,7 @@ enum MeetingAfterPresentation {
       callApp: record.callApp?.displayName,
       length: record.recordedDurationMs > 0
         ? MeetingsPresentation.duration(ms: record.recordedDurationMs) : nil,
-      speakers: hasRow ? MeetingsPresentation.speakers(inputs.row?.speakerAnalysis) : nil,
+      speakers: hasRow ? MeetingsPresentation.speakers(inputs.row?.speakerAnalysis ?? inputs.catalog?.meetingAnalysis) : nil,
       status: status == .ready ? nil : cardStatus(status, record: record, inputs: inputs),
       line: cardLine(record, status: status, hasRow: hasRow, inputs: inputs),
       attentionLine: hasRow ? attentionLine(record, status: status, inputs: inputs) : nil,
@@ -211,143 +213,6 @@ enum MeetingAfterPresentation {
     return nil
   }
 
-  // MARK: - Inline title
-
-  /// The inline title's edit steps (plan §3.6): Return saves, Escape cancels, an empty name
-  /// restores the untitled label, and a failed save keeps the typed name and offers Try again.
-  struct TitleEdit: Equatable {
-    enum Phase: Equatable {
-      case idle
-      case editing
-      /// The rename was sent; the field waits for its answer.
-      case saving
-      /// The rename failed; the typed name stays.
-      case failed
-    }
-
-    private(set) var phase: Phase = .idle
-    var draft = ""
-
-    var isEditing: Bool { phase != .idle }
-
-    /// Opens the field with the stored name (empty for the date-based default).
-    mutating func begin(storedTitle: String?) {
-      guard phase == .idle else { return }
-      draft = storedTitle ?? ""
-      phase = .editing
-    }
-
-    /// Escape: back to the shown title, nothing written. Ignored while a rename is in flight,
-    /// so its answer still lands.
-    mutating func cancel() {
-      guard phase != .saving else { return }
-      phase = .idle
-      draft = ""
-    }
-
-    enum Commit: Equatable {
-      /// Nothing changed (same name, or a second Return while saving): close without writing.
-      case unchanged
-      /// Send this name to `MeetingCoordinator.rename`; an empty name clears the title.
-      case rename(String)
-      /// A rename is already in flight.
-      case busy
-    }
-
-    /// Return (or Try again). The coordinator trims and caps; this only decides whether to call.
-    mutating func commit(storedTitle: String?) -> Commit {
-      switch phase {
-      case .idle: return .unchanged
-      case .saving: return .busy
-      case .editing, .failed: break
-      }
-      let typed = draft.trimmingCharacters(in: .whitespacesAndNewlines)
-      if typed == (storedTitle ?? "").trimmingCharacters(in: .whitespacesAndNewlines) {
-        phase = .idle
-        draft = ""
-        return .unchanged
-      }
-      phase = .saving
-      return .rename(typed)
-    }
-
-    /// The rename's answer: success closes the field, failure keeps the typed name.
-    mutating func finish(saved: Bool) {
-      guard phase == .saving else { return }
-      if saved {
-        phase = .idle
-        draft = ""
-      } else {
-        phase = .failed
-      }
-    }
-  }
-
-  // MARK: - Note markers
-
-  struct NoteMarker: Equatable, Identifiable {
-    let id: UUID
-    let ms: Int
-    let kind: MeetingNoteBlock.Kind
-    let text: String
-  }
-
-  /// Notes with a meeting time inside the recording, in time order. Migrated notes (no time),
-  /// empty blocks and times past the end are not placed.
-  static func noteMarkers(_ document: MeetingNotesDocument, durationMs: Int) -> [NoteMarker] {
-    guard durationMs > 0 else { return [] }
-    return document.blocks.compactMap { block -> NoteMarker? in
-      let text = block.text.trimmingCharacters(in: .whitespacesAndNewlines)
-      guard let ms = block.startedAtMs, (0...durationMs).contains(ms), !text.isEmpty else {
-        return nil
-      }
-      return NoteMarker(id: block.id, ms: ms, kind: block.kind, text: text)
-    }
-    .sorted { ($0.ms, $0.id.uuidString) < ($1.ms, $1.id.uuidString) }
-  }
-
-  /// Markers drawn on the dock's track. Markers closer than `minimumGap` points merge into one
-  /// cluster ("3 notes") that opens a list.
-  struct MarkerCluster: Equatable, Identifiable {
-    let markers: [NoteMarker]
-    var id: UUID { markers[0].id }
-    /// Where the cluster sits: its first marker's time.
-    var ms: Int { markers[0].ms }
-  }
-
-  static let markerMinimumGap: CGFloat = 18
-
-  static func clusters(
-    _ markers: [NoteMarker], durationMs: Int, trackWidth: CGFloat,
-    minimumGap: CGFloat = markerMinimumGap
-  ) -> [MarkerCluster] {
-    guard durationMs > 0, trackWidth > 0 else { return [] }
-    var result: [[NoteMarker]] = []
-    var clusterStartX: CGFloat = -.infinity
-    for marker in markers {
-      let x = CGFloat(marker.ms) / CGFloat(durationMs) * trackWidth
-      if !result.isEmpty, x - clusterStartX < minimumGap {
-        result[result.count - 1].append(marker)
-      } else {
-        result.append([marker])
-        clusterStartX = x
-      }
-    }
-    return result.map(MarkerCluster.init(markers:))
-  }
-
-  static func clusterLabel(_ cluster: MarkerCluster) -> String {
-    let count = cluster.markers.count
-    if count == 1 {
-      return String(
-        localized: "1 note",
-        comment: "Meeting player: a note marker on the timeline holding one note.")
-    }
-    return String(
-      localized: "\(count) notes",
-      comment: "Meeting player: a note marker holding several notes close together. Never 1.")
-  }
-
   // MARK: - Participants
 
   struct Participant: Equatable, Identifiable {
@@ -381,6 +246,21 @@ enum MeetingAfterPresentation {
         share: Double(ms) / Double(total))
     }
     .sorted { ($1.spokenMs, $0.id) < ($0.spokenMs, $1.id) }
+  }
+
+  /// #4611 D9: each named speaker's color index, in order of first appearance in the turns, the
+  /// same order the transcript colors them in (`TurnSpeakerStyle`). Unknown, "both" and a
+  /// one-voice transcript's paragraphs have none.
+  static func speakerColorIndices(turns: [Turn]) -> [String: Int] {
+    var order: [String: Int] = [:]
+    for turn in turns
+    where turn.speakerId != TurnAssembler.unknownSpeakerID
+      && turn.speakerId != TurnAssembler.bothSpeakersID
+      && turn.speakerId != SingleSpeakerParagraphs.speakerID && order[turn.speakerId] == nil
+    {
+      order[turn.speakerId] = order.count
+    }
+    return order
   }
 
   private static func speakerLabel(id: String, speakerNames: [String: String])
@@ -461,6 +341,12 @@ enum MeetingAfterPresentation {
 
   static func stacksPanes(width: CGFloat) -> Bool { width < sideBySideMinimumWidth }
 
+  /// #4611 D11: in a wide window the notes and summary pane and the transcript pane are the
+  /// same width (before, the notes pane took 57%).
+  static func notesPaneWidth(width: CGFloat) -> CGFloat {
+    (width - DesignSpacing.xl) * 0.5
+  }
+
   /// The left pane. Your notes is selected first; switching never discards a draft.
   enum LeftPane: Hashable {
     case notes
@@ -516,18 +402,20 @@ enum MeetingAfterPresentation {
     case waiting
     case waitingForSpace
     case writingSummary
+    /// #4726: the summary is queued for a model on this Mac and still waits for its turn.
+    case summaryWaitsForTurn
     case summaryReady
   }
 
   static func strip(
     record: MeetingRecord?, processing: Bool, queueWaitsForSpace: Bool, writingSummary: Bool,
-    hasSummary: Bool
+    summaryWaitsForTurn: Bool = false, hasSummary: Bool
   ) -> StripState {
     guard let record else { return .none }
     if processing { return .finishingTranscript }
     if record.state == .queued { return queueWaitsForSpace ? .waitingForSpace : .waiting }
     guard record.committedTranscriptGeneration != nil else { return .none }
-    if writingSummary { return .writingSummary }
+    if writingSummary { return summaryWaitsForTurn ? .summaryWaitsForTurn : .writingSummary }
     return hasSummary ? .summaryReady : .none
   }
 
@@ -544,11 +432,20 @@ enum MeetingAfterPresentation {
       return String(
         localized: "Writing the summary…",
         comment: "Meeting after view: the meeting summary is being written.")
+    case .summaryWaitsForTurn: return summaryWaitsForTurnLine
     case .summaryReady:
       return String(
         localized: "Saved · Summary ready",
         comment: "Meeting after view: the meeting is saved and its summary is written.")
     }
+  }
+
+  /// #4724 / #4726: one wording for a summary that waits its turn, on the header strip, the AI
+  /// summary tab hint and the preview, so a waiting summary never reads as writing.
+  static var summaryWaitsForTurnLine: String {
+    String(
+      localized: "Waiting for your dictation and other meeting work to finish.",
+      comment: "History, a meeting: the summary waits before a model on this Mac is used.")
   }
 
   // MARK: - Copy
@@ -563,13 +460,6 @@ enum MeetingAfterPresentation {
     String(
       localized: "Rename meeting",
       comment: "Meetings: tooltip and VoiceOver label of the meeting title's rename control.")
-  }
-
-  static var renameFailedLine: String {
-    String(
-      localized: "The new name couldn't be saved.",
-      comment:
-        "Meetings: renaming a meeting failed; the typed name stays so the user can try again.")
   }
 
   static var recordingLine: String {

@@ -252,6 +252,11 @@ def build_server():
         return call("history", "get", "--", id)
 
     @server.tool()
+    def ew_history_delete(id: str) -> CallToolResult:
+        """Delete ONE dictation or import row you recorded as your own test data (History's Delete)."""
+        return call("history", "delete", "--", id, mutation=True)
+
+    @server.tool()
     def ew_dictation_start(front_app: str | None = None) -> CallToolResult:
         """Start one take on the active engine; returns its receipt."""
         args = ["dictation", "start"] + ([] if front_app is None else ["--front-app", front_app])

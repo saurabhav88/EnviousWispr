@@ -27,6 +27,7 @@ enum OverlayEvent: Equatable {
   /// A bulk-import progress pill. A feature, so it takes the slot only while
   /// the pipeline is idle, and only from ITSELF.
   case importStatus(message: String)
+  case meetingSummaryLimit(LLMProvider)
   /// The Bluetooth-microphone card. A feature, so it takes the slot only while
   /// the pipeline is idle, and persists until it is replaced.
   case bluetoothAwareness
@@ -40,8 +41,13 @@ enum OverlayEvent: Equatable {
   /// identity and its armed dwell; a no-op when the downloading pill is not current, so a
   /// late update can never bring back a pill that already left.
   case parakeetUpgradeProgress(fraction: Double)
+  /// #4845 LIFE-5: the AI polish download completion pill. Idle pipeline and an empty slot only.
+  case polishDownloadComplete(PolishDownloadPillModel)
   /// A notice that morphs a LIVE recording pill rather than replacing it.
   case inPanelNotice(RecordingNoticeReason, dismissAfter: Double?)
+  /// #4841: clear the live recording pill's notice only when it is of this kind.
+  /// Never touches another kind's notice or its timer; a no-op otherwise.
+  case clearInPanelNotice(RecordingNoticeKind)
   /// Hands-free lock engaged or released. updateLockState today; it
   /// morphs the live recording pill and does nothing otherwise. The first model
   /// carried `isLocked` on the presentation with no event able to change it.
@@ -59,9 +65,9 @@ enum OverlayEvent: Equatable {
   /// it replaces); never displaces anything else. A result-phase model is
   /// refused: results are morphs of the pill on screen.
   case correctionLearned(LearnedCorrectionPillModel)
-  /// #996 auto-learn: morph the still-current learned pill for `pillID` into a
+  /// #996 auto-learn: morph the still-`.undoPending` learned pill for `pillID` into a
   /// result phase (`.undone` 1.5 s, `.undoError` 3 s), same identity, button
-  /// gone; a stale pair is a no-op.
+  /// gone; a stale pair, or a pill that is not Pending, is a no-op.
   case correctionLearnedResult(pillID: UUID, presentation: PresentationID, phase: LearnedCorrectionPillModel.Phase)
   /// #996 auto-learn: close the still-current learned pill for `pillID`
   /// without a result line; a stale id is a no-op.
@@ -102,6 +108,17 @@ enum OverlayExpiryCommand: Equatable {
   /// Disarm and arm nothing: the presentation went away, or hover paused it.
   case cancel
   case arm(id: PresentationID, seconds: Double, target: OverlayExpiryTarget)
+  /// Freeze the armed dwell and keep what was left (`HoverPolicy.resume`). Unlike
+  /// `.cancel`, the remainder survives for a later `.resume`.
+  case pause
+  /// Start the frozen dwell again with `max(remaining, floorSeconds)` left. Like
+  /// `.arm`, it begins only once the host has accepted the presentation.
+  case resume(id: PresentationID, floorSeconds: Double)
+  /// Undo was accepted: replace the running or frozen remainder of THIS presentation with
+  /// `max(remaining, minimumSeconds)` (#4675, plan §3.2b.4). Unlike `.arm` and `.resume`, the
+  /// director applies it only once the host has ACCEPTED the Pending morph and the slot still
+  /// holds that morph, never at plan time.
+  case enterPending(id: PresentationID, minimumSeconds: Double)
 }
 
 /// What the director must do to make reality match the reducer's decision.
@@ -170,6 +187,8 @@ struct OverlayPlan: Equatable {
 struct OverlayState: Equatable {
   /// What occupies the slot, or nil.
   private(set) var current: PillDefinition?
+  /// The last presentation to leave by its own timer, until another presentation or hide.
+  private(set) var lastNaturalExpiry: PresentationID?
   /// The last pipeline intent seen. A feature may take the slot only while this
   /// is `.hidden`, which is the arbitration rule the shipped code spells out
   /// separately at every feature.
@@ -238,11 +257,22 @@ struct OverlayState: Equatable {
     // and silently undo the narrowing above.
     if current != self.current || (pipelineIntent != nil && pipelineIntent != self.pipelineIntent) {
       slotRevision &+= 1
+      lastNaturalExpiry = nil
     }
     self.current = current
     if let pipelineIntent { self.pipelineIntent = pipelineIntent }
     if let isHovered { self.isHovered = isHovered }
     if let isLocked { self.isLocked = isLocked }
+  }
+
+  fileprivate mutating func hide() {
+    set(current: nil, pipelineIntent: .hidden, isHovered: false)
+    lastNaturalExpiry = nil
+  }
+
+  fileprivate mutating func expire(_ id: PresentationID) {
+    hide()
+    lastNaturalExpiry = id
   }
 }
 
@@ -264,6 +294,9 @@ struct OverlayReducer {
       return reducePipeline(.advisory(reason: reason), advisoryHint: hint)
     case .importStatus(let message):
       return reduceImportStatus(message: message)
+    case .meetingSummaryLimit(let provider):
+      guard state.pipelineIntent == .hidden, state.current == nil else { return .noChange }
+      return admitEntry(PillCatalog.entry(for: .meetingSummaryLimit(provider), id: makeID()))
     case .bluetoothAwareness:
       return reduceBluetoothAwareness()
     case .polishSetupCard(let model):
@@ -272,8 +305,14 @@ struct OverlayReducer {
       return reduceParakeetUpgrade(model)
     case .parakeetUpgradeProgress(let fraction):
       return reduceParakeetUpgradeProgress(fraction)
+    case .polishDownloadComplete(let model):
+      // #4845: never displaces anything; a busy slot leaves the notice for a later attempt.
+      guard state.pipelineIntent == .hidden, state.current == nil else { return .noChange }
+      return admitEntry(PillCatalog.entry(for: .polishDownloadComplete(model), id: makeID()))
     case .inPanelNotice(let reason, let dismissAfter):
       return reduceInPanelNotice(reason, dismissAfter: dismissAfter)
+    case .clearInPanelNotice(let kind):
+      return reduceClearInPanelNotice(kind)
     case .lockStateChanged(let locked):
       return reduceLockState(locked)
     case .action(let id, let action):
@@ -523,7 +562,11 @@ struct OverlayReducer {
       let wasOccupied = state.current != nil
       let wasRecording = Self.isRecording(state.current)
       let preempted = Self.learnedPillPreempted(by: nil, replacing: state.current)
-      state.set(current: nil, pipelineIntent: intent, isHovered: false)
+      if intent == .hidden {
+        state.hide()
+      } else {
+        state.set(current: nil, pipelineIntent: intent, isHovered: false)
+      }
       return OverlayPlan(
         presentation: nil, didChange: wasOccupied,
         expiryCommand: wasOccupied ? .cancel : .unchanged,
@@ -727,20 +770,25 @@ struct OverlayReducer {
   //   slot holds                 | event                              | result
   //   ---------------------------|------------------------------------|------------------------------------------
   //   pipeline busy              | learned                            | refused (noChange): the word is saved, no Undo
-  //   empty, idle                | learned (.learned phase)           | admitted: 3 s dwell, hover does not pause
+  //   empty, idle                | learned (.learned phase)           | admitted: 12 s dwell, hover pauses and resumes it
   //   empty, idle                | learned (result phase)             | refused: a result cannot create a pill
   //   another feature/notice     | learned                            | refused: never displace anything else
   //   this pill, .learned        | learned, same model                | noChange: identity, binding and dwell kept
-  //   ANOTHER learned pill       | learned                            | replaced: new id, fresh 3 s, one end effect for the outgoing .learned
-  //   this pill, .learned        | result(pillID, presentation)       | morph: button gone, fresh 1.5 s (undone) or 3 s (undoError)
+  //   ANOTHER learned pill       | learned                            | replaced: new id, fresh 12 s, one end effect for the outgoing .learned
+  //   this pill, .undoPending    | result(pillID, presentation)       | morph: fresh 1.5 s (undone) or 3 s (undoError), announced
+  //   this pill, .learned        | result(pillID, presentation)       | noChange: a result only follows an accepted Undo
   //   this pill, result          | result / learned                   | noChange: a result never goes back
   //   this pill, any phase       | close(pillID)                      | slot emptied, expiry cancelled, no end effect
   //   anything else              | close(pillID)                      | noChange
   //   this pill, .learned        | expiry                             | slot emptied, one end effect
   //   this pill, result          | expiry                             | slot emptied, no end effect
-  //   this pill                  | hover                              | noChange: the dwell is not pausable
-  //   this pill, .learned        | undo(pillID) action                | delivered once to the binding; other ids dropped
-  //   this pill, result          | undo action                        | dropped
+  //   this pill, .learned        | hover in / out                     | pause / resume with at least 2 s left
+  //   this pill, result          | hover                              | noChange: the dwell is not pausable
+  //   this pill, .learned        | undo(pillID) action                | morph to .undoPending (hover cleared), delivered once; other ids dropped
+  //   this pill, .learned        | dismiss(pillID) action             | slot emptied, expiry cancelled, hover cleared, one end effect; other ids dropped
+  //   this pill, .undoPending    | undo or dismiss action             | dropped
+  //   this pill, result          | undo or dismiss action             | dropped
+  //   this pill, .undoPending    | expiry / learned / saveError / preempt | closes or is replaced with no end effect: the Undo record is already claimed, the write continues
   //   empty or a learned pill    | saveError                          | admitted / replaces the learned pill: 3 s notice, no button
 
   /// Admit the Undo pill, or replace the learned pill already showing.
@@ -781,14 +829,17 @@ struct OverlayReducer {
       effects: effects, announcement: entry.announcement)
   }
 
-  /// Morph the still-current learned offer into `Undone` or `Couldn’t undo`:
-  /// same identity, button gone, its own fresh dwell.
+  /// Morph the still-current Pending pill into `Undone` or `Couldn’t undo`:
+  /// same identity, its own fresh dwell, and the result spoken once if the render lands.
+  ///
+  /// Gated on the matching `.undoPending` presentation, so a late result after the pill left
+  /// (expiry, a newer learn, a preempt) finds `isCurrent` false and cannot reopen the slot.
   private mutating func reduceCorrectionLearnedResult(
     pillID: UUID, presentation: PresentationID, phase: LearnedCorrectionPillModel.Phase
   ) -> OverlayPlan {
     guard isCurrent(presentation), let current = state.current,
       case .correctionLearned(let shown) = current.content, shown.id == pillID,
-      case .learned = shown.phase, phase != .learned
+      case .undoPending = shown.phase, phase == .undone || phase == .undoError
     else { return .noChange }
     let seconds =
       phase == .undone
@@ -797,12 +848,13 @@ struct OverlayReducer {
       id: shown.id, wordID: shown.wordID, canonical: shown.canonical, kind: shown.kind, phase: phase)
     let updated = PillDefinition(
       id: current.id, content: .correctionLearned(result),
-      expiry: .after(seconds: seconds, pausesOnHover: false),
+      expiry: .after(seconds: seconds, hover: .ignore),
       requestedWidth: current.requestedWidth, reservesFixedHeight: current.reservesFixedHeight)
     state.set(current: updated, isHovered: false)
     return OverlayPlan(
       presentation: updated, didChange: true,
-      expiryCommand: .arm(id: current.id, seconds: seconds, target: .presentation))
+      expiryCommand: .arm(id: current.id, seconds: seconds, target: .presentation),
+      announcement: .medium(CorrectionLearnedPillCopy.announcement(for: result)))
   }
 
   /// Empty the slot if it still holds the learned pill for `pillID`. No end
@@ -927,14 +979,34 @@ struct OverlayReducer {
     return OverlayPlan(presentation: updated, didChange: true, expiryCommand: expiry)
   }
 
+  /// #4841: clear the notice only when it is of `kind`. The pill, its identity,
+  /// its lock and any timer stay as they are (`.unchanged`): a persistent notice
+  /// armed nothing, and another kind's timed notice keeps its own dwell.
+  private mutating func reduceClearInPanelNotice(_ kind: RecordingNoticeKind) -> OverlayPlan {
+    guard let current = state.current,
+      case .recording(let level, let isLocked, let notice?, let design) = current.content,
+      notice.reason.kind == kind
+    else { return .noChange }
+
+    let updated = PillDefinition(
+      id: current.id,
+      content: .recording(audioLevel: level, isLocked: isLocked, notice: nil, design: design),
+      expiry: current.expiry,
+      requestedWidth: current.requestedWidth,
+      reservesFixedHeight: current.reservesFixedHeight)
+    state.set(current: updated)
+    return OverlayPlan(presentation: updated, didChange: true, expiryCommand: .unchanged)
+  }
+
   /// The in-panel notice's dwell elapsed: clear the BANNER, keep the pill.
   ///
   /// Distinct from `reduceExpiry`, which ends a whole presentation. A recording
-  /// outlives its banner.
+  /// outlives its banner. #4841: only a TIMED notice can expire, so a late timer
+  /// can never clear a persistent notice that replaced the timed one.
   mutating func reduceInPanelNoticeExpiry(_ id: PresentationID) -> OverlayPlan {
     guard isCurrent(id), let current = state.current,
-      case .recording(let level, let isLocked, let notice, let design) = current.content,
-      notice != nil
+      case .recording(let level, let isLocked, let notice?, let design) = current.content,
+      notice.dismissAfter != nil
     else { return .noChange }
 
     let updated = PillDefinition(
@@ -957,41 +1029,97 @@ struct OverlayReducer {
 
   private mutating func reduceAction(_ id: PresentationID, _ action: PillAction) -> OverlayPlan {
     guard isCurrent(id), let current = state.current else { return .noChange }
-    // #996 auto-learn: Undo is gated on the pill it shows and on the `.learned`
-    // phase; a press on a result, or naming another pill, reaches nobody.
-    // There is no keyboard dismiss: the pill never takes focus, so an
-    // unanswered pill leaves on its dwell (`expiryFired`).
+    // #996 auto-learn: Undo and × are gated on the pill they show and on the `.learned`
+    // phase; a press on a result or a Pending offer, or naming another pill, reaches nobody.
+    // There is no keyboard dismiss: the pill never takes focus, so an unanswered pill
+    // leaves on its dwell (`expiryFired`) or on a click on ×.
     if case .undoLearnedCorrection(let pillID) = action {
       guard case .correctionLearned(let shown) = current.content, shown.id == pillID,
         case .learned = shown.phase
       else { return .noChange }
+      return acceptUndo(action, shown: shown, current: current)
+    }
+    if case .dismissLearnedCorrection(let pillID) = action {
+      guard case .correctionLearned(let shown) = current.content, shown.id == pillID,
+        case .learned = shown.phase
+      else { return .noChange }
+      return dismissLearned(shown: shown, current: current)
     }
     return OverlayPlan(presentation: current, didChange: false, deliverAction: action)
   }
 
+  /// The ONE transition for an accepted Undo (#4675, plan §3.2b.2): the same presentation
+  /// morphs to `.undoPending` (buttons hidden, hover ignored) and the press is delivered once.
+  /// A second press finds `.undoPending` and is dropped by the phase gate in `reduceAction`.
+  /// The dwell carried on the definition is the 3 s floor value; the live remainder is
+  /// `.enterPending`, which the director applies only after the host accepts this morph.
+  private mutating func acceptUndo(
+    _ action: PillAction, shown: LearnedCorrectionPillModel, current: PillDefinition
+  ) -> OverlayPlan {
+    let pendingModel = LearnedCorrectionPillModel(
+      id: shown.id, wordID: shown.wordID, canonical: shown.canonical, kind: shown.kind,
+      phase: .undoPending)
+    let minimum = CorrectionLearnedPillCopy.undoPendingMinimumSeconds
+    let pending = PillDefinition(
+      id: current.id, content: .correctionLearned(pendingModel),
+      expiry: .after(seconds: minimum, hover: .ignore),
+      requestedWidth: current.requestedWidth, reservesFixedHeight: current.reservesFixedHeight)
+    // Hover flag cleared: a pointer that was resting on the offer must not leave a stale
+    // "hovered" state that suppresses the Pending expiry.
+    state.set(current: pending, isHovered: false)
+    return OverlayPlan(
+      presentation: pending, didChange: true,
+      expiryCommand: .enterPending(id: current.id, minimumSeconds: minimum),
+      deliverAction: action)
+  }
+
+  /// × on the unanswered offer (#4675, plan §3.4): the slot empties exactly as expiry empties it,
+  /// the dwell is cancelled (a paused remainder with it), hover is cleared, and the offer is
+  /// reported ended once so the coordinator drops its Undo record. The word stays: nothing here
+  /// touches the dictionary. A second press, or an expiry already in flight, finds no current
+  /// presentation and is dropped by `isCurrent`.
+  private mutating func dismissLearned(
+    shown: LearnedCorrectionPillModel, current: PillDefinition
+  ) -> OverlayPlan {
+    state.set(current: nil, pipelineIntent: .hidden, isHovered: false)
+    return OverlayPlan(
+      presentation: nil, didChange: true, expiryCommand: .cancel,
+      effects: [.correctionLearnedEnded(pillID: shown.id, presentation: current.id)])
+  }
+
   private mutating func reduceHover(_ id: PresentationID, _ hovering: Bool) -> OverlayPlan {
     guard isCurrent(id), let current = state.current else { return .noChange }
-    // **Only a hover-PAUSABLE presentation records hover at all.** The first
-    // version set `isHovered` unconditionally and only then checked
-    // `pausesOnHover`, so a stray hover over an ordinary notice suppressed its
+    // **Only a presentation whose policy reacts to hover records hover at all.**
+    // The first version set `isHovered` unconditionally and only then checked
+    // whether the dwell was pausable, so a stray hover over an ordinary notice suppressed its
     // expiry permanently — it would sit on screen until something replaced it.
     // Cloud review found it; no test reached it because every hover case in the
-    // suite used a pausable kind.
-    guard case .after(let seconds, true) = current.expiry, state.isHovered != hovering else {
+    // suite used a kind that reacts to hover.
+    guard case .after(let seconds, let policy) = current.expiry, state.isHovered != hovering
+    else { return .noChange }
+    switch policy {
+    case .ignore:
       return .noChange
+    case .restartFull:
+      state.set(current: current, isHovered: hovering)
+      // Hover-enter CANCELS the armed timer; leaving re-arms from FULL rather
+      // than resuming the remainder, matching both shipped hover-restarting
+      // pills (`EscapeRecoveryPillView.swift`, `LanguageChipView`).
+      return hovering
+        ? OverlayPlan(presentation: current, didChange: false, expiryCommand: .cancel)
+        : OverlayPlan(
+          presentation: current, didChange: false,
+          expiryCommand: .arm(id: current.id, seconds: seconds, target: .presentation))
+    case .resume(let floorSeconds):
+      state.set(current: current, isHovered: hovering)
+      // Hover-enter FREEZES the remainder and leaving continues it, with at
+      // least `floorSeconds` left. `PillExpiryClock` owns the arithmetic.
+      return hovering
+        ? OverlayPlan(presentation: current, didChange: false, expiryCommand: .pause)
+        : OverlayPlan(
+          presentation: current, didChange: false,
+          expiryCommand: .resume(id: current.id, floorSeconds: floorSeconds))
     }
-    state.set(current: current, isHovered: hovering)
-    // Leaving re-arms from FULL rather than resuming the remainder, matching
-    // both shipped hover-pausing pills (`EscapeRecoveryPillView.swift`,
-    // `LanguageChipView`).
-    // Hover-enter CANCELS the armed timer; leaving re-arms from FULL rather than
-    // resuming the remainder, matching both shipped hover-pausing pills
-    // (`EscapeRecoveryPillView.swift`, `LanguageChipView`).
-    return hovering
-      ? OverlayPlan(presentation: current, didChange: false, expiryCommand: .cancel)
-      : OverlayPlan(
-        presentation: current, didChange: false,
-        expiryCommand: .arm(id: current.id, seconds: seconds, target: .presentation))
   }
 
   private mutating func reduceExpiry(_ id: PresentationID) -> OverlayPlan {
@@ -1019,7 +1147,7 @@ struct OverlayReducer {
     case .recording:
       effects.append(.recordingStateChanged(false))
     case .notice, .bluetoothAwareness, .polishSetupCard, .parakeetUpgrade,
-      .correctionLearnedSaveError, .retainedClipboardFallback:
+      .polishDownloadComplete, .correctionLearnedSaveError, .retainedClipboardFallback:
       break
     case .correctionLearned(let shown):
       // #996 auto-learn: only an unanswered offer owes an end report; a result
@@ -1035,7 +1163,7 @@ struct OverlayReducer {
     // `.warning` forever and EVERY feature pill was blocked for the rest of the
     // session — the arbitration rule this reducer exists to state, failing open
     // in the direction nothing would ever report.
-    state.set(current: nil, pipelineIntent: .hidden, isHovered: false)
+    state.expire(id)
     return OverlayPlan(
       presentation: nil, didChange: true, expiryCommand: .cancel, effects: effects)
   }

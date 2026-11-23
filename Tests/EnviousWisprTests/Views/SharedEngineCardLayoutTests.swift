@@ -65,21 +65,6 @@ struct SharedEnginePresentationWiringTests {
     }
   }
 
-  @Test("Fast re-check reads current controller admission and starts no work")
-  func fastRecheckIsReadOnly() throws {
-    let source = try String(contentsOf: RepoRoot.sourceURL(
-      "Sources/EnviousWisprAppKit/App/ModelDeliveryHome.swift"), encoding: .utf8)
-    let tree = CachedSwiftParser.parse(source: source)
-    let method = try #require(tree.tokens(viewMode: .sourceAccurate).first {
-      $0.text == "currentParakeetAdmission" && $0.parent?.is(SwiftSyntax.FunctionDeclSyntax.self) == true
-    }?.parent?.as(SwiftSyntax.FunctionDeclSyntax.self))
-    let body = try #require(method.body)
-    let tokens = Set(body.tokens(viewMode: .sourceAccurate).map(\.text))
-    #expect(tokens.contains("isAdmitted"))
-    #expect(tokens.contains("controller"))
-    #expect(tokens.isDisjoint(with: ["parakeetState", "selectedInstalled", "ensureAvailable", "resumeParakeetDownload", "downloadModel", "selectedBackend"]))
-  }
-
   @Test("Reset belongs to Auto-detect and keeps its action, help and identity")
   func resetBelongsToAutoDetect() throws {
     let tree = CachedSwiftParser.parse(source: try String(contentsOf: RepoRoot.sourceURL(

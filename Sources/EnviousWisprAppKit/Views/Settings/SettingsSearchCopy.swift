@@ -93,7 +93,7 @@ enum SettingsSearchCopy {
       "Get an API key",
       comment: "Settings search result: link to the chosen cloud provider's API key page.")
     static let appLanguages = LocalizedStringResource(
-      "English or German",
+      "Available interface languages",
       comment: "Settings search result: the languages the app itself can be shown in.")
   }
 }

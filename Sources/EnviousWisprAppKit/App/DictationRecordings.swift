@@ -61,6 +61,10 @@ import Foundation
   let changes = DictationRecordingChanges()
   /// The shared now-playing owner; every deletion stops the recording's players first.
   var arbiter: PlaybackArbiter?
+  /// #4799: whether History's Save audio is copying this row's recording now. Automatic
+  /// removal skips such a row (the next sweep takes it); the user's own deletions still win.
+  /// Set by the composition root; the default exports nothing.
+  var isExporting: @MainActor (UUID) -> Bool = { _ in false }
   private var nextGeneration: UInt64 = 0
   private var startup: SerialCommandDrain.Receipt<Void>?
 
@@ -95,7 +99,18 @@ import Foundation
   func start() {
     guard startup == nil else { return }
     // Enqueued now, so it runs before any recording admitted after launch.
-    startup = executor.enqueue { [self] in await launchCleanup() }
+    startup = executor.enqueue { [self] in
+      await launchCleanup()
+      await loadPresence()
+    }
+  }
+
+  /// One listing of the recordings folder, so History knows which cards have a recording before
+  /// it draws them (#4611). A failed listing leaves every card unknown, which draws the player
+  /// space as before.
+  private func loadPresence() async {
+    guard let ids = try? await archive.index() else { return }
+    changes.noteIndex(ids)
   }
 
   /// Awaitable completion of `start()`, for callers and tests that need the cleanup finished.
@@ -136,6 +151,25 @@ import Foundation
       }
     }
     if removed > 0 { log("removed \(removed) recordings whose text row is gone") }
+  }
+
+  /// A saved recording requires both committed audio and its permanent History row.
+  func hasSavedRecording() async -> Bool {
+    await waitForStartup()
+    guard !Task.isCancelled, let ids = try? await archive.index() else { return false }
+    for id in ids {
+      guard !Task.isCancelled else { return false }
+      do {
+        if try await permanentRowExists(id), !Task.isCancelled,
+          await archive.url(for: id) != nil
+        {
+          return !Task.isCancelled
+        }
+      } catch {
+        return false
+      }
+    }
+    return false
   }
 
   // MARK: - Keeping a recording
@@ -324,7 +358,7 @@ import Foundation
         // No suspension from here to the deletion's first step (ticket withdrawn, playback
         // stopped): a policy change or a Play after this point waits for the command.
         guard generations[rowID] == nil, stillEligible(),
-          arbiter?.isPlaying(.dictation(rowID)) != true
+          arbiter?.isPlaying(.dictation(rowID)) != true, !isExporting(rowID)
         else { return AutomaticRemovalOutcome.skipped }
         switch removal {
         case .expired(let days):
@@ -366,7 +400,10 @@ import Foundation
       let inFlight = Set(generations.keys)
       generations.removeAll()
       arbiter?.stopAllDictationsForDeletion()
-      defer { changes.changedAll() }
+      defer {
+        changes.changedAll()
+        Task { await loadPresence() }
+      }
       let before = try? await archive.index().count
       var failed = false
       var removed: Int?
@@ -431,6 +468,81 @@ import Foundation
     }
   }
 
+  // MARK: - Save audio (#4799)
+
+  /// One file on disk, by identity: the same path can later hold another file.
+  struct FileStamp: Sendable, Equatable {
+    let device: Int
+    let fileNumber: UInt64
+    let size: UInt64
+    let modified: Date
+
+    /// The file's identity now; nil when it is gone or cannot be read.
+    static func read(_ url: URL) -> FileStamp? {
+      guard let attributes = try? FileManager.default.attributesOfItem(atPath: url.path),
+        let device = (attributes[.systemNumber] as? NSNumber)?.intValue,
+        let fileNumber = (attributes[.systemFileNumber] as? NSNumber)?.uint64Value,
+        let size = (attributes[.size] as? NSNumber)?.uint64Value,
+        let modified = attributes[.modificationDate] as? Date
+      else { return nil }
+      return FileStamp(device: device, fileNumber: fileNumber, size: size, modified: modified)
+    }
+  }
+
+  /// What History's Save audio copies, frozen when the save was admitted.
+  struct ExportSnapshot: Sendable, Equatable {
+    let rowID: UUID
+    let url: URL
+    let file: FileStamp
+    /// The playback arbiter's deletion fence for this row and for Delete All when admitted;
+    /// nil without an arbiter.
+    let deletions: Int?
+    let epoch: Int?
+  }
+
+  /// Whether an admitted snapshot can still be published.
+  enum ExportCheck: Sendable, Equatable {
+    case deliverable
+    /// A deletion ran since admission, or the file is gone.
+    case deleted
+    /// Another file is at that path now (a newer take, or an outside change).
+    case changed
+  }
+
+  /// Admits one Save audio: runs on History's command queue, so a deletion or Delete All
+  /// already asked for settles first. Nil when the row has no recording or its file does not
+  /// read as audio (what `status(for:)` calls unavailable), so a stale menu never saves a
+  /// broken copy.
+  func exportSnapshot(rowID: UUID) async -> ExportSnapshot? {
+    await executor.admit { [self] () async -> ExportSnapshot? in
+      guard let url = await archive.url(for: rowID), let file = FileStamp.read(url) else {
+        return nil
+      }
+      // History's own answer, so Save audio is offered exactly when the card says available;
+      // the file it read must be the file stamped.
+      guard case .available(let available, _, _) = await status(for: rowID), available == url,
+        FileStamp.read(url) == file
+      else { return nil }
+      return ExportSnapshot(
+        rowID: rowID, url: url, file: file,
+        deletions: arbiter?.deletionCount(for: .dictation(rowID)), epoch: arbiter?.dictationEpoch)
+    }
+  }
+
+  /// The commit check, with no suspension: every recording deletion moves the arbiter's fence
+  /// before any file goes (`deleteRecordingInCommand`, `forgetInCommand`, `removeAllInCommand`,
+  /// `deleteAllRecordingsKeepingText`), and the file's identity catches a replaced file.
+  func isStillDeliverable(_ snapshot: ExportSnapshot) -> ExportCheck {
+    if let deletions = snapshot.deletions,
+      arbiter?.deletionCount(for: .dictation(snapshot.rowID)) != deletions
+    {
+      return .deleted
+    }
+    if let epoch = snapshot.epoch, arbiter?.dictationEpoch != epoch { return .deleted }
+    guard let now = FileStamp.read(snapshot.url) else { return .deleted }
+    return now == snapshot.file ? .deliverable : .changed
+  }
+
   /// The saved sentence timings of one dictation's recording, read off the main actor. `nil`
   /// when the recording has no timing file.
   func timing(for rowID: UUID) async throws -> RecordingTiming? {
@@ -471,7 +583,10 @@ import Foundation
   func removeAllInCommand() async throws {
     generations.removeAll()
     arbiter?.stopAllDictationsForDeletion()
-    defer { changes.changedAll() }
+    defer {
+      changes.changedAll()
+      Task { await loadPresence() }
+    }
     try await archive.removeEverything()
   }
 

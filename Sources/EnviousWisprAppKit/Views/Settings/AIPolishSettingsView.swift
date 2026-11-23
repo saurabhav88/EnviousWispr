@@ -401,6 +401,7 @@ struct AIPolishSettingsView: View {
 
   var body: some View {
     @Bindable var settings = settings
+    let canTranslate = settings.llmProvider.supportsDictationTranslation
 
     SettingsContentView {
       // ── AI Polish master switch (slide toggle, on its own card) ──
@@ -453,6 +454,35 @@ struct AIPolishSettingsView: View {
         }
         ProviderSetupSection(model: setupModel)
       }
+
+      BrandedSection {
+        BrandedRow(showDivider: false) {
+          SettingsRow(
+            map: .id(.dictationOutputLanguage),
+            icon: "globe",
+            runtimeShort: String(localized: canTranslate
+              ? SettingsItemCopy.AIPolish.translationSummary
+              : SettingsItemCopy.AIPolish.translationUnavailable),
+            resolvedHelp: String(localized: SettingsItemCopy.AIPolish.translationHelp)
+          ) {
+            if canTranslate {
+              SettingsMenuPicker(
+                title: String(localized: SettingsItemCopy.AIPolish.translationTitle),
+                selection: $settings.dictationTranslationTarget,
+                valueLabel: translationLabel(settings.dictationTranslationTarget)
+              ) {
+                Text(SettingsItemCopy.AIPolish.translationSameAsSpoken)
+                  .tag(DictationTranslationTarget?.none)
+                ForEach(DictationTranslationTarget.allCases, id: \.self) { target in
+                  Text(verbatim: translationLabel(target)).tag(Optional(target))
+                }
+              }
+              .accessibilityLabel(Text(SettingsItemCopy.AIPolish.translationTitle))
+              .settingsArrivalFocusControl()
+            }
+          }
+        }
+      }
     }
     .modifier(ProviderSetupLifecycle(model: setupModel))
     // #3438: the leave dialog says "key not saved yet" when a typed key was not saved. Only
@@ -460,6 +490,11 @@ struct AIPolishSettingsView: View {
     .preference(
       key: PolishSetupUnsavedKeyDraftKey.self,
       value: setupModel.hasUnsavedKeyDraft(for: settings.llmProvider))
+  }
+
+  private func translationLabel(_ target: DictationTranslationTarget?) -> String {
+    guard let target else { return String(localized: SettingsItemCopy.AIPolish.translationSameAsSpoken) }
+    return Locale.current.localizedString(forLanguageCode: target.rawValue) ?? target.promptName
   }
 }
 

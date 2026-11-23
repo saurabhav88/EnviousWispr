@@ -3,8 +3,8 @@ import Foundation
 /// The History items a person has ticked in selection mode (#3147 §3.4), and the bulk deletion
 /// that acts on them.
 ///
-/// Select day and Select all matching take their IDs from the coordinator's full matching list
-/// (`matchingHistoryItems(in:)`), never from the drawn page, so an item on a page not yet loaded
+/// Select day and Select all matching take their IDs from the coordinator's catalog query
+/// (`matchingIDs(for:day:)`), never from the drawn page, so an item on a page not yet loaded
 /// is still selected. Deletion freezes its targets when it starts, deletes each one through the
 /// coordinator's per-item command, and keeps every item that was skipped or failed selected, so
 /// the person sees exactly what is left. It never calls the global Delete all.
@@ -72,6 +72,14 @@ final class HistorySelection {
   /// Adds `ids` to the selection (Select day, Select all matching).
   func select(_ ids: Set<HistoryItemID>) {
     selectedIDs.formUnion(ids)
+    lastDeletion = nil
+  }
+
+  /// Unticks matching items while preserving any other items still selected for retry.
+  func deselect(_ ids: Set<HistoryItemID>) {
+    selectedIDs.subtract(ids)
+    for id in ids { retryKinds[id] = nil }
+    if let anchorID, ids.contains(anchorID) { self.anchorID = nil }
     lastDeletion = nil
   }
 

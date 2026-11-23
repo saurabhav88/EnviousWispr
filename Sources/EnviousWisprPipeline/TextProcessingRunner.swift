@@ -235,18 +235,24 @@ internal final class TextProcessingRunner {
     /// One take's full vocabulary, set before any step can suspend. Nil keeps
     /// direct runner callers on their existing per-step lane behavior.
     frozenCorrectorVocabulary: CorrectorVocabulary? = nil,
+    fixLearnedWords: Bool = true,
     /// #3438: the live take's frozen AI polish setup. Nil for recovery, file import and direct
     /// callers: they classify and record nothing.
     polishSetup: PolishSetupTakeProbe? = nil,
+    claimsPaste: Bool = true,
+    translationTarget: DictationTranslationTarget? = nil,
     /// #1846: the live in-flight take. Frozen into the context below so every
     /// emission in this chain names the same dictation even if the session state
     /// moves on mid-chain.
     takeID: String? = nil
   ) async throws -> TextProcessingRunResult {
-    let context = await makeContext(
+    var context = await makeContext(
       rawText: rawText, evidence: evidence, targetAppName: targetAppName, steps: steps,
-      frozenCorrectorVocabulary: frozenCorrectorVocabulary, takeID: takeID)
-    return try await run(context: context, steps: steps, polishSetup: polishSetup)
+      frozenCorrectorVocabulary: frozenCorrectorVocabulary, fixLearnedWords: fixLearnedWords,
+      takeID: takeID)
+    context.requestedTranslationTarget = translationTarget
+    return try await run(
+      context: context, steps: steps, polishSetup: polishSetup, claimsPaste: claimsPaste)
   }
 
   /// Seeds once from the FULL chain, even when a caller will execute it in stages. Language,
@@ -254,7 +260,7 @@ internal final class TextProcessingRunner {
   func makeContext(
     rawText: String, evidence: LanguageEvidence, targetAppName: String?,
     steps: [any TextProcessingStep], frozenCorrectorVocabulary: CorrectorVocabulary? = nil,
-    takeID: String? = nil
+    fixLearnedWords: Bool = true, takeID: String? = nil
   ) async -> TextProcessingContext {
     // No surrounding text: the chain has no caret window. The repair path
     // resolves again later with one, and the two share one floor and one
@@ -270,7 +276,12 @@ internal final class TextProcessingRunner {
       identifyTextOnAllPaths: true,
       identify: languageIdentifier)
     var context = TextProcessingContext(text: rawText, language: resolution.language)
-    context.frozenCorrectorVocabulary = frozenCorrectorVocabulary
+    let wordCorrection = steps.lazy.compactMap { $0 as? WordCorrectionStep }.first
+    context.fixLearnedWords = fixLearnedWords
+    context.frozenCorrectorVocabulary = frozenCorrectorVocabulary?.forLearnedFixes(fixLearnedWords)
+    if !fixLearnedWords, context.frozenCorrectorVocabulary == nil {
+      context.frozenCorrectorVocabulary = wordCorrection?.correctorVocabulary.forLearnedFixes(false)
+    }
     context.languageSource = resolution.source
     context.languageConfidenceBucket = resolution.confidenceBucket
     context.englishRulesVetoed = resolution.englishVeto
@@ -281,7 +292,9 @@ internal final class TextProcessingRunner {
     // #3124: seeded here, before the loop, so a spelling pass that times out cannot lose them
     // (the runner keeps the INPUT context on failure) and both passes read one set.
     context.englishSpelling = evidence.englishSpelling
-    context.spellingProtectedWords = Self.spellingProtectedWords(steps: steps)
+    if let vocabulary = context.frozenCorrectorVocabulary ?? wordCorrection?.correctorVocabulary {
+      context.spellingProtectedWords = BritishSpellingConverter.protectedWords(fromUserWordsIn: vocabulary)
+    }
     if let learnedStep = steps.first(where: { $0 is LearnedWordCheckStep }) as? LearnedWordCheckStep,
       learnedStep.isEnabled(for: context)
     {
@@ -313,7 +326,8 @@ internal final class TextProcessingRunner {
   /// continuation never labels prepared text as RAW ASR or selects a checker a second time.
   func run(
     context initialContext: TextProcessingContext, steps: [any TextProcessingStep],
-    polishSetup: PolishSetupTakeProbe? = nil
+    polishSetup: PolishSetupTakeProbe? = nil,
+    claimsPaste: Bool = true
   ) async throws -> TextProcessingRunResult {
     var context = initialContext
     var polishNotice: PolishNotice?
@@ -598,7 +612,7 @@ internal final class TextProcessingRunner {
           // fallback covers a defensive future reason without pinned copy.
           polishNotice =
             skipReason.ollamaPreflightSkipNotice
-            ?? skipReason.notice(provider: .ollama)
+            ?? skipReason.notice(provider: .ollama, claimsPaste: claimsPaste)
         } else if step.errorSurfacePolicy == .surface && !polishSkippedSilently {
           let model = polishModelAtStart ?? "unknown"
           if let provider = polishProviderAtStart, provider != .appleIntelligence {
@@ -616,7 +630,7 @@ internal final class TextProcessingRunner {
               polishNotice = PolishNotice(
                 leadIn: .failed, text: CloudModelNoticeCopy.noLongerWorks(attempted))
             } else {
-              polishNotice = reason.notice(provider: provider)
+              polishNotice = reason.notice(provider: provider, claimsPaste: claimsPaste)
             }
             // #1446: EVERY attempted-and-failed polish gets a durable counted
             // record, whatever its channel. Sentry alerting is the interrupting
@@ -861,18 +875,5 @@ internal final class TextProcessingRunner {
       comment:
         "Dictation notice: Apple Intelligence polish failed. %@ is the reason, one sentence, already translated or from the system."
     )
-  }
-
-  /// #3124: the words the spelling steps must leave alone, from the chain's own
-  /// `WordCorrectionStep` vocabulary under the one shared rule
-  /// (`BritishSpellingConverter.protectedWords(fromUserWordsIn:)`). Read whether or not word
-  /// correction is switched on: a Custom Word is the user's spelling either way. Empty when the
-  /// chain has no word-correction step.
-  static func spellingProtectedWords(steps: [any TextProcessingStep]) -> Set<String> {
-    guard let wordCorrection = steps.lazy.compactMap({ $0 as? WordCorrectionStep }).first else {
-      return []
-    }
-    return BritishSpellingConverter.protectedWords(
-      fromUserWordsIn: wordCorrection.correctorVocabulary)
   }
 }

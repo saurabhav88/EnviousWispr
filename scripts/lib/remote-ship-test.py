@@ -4,11 +4,13 @@ of this checkout changes. Two private repositories stand in for the two Macs
 (the transport is git's own bundle and fetch; SSH is not involved)."""
 
 import hashlib
+import os
 import importlib.util
 from pathlib import Path
 import subprocess
 import sys
 import tempfile
+import time
 import unittest
 
 HERE = Path(__file__).resolve().parent
@@ -69,6 +71,129 @@ class ShipContract(unittest.TestCase):
                              hashlib.sha256(index).digest())
             self.assertEqual(git(src, "for-each-ref", "refs/ew-remote/"), "")
             self.assertEqual(git(src, "status", "--porcelain"), status)
+
+
+class VerifyStep(unittest.TestCase):
+    """#4712: the real remote shell step, run under `set -e` as both callers run it."""
+
+    def run_step(self, clone, bundle, repo_url, extra_env=None, **kwargs):
+        script = "set -e; " + remote_ship.verify_bundle_script(
+            '"$B"', repo_url, 'touch cleaned;', **kwargs) + "; echo verified"
+        env = {"B": str(bundle), "PATH": "/usr/bin:/bin", **(extra_env or {})}
+        return subprocess.run(["bash", "-c", script], cwd=clone, env=env, capture_output=True, text=True,
+                              timeout=60)
+
+    def setup_behind_clone(self, tmp):
+        """A source with origin/main one commit ahead of the other Mac's clone."""
+        hub, src, dst = Path(tmp) / "hub.git", Path(tmp) / "source", Path(tmp) / "other-mac"
+        git(tmp, "init", "-q", "--bare", "-b", "main", str(hub))
+        git(tmp, "clone", "-q", str(hub), str(src))
+        for cfg in (("user.email", "t@t"), ("user.name", "t")):
+            git(src, "config", *cfg)
+        (src / "a.txt").write_text("1\n")
+        git(src, "add", "-A")
+        git(src, "commit", "-qm", "one")
+        git(src, "push", "-q", "origin", "HEAD:main")
+        git(tmp, "clone", "-q", str(hub), str(dst))
+        (src / "a.txt").write_text("2\n")
+        git(src, "commit", "-qam", "two")
+        git(src, "push", "-q", "origin", "HEAD:main")
+        git(src, "fetch", "-q")
+        (src / "a.txt").write_text("3\n")
+        tree = remote_ship.dev_snapshot_tree(src)
+        _, ref, based = remote_ship.make_bundle(src, tree, "testrun", Path(tmp) / "t.bundle")
+        self.assertTrue(based)  # a thin bundle that needs commit "two"
+        return hub, dst, Path(tmp) / "t.bundle", ref
+
+    def test_a_clone_behind_main_fetches_main_and_verifies(self):
+        with tempfile.TemporaryDirectory(prefix="ew-verify-") as tmp:
+            hub, dst, bundle, ref = self.setup_behind_clone(tmp)
+            plain = subprocess.run(["git", "-C", str(dst), "bundle", "verify", "-q", str(bundle)],
+                                   capture_output=True)
+            self.assertNotEqual(plain.returncode, 0)  # control: verify alone fails here
+            r = self.run_step(dst, bundle, str(hub))
+            self.assertEqual((r.returncode, r.stdout.strip()), (0, "verified"), r.stderr)
+            self.assertFalse((dst / "cleaned").exists())
+            git(dst, "fetch", "-q", str(bundle), f"{ref}:{ref}")
+
+    def test_a_branch_behind_main_still_ships_thin(self):
+        """Main moved past the branch: the bundle still carries only the branch's own commits."""
+        with tempfile.TemporaryDirectory(prefix="ew-verify-") as tmp:
+            hub, src = Path(tmp) / "hub.git", Path(tmp) / "source"
+            git(tmp, "init", "-q", "--bare", "-b", "main", str(hub))
+            git(tmp, "clone", "-q", str(hub), str(src))
+            for cfg in (("user.email", "t@t"), ("user.name", "t")):
+                git(src, "config", *cfg)
+            (src / "a.txt").write_text("1\n")
+            git(src, "add", "-A")
+            git(src, "commit", "-qm", "shared")
+            git(src, "push", "-q", "origin", "HEAD:main")
+            git(src, "checkout", "-qb", "feature")
+            (src / "b.txt").write_text("branch\n")
+            git(src, "add", "-A")
+            git(src, "commit", "-qm", "branch work")
+            other = Path(tmp) / "other"  # someone else moves main on
+            git(tmp, "clone", "-q", str(hub), str(other))
+            for cfg in (("user.email", "t@t"), ("user.name", "t")):
+                git(other, "config", *cfg)
+            (other / "c.txt").write_text("main moved\n")
+            git(other, "add", "-A")
+            git(other, "commit", "-qm", "main moved")
+            git(other, "push", "-q", "origin", "HEAD:main")
+            git(src, "fetch", "-q")
+            tree = remote_ship.dev_snapshot_tree(src)
+            _, _, based = remote_ship.make_bundle(src, tree, "testrun", Path(tmp) / "t.bundle")
+            self.assertTrue(based)
+            heads = subprocess.run(["git", "bundle", "list-heads", str(Path(tmp) / "t.bundle")],
+                                   capture_output=True, text=True, cwd=src).stdout
+            verify = subprocess.run(["git", "-C", str(src), "bundle", "verify", str(Path(tmp) / "t.bundle")],
+                                    capture_output=True, text=True)
+            needs = git(src, "rev-parse", "main")  # the shared commit, not main's new tip
+            self.assertIn(needs, verify.stdout + verify.stderr)
+            self.assertNotIn(git(src, "rev-parse", "origin/main"), verify.stdout + verify.stderr)
+            self.assertTrue(heads)
+
+    def test_an_unreachable_repo_exits_47_after_cleanup(self):
+        with tempfile.TemporaryDirectory(prefix="ew-verify-") as tmp:
+            _, dst, bundle, _ = self.setup_behind_clone(tmp)
+            r = self.run_step(dst, bundle, str(Path(tmp) / "missing.git"))
+            self.assertEqual(r.returncode, 47, r.stdout + r.stderr)
+            self.assertNotIn("verified", r.stdout)
+            self.assertTrue((dst / "cleaned").exists())
+
+    def test_a_stalled_fetch_is_stopped_and_falls_back(self):
+        """Codex P2: a slow GitHub must not eat the caller's SSH timeout."""
+        with tempfile.TemporaryDirectory(prefix="ew-verify-") as tmp:
+            _, dst, bundle, _ = self.setup_behind_clone(tmp)
+            allow_ext = {"GIT_CONFIG_COUNT": "1", "GIT_CONFIG_KEY_0": "protocol.ext.allow",
+                         "GIT_CONFIG_VALUE_0": "always"}
+            started = time.monotonic()
+            pidfile = Path(tmp) / "helper.pid"  # this run's helper only, never a machine-wide search
+            # ext:: splits on spaces; "% " is a literal space. The helper records its PID, then stalls.
+            url = 'ext::sh -c echo% $$% >"$PIDFILE";% exec% sleep% 30'  # path via env: safe with spaces
+            r = self.run_step(dst, bundle, url, extra_env={**allow_ext, "PIDFILE": str(pidfile)},
+                              fetch_seconds=2)
+            elapsed = time.monotonic() - started
+            self.assertEqual(r.returncode, 47, r.stdout + r.stderr)
+            self.assertTrue((dst / "cleaned").exists())
+            self.assertLess(elapsed, 15)
+            self.assertTrue(pidfile.exists(), "the stalled helper never started")
+            pid = int(pidfile.read_text())
+            deadline = time.monotonic() + 3
+            while time.monotonic() < deadline and self.pid_alive(pid):
+                time.sleep(0.1)
+            self.assertFalse(self.pid_alive(pid), "the stalled fetch's network helper is still running")
+
+    @staticmethod
+    def pid_alive(pid):
+        """Running, not merely unreaped: a stopped helper orphaned to a PID 1 that does
+        not reap (some Linux containers) stays a zombie and still answers kill(0)."""
+        try:
+            os.kill(pid, 0)
+        except ProcessLookupError:
+            return False
+        stat = subprocess.run(["ps", "-o", "stat=", "-p", str(pid)], capture_output=True, text=True).stdout
+        return bool(stat.strip()) and not stat.strip().startswith("Z")
 
 
 if __name__ == "__main__":

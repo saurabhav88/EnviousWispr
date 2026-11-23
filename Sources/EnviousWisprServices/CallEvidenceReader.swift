@@ -5,7 +5,8 @@ import Darwin
 import Foundation
 
 /// Reads, through Accessibility, whether a call app is really in a call (#4012 §3.3, R4, C2):
-/// the meeting page in a browser's front window, or a call app's meeting window. Only the
+/// the meeting page in a browser's front window, or a call app's meeting window. Joined Teams
+/// guest pages can also be found in another window of the same browser. Only the
 /// typed evidence, in-memory room key and verified app-run metadata leave this type: no
 /// address, title or page text is stored, logged or sent. Every read has a short Accessibility
 /// timeout and runs off the main actor; missing trust or timeout is `.unknown`, never "no call".
@@ -14,6 +15,8 @@ public enum CallEvidenceReader {
     case call(family: CallAppFamily, room: String)
     /// Calling-app microphone activity without independent call proof; eligible only for Ask.
     case microphoneOnly(family: CallAppFamily, room: String)
+    /// A readable focused Teams guest preview whose other window reads remain inconclusive.
+    case inconclusiveTeamsPreview(room: String)
     case none
     case unknown
   }
@@ -160,7 +163,7 @@ public enum CallEvidenceReader {
       guard let selected = access.appOwner(rule, holderPID)
       else { return .init(startEvidence: .unknown) }
       return attributed(selected, rule: rule, until: deadline, access: access) {
-        meetingPageSnapshot(appPID: selected.pid, until: deadline, access: access)
+        meetingPageSnapshot(appPID: selected.pid, until: deadline, access: access, rule: rule)
       }
     }
   }
@@ -201,8 +204,30 @@ public enum CallEvidenceReader {
     let value = read()
     guard let before, validOwner(before, pid: selected.pid, rule: rule),
       access.now() < deadline, access.appRun(selected.pid) == before, access.now() < deadline
-    else { return .init(startEvidence: value.startEvidence) }
+    else {
+      switch value.startEvidence {
+      case .call(let family, let room), .microphoneOnly(let family, let room):
+        if requiresJoinedTeamsGuest(rule: rule, family: family, room: room) {
+          return .init(startEvidence: .unknown)
+        }
+      case .inconclusiveTeamsPreview:
+        return .init(startEvidence: .unknown)
+      case .none, .unknown: break
+      }
+      return .init(startEvidence: value.startEvidence)
+    }
     return .init(startEvidence: value.startEvidence, continuity: value.continuity, owner: before)
+  }
+
+  /// The verified guest page in Brave and Chrome uses the room key produced by CallMeetingURL.
+  static func requiresJoinedTeamsGuest(
+    rule: CallAppCatalog.Rule, family: CallAppFamily, room: String
+  ) -> Bool {
+    readsTeamsGuestJoin(in: rule) && family == .teams && CallMeetingURL.isTeamsGuestLaunchRoom(room)
+  }
+
+  static func readsTeamsGuestJoin(in rule: CallAppCatalog.Rule) -> Bool {
+    rule == .browser(.brave) || rule == .browser(.chrome)
   }
 
   private static func validOwner(_ owner: AppRun, pid: Int32, rule: CallAppCatalog.Rule) -> Bool {
@@ -273,15 +298,23 @@ public enum CallEvidenceReader {
     // A home marker never substitutes for the other windows or an unchanged owner/window set.
     guard allHome,
       (fixedOwner || teamsOwnerPID(holderPID: holderPID, regularTeamsPIDs: access.regularTeamsPIDs()) == owner),
-      case .value(let currentValue) = boundedCopy(
-        app, kAXWindowsAttribute as CFString, until: deadline, access: access),
-      let current = currentValue as? [AXUIElement], current.count == windows.count,
-      windows.enumerated().allSatisfy({ index, window in
-        !windows.prefix(index).contains(where: { CFEqual($0, window) })
-          && current.filter { CFEqual($0, window) }.count == 1
-      })
+      sameWindows(windows, in: app, until: deadline, access: access)
     else { return unproven }
     return .init(startEvidence: .none, continuity: .ended(family: family, room: room))
+  }
+
+  private static func sameWindows(
+    _ windows: [AXUIElement], in app: AXUIElement,
+    until deadline: ContinuousClock.Instant, access: Access
+  ) -> Bool {
+    guard case .value(let value) = boundedCopy(
+      app, kAXWindowsAttribute as CFString, until: deadline, access: access),
+      let current = value as? [AXUIElement], current.count == windows.count
+    else { return false }
+    return windows.enumerated().allSatisfy { index, window in
+      !windows.prefix(index).contains(where: { CFEqual($0, window) })
+        && current.filter { CFEqual($0, window) }.count == 1
+    }
   }
 
   private enum TeamsWindow { case ongoing, home, unknown }
@@ -618,7 +651,7 @@ public enum CallEvidenceReader {
   /// The saved Slack trees reach depth 27. Unsearched children never mean no huddle.
   private static func callButton(
     in window: AXUIElement, until deadline: ContinuousClock.Instant, access: Access,
-    attribute: CFString, matches: (CFTypeRef) -> Bool?
+    attribute: CFString, samePageOnly: Bool = false, matches: (CFTypeRef) -> Bool?
   ) -> ButtonSearch {
     var queue: [(AXUIElement, Int)] = [(window, 0)]
     var visited = 0
@@ -638,8 +671,12 @@ public enum CallEvidenceReader {
         case .missing: break
         case .failed, .unavailable: complete = false
         }
-      case .value(let role) where role is String: break
-      default: complete = false
+      case .value(let role) where role is String:
+        // A nested page cannot provide the selected meeting's Leave button.
+        if samePageOnly, level != 0, (role as? String) == "AXWebArea" { continue }
+      default:
+        complete = false
+        if samePageOnly { continue }
       }
       switch boundedCopy(node, kAXChildrenAttribute as CFString, until: deadline, access: access) {
       case .value(let value):
@@ -880,7 +917,8 @@ public enum CallEvidenceReader {
   }
 
   private static func meetingPageSnapshot(
-    appPID: pid_t, until deadline: ContinuousClock.Instant, access: Access
+    appPID: pid_t, until deadline: ContinuousClock.Instant, access: Access,
+    rule: CallAppCatalog.Rule? = nil
   ) -> Snapshot {
     let app = AXUIElementCreateApplication(appPID)
     // AXRole itself wakes Chromium (#3802). Its value/error is not a capability gate:
@@ -888,6 +926,23 @@ public enum CallEvidenceReader {
     if case .unavailable = boundedCopy(
       app, kAXRoleAttribute as CFString, until: deadline, access: access)
     { return .init(startEvidence: .unknown) }
+    let focused = focusedBrowserSnapshot(app, until: deadline, access: access, rule: rule)
+    guard let rule, readsTeamsGuestJoin(in: rule), focused.continuity == .unknown else {
+      return focused
+    }
+    if case .call = focused.startEvidence { return focused }
+
+    let joined = teamsGuestWindowEvidence(app, rule: rule, until: deadline, access: access)
+    if joined == .unknown, case .microphoneOnly(.teams, let room) = focused.startEvidence {
+      return .init(startEvidence: .inconclusiveTeamsPreview(room: room))
+    }
+    return joined == .none ? focused : .init(startEvidence: joined)
+  }
+
+  private static func focusedBrowserSnapshot(
+    _ app: AXUIElement, until deadline: ContinuousClock.Instant, access: Access,
+    rule: CallAppCatalog.Rule?
+  ) -> Snapshot {
     guard case .value(let windowRef) = boundedCopy(
       app, kAXFocusedWindowAttribute as CFString, until: deadline, access: access),
       CFGetTypeID(windowRef) == AXUIElementGetTypeID()
@@ -904,6 +959,13 @@ public enum CallEvidenceReader {
     }
     guard let address else { return .init(startEvidence: walk.complete ? .none : .unknown) }
     guard let match = CallMeetingURL.classify(address) else { return .init(startEvidence: .none) }
+    if let rule, requiresJoinedTeamsGuest(rule: rule, family: match.family, room: match.room) {
+      // A focused preview can offer Ask. The complete window check proves automatic starts.
+      guard let page = walk.webArea else { return .init(startEvidence: .unknown) }
+      let evidence = teamsGuestEvidence(in: page, match: match, until: deadline, access: access)
+      guard case .microphoneOnly = evidence else { return .init(startEvidence: .unknown) }
+      return .init(startEvidence: evidence)
+    }
     let start = Evidence.call(family: match.family, room: match.room)
     // A document fallback has no web-area scope, so it cannot authorize a window-wide state scan.
     guard match.family == .googleMeet, let page = walk.webArea
@@ -919,6 +981,84 @@ public enum CallEvidenceReader {
     guard access.now() < stateDeadline else { return .init(startEvidence: start) }
     return meetSnapshot(in: page, match: match, until: stateDeadline,
       revalidateUntil: revalidationDeadline, access: access)
+  }
+
+  private static func teamsGuestWindowEvidence(
+    _ app: AXUIElement, rule: CallAppCatalog.Rule,
+    until deadline: ContinuousClock.Instant, access: Access
+  ) -> Evidence {
+    guard case .value(let value) = boundedCopy(
+      app, kAXWindowsAttribute as CFString, until: deadline, access: access),
+      let windows = value as? [AXUIElement]
+    else { return .unknown }
+    var joined: Evidence?
+    var observations: [TeamsGuestWindowRead] = []
+    for window in windows {
+      guard let observation = readTeamsGuestWindow(window, rule: rule, until: deadline, access: access)
+      else { return .unknown }
+      observations.append(observation)
+      if case .call = observation.evidence {
+        guard joined == nil else { return .unknown }
+        joined = observation.evidence
+      }
+    }
+    guard let joined else { return .none }
+    // A tab can change inside an unchanged window while its old page remains readable.
+    guard sameWindows(windows, in: app, until: deadline, access: access),
+      zip(windows, observations).allSatisfy({ window, previous in
+        guard let current = readTeamsGuestWindow(window, rule: rule, until: deadline, access: access)
+        else { return false }
+        return previous.matches(current)
+      })
+    else { return .unknown }
+    return joined
+  }
+
+  private struct TeamsGuestWindowRead {
+    let address: String?
+    let page: AXUIElement?
+    let evidence: Evidence
+
+    func matches(_ other: Self) -> Bool {
+      guard address == other.address, evidence == other.evidence else { return false }
+      switch (page, other.page) {
+      case (let page?, let otherPage?): return CFEqual(page, otherPage)
+      case (nil, nil): return true
+      default: return false
+      }
+    }
+  }
+
+  private static func readTeamsGuestWindow(
+    _ window: AXUIElement, rule: CallAppCatalog.Rule,
+    until deadline: ContinuousClock.Instant, access: Access
+  ) -> TeamsGuestWindowRead? {
+    let selected = url(in: window, until: deadline, access: access, requireUniqueDocument: true)
+    guard selected.complete else { return nil }
+    var evidence = Evidence.none
+    if let address = selected.url, let match = CallMeetingURL.classify(address),
+      requiresJoinedTeamsGuest(rule: rule, family: match.family, room: match.room)
+    {
+      guard let page = selected.webArea else { return nil }
+      evidence = teamsGuestEvidence(in: page, match: match, until: deadline, access: access)
+      guard evidence != .unknown else { return nil }
+    }
+    return .init(address: selected.url, page: selected.webArea, evidence: evidence)
+  }
+
+  private static func teamsGuestEvidence(
+    in page: AXUIElement, match: CallMeetingURL.Match,
+    until deadline: ContinuousClock.Instant, access: Access
+  ) -> Evidence {
+    let joined = callButton(in: page, until: deadline, access: access,
+      attribute: "AXDOMIdentifier" as CFString, samePageOnly: true) { value in
+      (value as? String).map { $0 == "hangup-button" }
+    }
+    guard joined != .failed, sameRoom(page, match: match, until: deadline, access: access)
+    else { return .unknown }
+    // The Teams preview already holds the microphone. Its URL can offer Ask but cannot auto-start.
+    return joined == .found ? .call(family: match.family, room: match.room)
+      : .microphoneOnly(family: match.family, room: match.room)
   }
 
   private static let meetEndTitles: Set<String> = [
@@ -1021,8 +1161,10 @@ public enum CallEvidenceReader {
   /// Breadth-first, at most 12 levels and 400 elements: browser trees are deep, and a page
   /// with a huge tree must not stall the read. `complete` is false when a read on the way failed.
   private static func url(
-    in root: AXUIElement, until deadline: ContinuousClock.Instant, access: Access
+    in root: AXUIElement, until deadline: ContinuousClock.Instant, access: Access,
+    requireUniqueDocument: Bool = false
   ) -> (url: String?, webArea: AXUIElement?, complete: Bool) {
+    var found: (url: String, page: AXUIElement)?
     var queue: [(AXUIElement, Int, Bool)] = [(root, 0, true)]
     var visited = 0
     var complete = true
@@ -1038,21 +1180,34 @@ public enum CallEvidenceReader {
         switch boundedCopy(node, kAXURLAttribute as CFString, until: deadline, access: access) {
         case .value(let value):
           if let link = (value as? URL)?.absoluteString ?? (value as? String) {
-            return (link, eligibleRoot ? node : nil, true)
-          }
-        case .missing: break
+            if !requireUniqueDocument { return (link, eligibleRoot ? node : nil, true) }
+            guard eligibleRoot, found == nil, URL(string: link)?.scheme != nil
+            else { return (nil, nil, false) }
+            found = (link, node)
+          } else if requireUniqueDocument { complete = false }
+        case .missing:
+          if requireUniqueDocument { complete = false }
         case .failed, .unavailable: complete = false
         }
+        // Only a selected top-level page can contribute cross-window evidence.
+        if requireUniqueDocument { continue }
       case .value(let role):
-        if (role as? String)?.isEmpty != false { eligibleDescendants = false }
+        if (role as? String)?.isEmpty != false {
+          eligibleDescendants = false
+          if requireUniqueDocument { complete = false }
+        }
       case .failed, .unavailable:
         complete = false
         eligibleDescendants = false
-      case .missing: eligibleDescendants = false
+      case .missing:
+        eligibleDescendants = false
+        if requireUniqueDocument { complete = false }
       }
       switch boundedCopy(node, kAXChildrenAttribute as CFString, until: deadline, access: access) {
       case .value(let value):
-        let children = (value as? [AXUIElement]) ?? []
+        let decoded = value as? [AXUIElement]
+        if requireUniqueDocument, decoded == nil { complete = false }
+        let children = decoded ?? []
         // A level the walk will not enter is part of the page it did not see (r6 F5).
         guard level < 12 else {
           if !children.isEmpty { complete = false }
@@ -1065,7 +1220,7 @@ public enum CallEvidenceReader {
     }
     // Stopped at the element limit with elements still waiting: not a full search (r6 F5).
     if !queue.isEmpty { complete = false }
-    return (nil, nil, complete)
+    return (found?.url, found?.page, complete)
   }
 
   // MARK: - Accessibility reads

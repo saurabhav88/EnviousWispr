@@ -1,0 +1,13 @@
+{
+  "language": "pt",
+  "title": "liberar o modelo de revisão de texto da memória após",
+  "words": [
+    "ram da revisão de texto",
+    "memória do EG-1",
+    "memória do S1-mini"
+  ],
+  "phrases": [
+    "quanto tempo o modelo de revisão de texto fica na memória",
+    "liberar a memória da revisão de texto quando paro de ditar"
+  ]
+}

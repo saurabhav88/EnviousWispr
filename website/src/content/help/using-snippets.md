@@ -9,7 +9,7 @@ related: ["adding-custom-words", "ai-polish-and-cloud-data"]
 updated: 2026-09-29
 deflection: "can_resolve"
 ---
-A snippet is a voice shortcut. You save a piece of text once, then say a short phrase to paste it. It suits an email address, a sign-off, or a link you send people every week. Snippets live in **Settings** > **Snippets**.
+Best for text you type often such as an email address, a sign-off, or a link. Snippets live in **Settings** > **Snippets**.
 
 ### Add a snippet
 

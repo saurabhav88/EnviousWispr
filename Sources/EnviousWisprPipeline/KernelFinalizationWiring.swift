@@ -73,6 +73,9 @@ final class KernelFinalizationOutcome {
   var polishDurationSeconds: Double = 0
   var pasteDurationSeconds: Double = 0
   var pasteResult: PasteDeliveryResult?
+  /// The exact local editor the direct paste wrote to, if verified. Never sent to telemetry.
+  var practiceVerifiedEditor: String?
+  var practiceCopiedToClipboard = false
   /// #145: deterministic ITN run facts, threaded onto `dictation.completed`.
   /// Metadata only (`telemetry-privacy-boundary`). `itnFloorDelivered` is derived
   /// in `updateTranscriptMetrics` from `itnChanged` + the polish outcome.
@@ -97,6 +100,7 @@ final class KernelFinalizationOutcome {
   /// from the chain's context right after the runner returns; threaded onto
   /// `dictation.completed`. Metadata only (`telemetry-privacy-boundary`).
   var cleanupLanguage: String?
+  var acceptedTranslationTarget: DictationTranslationTarget?
   var cleanupLanguageSource: String?
   var cleanupLanguageBucket: String?
   /// #996: the resolver-owned language for the learn-from-edits gate
@@ -534,7 +538,7 @@ struct KernelFinalizationWiring {
     // cost of defaulting it is a silent regression nobody can grep for. Two
     // tests already reached the real clipboard exactly this way and neither
     // mentions a clipboard anywhere.
-    copyToClipboard: @escaping @MainActor (String) -> Void
+    copyToClipboard: @escaping @MainActor (String, PasteService.WriteKind) -> Bool
   ) {
     // processText — run the limb chain, write the polish side-channel, return
     // the final display text. `onPolishStarted` is wired into
@@ -544,7 +548,9 @@ struct KernelFinalizationWiring {
       // FIRST statement, before any suspension point: freeze one full vocabulary
       // for both correction steps and the protected-spellings floor. Canonicals
       // are protected spellings; aliases are misheard forms we correct FROM.
+      let fixLearnedWords = context.config?.fixLearnedWords ?? true
       let frozenCorrectorVocabulary = steps.wordCorrection.correctorVocabulary
+        .forLearnedFixes(fixLearnedWords)
       context.protectedSpellings = Set(
         frozenCorrectorVocabulary.terms.map(\.canonical))
       // #996: this take's languages start unknown. The four fields are
@@ -555,6 +561,7 @@ struct KernelFinalizationWiring {
       // `languageResolutionSource` clear in `deliver`; cleared to nil, never to
       // a placeholder.
       outcome.cleanupLanguage = nil
+      outcome.acceptedTranslationTarget = nil
       outcome.cleanupLanguageSource = nil
       outcome.cleanupLanguageBucket = nil
       outcome.learnLanguage = nil
@@ -591,9 +598,12 @@ struct KernelFinalizationWiring {
         targetAppName: context.targetApp?.localizedName,
         steps: steps.orderedChain,
         frozenCorrectorVocabulary: frozenCorrectorVocabulary,
+        fixLearnedWords: fixLearnedWords,
         polishSetup: Self.polishSetupProbe(
           takeID: telemetryState.takeID, context: context.polishSetupContext,
           hooks: context.polishSetupHooks),
+        claimsPaste: context.config?.copyOnlyByPreference != true,
+        translationTarget: context.config?.translationTarget,
         // #1846: the LIVE in-flight take, not the concluded one. Polish runs before
         // the session terminal, and starting a session CLEARS `kernel.lastTakeID`,
         // so it is nil here — substituting it would emit no take key at all. Same
@@ -612,6 +622,9 @@ struct KernelFinalizationWiring {
       // after this line, and any of them seeing a raw sentinel is the failure this whole
       // design exists to make impossible. A no-op when no snippet fired.
       SnippetFinalizer.finalize(&ctx)
+      if ctx.polishedText?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty != false {
+        ctx.acceptedTranslationTarget = nil
+      }
       context.snippetExpansionFired = !ctx.protectedExpansions.isEmpty
       // #145: thread the ITN run outcome onto `dictation.completed` (metadata
       // only — `telemetry-privacy-boundary`). Read on the same actor right after
@@ -666,6 +679,7 @@ struct KernelFinalizationWiring {
       outcome.spellingSwaps = ctx.englishSpellingSwaps
       outcome.rawText = ctx.text
       outcome.polishedText = ctx.polishedText
+      outcome.acceptedTranslationTarget = ctx.acceptedTranslationTarget
       outcome.llmProvider = ctx.llmProvider
       outcome.llmModel = ctx.llmModel
       outcome.polishMetadata = ctx.polishMetadata
@@ -679,6 +693,19 @@ struct KernelFinalizationWiring {
       outcome.afmPrewarmOutcome = ctx.afmPrewarmOutcome
       outcome.afmPrewarmTakeID = ctx.afmPrewarmOutcome == nil ? nil : ctx.takeID
       outcome.polishNotice = result.polishNotice
+      if let target = ctx.requestedTranslationTarget,
+        target.rawValue != LanguageNormalizer.baseCode(ctx.language)
+      {
+        if let notice = result.polishNotice, notice.leadIn == .failed {
+          outcome.polishNotice = PolishNotice(
+            leadIn: notice.leadIn, text: notice.text, isTranslationFailure: true)
+        } else if result.polishNotice == nil, ctx.acceptedTranslationTarget == nil,
+          ctx.polishValidatorGuard != nil || ctx.polishFallbackReason == SnippetFinalizer.sentinelLossReason
+        {
+          outcome.polishNotice = PolishNotice(
+            leadIn: .failed, text: PolishNotice.translationFailureText, isTranslationFailure: true)
+        }
+      }
       outcome.polishTakeOutcome = result.polishTakeOutcome
       // #3988: the first live take to meet an outside stop is its recovery take. Its stop and
       // its own polish result ride on its terminal row (zero new rows), written here because the
@@ -757,6 +784,10 @@ struct KernelFinalizationWiring {
         backendType: adapter.engineIdentity.backendType,
         llmProvider: outcome.llmProvider,
         llmModel: outcome.llmModel,
+        // #4611: History names the app each dictation went to (the time column and the
+        // All apps filter read `metrics.targetApp`). The full metrics are attached to the
+        // in-memory row after the paste; only the app is known and saved here.
+        metrics: ExecutionMetrics(targetApp: context.targetApp?.bundleIdentifier),
         // #1063 PR1: link this live transcript to its crash-recovery spool (nil
         // unless recovery was armed) so the host deletes that session's spool +
         // key once this save is durable. `isRecovered` is false — this is the
@@ -818,6 +849,7 @@ struct KernelFinalizationWiring {
     deliver = { text, disposition in
       let pasteStart = CFAbsoluteTimeGetCurrent()
       let config = context.config
+      let copyOnlyByPreference = config?.copyOnlyByPreference == true
       var pasteResult: PasteDeliveryResult?
       let deliveryOutcome: KernelDeliveryOutcome
       // #1921: cleared BEFORE the auto-paste branch below, because `outcome` is
@@ -850,7 +882,7 @@ struct KernelFinalizationWiring {
         // silently breaks latency reporting — a metric regression invisible
         // until someone queries it and finds a hole shaped like this feature.
         deliveryOutcome = .suppressed
-      } else if config?.autoPasteToActiveApp == true {
+      } else if config?.autoPasteToActiveApp == true, !copyOnlyByPreference {
         // #1980: if the record-start capture failed, retry once here, scoped
         // directly to the app the user was dictating into (`context.targetApp`'s
         // pid) — never the earlier system-wide query, which can answer for a
@@ -884,7 +916,8 @@ struct KernelFinalizationWiring {
             // operation, which cannot reach a `@MainActor` seam.
             return InsertionTakeFacts(
               snippetFired: context.snippetExpansionFired,
-              lockedLanguageCode: context.config?.lockedLanguageCode,
+              lockedLanguageCode: outcome.acceptedTranslationTarget?.rawValue
+                ?? context.config?.lockedLanguageCode,
               engineDetectsLanguage: adapter.capabilities.supportsLanguageDetection,
               engineReportedLanguage: adapter.lastResult?.language,
               protectedSpellings: context.protectedSpellings)
@@ -1064,6 +1097,7 @@ struct KernelFinalizationWiring {
           let deliveredText =
             result.submittedPayload == .repaired
             ? (payloads.repairedText ?? pasteText) : pasteText
+          outcome.practiceVerifiedEditor = result.verifiedPracticeEditor
           pasteCompletionRegistry?.emit(
             PasteCompletionEvent(
               pastedText: deliveredText,
@@ -1079,6 +1113,7 @@ struct KernelFinalizationWiring {
               takeID: deliveryTakeID))
           deliveryOutcome = .pasted
         } else {
+          outcome.practiceCopiedToClipboard = result.fallbackClipboardChangeCount != nil
           deliveryOutcome = .clipboardOnly
         }
         // #3106: the committed arrival session runs AFTER the outcome above is fixed, off the
@@ -1090,12 +1125,15 @@ struct KernelFinalizationWiring {
         if let arrivalCapture = result.arrivalCapture {
           Task { @MainActor in await arrivalCapture.terminated() }
         }
-      } else if config?.autoCopyToClipboard == true {
+      } else if copyOnlyByPreference || config?.autoCopyToClipboard == true {
         // #2465: auto-copy never enters `PasteCascadeExecutor`, so it reaches the board without
         // passing any of the claim sites there. Same ownership failure as Tier 3, one layer up.
         ClipboardCleanup.deliveryClaimsBoard()
-        copyToClipboard(text)
-        deliveryOutcome = .clipboardOnly
+        let hideCopy = copyOnlyByPreference && config?.restoreClipboardAfterPaste == true
+          && config?.keepDictationsOutOfClipboardHistory == true
+        let copied = copyToClipboard(text, hideCopy ? .keptHidden : .kept)
+        outcome.practiceCopiedToClipboard = copied
+        deliveryOutcome = copyOnlyByPreference ? .intentionalClipboard(copied: copied) : .clipboardOnly
       } else {
         deliveryOutcome = .clipboardOnly
       }
@@ -1105,7 +1143,8 @@ struct KernelFinalizationWiring {
       outcome.pasteResult = pasteResult
       outcome.pasteDurationSeconds = pipelineEnd - pasteStart
       Self.updateTranscriptMetrics(
-        outcome: outcome, context: context, telemetryState: telemetryState)
+        outcome: outcome, context: context, telemetryState: telemetryState,
+        deliveryOutcome: deliveryOutcome)
       Self.logPipelineTimingTotal(outcome: outcome)
       // PR-5 Rung 4.5 (#827): LID perf signpost `t_clipboard_write` —
       // gated on engine LID capability (NOT paste outcome). OLD pipeline
@@ -1717,7 +1756,8 @@ struct KernelFinalizationWiring {
   private static func updateTranscriptMetrics(
     outcome: KernelFinalizationOutcome,
     context: KernelSessionContext,
-    telemetryState: KernelTelemetryState
+    telemetryState: KernelTelemetryState,
+    deliveryOutcome: KernelDeliveryOutcome
   ) {
     guard var transcript = outcome.transcript else { return }
     let asrLatency =
@@ -1755,6 +1795,8 @@ struct KernelFinalizationWiring {
       asrLatencySeconds: asrLatency,
       llmLatencySeconds: outcome.polishDurationSeconds,
       pasteTier: outcome.pasteResult?.pasteTierLabel,
+      deliveryOutcome: deliveryOutcome == .intentionalClipboard(copied: true)
+        ? ExecutionMetrics.automaticPasteDisabledDelivery : nil,
       pasteLatencyMs: outcome.pasteResult?.durationMs,
       // #1785: why this dictation was or was not repaired, and which payload the
       // writing route submitted. `pastePayloadKind` stays nil when no route

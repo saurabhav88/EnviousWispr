@@ -41,6 +41,11 @@ enum PillAction: Equatable, Sendable {
   /// re-request access if not yet asked — `PermissionsService.requestMicrophoneAccessOrOpenSettings()`
   /// decides which), not for the handler field, matching every other case here.
   case openMicrophoneSettings
+  /// #4601: the "How to fix" button on the microphone-not-responding notice pill. Opens the
+  /// help section (`DictationNarrator.microphoneNotRespondingHelpURL`); never the permission
+  /// settings `openMicrophoneSettings` opens.
+  case openMicrophoneHelp
+  case chooseMeetingSummaryEngine
   /// discardRecoveryHandler.
   case discardRecovery
   /// onEscapeRecoveryPaste, which takes the `CancelUndoPayload`.
@@ -66,11 +71,13 @@ enum PillAction: Equatable, Sendable {
   case closeBluetoothAwareness
   /// bluetoothAwarenessAdjustSettingsHandler.
   case openBluetoothSettings
-  /// #996 auto-learn: the Undo pill's one button. Carries the pill's own UUID
-  /// so a press on a pill the slot no longer shows undoes nothing. There is no
-  /// dismiss action: the pill never takes keyboard focus, so an unanswered
-  /// pill leaves on its dwell.
+  /// #996 auto-learn: the Undo pill's Undo button. Carries the pill's own UUID
+  /// so a press on a pill the slot no longer shows undoes nothing.
   case undoLearnedCorrection(pillID: UUID)
+  /// #4675: the Undo pill's × button. Closes the pill and keeps the word. Carries the pill's
+  /// own UUID like Undo, so a press on a pill the slot no longer shows closes nothing. The
+  /// pill still never takes keyboard focus; this is a click, not a key.
+  case dismissLearnedCorrection(pillID: UUID)
   /// #3438: the AI polish setup card's "Finish setup".
   case finishPolishSetup
   /// #3438: the AI polish setup card's "Not now". Distinct from Finish setup: the two are
@@ -100,7 +107,7 @@ enum PillEffect: Equatable, Sendable {
   /// arrives or leaves. Nothing in the first model expressed it at all.
   case recordingStateChanged(Bool)
   /// #996 auto-learn: an admitted Undo pill left the screen in its `.learned`
-  /// phase without Undo being pressed (dwell fired, replaced by another
+  /// phase without Undo being pressed (dwell fired, × pressed, replaced by another
   /// learned pill, or displaced). The director routes it to the pill's own
   /// binding, which tells the learned coordinator to drop its Undo record.
   /// Emitted at most once per presentation identity. A result phase leaving
@@ -171,6 +178,10 @@ enum PillRequest {
   case importStatus(message: String)
 
   // Feature-owned: raised by a feature that owns the buttons it draws.
+  case meetingSummaryLimit(
+    provider: LLMProvider, isStillWanted: @MainActor () -> Bool,
+    onChooseEngine: @MainActor () -> Void
+  )
   case accessibilityNotice
   case recoveryNotice(onDiscard: () -> Void)
   case languageChip(
@@ -189,6 +200,10 @@ enum PillRequest {
   /// is read immediately before a deferred first render: false (the download stopped, the
   /// switch already settled) rolls it back unrendered and unannounced.
   case parakeetUpgrade(ParakeetUpgradePillModel, isStillWanted: () -> Bool)
+  /// #4845 LIFE-5: "AI polish download complete". The upgrade pill's admission (idle pipeline,
+  /// empty slot) and the same pre-render question: false (the selection or the server changed)
+  /// rolls it back unrendered and unannounced.
+  case polishDownloadComplete(PolishDownloadPillModel, isStillWanted: () -> Bool)
   /// #3438: the card after a dictation whose AI polish did not run because its chosen model is
   /// not set up. A feature: the slot only while the pipeline is idle, never displacing another
   /// feature, persisting until answered or replaced.
@@ -245,6 +260,8 @@ struct PillReceipt: Hashable, Sendable {
 enum PillUpdate: Equatable, Sendable {
   case recordingLock(Bool)
   case inPanelNotice(RecordingNoticeReason, dismissAfter: Double?)
+  /// #4841: clear the live recording pill's notice only if it is of this kind.
+  case clearInPanelNotice(RecordingNoticeKind)
   /// #3546 A3: new download progress for the Parakeet Ultra downloading pill, if current.
   case parakeetUpgradeProgress(fraction: Double)
 }

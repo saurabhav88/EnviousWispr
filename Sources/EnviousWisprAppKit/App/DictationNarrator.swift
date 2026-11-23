@@ -1,5 +1,6 @@
 import EnviousWisprCore
 import EnviousWisprPipeline
+import Foundation
 
 /// #1567 (heartpath E3): a typed fact for an in-panel recording notice rendered
 /// through `RecordingOverlayPanel.flashRecordingNotice`. Distinct from
@@ -16,6 +17,29 @@ enum RecordingNoticeReason: Equatable, Sendable {
   /// keyboard features (the other-key rule) are paused. Timed (5 s dismiss). Names no app: macOS
   /// gives no reliable way to tell which app turned it on.
   case secureInputActive
+  /// #4841: the microphone has been sending exact digital silence. Persistent
+  /// (nil dismiss) until sound returns or the take ends; `.calm` at 5 s
+  /// mid-take (6 s silent since start), `.strong` at 15 s. Never posted with
+  /// `.none` (that level clears the notice instead).
+  case micSilent(MicSilenceLevel)
+
+  /// One kind per family, so calm and strong are the same notice for clearing.
+  var kind: RecordingNoticeKind {
+    switch self {
+    case .approachingCap: .approachingCap
+    case .autoStopUnavailable: .autoStopUnavailable
+    case .secureInputActive: .secureInputActive
+    case .micSilent: .micSilent
+    }
+  }
+}
+
+/// #4841: the family of an in-panel notice, independent of its level.
+enum RecordingNoticeKind: Equatable, Sendable {
+  case approachingCap
+  case autoStopUnavailable
+  case secureInputActive
+  case micSilent
 }
 
 /// #1558 (E1) / #1564 (E2). The single, stateless authority that turns the
@@ -38,6 +62,33 @@ enum RecordingNoticeReason: Equatable, Sendable {
 /// words, and the recovery container AX label — is authored here and nowhere
 /// else. The renderers (panel, main window, sidebar) are pure presenters.
 enum DictationNarrator {
+
+  // MARK: - Microphone not responding (#4601)
+
+  /// The help section the "How to fix" button opens. One owner for the pill, the meeting notice
+  /// and Setup. The fragment is the id the help site generates from the section heading
+  /// "When EnviousWispr can't reach your microphone" (github-slugger, as Astro and the help
+  /// catalog use); renaming that heading moves the anchor, so change both together.
+  static let microphoneNotRespondingHelpURL = URL(
+    string:
+      "https://enviouswispr.com/help/choosing-your-microphone/#when-enviouswispr-cant-reach-your-microphone"
+  )!
+
+  /// The button on the "can't reach your microphone" notice (pill and meeting).
+  static var microphoneHelpButtonLabel: String {
+    String(
+      localized: "How to fix",
+      comment:
+        "Button on the notice that the microphone did not answer: opens the help page with steps to fix it.")
+  }
+
+  /// What VoiceOver says for that button, because "How to fix" alone does not say what opens.
+  static var microphoneHelpAccessibilityLabel: String {
+    String(
+      localized: "Open microphone troubleshooting help",
+      comment:
+        "VoiceOver label for the How to fix button on the microphone-not-responding notice. It opens a help page in the browser.")
+  }
 
   // MARK: - Terminal failures / interruptions (E1)
 
@@ -74,6 +125,14 @@ enum DictationNarrator {
       return String(
         localized: "No microphone found. Please connect one.",
         comment: "Pill: no input device is available.")
+    // #4601 (founder 2026-11-15): the start was not answered. The cause is unknown to the app,
+    // so the sentence says "may be"; never a diagnosis.
+    case .micNotResponding:
+      return String(
+        localized:
+          "EnviousWispr can't reach your microphone. Another app's audio driver may be stuck. Restarting your Mac usually fixes this.",
+        comment:
+          "Pill and meeting notice: the microphone did not answer when recording started. The cause is unknown; another app's audio driver is only a possibility, so keep 'may'. Restarting the Mac is the usual fix.")
     // Informational interruptions (audio was saved).
     case .deviceRemoved:
       return String(
@@ -201,10 +260,20 @@ enum DictationNarrator {
       return String(
         localized: "\(engineLabel) isn't downloaded yet. Open Settings to download it.",
         comment: "Pill: the chosen speech engine is not downloaded. %@ is the engine's name.")
+    case .modelRequiresExplicitRetry(let engineLabel):
+      return String(
+        localized:
+          "\(engineLabel) couldn't load. Choose Try Again in Settings > Dictation Settings > Engine.",
+        comment:
+          "Dictation warning and file import notice when the installed speech engine needs a manual retry. %@ is the engine name. Try Again and the settings path are app labels.")
     case .polishFailed:
       return String(
         localized: "Pasted without AI polish.",
         comment: "Pill: AI polish failed, so the unpolished text was pasted.")
+    case .translationFailed(let message):
+      return message
+    case .clipboardPolishFailed(let copied, let reason):
+      return copied ? String(localized: "Copied without AI polish. \(reason)") : reason
     case .historySaveFailed(let reason):
       // #3142: `reason` is already the whole translated sentence
       // (`HistorySaveErrorClass.userMessage`), so the pill shows it as is.
@@ -328,6 +397,18 @@ enum DictationNarrator {
         localized: "Secure Input is on, so some keyboard features are paused",
         comment:
           "Banner inside the recording panel: macOS Secure Input (often a password field) is on, so some of the app's keyboard features are paused. The dictation itself keeps recording. Names no app on purpose.")
+    case .micSilent(.strong):
+      return String(
+        localized: "Your microphone isn’t sending sound. Stop and check it in Settings.",
+        comment:
+          "Notice next to the recording pill after 15 seconds in which the microphone sent only digital silence. The recording keeps going; it asks the user to stop and check the microphone in the app's Settings.")
+    case .micSilent(.calm), .micSilent(.none):
+      // `.none` is never posted (the tracker clears instead); falling back to the
+      // calm sentence keeps the switch exhaustive without inventing copy.
+      return String(
+        localized: "We’re not hearing anything from your microphone.",
+        comment:
+          "Notice next to the recording pill after about 5 seconds in which the microphone sent only digital silence. The recording keeps going.")
     }
   }
 
@@ -501,6 +582,24 @@ enum DictationNarrator {
     let title = parakeetUpgradeTitle(for: phase)
     let spokenTitle = title.hasSuffix("…") ? String(title.dropLast()) : title
     return "\(spokenTitle). \(parakeetUpgradeSubtitle(for: phase))"
+  }
+
+  // MARK: #4845 LIFE-5 AI polish download complete (founder-approved, 2026-11-22)
+
+  static let polishDownloadCompleteTitle = String(
+    localized: "AI polish download complete",
+    comment: "Pill title once a downloaded AI polish model is loaded and ready for dictation.")
+
+  static func polishDownloadCompleteSubtitle(modelName: String) -> String {
+    String(
+      localized: "\(modelName) is on for your next dictation.",
+      comment:
+        "Pill line under AI polish download complete. %@ is the AI polish model's name, such as EG-1 Mini.")
+  }
+
+  /// The spoken sentence: the title and the line, as one.
+  static func polishDownloadCompleteAnnouncement(modelName: String) -> String {
+    "\(polishDownloadCompleteTitle). \(polishDownloadCompleteSubtitle(modelName: modelName))"
   }
 
   // dash kept (founder 2026-07-15)

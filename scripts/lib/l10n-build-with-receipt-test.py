@@ -194,7 +194,8 @@ def main():
                               f'. "{repo}/scripts/lib/l10n-build-with-receipt.sh"; '
                               f'ew_l10n_build_with_receipt "{repo}" "{dd}" xcodebuild build -derivedDataPath "{dd}"')]
         proc = subprocess.Popen(cmd, cwd=repo, env=env_for(repo, STUB_SLEEP=20), stdout=subprocess.PIPE,
-                                stderr=subprocess.PIPE, text=True, start_new_session=True)
+                                stderr=subprocess.PIPE, text=True, start_new_session=True,
+                                preexec_fn=lambda: signal.signal(signal.SIGINT, signal.SIG_DFL))
         pidfile = pathlib.Path(str(repo / "trace") + ".pid")
         for _ in range(100):
             if pidfile.exists():
@@ -216,13 +217,16 @@ def main():
                 (dd / "ew-l10n-receipt.json").is_dir()), (0, True, True, True))
 
         # 10. Publication fails (the derived-data directory is read-only after the build).
-        repo = make_repo(root / "readonly")
-        dd = repo / ".derivedData/Dev"
-        r = wrap(repo, dd, STUB_LOCK_DIR=1)
-        dd.chmod(0o755)
-        expect("10 a receipt that cannot be written: status 0, no receipt, reported",
-               (r.returncode, (dd / "ew-l10n-receipt.json").exists(), "catalog receipt unavailable: the build succeeded" in r.stderr),
-               (0, False, True))
+        if os.geteuid() == 0:
+            expect("10 a receipt that cannot be written (skipped as root)", True, True)
+        else:
+            repo = make_repo(root / "readonly")
+            dd = repo / ".derivedData/Dev"
+            r = wrap(repo, dd, STUB_LOCK_DIR=1)
+            dd.chmod(0o755)
+            expect("10 a receipt that cannot be written: status 0, no receipt, reported",
+                   (r.returncode, (dd / "ew-l10n-receipt.json").exists(), "catalog receipt unavailable: the build succeeded" in r.stderr),
+                   (0, False, True))
 
         # 11. The build-only command: run directly, same order and outcome.
         repo = make_repo(root / "direct")
@@ -260,15 +264,18 @@ def main():
         repo = make_repo(root / "retained")
         dd = repo / ".derivedData/Dev"
         assert wrap(repo, dd).returncode == 0 and (dd / "ew-l10n-receipt.json").exists()
-        inode = (dd / "ew-l10n-receipt.json").stat().st_ino
-        dd.chmod(0o555)
-        try:
-            r = wrap(repo, dd)
-        finally:
-            dd.chmod(0o755)
-        expect("11f invalidation denied: status 0, reported, the old receipt is not replaced (same inode)",
-               (r.returncode, "could not remove" in r.stderr, (dd / "ew-l10n-receipt.json").stat().st_ino == inode),
-               (0, True, True))
+        if os.geteuid() == 0:
+            expect("11f invalidation denied (skipped as root)", True, True)
+        else:
+            inode = (dd / "ew-l10n-receipt.json").stat().st_ino
+            dd.chmod(0o555)
+            try:
+                r = wrap(repo, dd)
+            finally:
+                dd.chmod(0o755)
+            expect("11f invalidation denied: status 0, reported, the old receipt is not replaced (same inode)",
+                   (r.returncode, "could not remove" in r.stderr, (dd / "ew-l10n-receipt.json").stat().st_ino == inode),
+                   (0, True, True))
 
         def verify(commit):
             return subprocess.run([sys.executable, str(repo / "scripts/lib/l10n-build-receipt.py"), "verify", "--receipt",

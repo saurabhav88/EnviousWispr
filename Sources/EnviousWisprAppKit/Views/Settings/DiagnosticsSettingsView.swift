@@ -21,8 +21,7 @@ struct DiagnosticsSettingsView: View {
   // #1100: drives the DEBUG-only "Simulate AI polish state" picker below.
   // DEBUG-gated so release carries no extra environment dependency here.
   #if DEBUG
-    @Environment(AIAvailabilityCoordinator.self) private var aiAvailability
-  #endif
+    #endif
 
   /// Force-unwrapped: `EnviousWisprApp` always injects a real instance into the
   /// environment (see `AppEnvironmentKeys.swift`).
@@ -44,7 +43,6 @@ struct DiagnosticsSettingsView: View {
   var body: some View {
     @Bindable var settings = settings
     #if DEBUG
-      @Bindable var aiAvailability = aiAvailability
     #endif
 
     SettingsContentView {
@@ -77,39 +75,26 @@ struct DiagnosticsSettingsView: View {
         #endif
         if settings.isDebugModeEnabled {
           BrandedRow {
-            Picker("Log Level", selection: $settings.debugLogLevel) {
-              ForEach(DebugLogLevel.allCases, id: \.self) { level in
-                Text(level.displayName).tag(level)
+            HStack {
+              Text(verbatim: "Log Level")
+                .font(.stRowLabel)
+                .foregroundStyle(.stTextPrimary)
+              Spacer(minLength: DesignSpacing.md)
+              SettingsMenuPicker(
+                title: "Log Level", selection: $settings.debugLogLevel,
+                valueLabel: settings.debugLogLevel.displayName
+              ) {
+                ForEach(DebugLogLevel.allCases, id: \.self) { level in
+                  Text(level.displayName).tag(level)
+                }
               }
+              .accessibilityLabel(Text(verbatim: "Log Level"))
             }
           }
-          #if DEBUG
-            // #1100: force the onboarding Apple Intelligence note to a given
-            // state so it can be validated on a Mac where Apple Intelligence is
-            // actually available. Pair with "Restart Onboarding…" below.
-            BrandedRow {
-              VStack(alignment: .leading, spacing: 4) {
-                Picker(
-                  "Simulate AI polish state",
-                  selection: $aiAvailability.debugForcedNotice
-                ) {
-                  ForEach(AIAvailabilityCoordinator.DebugForcedNotice.allCases) { state in
-                    Text(state.label).tag(state)
-                  }
-                }
-                Text(
-                  "Forces the onboarding Apple Intelligence note. Pair with \"Restart Onboarding…\" to see each state. Debug builds only."
-                )
-                .font(.stHelper)
-                .foregroundStyle(.stTextSecondary)
-              }
-            }
-          #endif
           BrandedRow(showDivider: false) {
             VStack(alignment: .leading, spacing: 4) {
               Button {
-                settings.onboardingState = .notStarted
-                appWindowCoordinator.openOnboardingWindow()
+                appWindowCoordinator.restartOnboarding()
               } label: {
                 EnviousButtonLabel("Restart Onboarding…")
               }

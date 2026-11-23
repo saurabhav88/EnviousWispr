@@ -2,6 +2,25 @@
 import CoreAudio
 import EnviousWisprCore
 
+/// #4601 §3a: the microphone-start budget. One absolute deadline is minted from the record press
+/// (dictation) or the meeting start, before the first route or probe read, and every later step of
+/// that start (pre-warm, the take's own prepare, stabilization and the one rebuild) spends what is
+/// left of it. Nothing renews it. Waits that are not microphone work do not spend it: a press
+/// waiting for its engine turn mints its deadline after that wait, and the kernel moves the
+/// deadline later by the speech model's load time (founder 2026-11-15 for the engine turn; the
+/// model load follows the same rule, #4601 whole-diff review).
+public enum MicrophoneStartBudget {
+  /// An absolute microphone-start deadline.
+  public typealias Deadline = ContinuousClock.Instant
+
+  public static let duration: Duration = .seconds(5)
+
+  /// The deadline of a start whose origin (the press, or the meeting start) is `origin`.
+  public static func deadline(from origin: ContinuousClock.Instant) -> ContinuousClock.Instant {
+    origin + duration
+  }
+}
+
 /// Abstraction over audio capture — enables swapping between in-process and XPC implementations.
 @MainActor
 public protocol AudioCaptureInterface: AnyObject {
@@ -44,10 +63,10 @@ public protocol AudioCaptureInterface: AnyObject {
   // All callbacks fire on the MainActor.
 
   /// Fires once per capture session when the liveness watchdog observes zero
-  /// audio buffers within `Constants.audioCaptureStallWindowMs` of tap install,
-  /// or the reactive dead-air detector confirms an all-zero capture. At most
-  /// one call per `currentCaptureSessionID` (the two producers share the
-  /// manager's `captureStallReported` latch). Never called after a subsequent
+  /// audio buffers within `Constants.audioCaptureStallWindowMs` of tap install
+  /// (#4841: the only producer; exact zeros never report a stall). At most one
+  /// call per `currentCaptureSessionID` (the manager's `captureStallReported`
+  /// latch). Never called after a subsequent
   /// `stopCapture` for that session. Telemetry-only: consumers must not treat
   /// this as a control-flow signal.
   var onCaptureStalled: ((CaptureStallContext) -> Void)? { get set }
@@ -58,10 +77,9 @@ public protocol AudioCaptureInterface: AnyObject {
   // periphery:ignore - planned route telemetry API (producers wired, consumer pending)
   var onRouteResolved: ((CaptureRouteDecision, _ sourceTypeChanged: Bool) -> Void)? { get set }
 
-  /// Monotonic per-source identifier for the active capture session.
-  /// Increments on every `startCapture` / `beginCapturePhase`. Zero if no
-  /// session has started yet. Pipeline uses for correlation extras +
-  /// dedup-claim keying. Never persisted; not meaningful across launches.
+  /// Manager-owned ID for the current capture or preparation attempt.
+  /// The live manager claims it before taking over the source. The pipeline
+  /// uses it for correlation and dedup. Never persisted across launches.
   var currentCaptureSessionID: UInt64 { get }
 
   /// Authoritative "is a capture session in-flight right now." Backed by
@@ -100,27 +118,22 @@ public protocol AudioCaptureInterface: AnyObject {
   /// `zeroSignalDiscriminatorDevice` at emit time.
   ///
   /// The separation is load-bearing, not stylistic. That accessor participates
-  /// in the #1844/#1578 zero-signal DECISION and its read ORDER is a tested
-  /// contract: a run already classified reactively must short-circuit before the
-  /// bind is consulted at all. Telemetry asking the same question later would
-  /// consult it on a path the guard forbids, which is exactly the regression
-  /// `KernelFrozenBindGuardTests` caught. A decision input and an observation
+  /// in the #1844 zero-signal DECISION, read once per STOP; telemetry asking the
+  /// same question later would add a second read on a path
+  /// `KernelFrozenBindGuardTests` guards. A decision input and an observation
   /// are different concerns even when they describe the same fact.
   var boundInputDeviceKind: String? { get }
 
-  /// #1578: WHY the current trailing zero run was refused, or `nil` when the
-  /// run has no refusal. It carries the categorical reason, which is the fact
-  /// #1578 exists to stop discarding.
-  var zeroSignalRefusalReason: ZeroSignalEligibility? { get }
-
-  /// #1578: whether the CURRENT zero run was already classified by the reactive
-  /// producer. This — never forwarding success — is what suppresses a second
-  /// STOP-time classification of the same run.
-  var zeroSignalRunWasClassifiedReactively: Bool { get }
+  /// #4841: the current run of exact-zero LIVE samples in this take, or `nil`
+  /// outside active capture. Drained pre-roll is excluded from both the length
+  /// and the since-start test, so a warm microphone's ring cannot shift which
+  /// silent-mic notice threshold applies. Observation only: exact zeros never
+  /// end a take. MainActor, like the capture ingest that maintains it.
+  var exactZeroRun: ExactZeroRun? { get }
 
   /// #1810: samples this session drained out of the pre-roll ring, clamped
-  /// non-negative. Read at STOP so `classifyZeroSignalAtStop` applies the same
-  /// live-capture bar the reactive detector uses.
+  /// non-negative. Read at STOP so `classifyZeroSignalAtStop` measures only the
+  /// live capture.
   ///
   /// **Read here rather than off `CaptureResult.metadata`, and that is the fix for a
   /// cloud-review finding rather than a style choice.** `stopCapture()`'s documented
@@ -130,22 +143,6 @@ public protocol AudioCaptureInterface: AnyObject {
   /// path and reinstated the early abort this change exists to remove. The manager
   /// caches the value per session, so it survives the source being torn down.
   var drainedPreRollSampleCount: Int { get }
-
-  /// #1578: one forward attempt per refused run. `true` means the observation
-  /// was delivered immediately; `false` means the consumer rejected it (stale
-  /// session, no active target) and the producer must enqueue the context in
-  /// its per-session backlog exactly once.
-  var onZeroSignalRefused: ((ZeroSignalRefusalContext) -> Bool)? { get set }
-
-  /// #1578: ATOMIC take-and-clear of the pending refusal backlog, MainActor.
-  /// Returns every rejected context and empties the backlog in ONE synchronous
-  /// step, so a second caller — including a cancel landing while `stopCapture()`
-  /// is suspended — gets an empty array rather than a duplicate. Callers MUST
-  /// invoke it before any `await` and before the session FSM returns to idle.
-  ///
-  /// NOT `mutating`: this protocol is class-bound (`: AnyObject`, line 7), and
-  /// Swift rejects a `mutating` method declared in a class-bound protocol.
-  func takePendingZeroSignalRefusals() -> [ZeroSignalRefusalContext]
 
   // Configuration properties (read-write)
   var selectedInputDeviceUID: String { get set }
@@ -157,7 +154,9 @@ public protocol AudioCaptureInterface: AnyObject {
   var warmEnginePolicy: WarmEnginePolicy { get set }
 
   // Core lifecycle
-  func startEnginePhase() async throws
+  /// `startDeadline` is the take's microphone-start deadline (`MicrophoneStartBudget`); the
+  /// rebuild retry passes the same instant.
+  func startEnginePhase(startDeadline: ContinuousClock.Instant) async throws
   /// `recoveryPayload` is an opaque encoded `RecoverySpoolDirective` the recording
   /// kernel forwards to arm the crash-recovery limb (#1063 PR1); nil ⇒ no spool.
   /// Every caller except the kernel uses the no-arg `beginCapturePhase()`
@@ -192,26 +191,15 @@ public protocol AudioCaptureInterface: AnyObject {
   func recoveryCaptureDidNotStart(recoverySessionID: String)
   func startCapture() async throws -> AsyncStream<AVAudioPCMBuffer>  // periphery:ignore - convenience method combining engine + capture phases
   /// Stop the capture session identified by `sessionID`, returning its samples.
-  /// Fenced on the armed capture generation (#1579): a mismatched ID is a total
-  /// no-op returning empty samples, so an older armed generation cannot clear a
-  /// newer armed take's samples, deactivate its source, or finalize its spool.
+  /// The live manager claims the ID during preparation (#1854). Pass the ID
+  /// captured when taking ownership of cleanup. A mismatched ID returns empty
+  /// samples without changing the current capture, source, or recovery spool.
   ///
-  /// Deliberately fenced ONLY on the armed capture counter. It does NOT identify
-  /// prepared-but-unarmed ownership — the counter advances in `beginCapturePhase`,
-  /// so an engine prepared and then cancelled is still session 0 (#1579 P9).
-  /// Callers must separately gate that interval using lifecycle ownership. Unlike
-  /// `retireCapturingSource(sessionID:)` below, this must not copy the
-  /// source-identity checks: retire is destructive on a specific retained source
-  /// object, stop is not. Requiring
-  /// source identity or a non-nil source here would refuse a legitimate stop
-  /// after a route change, a format restabilisation, a zero-signal retire, or an
-  /// idle teardown — and would break the nil-source salvage path that still owes
-  /// the caller its accumulated samples.
-  ///
-  /// Callers pass the id they observed when they took ownership of the stop, NOT
-  /// a value re-read at call time. `0` is a legitimate argument: an engine that
-  /// was prepared but never armed has not advanced the counter, and that cleanup
-  /// must still be allowed through or the prepared engine leaks.
+  /// A matching stop still drains the take's accumulated samples after a route
+  /// change, format restabilisation, zero-signal retirement, or idle teardown.
+  /// Source identity is required for `retireCapturingSource(sessionID:)`, which
+  /// tears down a particular retained source. Cleanup uses the captured ID even
+  /// if that source is gone.
   func stopCapture(sessionID: UInt64) async -> CaptureResult
   func rebuildEngine()
   /// Retire (tear down) the source that captured the session identified by
@@ -223,8 +211,18 @@ public protocol AudioCaptureInterface: AnyObject {
   /// newer take's source).
   @discardableResult
   func retireCapturingSource(sessionID: UInt64) -> ZeroSignalRetireResult
-  func preWarm() async throws
+  /// `startDeadline`: the press's microphone-start deadline, shared with the take's own prepare.
+  func preWarm(startDeadline: ContinuousClock.Instant) async throws
   func abortPreWarm()
+  /// #4601 §5: give up the start that is still being prepared, at once: a waiting route, probe or
+  /// open resumes now with cancellation and nothing it was preparing is kept. Unlike
+  /// `abortPreWarm()` it never tears down a microphone that is already open and idle (the
+  /// Keep engine warm policy still owns that). Synchronous; a no-op with nothing pending.
+  func abandonPendingStart()
+  /// #4601 §3a: whether the start whose deadline is `startDeadline` was given up by
+  /// `abandonPendingStart()` at or after its press. The kernel asks once its session exists (so no
+  /// later abandon can belong to this press) before it moves the deadline past model loading.
+  func isStartAbandoned(startDeadline: ContinuousClock.Instant) -> Bool
   /// #3878: this session's take ended before capture started (a refused or failed start), so
   /// apply the Keep engine warm policy to any prepared or warm source now, as if a recording had
   /// just stopped. A no-op while capturing or with no source. Never throws or suspends.
@@ -262,6 +260,10 @@ extension AudioCaptureInterface {
   /// writer-completion join to notify. `AudioCaptureManager` overrides it.
   public func recoveryCaptureDidNotStart(recoverySessionID: String) {}
 
+  /// #4601 §3a: default for conformers with no pending-start abandonment (test fakes, simulator
+  /// doubles). `AudioCaptureManager` overrides it with its own record.
+  public func isStartAbandoned(startDeadline: ContinuousClock.Instant) -> Bool { false }
+
   /// #1317: fail-closed default so every existing conformer (test fakes,
   /// simulator doubles) that has no reason to track this stays
   /// source-compatible. The real capture backend (`AudioCaptureManager`)
@@ -277,37 +279,33 @@ extension AudioCaptureInterface {
   /// capture on it, and a nil value degrades attribution, never recording.
   public var currentInputResolutionSource: String? { nil }
 
-  /// #1578: no reactive per-buffer detector means no refusal reason to report.
-  public var zeroSignalRefusalReason: ZeroSignalEligibility? { nil }
-
-  /// #1578: same reasoning — a conformer with no reactive classifier never
-  /// classified the current run, so STOP-time classification stays permitted.
-  public var zeroSignalRunWasClassifiedReactively: Bool { false }
+  /// #4841: a conformer with no live exact-zero counter reports no run, so the
+  /// silent-mic notice never shows for it.
+  public var exactZeroRun: ExactZeroRun? { nil }
 
   /// #1810: a conformer with no pre-roll ring drained nothing, so the stop-time bar
   /// is the shipping one. Defaulted — unlike `AudioInputSource`'s undefaulted twin —
   /// because the fakes conforming HERE genuinely have no ring, whereas a real capture
   /// SOURCE that drains one and reports nothing is the failure that member exists to
-  /// prevent. Same split the three properties above already make.
+  /// prevent.
   public var drainedPreRollSampleCount: Int { 0 }
+}
 
-  /// #1578: an explicit `get { nil } set {}` pair, NOT the read-only computed
-  /// shape the two properties above use. A settable protocol requirement cannot
-  /// be satisfied by a getter alone, so copying that shape here would not
-  /// compile. Assignment through an existential is accepted and discarded.
-  public var onZeroSignalRefused: ((ZeroSignalRefusalContext) -> Bool)? {
-    get { nil }
-    set {}
-  }
+/// #4841: one reading of the live exact-zero run. `sampleCount` is the length
+/// of the current run of exact-zero samples in this take's live capture (16 kHz
+/// mono); `sinceTakeStart` is true when every live sample so far was exactly
+/// zero. Drained pre-roll counts toward neither.
+public struct ExactZeroRun: Sendable, Equatable {
+  public let sampleCount: Int
+  public let sinceTakeStart: Bool
 
-  /// #1578: a conformer with no backlog has nothing to hand over. Synchronous
-  /// and non-`mutating`, matching the requirement.
-  public func takePendingZeroSignalRefusals() -> [ZeroSignalRefusalContext] {
-    []
+  public init(sampleCount: Int, sinceTakeStart: Bool) {
+    self.sampleCount = sampleCount
+    self.sinceTakeStart = sinceTakeStart
   }
 }
 
-/// #1578: the observation a refused zero run produces — the reason plus the
+/// #1578: the observation a refused whole-zero take produces at STOP — the reason plus the
 /// minimum context needed to make it countable by transport and failure shape.
 /// Lives in `EnviousWisprAudio` beside the protocol that carries it, not in
 /// Core, which this change deliberately leaves untouched.
@@ -330,26 +328,13 @@ public struct ZeroSignalRefusalContext: Sendable, Equatable {
   }
 }
 
-/// #1578: what the kernel's STOP-time seam returns — the classification plus
-/// the one fact that decides whether STOP may classify the run again.
+/// #1578: what the kernel's STOP-time seam returns — the device classification,
+/// read once per STOP (#4841: STOP is the only classifier).
 public struct ZeroSignalDecisionSnapshot: Sendable, Equatable {
   public let eligibility: ZeroSignalEligibility
 
-  /// Whether the CURRENT run was already classified reactively — NOT whether
-  /// its first forward succeeded. A rejected forward is emitted from the
-  /// backlog, so a forwarding-success discriminator would invite STOP to emit
-  /// it a second time.
-  ///
-  /// This snapshot deliberately carries NO backlog: consumption belongs to the
-  /// atomic take-and-clear, and two owners of one queue is a defect.
-  public let currentRunWasClassifiedReactively: Bool
-
-  public init(
-    eligibility: ZeroSignalEligibility,
-    currentRunWasClassifiedReactively: Bool
-  ) {
+  public init(eligibility: ZeroSignalEligibility) {
     self.eligibility = eligibility
-    self.currentRunWasClassifiedReactively = currentRunWasClassifiedReactively
   }
 }
 

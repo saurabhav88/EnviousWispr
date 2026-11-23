@@ -150,7 +150,7 @@ enum RenderedPillHarness {
         audioLevel: audioLevel, isLocked: locked, notice: nil, design: design),
       expiry: .untilReplaced,
       requestedWidth: .fixed(design.width),
-      reservesFixedHeight: design.reservedHeight)
+      reservesFixedHeight: nil)
     return rootSize(for: definition, model: model)
   }
 
@@ -159,16 +159,15 @@ enum RenderedPillHarness {
   /// The CONTENT height a recording leaf reports for itself, with an optional
   /// #1060 in-panel notice set.
   ///
-  /// **A different question from `recordingRootSize`, and the root cannot answer
-  /// it.** The root frames a without-words recording pill to its design's
-  /// reserved box, so it measures 185x92 whatever the content does — which is
-  /// exactly the measurement that cannot see a notice overflowing its budget. A
-  /// without-words design is also handed `onContentHeightChange = { _ in }` by
-  /// `OverlayRenderModel`, so nothing in production reports this either.
+  /// The leaf's own measured height, pill plus any notice bubble or strip, the
+  /// value production hands the window since #4841. `noticeReason` types the
+  /// fixture, so a silence notice measures with its mark present.
   static func recordingContentHeight(
     design: RecordingPillDesign,
     locked: Bool = false,
     notice: String? = nil,
+    noticeReason: RecordingNoticeReason = .approachingCap,
+    position: OverlayPillPosition = .top,
     display: LivePreviewDisplay = .off,
     width: CGFloat
   ) throws -> CGFloat {
@@ -179,8 +178,9 @@ enum RenderedPillHarness {
       livePreviewProvider: { display },
       onContentHeightChange: { log.record($0) },
       chrome: design.chrome,
+      position: position,
       isLocked: locked,
-      noticeText: notice,
+      notice: notice.map { RecordingNoticeDisplay(reason: noticeReason, text: $0) },
       initialPreview: display)
 
     let host = NSHostingView(rootView: view.frame(width: width))
@@ -215,6 +215,7 @@ enum RenderedPillHarness {
     design: RecordingPillDesign,
     locked: Bool = false,
     notice: String? = nil,
+    position: OverlayPillPosition = .top,
     display: LivePreviewDisplay = .off
   ) -> CGFloat {
     let view = RecordingOverlayView(
@@ -223,8 +224,9 @@ enum RenderedPillHarness {
       livePreviewProvider: { display },
       onContentHeightChange: { _ in },
       chrome: design.chrome,
+      position: position,
       isLocked: locked,
-      noticeText: notice,
+      notice: notice.map(RecordingNoticeDisplay.layoutFixture),
       initialPreview: display)
 
     // No `.frame(width:)`, which is the whole point — an unproposed hosting view
@@ -237,5 +239,14 @@ enum RenderedPillHarness {
     host.layoutSubtreeIfNeeded()
     window.displayIfNeeded()
     return host.fittingSize.width
+  }
+}
+
+extension RecordingNoticeDisplay {
+  /// #4841: a notice for layout fixtures that measure TEXT (translations, long
+  /// sentences). The reason is a neutral, unstyled kind; the text is what the
+  /// fixture measures.
+  static func layoutFixture(_ text: String) -> RecordingNoticeDisplay {
+    RecordingNoticeDisplay(reason: .approachingCap, text: text)
   }
 }

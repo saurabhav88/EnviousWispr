@@ -97,7 +97,8 @@
         case .correctionLearned(let model, _, _, _):
           switch model.phase {
           case .learned: break
-          case .undone, .undoError: Issue.record("row \(entry.id) is in an excluded result phase")
+          case .undoPending, .undone, .undoError:
+            Issue.record("row \(entry.id) is in an excluded Pending or result phase")
           }
           switch model.kind {
           case .added: learnedKinds.insert("added")
@@ -407,7 +408,7 @@
       let clock = LearnedPillClock()
       let director = OverlayDirector(
         host: WindowlessOverlayHost(), scheduler: clock.scheduler, announce: { _ in },
-        livePreview: .disabled, grantAccessibility: {}, openMicrophoneSettings: {},
+        livePreview: .disabled, grantAccessibility: {}, openMicrophoneSettings: {}, openMicrophoneHelp: {},
         advisoryHint: { _ in nil }, selections: { .shipped }, firstRenderSchedule: { $0() })
       let (controller, _, _) = make(director: director)
       controller.selectedID = "learned.added"
@@ -423,7 +424,7 @@
       let clock = LearnedPillClock()
       let director = OverlayDirector(
         host: WindowlessOverlayHost(), scheduler: clock.scheduler, announce: { _ in },
-        livePreview: .disabled, grantAccessibility: {}, openMicrophoneSettings: {},
+        livePreview: .disabled, grantAccessibility: {}, openMicrophoneSettings: {}, openMicrophoneHelp: {},
         advisoryHint: { _ in nil }, selections: { .shipped }, firstRenderSchedule: { $0() })
       let (controller, _, _) = make(director: director)
       controller.selectedID = "escape.undo"
@@ -471,7 +472,7 @@
       var deferred: (() -> Void)?
       let director = OverlayDirector(
         host: WindowlessOverlayHost(), announce: { _ in }, livePreview: .disabled,
-        grantAccessibility: {}, openMicrophoneSettings: {}, advisoryHint: { _ in nil },
+        grantAccessibility: {}, openMicrophoneSettings: {}, openMicrophoneHelp: {}, advisoryHint: { _ in nil },
         selections: { .shipped }, firstRenderSchedule: { deferred = $0 })
       let (controller, _, _) = make(director: director)
       controller.play()

@@ -30,6 +30,8 @@
       case status
       case historyList = "history.list"
       case historyGet = "history.get"
+      /// #4798: deletes ONE dictation or import row through History's own Delete.
+      case historyDelete = "history.delete"
       case wordsList = "words.list"
       case wordsAdd = "words.add"
       case wordsUpdate = "words.update"
@@ -41,6 +43,23 @@
       case modelsEGOneDownload = "models.egone.download"
       case modelsEGOneCancel = "models.egone.cancel"
       case modelsEGOneRemove = "models.egone.remove"
+      /// #4528 C2c.2a (plan M22): S1-mini's Download/Resume and Cancel on its own runtime.
+      case modelsS1MiniDownload = "models.s1mini.download"
+      case modelsS1MiniCancel = "models.s1mini.cancel"
+      /// #4528 C2c.2a (plan §3.9): the new Setup's DEBUG backend session. `status` reads only.
+      case onboardingStatus = "onboarding.status"
+      case onboardingBegin = "onboarding.begin"
+      case onboardingReset = "onboarding.reset"
+      case onboardingGoto = "onboarding.goto"
+      case onboardingSend = "onboarding.send"
+      case onboardingStop = "onboarding.stop"
+      /// #4528 C2c.2b: DEBUG simulation (advice profile, M5 permissions, approved faults).
+      case onboardingProfile = "onboarding.profile"
+      case onboardingPermissions = "onboarding.permissions"
+      case onboardingFault = "onboarding.fault"
+      case onboardingPresent = "onboarding.present"
+      case onboardingRetryWarmup = "onboarding.retry-warmup"
+      case onboardingRetryPolish = "onboarding.retry-polish"
       case dictationStart = "dictation.start"
       case dictationStop = "dictation.stop"
       case dictationCancel = "dictation.cancel"
@@ -138,7 +157,21 @@
     /// .visibleTranscripts`): expired pending rows already left out, newest first, and no
     /// kind filter or search applied.
     struct HistorySource {
-      let visibleTranscripts: @MainActor () -> [Transcript]
+      let visibleTranscripts: @MainActor () async throws -> [Transcript]
+      let savedRow: (@MainActor (UUID) async throws -> Transcript?)?
+      /// #4798: History's own Delete of one row (`TranscriptCoordinator.deleteHistoryItem`,
+      /// text and recordings), the call the History card makes. Nil when not wired.
+      let delete: (@MainActor (UUID) async -> HistoryDeleteOutcome)?
+
+      init(
+        visibleTranscripts: @escaping @MainActor () async throws -> [Transcript],
+        savedRow: (@MainActor (UUID) async throws -> Transcript?)? = nil,
+        delete: (@MainActor (UUID) async -> HistoryDeleteOutcome)? = nil
+      ) {
+        self.visibleTranscripts = visibleTranscripts
+        self.savedRow = savedRow
+        self.delete = delete
+      }
     }
 
     /// The Settings rows' model buttons, one closure each: Parakeet's foreground Resume and
@@ -161,6 +194,11 @@
       /// The size card's Remove, with its preference rule (plan #4473 §3.1.1 S9).
       let egOneRemove: @MainActor (EGOneSize) -> Void
       let egOneState: @MainActor (EGOneSize) -> EGOneInstallState?
+      /// #4528 C2c.2a: S1-mini's runtime (nil when the build has none). Download returns
+      /// whether the runtime accepted the start (`acceptsDownloadStart`), so a refusal is reported.
+      var s1MiniDownload: (@MainActor () -> Bool)? = nil
+      var s1MiniCancel: (@MainActor () -> Void)? = nil
+      var s1MiniState: (@MainActor () -> EGOneInstallState?)? = nil
     }
 
     /// Rows `history.list` returns when the request names no limit.
@@ -184,14 +222,17 @@
     private let meetings: DevControlMeetings
     /// Call detection's simulation (#4012).
     private let calls: DevControlCalls
+    /// The new Setup's DEBUG backend session (#4528 C2c.2a); nil when not wired.
+    private let onboarding: DevControlOnboarding?
 
     init(
       settings: SettingsManager, writeContext: DevControlSettings.WriteContext,
       status: StatusSources, history: HistorySource, models: ModelActions,
       dictation: DevControlDictation, credentials: CredentialWriter,
       words: CustomWordsCoordinator, meetings: DevControlMeetings,
-      calls: DevControlCalls = .unwired()
+      calls: DevControlCalls = .unwired(), onboarding: DevControlOnboarding? = nil
     ) {
+      self.onboarding = onboarding
       self.meetings = meetings
       self.calls = calls
       self.dictation = dictation
@@ -233,9 +274,11 @@
       case .status:
         return .ok(status())
       case .historyList:
-        return historyList(args)
+        return await historyList(args)
       case .historyGet:
-        return historyGet(args)
+        return await historyGet(args)
+      case .historyDelete:
+        return await historyDelete(args)
       case .wordsList:
         return wordsList(args)
       case .wordsAdd:
@@ -258,6 +301,41 @@
         return egOneModel("cancel", args, models.egOneCancel)
       case .modelsEGOneRemove:
         return egOneModel("remove", args, models.egOneRemove)
+      case .modelsS1MiniDownload:
+        return s1MiniModel("download", args)
+      case .modelsS1MiniCancel:
+        return s1MiniModel("cancel", args)
+      case .onboardingStatus:
+        return onboardingCommand(args, allowed: []) { $0.status() }
+      case .onboardingBegin:
+        return onboardingCommand(args, allowed: []) { $0.begin() }
+      case .onboardingReset:
+        return onboardingCommand(args, allowed: []) { $0.reset() }
+      case .onboardingStop:
+        return onboardingCommand(args, allowed: []) { $0.stop() }
+      case .onboardingProfile:
+        return onboardingCommand(args, allowed: ["ram", "os", "afm", "lang", "clear"]) {
+          $0.profile(args)
+        }
+      case .onboardingPermissions:
+        return onboardingCommand(args, allowed: ["mic", "ax", "clear"]) { $0.permissionsCommand(args) }
+      case .onboardingFault:
+        return onboardingCommand(args, allowed: ["name", "off", "clear"]) { $0.fault(args) }
+      case .onboardingPresent:
+        return onboardingCommand(args, allowed: []) { $0.present() }
+      case .onboardingRetryWarmup:
+        return onboardingCommand(args, allowed: []) { $0.retryWarmup() }
+      case .onboardingRetryPolish:
+        return onboardingCommand(args, allowed: []) { $0.retryPolish() }
+      case .onboardingGoto:
+        return onboardingCommand(args, allowed: ["step"]) { $0.goto(args) }
+      case .onboardingSend:
+        // #4845: `pick` and `visit` target a Skip ahead or Keep waiting press.
+        return onboardingCommand(
+          args, allowed: ["event", "value", "provider", "model", "pick", "visit"]
+        ) {
+          $0.send(args)
+        }
       case .dictationStart:
         return await dictation.start(args)
       case .dictationStop:
@@ -275,7 +353,7 @@
       case .meetingList:
         return meetings.list(args)
       case .meetingGet:
-        return meetings.get(args)
+        return await meetings.get(args)
       case .meetingRetry:
         return await meetings.retry(args)
       case .meetingDeleteAudio:
@@ -672,6 +750,34 @@
       ])
     }
 
+    /// S1-mini's Download/Resume (refused when its runtime does not accept a start) and Cancel.
+    /// The reply is the instant after the press, never a completion receipt.
+    private func s1MiniModel(_ action: String, _ args: [String: Any]) -> Result {
+      guard args.isEmpty else { return .failure(.badArgs, "S1-mini model commands take no arguments") }
+      guard let download = models.s1MiniDownload, let cancel = models.s1MiniCancel,
+        let state = models.s1MiniState
+      else { return .failure(.notWired, "S1-mini is not wired") }
+      if action == "download" {
+        guard download() else {
+          return .failure(.rejected, "S1-mini did not accept a download start (\(Self.project(state())))")
+        }
+      } else {
+        cancel()
+      }
+      return .ok(["model": "s1mini", "action": action, "state": Self.project(state())])
+    }
+
+    private func onboardingCommand(
+      _ args: [String: Any], allowed: Set<String>,
+      _ run: @MainActor (DevControlOnboarding) -> Result
+    ) -> Result {
+      guard let onboarding else { return .failure(.notWired, "onboarding is not wired") }
+      guard !unexpectedKeys(args, allowed: allowed) else {
+        return .failure(.badArgs, "unexpected arguments for this onboarding command")
+      }
+      return run(onboarding)
+    }
+
     private static func project(_ state: EGOneInstallState?) -> [String: Any] {
       switch state {
       case nil: return ["state": "noRuntime"]
@@ -697,7 +803,7 @@
     /// `meetings` keeps that tab's kind of row (no search or filters); omitted lists every
     /// visible row as before. Rows keep the owner's order (newest first). A summary carries no
     /// text and no file name, only fixed-size fields, so the reply's size is bounded by the limit.
-    private func historyList(_ args: [String: Any]) -> Result {
+    private func historyList(_ args: [String: Any]) async -> Result {
       var tab: HistoryTab?
       if let raw = args["tab"] {
         guard let name = raw as? String, let value = HistoryTab(rawValue: name) else {
@@ -714,7 +820,10 @@
         }
         limit = value
       }
-      let visible = history.visibleTranscripts().filter { row in
+      let rows: [Transcript]
+      do { rows = try await history.visibleTranscripts() }
+      catch { return .failure(.catalogUnavailable, "could not read saved History") }
+      let visible = rows.filter { row in
         switch tab {
         case nil: return true
         case .dictations: return !row.isImported && !row.isMeeting
@@ -731,14 +840,68 @@
 
     /// `{id}`: a UUID string of one row History offers now. A row that expired or was
     /// deleted since the client last looked is `notFound`, never a neighbour.
-    private func historyGet(_ args: [String: Any]) -> Result {
+    private func historyGet(_ args: [String: Any]) async -> Result {
+      switch await historyRow(args) {
+      case .success(let row): return .ok(["row": Self.detail(row)])
+      case .failure(let failure): return failure
+      }
+    }
+
+    /// #4798 `{id}`: deletes ONE dictation or import row through History's own Delete
+    /// (text and recordings). The row is read first exactly as `history.get` reads it, so an
+    /// unknown or expired id is `notFound` and the owner is never called; a meeting's row is
+    /// refused (`meeting.delete` owns meetings). `checkFailed` can mean the text went but a
+    /// recording file could not be removed; `history.get` answering `notFound` afterwards
+    /// proves only that the row is gone. One id per call; no pattern or bulk form.
+    private func historyDelete(_ args: [String: Any]) async -> Result {
+      guard let delete = history.delete else {
+        return .failure(.notWired, "History delete was not handed to the door")
+      }
+      let row: Transcript
+      switch await historyRow(args) {
+      case .success(let found): row = found
+      case .failure(let failure): return failure
+      }
+      if row.isMeeting || row.meetingID != nil {
+        return .failure(.badArgs, "this row belongs to a meeting: use meeting.delete")
+      }
+      switch await delete(row.id) {
+      case .removed: return .ok(["deleted": row.id.uuidString])
+      case .alreadyAbsent: return .failure(.notFound, "no visible History row has that id")
+      case .skipped: return .failure(.checkFailed, "History kept the row on purpose")
+      case .failed:
+        // The text can already be gone while a recording file stayed: a retry then answers
+        // notFound before any cleanup, so say so instead of "not deleted".
+        return .failure(
+          .checkFailed,
+          "deletion did not fully complete: the row may be gone while a recording file remains")
+      }
+    }
+
+    private enum RowLookup {
+      case success(Transcript)
+      case failure(Result)
+    }
+
+    /// The one row `{id}` names, read as History offers it now.
+    private func historyRow(_ args: [String: Any]) async -> RowLookup {
       guard let raw = args["id"] as? String, let id = UUID(uuidString: raw) else {
-        return .failure(.badArgs, "id must be a UUID string")
+        return .failure(.failure(.badArgs, "id must be a UUID string"))
       }
-      guard let row = history.visibleTranscripts().first(where: { $0.id == id }) else {
-        return .failure(.notFound, "no visible History row has that id")
+      let saved: Transcript?
+      do {
+        if let read = history.savedRow {
+          saved = try await read(id)
+        } else {
+          saved = try await history.visibleTranscripts().first { $0.id == id }
+        }
+      } catch {
+        return .failure(.failure(.catalogUnavailable, "could not read the saved History row"))
       }
-      return .ok(["row": Self.detail(row)])
+      guard let row = saved else {
+        return .failure(.failure(.notFound, "no visible History row has that id"))
+      }
+      return .success(row)
     }
 
     private static let timestamp = Date.ISO8601FormatStyle(includingFractionalSeconds: true)

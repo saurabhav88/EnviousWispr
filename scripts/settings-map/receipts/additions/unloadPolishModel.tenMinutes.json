@@ -1,0 +1,324 @@
+{
+ "id": "unloadPolishModel.tenMinutes",
+ "blocks": {
+  "ar": {
+   "title": "بعد ١٠ دقائق",
+   "words": [
+    "تفريغ نموذج تحسين النص بعد 10 دقايق",
+    "خمول نموذج التنقيح لمدة عشر دقائق"
+   ],
+   "phrases": [
+    "حرّر ذاكرة نموذج تحسين النص بعد ١٠ دقائق من دون استخدام"
+   ]
+  },
+  "bg": {
+   "title": "след 10 минути",
+   "words": [
+    "10 мин",
+    "AI Polish 10 минути"
+   ],
+   "phrases": [
+    "освободи модела за подобряване на текста от паметта след 10 минути без диктовка"
+   ]
+  },
+  "cs": {
+   "title": "po 10 minutách",
+   "words": [
+    "AI Polish 10 min",
+    "úprava textu deset minut"
+   ],
+   "phrases": [
+    "uvolnit model pro úpravu textu z paměti po 10 minutách bez diktování"
+   ]
+  },
+  "da": {
+   "title": "efter 10 minutter",
+   "words": [
+    "tekstforbedring 10 min",
+    "AI Polish ti minutter"
+   ],
+   "phrases": [
+    "frigør RAM, når tekstforbedringsmodellen har været inaktiv i 10 minutter"
+   ]
+  },
+  "de": {
+   "words": [
+    "AI Polish 10 Min.",
+    "KI-Nachbearbeitung zehn Minuten"
+   ],
+   "phrases": [
+    "das Nachbearbeitungsmodell nach 10 Minuten Leerlauf entladen"
+   ]
+  },
+  "el": {
+   "title": "μετά από 10 λεπτά",
+   "words": [
+    "βελτίωση κειμένου 10 λεπτά",
+    "AI Polish δέκα λεπτά"
+   ],
+   "phrases": [
+    "να ελευθερώνεται η μνήμη του μοντέλου βελτίωσης κειμένου μετά από 10 λεπτά χωρίς υπαγόρευση"
+   ]
+  },
+  "en": {
+   "words": [
+    "10 min",
+    "ten minutes"
+   ],
+   "phrases": [
+    "unload the polish model after 10 minutes of inactivity",
+    "free up polish model memory after 10 minutes without dictating"
+   ]
+  },
+  "es": {
+   "words": [
+    "10 min",
+    "modelo de corrección tras diez minutos"
+   ],
+   "phrases": [
+    "liberar la memoria del modelo de corrección tras 10 minutos sin dictar"
+   ]
+  },
+  "et": {
+   "title": "10 minuti pärast",
+   "words": [
+    "10 min",
+    "kümme minutit",
+    "viimistlusmudel 10 minutit"
+   ],
+   "phrases": [
+    "vabasta viimistlusmudel mälust, kui ma pole kümme minutit dikteerinud"
+   ]
+  },
+  "fi": {
+   "title": "10 minuutin kuluttua",
+   "words": [
+    "viimeistelymalli 10 min",
+    "viimeistelymalli kymmenen minuuttia"
+   ],
+   "phrases": [
+    "vapauta viimeistelymallin käyttämä muisti, kun mallia ei ole käytetty kymmeneen minuuttiin"
+   ]
+  },
+  "fr": {
+   "words": [
+    "10 min",
+    "correction de texte 10 minutes",
+    "modèle de correction dix minutes"
+   ],
+   "phrases": [
+    "libérer la mémoire du modèle de correction de texte après 10 minutes d’inactivité"
+   ]
+  },
+  "hi": {
+   "title": "10 मिनट बाद",
+   "words": [
+    "AI Polish 10 मिनट",
+    "टेक्स्ट सुधार मॉडल दस मिनट",
+    "AI Polish १० मिनट"
+   ],
+   "phrases": [
+    "10 मिनट तक डिक्टेशन न करने पर टेक्स्ट सुधार मॉडल की मेमोरी खाली करें"
+   ]
+  },
+  "hr": {
+   "title": "nakon 10 minuta",
+   "words": [
+    "dorada teksta 10 min",
+    "AI Polish deset minuta"
+   ],
+   "phrases": [
+    "oslobodi memoriju modela za doradu teksta nakon 10 minuta bez diktiranja"
+   ]
+  },
+  "hu": {
+   "title": "10 perc után",
+   "words": [
+    "szövegjavító modell tíz perc",
+    "AI Polish 10 perc"
+   ],
+   "phrases": [
+    "a szövegjavító modell 10 perc tétlenség után kerüljön ki a memóriából"
+   ]
+  },
+  "it": {
+   "title": "dopo 10 minuti",
+   "words": [
+    "AI Polish 10 min",
+    "correzione del testo dieci minuti"
+   ],
+   "phrases": [
+    "libera la memoria del modello di correzione del testo dopo 10 minuti di inattività"
+   ]
+  },
+  "ja": {
+   "title": "10分後",
+   "words": [
+    "文章整形 10分"
+   ],
+   "phrases": [
+    "10分間音声入力しなかったら文章整形モデルのメモリを解放したい"
+   ]
+  },
+  "ko": {
+   "title": "10분 후",
+   "words": [],
+   "phrases": [
+    "10분 동안 받아쓰기 안 하면 텍스트 다듬기 모델 메모리 해제"
+   ]
+  },
+  "lt": {
+   "title": "po 10 minučių",
+   "words": [
+    "teksto tvarkymo modelis 10 min",
+    "teksto tvarkymo modelis dešimt minučių"
+   ],
+   "phrases": [
+    "pašalinti teksto tvarkymo modelį iš atminties, kai jis nenaudojamas 10 minučių"
+   ]
+  },
+  "lv": {
+   "title": "pēc 10 minūtēm",
+   "words": [
+    "10 min",
+    "desmit minūtes",
+    "teksta uzlabošanas modelis 10 min"
+   ],
+   "phrases": [
+    "atbrīvot teksta uzlabošanas modeļa aizņemto atmiņu pēc 10 minūtēm bez diktēšanas"
+   ]
+  },
+  "mt": {
+   "title": "wara 10 minuti",
+   "words": [
+    "10 min",
+    "AI Polish 10 minuti"
+   ],
+   "phrases": [
+    "neħħi l-mudell li jtejjeb it-test mill-memorja wara għaxar minuti bla dettatura"
+   ]
+  },
+  "nl": {
+   "title": "na 10 minuten",
+   "words": [
+    "opschoonmodel 10 min",
+    "AI Polish tien minuten"
+   ],
+   "phrases": [
+    "haal het opschoonmodel uit het geheugen als het 10 minuten niet is gebruikt"
+   ]
+  },
+  "pl": {
+   "title": "po 10 minutach",
+   "words": [
+    "korekta tekstu 10 min",
+    "model korekty po dziesięciu minutach"
+   ],
+   "phrases": [
+    "zwolnij pamięć modelu korekty tekstu po 10 minutach bez dyktowania"
+   ]
+  },
+  "pt": {
+   "title": "após 10 minutos",
+   "words": [
+    "revisão de texto 10 min",
+    "AI Polish 10 minutos"
+   ],
+   "phrases": [
+    "liberar da memória o modelo de revisão de texto após 10 minutos de inatividade"
+   ]
+  },
+  "ro": {
+   "title": "după 10 minute",
+   "words": [
+    "AI Polish 10 min",
+    "corectare text zece minute"
+   ],
+   "phrases": [
+    "eliberează memoria modelului de corectare a textului după 10 minute fără dictare"
+   ]
+  },
+  "ru": {
+   "title": "через 10 минут",
+   "words": [
+    "правка текста 10 мин",
+    "правка текста десять минут"
+   ],
+   "phrases": [
+    "выгружать модель правки текста из памяти через 10 минут простоя"
+   ]
+  },
+  "sk": {
+   "title": "po 10 minútach",
+   "words": [
+    "AI Polish 10 min",
+    "úprava textu desať minút"
+   ],
+   "phrases": [
+    "uvoľniť model na úpravu textu z pamäte po 10 minútach nečinnosti"
+   ]
+  },
+  "sl": {
+   "title": "po 10 minutah",
+   "words": [
+    "AI Polish 10 min",
+    "izboljšanje besedila 10 minut",
+    "izboljšanje besedila deset minut"
+   ],
+   "phrases": [
+    "sprosti pomnilnik modela za izboljšanje besedila po 10 minutah neuporabe"
+   ]
+  },
+  "sv": {
+   "title": "efter 10 minuter",
+   "words": [
+    "AI Polish efter 10 min",
+    "frigör minne för textbearbetning efter tio minuter"
+   ],
+   "phrases": [
+    "frigör minnet som modellen för textbearbetning använder när den inte har använts på tio minuter"
+   ]
+  },
+  "tr": {
+   "title": "10 dakika sonra",
+   "words": [
+    "metin düzenleme 10 dk",
+    "AI Polish on dakika"
+   ],
+   "phrases": [
+    "metin düzenleme modeli 10 dakika boşta kalınca bellekten çıkarılsın"
+   ]
+  },
+  "uk": {
+   "title": "через 10 хвилин",
+   "words": [
+    "10 хв",
+    "AI Polish 10 хвилин"
+   ],
+   "phrases": [
+    "вивантажувати модель редагування тексту з пам’яті після десяти хвилин без диктування"
+   ]
+  },
+  "vi": {
+   "title": "sau 10 phút",
+   "words": [
+    "AI Polish 10 phút",
+    "AI Polish 10p",
+    "AI Polish mười phút"
+   ],
+   "phrases": [
+    "giải phóng bộ nhớ của mô hình chỉnh văn bản sau 10 phút không dùng đến"
+   ]
+  },
+  "zh": {
+   "title": "10 分钟后",
+   "words": [
+    "润色闲置10分钟",
+    "润色闲置十分钟"
+   ],
+   "phrases": [
+    "润色模型闲置10分钟后释放内存"
+   ]
+  }
+ }
+}

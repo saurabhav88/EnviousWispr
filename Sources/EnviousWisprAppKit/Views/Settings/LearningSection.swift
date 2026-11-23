@@ -1,4 +1,5 @@
 import AppKit
+import EnviousWisprCore
 import EnviousWisprPipeline
 import EnviousWisprServices
 import SwiftUI
@@ -21,7 +22,7 @@ struct LearnedCheckerSettingsStatus: Equatable {
 
   private static func checkedByLine(_ judge: String) -> String {
     String(
-      localized: "Checked by: \(judge). Learned words are checked before they're used.",
+      localized: "Available with \(judge)",
       comment: "Your Words, Learn from: the self-learning dictionary row: which word check is in use, or why none is.")
   }
 
@@ -48,25 +49,25 @@ struct LearnedCheckerSettingsStatus: Equatable {
     switch selection.absence {
     case .adapterDownloading:
       line = String(
-        localized: "Learn-only: \(judge)'s word check is downloading. Learned words are saved for later.",
+        localized: "\(judge)'s word check is downloading",
         comment: "Your Words, Learn from: the self-learning dictionary row: which word check is in use, or why none is.")
     case .adapterDeliveryFailed, .deliveryDisabled:
       line = selection.retryAvailable
         ? String(
           localized:
-            "Learn-only: \(judge)'s word check couldn't download. Learned words are saved for later.",
+            "\(judge)'s word check couldn't download",
           comment: "Your Words, Learn from: the self-learning dictionary row: which word check is in use, or why none is.")
         : String(
           localized:
-            "Learn-only: \(judge)'s word check isn't available yet. Learned words are saved for later.",
+            "\(judge)'s word check isn't available yet",
           comment: "Your Words, Learn from: the self-learning dictionary row: which word check is in use, or why none is.")
     case .engineHasNoChecker:
       line = String(
-        localized: "Learn-only: This polish choice doesn't use learned words yet.", comment: "Your Words, Learn from: the self-learning dictionary row: which word check is in use, or why none is.")
+        localized: "This polish choice can't check learned words.", comment: "Your Words, Learn from: the self-learning dictionary row: which word check is in use, or why none is.")
     case .baseNotAdmitted, .baseMismatch, .serverWithoutAdapter, .serverUnavailable,
       .selectionTimedOut, .none:
       line = String(
-        localized: "Learn-only: \(judge)'s word check isn't ready. Learned words are saved for later.",
+        localized: "\(judge)'s word check isn't ready",
         comment: "Your Words, Learn from: the self-learning dictionary row: which word check is in use, or why none is.")
     }
   }
@@ -98,14 +99,28 @@ struct LearningSection: View {
   @Environment(LearnedWordCheckerEligibility.self) private var checkerEligibility
   /// #3975: owns the learning memory the Forget row reads and clears.
   @Environment(CustomWordsCoordinator.self) private var customWords
-  @State private var checkerStatus: LearnedCheckerSettingsStatus?
+  private struct CheckerStatusKey: Equatable {
+    let dictation: LocalPolishModelID
+    let file: LocalPolishModelID
+    let revision: Int
+    let enabled: Bool
+  }
+
+  private struct CheckerStatuses {
+    let key: CheckerStatusKey
+    let dictation: LearnedCheckerSettingsStatus
+    let file: LearnedCheckerSettingsStatus
+  }
+
+  @State private var checkerStatuses: CheckerStatuses?
   @State private var confirmingForget = false
 
-  /// The status line does not vary by dictation language (#3105), so the
-  /// refresh keys on the engine, the owner's revision and the Dictionary switch (a
-  /// status read while it was off is stale once it is turned on, #3255).
-  private var checkerStatusKey: String {
-    "\(settings.llmProvider.rawValue):\(checkerEligibility.statusRevision):\(settings.wordCorrectionEnabled)"
+  private var checkerStatusKey: CheckerStatusKey {
+    CheckerStatusKey(
+      dictation: settings.polishModelID(for: settings.llmProvider),
+      file: settings.polishModelID(for: settings.effectiveFileImportLLMProvider),
+      revision: checkerEligibility.statusRevision,
+      enabled: settings.wordCorrectionEnabled && settings.fixLearnedWords)
   }
 
   var body: some View {
@@ -120,6 +135,7 @@ struct LearningSection: View {
     ) {
       VStack(alignment: .leading, spacing: 12) {
         editsCard(settings: $settings)
+        fixesCard(settings: $settings)
         contactsCard(settings: $settings)
       }
     }
@@ -134,10 +150,13 @@ struct LearningSection: View {
       }
     }
     .task(id: checkerStatusKey) {
-      // The language reaches only S1-mini's prompt; the status reads none.
-      let status = await checkerEligibility.settingsStatus(provider: settings.llmProvider)
-      guard !Task.isCancelled else { return }
-      checkerStatus = status
+      let key = checkerStatusKey
+      guard key.enabled else { return }
+      let dictation = await checkerEligibility.settingsStatus(model: key.dictation)
+      let file = key.file == key.dictation
+        ? dictation : await checkerEligibility.settingsStatus(model: key.file)
+      guard !Task.isCancelled, key == checkerStatusKey else { return }
+      checkerStatuses = CheckerStatuses(key: key, dictation: dictation, file: file)
     }
   }
 
@@ -154,15 +173,12 @@ struct LearningSection: View {
         HStack(alignment: .center, spacing: 8) {
           Text(LearnFromEditsSettingsPresentation.rowTitle)
             .settingsRowLabel()
-          Text(LearnFromEditsSettingsPresentation.betaBadge)
-            .font(.stHelper)
-            .padding(.horizontal, 6)
-            .padding(.vertical, 2)
-            .background(Capsule().fill(Color.secondary.opacity(0.15)))
+          SettingsInfoButton(rowTitle: LearnFromEditsSettingsPresentation.rowTitle, tooltip: nil) {
+            SettingsHelpText(text: LearnFromEditsSettingsPresentation.learningSwitchHelp)
+          }
           Spacer(minLength: 8)
           Toggle("", isOn: settings.learnFromEdits)
             .toggleStyle(BrandedToggleStyle())
-            .disabled(!learnFromEdits.isEnabled)
             .labelsHidden()
             // BrandedToggleStyle wraps label-Spacer-track in a content shape so
             // a labelled row is clickable end to end. With the label hidden its
@@ -172,31 +188,10 @@ struct LearningSection: View {
             .accessibilityLabel(LearnFromEditsSettingsPresentation.rowTitle)
         }
         .settingsMapRegistration(.selfLearningDictionary)
-        Text(LearnFromEditsSettingsPresentation.rowCopy)
-          .settingsReadingCopy()
-          .fixedSize(horizontal: false, vertical: true)
-        if let checkerStatus = LearnedCheckerSettingsStatus.shown(
-          checkerStatus, dictionaryEnabled: settings.wrappedValue.wordCorrectionEnabled)
-        {
-          HStack(alignment: .center, spacing: 8) {
-            Text(checkerStatus.line)
-              .font(.stHelper)
-              .foregroundStyle(.stTextSecondary)
-              .fixedSize(horizontal: false, vertical: true)
-            if checkerStatus.canRetry {
-              Spacer(minLength: 8)
-              Button {
-                // "Try again" retries the selected engine's word check (#3105), or the
-                // shared word check for an engine without its own (#3242).
-                let provider = settings.wrappedValue.llmProvider
-                Task { await checkerEligibility.retryDownload(for: provider) }
-              } label: {
-                EnviousButtonLabel(LearnedCheckerSettingsStatus.retryTitle)
-              }
-              .settingsButton(isEnabled: true)
-              .settingsArrivalWithoutInheritedPlace()
-            }
-          }
+        if !settings.wrappedValue.learnFromEdits {
+          Text("Off").font(.stHelper).foregroundStyle(.stTextSecondary)
+        } else if learnFromEdits.secondaryLine == nil {
+          Text("Available").font(.stHelper).foregroundStyle(.stTextSecondary)
         }
         // Which apps it works in, how the on-device judge runs and what a
         // remembered word reaches are the article's job, not the card's
@@ -214,7 +209,7 @@ struct LearningSection: View {
         if customWords.learnMemoryStored {
           learnMemoryRow
         }
-        if let reason = learnFromEdits.secondaryLine {
+        if settings.wrappedValue.learnFromEdits, let reason = learnFromEdits.secondaryLine {
           HStack(alignment: .center, spacing: 8) {
             Text(reason)
               .font(.stHelper)
@@ -232,6 +227,65 @@ struct LearningSection: View {
             }
           }
         }
+      }
+    }
+  }
+
+  private func fixesCard(settings: Bindable<SettingsManager>) -> some View {
+    learnCard {
+      VStack(alignment: .leading, spacing: DesignSpacing.md) {
+        HStack(spacing: DesignSpacing.md) {
+          Text(LearnFromEditsSettingsPresentation.fixesTitle).settingsRowLabel()
+          SettingsInfoButton(rowTitle: String(localized: LearnFromEditsSettingsPresentation.fixesTitle), tooltip: nil) {
+            SettingsHelpText(text: String(localized: LearnFromEditsSettingsPresentation.fixesHelp))
+          }
+          Spacer(minLength: DesignSpacing.md)
+          Toggle("", isOn: settings.fixLearnedWords)
+            .toggleStyle(BrandedToggleStyle())
+            .labelsHidden()
+            .fixedSize()
+            .disabled(!settings.wrappedValue.wordCorrectionEnabled)
+            .accessibilityLabel(String(localized: LearnFromEditsSettingsPresentation.fixesTitle))
+        }
+        .settingsMapRegistration(.fixLearnedWords)
+
+        let key = checkerStatusKey
+        if !settings.wrappedValue.wordCorrectionEnabled {
+          Text("Paused by Dictionary").font(.stHelper).foregroundStyle(.stTextSecondary)
+        } else if !settings.wrappedValue.fixLearnedWords {
+          Text("Off").font(.stHelper).foregroundStyle(.stTextSecondary)
+        } else if let statuses = checkerStatuses, statuses.key == key {
+          checkerStatusLine(statuses.dictation.line, status: statuses.dictation, model: key.dictation, key: key)
+          if statuses.file != statuses.dictation {
+            checkerStatusLine(
+              String(localized: "Transcribe a File: \(statuses.file.line)",
+                comment: "Dictionary: word checker status for file transcription."),
+              status: statuses.file, model: key.file, key: key)
+          }
+        }
+      }
+    }
+  }
+
+  private func checkerStatusLine(
+    _ line: String, status: LearnedCheckerSettingsStatus, model: LocalPolishModelID,
+    key: CheckerStatusKey
+  ) -> some View {
+    HStack(spacing: DesignSpacing.md) {
+      Text(line).font(.stHelper).foregroundStyle(.stTextSecondary)
+        .fixedSize(horizontal: false, vertical: true)
+      if status.canRetry {
+        Spacer(minLength: DesignSpacing.md)
+        Button {
+          Task {
+            guard key == checkerStatusKey, key.enabled else { return }
+            await checkerEligibility.retryDownload(for: model)
+          }
+        } label: {
+          EnviousButtonLabel(LearnedCheckerSettingsStatus.retryTitle)
+        }
+        .settingsButton(isEnabled: true)
+        .settingsArrivalWithoutInheritedPlace()
       }
     }
   }

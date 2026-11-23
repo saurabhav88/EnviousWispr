@@ -17,7 +17,7 @@ import Foundation
 //   │                                   the record rolls this offer back unrendered
 //   ├─ .notPresented                    coordinator.pillEnded(pillID)
 //   └─ .presented(receipt)              coordinator.pillAdmitted(pillID) (learn_undo_shown)
-//   deliver(.undoLearnedCorrection)     → coordinator.undo(pillID:)
+//   deliver(.undoLearnedCorrection)     → coordinator.claimUndo(pillID:), then performUndo(record:pillID:)
 //   effect correctionLearnedEnded       → coordinator.pillEnded(pillID)
 //   showUndone / showUndoError          → director.resolveLearnedCorrection (same identity)
 //   close                               → director.closeLearnedCorrection (id-gated)
@@ -68,10 +68,13 @@ final class LearnedCorrectionOverlayPresenter: LearnedCorrectionPresenting {
       // Read by the director at the last moment before the pill is drawn: a
       // record a newer learn replaced is not offered.
       isStillWanted: { coordinator.undoRecord?.pillID == pill.id },
-      // A retained task: the Undo claims its record at the click, then runs as one dictionary
-      // command that may finish after the pill is gone.
+      // The Undo claims its record SYNCHRONOUSLY at the click (the director delivers this action
+      // before it renders the Pending morph), then a retained task runs the write as one
+      // dictionary command that may finish after the pill is gone. No record to claim: the
+      // coordinator has already closed this pill and there is nothing to write.
       onUndo: { [weak self] in
-        let undo = Task { _ = await coordinator.undo(pillID: pill.id) }
+        guard let record = coordinator.claimUndo(pillID: pill.id) else { return }
+        let undo = Task { _ = await coordinator.performUndo(record: record, pillID: pill.id) }
         self?.undoInFlight = undo
       },
       onEnded: { [weak self] in

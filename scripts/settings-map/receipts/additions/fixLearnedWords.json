@@ -1,0 +1,267 @@
+{
+ "id": "fixLearnedWords",
+ "blocks": {
+  "ar": {
+   "title": "استخدام التصحيحات التي تعلّمها التطبيق",
+   "words": [],
+   "phrases": [
+    "طبّق التصحيحات التي تعلّمتها من تعديلاتي على التسجيلات الجديدة والملفات المستوردة",
+    "أوقف تطبيق التصحيحات التي تعلّمها التطبيق"
+   ]
+  },
+  "bg": {
+   "title": "Прилагане на научените поправки",
+   "words": [
+    "научени поправки"
+   ],
+   "phrases": [
+    "прилагай запомнените поправки при нови и импортирани записи",
+    "спри да прилагаш поправките, които приложението е научило"
+   ]
+  },
+  "cs": {
+   "title": "Používat naučené opravy",
+   "words": [],
+   "phrases": [
+    "používat moje dřívější opravy při přepisu nových nahrávek a importovaných souborů"
+   ]
+  },
+  "da": {
+   "title": "Brug lærte rettelser",
+   "words": [],
+   "phrases": [
+    "brug de rettelser, appen har lært, i nye optagelser og importerede lydfiler",
+    "stop med at bruge de rettelser, appen har lært"
+   ]
+  },
+  "de": {
+   "words": [],
+   "phrases": [
+    "gelernte Korrekturen bei neuen Aufnahmen und Importen anwenden",
+    "nur noch selbst hinzugefügte Wörter für Korrekturen nutzen"
+   ]
+  },
+  "el": {
+   "title": "Εφαρμογή διορθώσεων που έμαθε η εφαρμογή",
+   "words": [],
+   "phrases": [
+    "να εφαρμόζει τις διορθώσεις που έχει μάθει σε νέες ηχογραφήσεις και σε αρχεία ήχου που εισάγω",
+    "να χρησιμοποιεί μόνο τις λέξεις που πρόσθεσα εγώ στο λεξικό"
+   ]
+  },
+  "en": {
+   "words": [
+    "learned corrections"
+   ],
+   "phrases": [
+    "use my past corrections in new recordings",
+    "apply learned corrections to imported audio",
+    "stop applying learned corrections"
+   ]
+  },
+  "es": {
+   "words": [],
+   "phrases": [
+    "usar mis correcciones anteriores en nuevas grabaciones y archivos importados",
+    "dejar de aplicar las correcciones aprendidas y seguir usando las palabras que añadí a mano"
+   ]
+  },
+  "et": {
+   "title": "Kasuta õpitud parandusi",
+   "words": [],
+   "phrases": [
+    "rakenda õpitud parandusi uute salvestiste ja imporditud heli transkribeerimisel"
+   ]
+  },
+  "fi": {
+   "title": "Käytä opittuja korjauksia",
+   "words": [],
+   "phrases": [
+    "käytä korjauksistani opittuja sanoja uusissa tallenteissa",
+    "lopeta opittujen korjausten käyttö"
+   ]
+  },
+  "fr": {
+   "words": [
+    "réutiliser les corrections"
+   ],
+   "phrases": [
+    "appliquer les corrections apprises aux prochains enregistrements et aux fichiers importés",
+    "désactiver les corrections apprises tout en continuant à utiliser les mots ajoutés à la main"
+   ]
+  },
+  "hi": {
+   "title": "सीखे हुए सुधार लागू करें",
+   "words": [
+    "सीखे हुए सुधार"
+   ],
+   "phrases": [
+    "नई रिकॉर्डिंग और इंपोर्ट की गई फ़ाइलों में पहले से सीखे हुए सुधार लागू करो",
+    "सीखे हुए सुधार लागू करना बंद करो, लेकिन मेरे खुद जोड़े हुए शब्द इस्तेमाल करते रहो"
+   ]
+  },
+  "hr": {
+   "title": "Primijeni naučene ispravke",
+   "words": [],
+   "phrases": [
+    "primijeni naučene ispravke na nove snimke i uvezene datoteke",
+    "isključi primjenu naučenih ispravaka i nastavi koristiti ručno dodane riječi"
+   ]
+  },
+  "hu": {
+   "title": "Megtanult javítások alkalmazása",
+   "words": [],
+   "phrases": [
+    "alkalmazza a korábbi javításaimat az új felvételeknél és az importált hanganyagoknál",
+    "ne alkalmazza a már megtanult javításokat"
+   ]
+  },
+  "it": {
+   "title": "Applica le correzioni apprese",
+   "words": [],
+   "phrases": [
+    "usa le correzioni apprese quando trascrivi nuove registrazioni o file importati",
+    "disattiva le correzioni apprese senza disattivare le parole che ho aggiunto"
+   ]
+  },
+  "ja": {
+   "title": "学習した修正を適用",
+   "words": [],
+   "phrases": [
+    "以前に直した単語を、新しい録音や読み込んだ音声の文字起こしでも自動で直す",
+    "自分で登録した単語は使い続けて、学習した修正の適用だけをオフにする"
+   ]
+  },
+  "ko": {
+   "title": "학습한 수정 사항 적용",
+   "words": [],
+   "phrases": [
+    "학습한 수정 사항을 새 녹음이나 가져온 오디오의 받아쓰기에 적용하기",
+    "직접 추가한 단어는 계속 사용하면서 학습한 수정 사항의 적용 끄기"
+   ]
+  },
+  "lt": {
+   "title": "Taikyti išmoktas pataisas",
+   "words": [],
+   "phrases": [
+    "taikyti mano ankstesnes pataisas naujiems ir importuotiems įrašams",
+    "naudoti tik ranka į žodyną pridėtus žodžius"
+   ]
+  },
+  "lv": {
+   "title": "Lietot apgūtos labojumus",
+   "words": [],
+   "phrases": [
+    "izmantot apgūtos labojumus jaunos un importētos ierakstos",
+    "izslēgt apgūto labojumu lietošanu, turpinot lietot manuāli pievienotos vārdus"
+   ]
+  },
+  "mt": {
+   "title": "Applika l-korrezzjonijiet li tgħallmet l-app",
+   "words": [],
+   "phrases": [
+    "uża l-korrezzjonijiet li għamilt qabel fir-reġistrazzjonijiet il-ġodda"
+   ]
+  },
+  "nl": {
+   "title": "Geleerde correcties toepassen",
+   "words": [],
+   "phrases": [
+    "pas geleerde correcties toe bij nieuwe opnames en geïmporteerde audio",
+    "zet geleerde correcties uit en blijf mijn handmatig toegevoegde woorden gebruiken"
+   ]
+  },
+  "pl": {
+   "title": "Stosuj zapamiętane poprawki",
+   "words": [],
+   "phrases": [
+    "stosuj moje wcześniejsze poprawki w nowych nagraniach i importowanych plikach",
+    "wyłącz stosowanie zapamiętanych poprawek bez wyłączania ręcznie dodanych słów"
+   ]
+  },
+  "pt": {
+   "title": "Aplicar correções aprendidas",
+   "words": [],
+   "phrases": [
+    "usar minhas correções anteriores em novas gravações e em áudios importados",
+    "parar de aplicar correções aprendidas e continuar usando as palavras que adicionei manualmente"
+   ]
+  },
+  "ro": {
+   "title": "Aplică corecturile învățate",
+   "words": [],
+   "phrases": [
+    "aplică corecturile învățate la înregistrările noi și la cele importate",
+    "nu aplica corecturile învățate, dar folosește în continuare cuvintele adăugate manual"
+   ]
+  },
+  "ru": {
+   "title": "Применять запомненные исправления",
+   "words": [],
+   "phrases": [
+    "применять мои прошлые исправления к новым записям и импортированному аудио",
+    "отключить запомненные исправления и продолжать использовать слова, добавленные вручную"
+   ]
+  },
+  "sk": {
+   "title": "Používať naučené opravy",
+   "words": [],
+   "phrases": [
+    "pri prepise nových nahrávok použi opravy, ktoré si sa už naučil",
+    "používaj iba ručne pridané slová"
+   ]
+  },
+  "sl": {
+   "title": "Uporabi naučene popravke",
+   "words": [],
+   "phrases": [
+    "uporabi moje prejšnje popravke pri novih posnetkih in uvozih",
+    "izklopi uporabo naučenih popravkov in še naprej uporabljaj ročno dodane besede"
+   ]
+  },
+  "sv": {
+   "title": "Använd inlärda rättelser",
+   "words": [
+    "inlärda rättelser"
+   ],
+   "phrases": [
+    "använd inlärda rättelser i nya inspelningar och importerade ljudfiler",
+    "stäng av inlärda rättelser men fortsätt använda ord jag själv har lagt till"
+   ]
+  },
+  "tr": {
+   "title": "Öğrenilen Düzeltmeleri Uygula",
+   "words": [
+    "öğrenilen düzeltmeler"
+   ],
+   "phrases": [
+    "öğrendiği düzeltmeleri yeni kayıtlara ve içe aktardığım seslere uygula",
+    "öğrenilen düzeltmeleri kapat, elle eklediğim kelimeleri kullanmaya devam et"
+   ]
+  },
+  "uk": {
+   "title": "Застосовувати запам’ятовані виправлення",
+   "words": [],
+   "phrases": [
+    "виправляти слова в нових та імпортованих записах за моїми попередніми правками",
+    "вимкнути застосування запам’ятованих виправлень і далі використовувати слова, додані вручну"
+   ]
+  },
+  "vi": {
+   "title": "Áp dụng các chỉnh sửa đã học",
+   "words": [],
+   "phrases": [
+    "tự sửa từ trong bản ghi mới hoặc tệp âm thanh nhập vào theo những lần tôi đã sửa trước đó",
+    "ngừng áp dụng các chỉnh sửa đã học nhưng vẫn dùng những từ tôi tự thêm"
+   ]
+  },
+  "zh": {
+   "title": "应用学到的更正",
+   "words": [],
+   "phrases": [
+    "用以前学到的更正来纠正新录音和导入音频里的错词",
+    "停用学到的更正，继续使用我手动添加的词"
+   ]
+  }
+ }
+}

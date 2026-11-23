@@ -6,7 +6,7 @@ section: "Privacy"
 order: 4
 keywords: ["api key", "where is my key stored", "keychain", "secret", "token", "is my key safe", "billing", "remove api key", "delete api key", "revoke key", "clear key"]
 related: ["choosing-an-ai-provider-none-apple-intelligence-ollama-openai-gemini"]
-updated: 2026-09-29
+updated: 2026-11-20
 deflection: "can_resolve"
 ---
 An API key is a private password that lets EnviousWispr use your own account with OpenAI, Gemini or Claude to polish your dictation. This page covers where that key is kept and how to take it back out. The on-device options, EG-1, Apple Intelligence and S1-mini, need no key at all.
@@ -23,6 +23,8 @@ Your key goes nowhere except the provider you chose, where it proves the request
 
 - It is never written to logs.
 - It is never included in usage or crash data.
+
+After setup, EnviousWispr checks the saved key for the cloud provider you use for AI Polish each time the app starts, and the key for meeting summaries once EnviousMeet is set up. It asks your provider for its model list and, when that answer is usable, sends a small test request to the model you chose, so it can tell you if the key has stopped working. The check goes only to your provider, never to Envious Labs.
 
 ### How do I remove my API key?
 

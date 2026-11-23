@@ -63,6 +63,8 @@ struct PillCatalogParityTests {
     case .polishSetupCard: return "polishSetupCard"
     // #3546 A3: a feature pill the catalog mints; it has no frozen pre-migration row.
     case .parakeetUpgrade: return "parakeetUpgrade"
+    // #4845: a feature pill the catalog mints; it has no frozen pre-migration row.
+    case .polishDownloadComplete: return "polishDownloadComplete"
     }
   }
 
@@ -100,6 +102,8 @@ struct PillCatalogParityTests {
     switch action {
     case .grantAccessibility: return "grantAccessibility"
     case .openMicrophoneSettings: return "openMicrophoneSettings"
+    case .openMicrophoneHelp: return "openMicrophoneHelp"
+    case .chooseMeetingSummaryEngine: return "chooseMeetingSummaryEngine"
     case .discardRecovery: return "discardRecovery"
     case .pasteEscapeRecovery: return "pasteEscapeRecovery"
     case .lockLanguage: return "lockLanguage"
@@ -108,6 +112,7 @@ struct PillCatalogParityTests {
     case .closeBluetoothAwareness: return "closeBluetoothAwareness"
     case .openBluetoothSettings: return "openBluetoothSettings"
     case .undoLearnedCorrection: return "undoLearnedCorrection"
+    case .dismissLearnedCorrection: return "dismissLearnedCorrection"
     case .finishPolishSetup: return "finishPolishSetup"
     case .dismissPolishSetup: return "dismissPolishSetup"
     }
@@ -123,8 +128,13 @@ struct PillCatalogParityTests {
   private static func frozen(_ expiry: OverlayExpiry) -> FrozenExpiry {
     switch expiry {
     case .untilReplaced: return .untilReplaced
-    case .after(let seconds, let pausesOnHover):
-      return .after(seconds: seconds, pausesOnHover: pausesOnHover)
+    case .after(let seconds, let hover):
+      switch hover {
+      case .ignore: return .after(seconds: seconds, hover: "ignore")
+      case .restartFull: return .after(seconds: seconds, hover: "restartFull")
+      case .resume(let floorSeconds):
+        return .after(seconds: seconds, hover: "resume(floor: \(floorSeconds))")
+      }
     }
   }
 

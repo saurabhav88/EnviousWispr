@@ -47,6 +47,7 @@
       var stopReasons: [MeetingEndedTelemetry.StopReason] = []
       var reportedFacts: [(UUID, CallDetectionPolicy.CallFacts)] = []
       var pageShown = 0
+      var modelsPageShown = 0
       var events: [MeetingCallPromptTelemetry] = []
       var clock = Date(timeIntervalSince1970: 3_000_000)
       var nextOutcome: MeetingStartFlow.Outcome?
@@ -148,6 +149,7 @@
             detectedStartIsBlocked: { [weak self] in self?.blocked ?? true },
             dictationActive: { [weak self] in self?.dictation ?? false },
             showMeetingPage: { [weak self] in self?.pageShown += 1 },
+            showMeetingModels: { [weak self] in self?.modelsPageShown += 1 },
             anchor: { nil },
             emit: { [weak self] in self?.events.append($0) },
             snapshot: { [evidenceAnswer, evidenceReads, snapshotAnswer] rule, pid, retained in
@@ -2414,6 +2416,27 @@
       #expect(rig.pageShown == 1)
     }
 
+    /// #4578: a detected call with no speech engine. When this fails, the user says Yes and
+    /// nothing happens, or Open Settings lands somewhere with no way to download an engine.
+    @Test("no speech engine: the card says so and Open Settings opens EnviousMeet > Models")
+    func noEngineCardOpensModels() async throws {
+      let rig = try Rig()
+      rig.nextOutcome = .noTranscriptionEngine
+      rig.zoomReady()
+      #expect(rig.press("yes"))
+      #expect(await settleUntilObserved { rig.panel.content == .noTranscriptionEngine })
+      #expect(rig.press("openSettings"))
+      #expect(rig.modelsPageShown == 1 && rig.pageShown == 0)
+    }
+
+    /// #4578: a hand-started meeting refused for no engine shows the same card.
+    @Test("a hand-started meeting with no engine shows the no-engine card")
+    func handStartNoEngineCard() async throws {
+      let rig = try Rig()
+      #expect(rig.coordinator.showNoTranscriptionEngine())
+      #expect(await settleUntilObserved { rig.panel.content == .noTranscriptionEngine })
+    }
+
     @Test("a late stop never detaches a newer recording")
     func lateStopKeepsNewerRecording() async throws {
       let rig = try Rig()
@@ -2453,14 +2476,65 @@
       let rig = try Rig()
       var wanted: [Bool] = []
       rig.duringStart = {
-        wanted.append(rig.coordinator.detectedStartStillWanted())
+        wanted.append(await rig.coordinator.detectedStartStillWanted())
         rig.settings.meetingCallAppsOff = "zoom"
-        wanted.append(rig.coordinator.detectedStartStillWanted())
+        wanted.append(await rig.coordinator.detectedStartStillWanted())
       }
       rig.zoomReady()
       #expect(rig.press("yes"))
       #expect(await settleUntilObserved { wanted.count == 2 })
       #expect(wanted == [true, false])
+    }
+
+    @Test("An automatic Teams guest start reads the same call again before capture",
+      .bug("https://github.com/saurabhav88/EnviousWispr/issues/4094"))
+    func automaticTeamsStartDoesNotUseOldProof() async throws {
+      let rig = try Rig()
+      defer { rig.coordinator.shutDown() }
+      rig.settings.meetingCallDetection = "start_by_itself"
+      let rule = CallAppCatalog.Rule.browser(.brave)
+      let room = "teams.live.com/light-meetings/launch?p=call"
+      var wanted: Bool?
+      rig.duringStart = {
+        rig.snapshotAnswer.withLock {
+          $0 = Rig.snapshotValue(rule: rule, pid: 900_010, evidence: .none)
+        }
+        wanted = await rig.coordinator.detectedStartStillWanted()
+      }
+
+      await rig.proof(.unknown, rule: rule, family: .teams, room: room)
+      #expect(await settleUntilObserved { wanted != nil })
+      #expect(wanted == false)
+    }
+
+    @Test("A fresh Teams guest check shares proof only when both helpers still belong to the same run",
+      .bug("https://github.com/saurabhav88/EnviousWispr/issues/4094"), arguments: [false, true])
+    func automaticTeamsStartReusesProofForSameBrowserRun(ownerChanged: Bool) async throws {
+      let rig = try Rig()
+      defer { rig.coordinator.shutDown() }
+      rig.settings.meetingCallDetection = "start_by_itself"
+      let rule = CallAppCatalog.Rule.browser(.brave)
+      let ownerPID: Int32 = 900_100
+      rig.snapshotAnswer.withLock {
+        $0 = Rig.snapshotValue(rule: rule, pid: ownerPID,
+          evidence: .call(family: .teams, room: "teams.live.com/light-meetings/launch?p=call"))
+      }
+      rig.polledHolders = [
+        .init(pid: 900_010, bundleID: "com.brave.Browser.helper", input: .active, ownerPID: ownerPID),
+        .init(pid: 900_011, bundleID: "com.brave.Browser.helper", input: .active, ownerPID: ownerPID),
+      ]
+      var wanted: Bool?
+      rig.duringStart = {
+        if ownerChanged {
+          rig.polledHolders[1] = .init(pid: 900_011, bundleID: "com.brave.Browser.helper",
+            input: .active, ownerPID: ownerPID + 1)
+        }
+        wanted = await rig.coordinator.detectedStartStillWanted()
+      }
+      rig.coordinator.deliverWatcherReading(rig.polledHolders)
+
+      #expect(await settleUntilObserved { wanted != nil })
+      #expect(wanted == (ownerChanged == false))
     }
 
     @Test("an unknown reading during a detected Start keeps it wanted: it is never dropped")
@@ -2469,7 +2543,7 @@
       var wanted: [Bool] = []
       rig.duringStart = {
         await rig.proof(.unknown, input: .unknown)
-        wanted.append(rig.coordinator.detectedStartStillWanted())
+        wanted.append(await rig.coordinator.detectedStartStillWanted())
       }
       await rig.ongoingZoom()
       #expect(rig.press("yes"))
@@ -2854,6 +2928,7 @@
       case .manualStart(let identity): "manualStart:\(identity.displayName)"
       case .needsAttention: "needsAttention"
       case .couldNotStart: "couldNotStart"
+      case .noTranscriptionEngine: "noTranscriptionEngine"
       case .firstTip: "firstTip"
       case .lastTip(let app): "lastTip:\(app)"
       case .stillInMeeting(let seconds): "stillInMeeting:\(seconds)"

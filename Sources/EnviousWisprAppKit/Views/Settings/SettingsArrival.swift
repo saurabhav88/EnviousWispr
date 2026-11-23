@@ -1,5 +1,6 @@
 import AppKit
 import EnviousWisprCore
+import EnviousWisprServices
 import SwiftUI
 
 // Arrival after a search navigation (#3482 plan §3.4): scroll the chosen place into view, draw
@@ -724,6 +725,9 @@ package protocol SettingsKeyMonitoring: AnyObject {
   /// Calls `handler` with every key-down in the process before any control handles it, and
   /// passes the key on unchanged. Returns the framework's token, or nil when AppKit refused.
   func install(_ handler: @escaping @MainActor (NSEvent) -> Void) -> Any?
+  /// The same watcher, but `handler` returning true keeps the key from every control (History's
+  /// Left and Right arrows, #4611); false passes it on unchanged.
+  func installConsuming(_ handler: @escaping @MainActor (NSEvent) -> Bool) -> Any?
   func remove(_ token: Any)
 }
 
@@ -731,6 +735,9 @@ extension EnvironmentValues {
   /// The key watcher's monitor, injected at the main window's root. Nil (a preview, a test that
   /// does not exercise keys): arrival does not watch keys.
   @Entry var settingsKeyMonitor: (any SettingsKeyMonitoring)? = nil
+  /// #4843: the app's one delivered-dictation broadcast, so Settings search can tell dictated
+  /// text from typed text. Nil (a preview, a test): search treats all text as typed.
+  @Entry var pasteCompletionRegistry: PasteCompletionRegistry? = nil
 }
 
 /// Calls `onKey` for every key pressed in the window it is in, before the window dispatches it to

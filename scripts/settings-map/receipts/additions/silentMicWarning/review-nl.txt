@@ -1,0 +1,11 @@
+{
+  "language": "nl",
+  "title": "waarschuwen als de microfoon geen geluid doorgeeft",
+  "words": [
+    "stiltemelding",
+    "microfoonwaarschuwing"
+  ],
+  "phrases": [
+    "hoe krijg ik een melding als mijn microfoon tijdens het dicteren geen geluid doorgeeft?"
+  ]
+}

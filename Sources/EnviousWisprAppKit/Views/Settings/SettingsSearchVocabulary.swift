@@ -44,13 +44,13 @@ struct SettingsSearchVocabulary: Sendable, Equatable {
   /// Plan §3.2a: shipped, uncompressed UTF-8.
   static let maximumBytes = 3_000_000
   /// The declared search languages (plan §3.7a). Not interface languages: the app's own text
-  /// ships in English and German only.
+  /// ships only in `interfaceLanguages`.
   static let declaredLanguages: [String] = [
     "ar", "bg", "cs", "da", "de", "el", "en", "es", "et", "fi", "fr", "hi", "hr", "hu", "it", "ja",
     "ko", "lt", "lv", "mt", "nl", "pl", "pt", "ro", "ru", "sk", "sl", "sv", "tr", "uk", "vi", "zh",
   ]
   /// Languages whose titles come from the interface's copy owners.
-  static let interfaceLanguages: Set<String> = ["en", "de"]
+  static let interfaceLanguages: Set<String> = ["en", "de", "es", "fr"]
   static let resourceName = "SettingsSearchVocabulary"
 
   /// What the draft command is, for messages about a missing or renamed id.

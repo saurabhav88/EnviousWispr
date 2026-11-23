@@ -13,13 +13,23 @@ import SwiftUI
 enum SettingsNavigationIntent: Equatable {
   case sidebar(SettingsPage)
   case destination(SettingsDestination)
+  case sharedMedia(URL)
   case search(SettingsSearchRequest)
+  case externalReveal(SettingsSearchRequest)
 
   var page: SettingsPage {
     switch self {
     case .sidebar(let page): page
     case .destination(let destination): destination.page
-    case .search(let request): request.destination.page
+    case .sharedMedia: .transcribeFile
+    case .search(let request), .externalReveal(let request): request.destination.page
+    }
+  }
+
+  var requiresOpenWindow: Bool {
+    switch self {
+    case .sharedMedia, .externalReveal: true
+    case .sidebar, .destination, .search: false
     }
   }
 }
@@ -29,7 +39,8 @@ extension SettingsNavigationState {
     switch intent {
     case .sidebar(let page): selectSidebar(page)
     case .destination(let destination): apply(destination)
-    case .search(let request): apply(request)
+    case .sharedMedia: apply(.transcribeFile)
+    case .search(let request), .externalReveal(let request): apply(request)
     }
   }
 }
@@ -94,6 +105,9 @@ enum PolishSetupLeaveAction: Equatable {
   /// Stay in the guarded place (also Escape). Not an answer: nothing is acknowledged.
   case finishSetup
   case goBack(LLMProvider)
+  /// #4578: the speech-engine question's "Go back to" (`SpeechSetupLeaveGuard`); never offered
+  /// by the AI Polish or summary question.
+  case goBackToEngine(ASRBackendType)
   case leaveAnyway
   /// The only button of an informational notice.
   case ok
@@ -653,14 +667,14 @@ enum PolishSetupLeaveGuard {
     // Repaired while the question was open: nothing left to answer.
     guard let live else {
       switch action {
-      case .finishSetup, .openSystemSettings: return .stay
+      case .finishSetup, .openSystemSettings, .goBackToEngine: return .stay
       case .goBack, .leaveAnyway, .ok: return .navigate(request.intent)
       }
     }
     // A different problem now: this answer was about the old one, so it does nothing.
     guard live.episode == request.episode, live.problem == request.problem else { return .stay }
     switch action {
-    case .finishSetup:
+    case .finishSetup, .goBackToEngine:
       return .stay
     case .openSystemSettings:
       guard case .appleUnavailable(.appleIntelligenceDisabled) = live.problem else { return .stay }

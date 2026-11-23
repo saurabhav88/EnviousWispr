@@ -1,5 +1,6 @@
 #if DEBUG
   import EnviousWisprCore
+  import EnviousWisprLLM
   import EnviousWisprPipeline
   import EnviousWisprServices
   import Foundation
@@ -31,6 +32,7 @@
     case languageChip
     case bluetoothAwareness
     case parakeetUpgrade
+    case polishDownloadComplete
     case polishSetupCard
     case escapeRecovery
     case correctionLearned
@@ -76,7 +78,7 @@
       case .processing: return .processing
       case .clipboardFallback: return .clipboardFallback
       case .warning: return .warning
-      case .error: return .error
+      case .error, .meetingSummaryLimit: return .error
       case .advisory: return .advisory
       case .interruption: return .interruption
       case .cachingModel: return .cachingModel
@@ -88,6 +90,7 @@
       case .languageChip: return .languageChip
       case .bluetoothAwareness: return .bluetoothAwareness
       case .parakeetUpgrade: return .parakeetUpgrade
+      case .polishDownloadComplete: return .polishDownloadComplete
       case .polishSetupCard: return .polishSetupCard
       case .escapeRecovery: return .escapeRecovery
       case .correctionLearned: return .correctionLearned
@@ -115,7 +118,8 @@
           ))
       case .processing, .clipboardFallback, .warning, .error, .advisory, .interruption,
         .cachingModel, .engineReady, .recoverySucceeded, .importStatus, .recoveryNotice,
-        .languageChip, .bluetoothAwareness, .parakeetUpgrade, .polishSetupCard,
+        .languageChip, .bluetoothAwareness, .parakeetUpgrade, .polishDownloadComplete,
+        .polishSetupCard,
         .escapeRecovery, .correctionLearned, .correctionLearnedSaveError,
         .retainedClipboardFallback:
         return .playable
@@ -157,7 +161,10 @@
     static func warningCaseName(_ reason: RecordingWarningReason) -> String {
       switch reason {
       case .modelNotDownloaded: return "modelNotDownloaded"
+      case .modelRequiresExplicitRetry: return "modelRequiresExplicitRetry"
       case .polishFailed: return "polishFailed"
+      case .translationFailed: return "translationFailed"
+      case .clipboardPolishFailed: return "clipboardPolishFailed"
       case .historySaveFailed: return "historySaveFailed"
       case .escapeRecoveryUnavailable: return "escapeRecoveryUnavailable"
       case .salvagedBeginning: return "salvagedBeginning"
@@ -169,16 +176,19 @@
 
     /// Every warning case name a complete table must cover.
     static let allWarningCaseNames: Set<String> = [
-      "modelNotDownloaded", "polishFailed", "historySaveFailed", "escapeRecoveryUnavailable",
+      "modelNotDownloaded", "modelRequiresExplicitRetry", "polishFailed", "historySaveFailed",
+      "clipboardPolishFailed", "translationFailed", "escapeRecoveryUnavailable",
       "salvagedBeginning", "interruptedTail", "sharedEngineBusy", "dictationOffDuringMeeting",
     ]
 
     /// Sample warning reasons. Fake data only.
     private static let warningSamples: [RecordingWarningReason] =
       backends.map { .modelNotDownloaded(engineLabel: $0.displayName) }
-      + [.polishFailed]
+      + [.modelRequiresExplicitRetry(engineLabel: ASRBackendType.parakeet.displayName), .polishFailed]
       + historyClasses.map { .historySaveFailed(reason: $0.userMessage) }
       + [
+        .translationFailed(message: PolishNotice.translationFailureText),
+        .clipboardPolishFailed(copied: true, reason: "The model did not answer in time."),
         .escapeRecoveryUnavailable,
         .salvagedBeginning,
         .interruptedTail(disclosure: .deviceRemoved, alsoTrimmedLead: false),
@@ -469,6 +479,14 @@
             .parakeetUpgrade(ParakeetUpgradePillModel(phase: phase), isStillWanted: { true })
           })
       }
+      rows.append(
+        row(
+          "polishDownloadComplete", .polishDownloadComplete, "Notices",
+          "AI polish download complete"
+        ) { _ in
+          .polishDownloadComplete(
+            PolishDownloadPillModel(modelName: "EG-1 Mini"), isStillWanted: { true })
+        })
 
       // Warnings.
       for (index, reason) in warningSamples.enumerated() {

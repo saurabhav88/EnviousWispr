@@ -67,7 +67,7 @@ exec python3 - "$REPO_ROOT" "$@" <<'PY'
 import argparse, copy, json, pathlib, plistlib, re, shutil, subprocess, sys, tempfile
 
 REPO = pathlib.Path(sys.argv[1])
-PINNED_XCODE_BUILD = "27A9275"  # Xcode 27.1; keep equal to .github/actions/xcode-ci-setup/action.yml and .github/workflows/release.yml
+PINNED_XCODE_BUILD = "27B52"  # Xcode 27.2; keep equal to .github/actions/xcode-ci-setup/action.yml and .github/workflows/release.yml
 
 # Production targets whose code ships in the app, in Project.swift order. A new
 # first-party module must be added here (or to NON_PRODUCTION) or the run stops.
@@ -86,8 +86,13 @@ PRODUCTION_TARGETS = [
 NON_PRODUCTION = {
     "EnviousWisprAppKitTestSupport", "EnviousWisprTests", "EnviousWisprASRTests",
     "EnviousWisprDesktopEffectsTests",
+    "EnviousWisprCloudModelRoutineTests",
     "EnviousWisprCriticalTests",  # #4243: the cloud PR gut-check bundle
 }
+# The Share extension uses its own en/de resources. Its keys must not be
+# reconciled into the containing app's String Catalog.
+SEPARATE_LOCALIZATION_TARGETS = {"EnviousWisprShare"}
+
 # Tuist-generated resource-bundle targets: recognized so they are not "unknown", never
 # read (they hold resources, not compiled Swift).
 GENERATED_RESOURCE_TARGETS = {
@@ -158,7 +163,6 @@ DEV_ONLY_KEYS = frozenset({
     'Run Pipeline Benchmark',
     'Save dictation audio for debugging',
     "Saves a local copy of each dictation's audio for diagnosing transcription issues. Stored only on this Mac, newest 500 recordings kept. Persists across rebuilds. Applies starting with your very next dictation.",
-    'Simulate AI polish state',
     'Streaming finalize:',
     'Streaming vs Batch WER:',
     'Total: %lldms',
@@ -196,7 +200,8 @@ def collect_inputs(derived, configuration):
     if not base.is_dir():
         raise Refused(f"no build intermediates at {base}")
     present = {p.name[: -len(".build")] for p in base.glob("*.build") if p.is_dir()}
-    unknown = sorted(present - set(PRODUCTION_TARGETS) - NON_PRODUCTION - GENERATED_RESOURCE_TARGETS)
+    unknown = sorted(present - set(PRODUCTION_TARGETS) - NON_PRODUCTION
+                     - SEPARATE_LOCALIZATION_TARGETS - GENERATED_RESOURCE_TARGETS)
     for name in [u for u in unknown if u in RETIRED_METADATA_ONLY_TARGETS]:
         found = sorted((base / f"{name}.build").rglob("*.stringsdata"))
         if found and all(p.name == "ExtractedAppShortcutsMetadata.stringsdata" for p in found):

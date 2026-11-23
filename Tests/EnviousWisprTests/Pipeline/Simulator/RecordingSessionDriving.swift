@@ -213,6 +213,9 @@ final class KernelRecordingSession: RecordingSessionDriving {
   /// pre-#2087 simulator behaviour, so every existing scenario is unchanged.
   var sessionConfigForTesting: DictationSessionConfig = .testDefault()
   var cancelOriginForTesting: RecordingCancelOrigin = .systemOrFault
+  /// #4601: the press's microphone-start deadline handed to `start`; nil = none (the kernel
+  /// then gives the start one budget from its own start).
+  var microphoneStartDeadlineForTesting: MicrophoneStartBudget.Deadline?
 
   /// The kernel's per-session telemetry side-channel, held so a test can read
   /// what the kernel stamped (#1408: `interruptionCause`). Production shares ONE
@@ -284,13 +287,13 @@ final class KernelRecordingSession: RecordingSessionDriving {
     // #1844: OPTIONAL so a test can pass nil and reach the kernel's PRODUCTION
     // default closure, which is the only way to prove that closure reads the frozen
     // bind. #1578 widened it from a Boolean to the decision snapshot; the default
-    // is the eligible/not-yet-classified pair, which is exactly what `{ true }`
-    // meant before, so every existing scenario is unchanged and none of them
-    // starts depending on this machine's real microphone.
+    // is `.eligible`, which is exactly what `{ true }` meant before, so every
+    // existing scenario is unchanged and none of them starts depending on this
+    // machine's real microphone.
     zeroSignalDecisionSnapshot: (@MainActor () -> ZeroSignalDecisionSnapshot)? = {
-      ZeroSignalDecisionSnapshot(eligibility: .eligible, currentRunWasClassifiedReactively: false)
+      ZeroSignalDecisionSnapshot(eligibility: .eligible)
     },
-    /// #1578: collects refusals the kernel drains or classifies at STOP.
+    /// #1578: collects refusals the kernel classifies at STOP.
     zeroSignalRefusalSink: @escaping @MainActor ([ZeroSignalRefusalContext]) -> Void = { _ in },
     /// #2087: the terminal telemetry snapshot, as the KERNEL built it.
     ///
@@ -424,6 +427,7 @@ final class KernelRecordingSession: RecordingSessionDriving {
     switch kernel.deliveryOutcome {
     case .pasted: result.pasteOutcome = .pasted
     case .clipboardOnly: result.pasteOutcome = .clipboardOnly
+    case .intentionalClipboard(let copied): result.pasteOutcome = copied ? .clipboardOnly : .none
     // #2087: mapped to its own case, never folded into `.none`. Suppressed
     // means the user still HAS their text (held for recovery); `.none` means
     // no delivery outcome exists at all.
@@ -453,7 +457,9 @@ final class KernelRecordingSession: RecordingSessionDriving {
       // `vad.setCurrentSessionID(sid)` in `runForwardPath` (was a simulator-only
       // manual stamp before; that hid the production gap where the kernel never
       // wired the call).
-      kernel.start(config: sessionConfigForTesting)
+      kernel.start(
+        config: sessionConfigForTesting,
+        microphoneStartDeadline: microphoneStartDeadlineForTesting)
     case .stop:
       kernel.requestStop()
     case .cancel:
@@ -706,6 +712,9 @@ final class KernelRecordingSession: RecordingSessionDriving {
     // identically here. The user-facing distinction is proven in
     // TerminalNoticeReasonMappingTests / KernelLifecycleTelemetrySinkTests.
     case .noMicrophoneFound: return .captureStartFailed
+    // #4601: same for a start that was not answered; the user-facing distinction is proven in
+    // TerminalNoticeReasonMappingTests and KernelMicrophoneStartBudgetTests.
+    case .micNotResponding: return .captureStartFailed
     case .noAudioCaptured: return .noAudioCaptured
     case .asrEmpty: return .asrEmpty
     case .asrFailed: return .asrFailed

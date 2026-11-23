@@ -313,7 +313,7 @@ import Testing
 
     let theirs = try await siblingEdit(f.url, id: target.id) { $0.aliases.append("theirs") }
 
-    #expect(await learner.undo(pillID: pill.id) == .alreadyChanged)
+    #expect(await learner.undoThroughClaim(pillID: pill.id) == .alreadyChanged)
     #expect(onDisk(f.url).first { $0.id == target.id } == theirs)
     #expect(f.words.customWords.first { $0.id == target.id } == theirs)
     #expect(f.words.learnMemory.entry(CorrectionPairKey.make(original: "kumala", corrected: "Kwmala")) == nil,
@@ -949,7 +949,7 @@ import Testing
     let learned = try #require(f.words.customWords.first { $0.canonical == "Kwmala" })
     _ = try await CustomWordsManager(fileURL: f.url).remove(id: learned.id)
 
-    #expect(await learner.undo(pillID: pill.id) == .alreadyChanged)
+    #expect(await learner.undoThroughClaim(pillID: pill.id) == .alreadyChanged)
     #expect(!onDisk(f.url).contains { $0.id == learned.id })
     #expect(
       f.words.learnMemory.entry(CorrectionPairKey.make(original: "kumala", corrected: "Kwmala"))
@@ -1020,7 +1020,9 @@ import Testing
     let slowSave = Task { await f.words.add(CustomWord(canonical: "Alpha")) }
     #expect(await settleUntilObserved { gate.arrived })
 
-    let undo = Task { await learner.undo(pillID: pill.id) }
+    // Claimed at the click, as the presenter does, before the write is queued behind the slow save.
+    let record = try #require(learner.claimUndo(pillID: pill.id))
+    let undo = Task { await learner.performUndo(record: record, pillID: pill.id) }
     #expect(
       await settleUntilObserved {
         f.events.all.filter { if case .admitted(_, .action) = $0 { true } else { false } }.count >= 2

@@ -35,6 +35,9 @@ import Testing
       // User-actionable.
       .permissionDenied: "Microphone access is off.",
       .noMicrophoneFound: "No microphone found. Please connect one.",
+      // #4601 (founder 2026-11-15): the microphone start was not answered.
+      .micNotResponding:
+        "EnviousWispr can't reach your microphone. Another app's audio driver may be stuck. Restarting your Mac usually fixes this.",
       // Informational interruptions.
       .deviceRemoved: "Microphone disconnected.",
       .engineLost: "Recording interrupted.",
@@ -49,6 +52,22 @@ import Testing
       }
       #expect(DictationNarrator.copy(for: reason) == want)
     }
+  }
+
+  /// #4601: "How to fix" lands on the help section, not the top of the page. The help site makes
+  /// each section's anchor from its heading (github-slugger), so this pins the heading and the
+  /// app's fragment together: renaming either one alone fails here.
+  @Test("the How to fix link targets the help section's heading anchor")
+  func microphoneHelpLinkTargetsTheSection() throws {
+    let url = DictationNarrator.microphoneNotRespondingHelpURL
+    #expect(url.host() == "enviouswispr.com")
+    #expect(url.path() == "/help/choosing-your-microphone/")
+    #expect(url.fragment() == "when-enviouswispr-cant-reach-your-microphone")
+    let article = try String(
+      contentsOf: RepoRoot.url.appending(
+        path: "website/src/content/help/choosing-your-microphone.md"),
+      encoding: .utf8)
+    #expect(article.contains("\n### When EnviousWispr can't reach your microphone\n"))
   }
 
   // MARK: - Processing phases (E2, #1564)
@@ -99,7 +118,7 @@ import Testing
   // MARK: - Post-completion + advisory warnings (E3, #1567)
 
   /// Every `RecordingWarningReason` maps to its founder-locked sentence. The
-  /// four interrupted-tail cells and the two interpolated reasons are pinned
+  /// four interrupted-tail cells and the interpolated reasons are pinned
   /// byte-exact; the two cleanups (model-not-downloaded, polish-failed) are the
   /// only strings that changed from today.
   @Test("warning reasons map to their exact founder-locked sentences")
@@ -107,6 +126,9 @@ import Testing
     #expect(
       DictationNarrator.copy(for: .modelNotDownloaded(engineLabel: "Parakeet"))
         == "Parakeet isn't downloaded yet. Open Settings to download it.")
+    #expect(
+      DictationNarrator.copy(for: .modelRequiresExplicitRetry(engineLabel: "Parakeet"))
+        == "Parakeet couldn't load. Choose Try Again in Settings > Dictation Settings > Engine.")
     #expect(DictationNarrator.copy(for: .polishFailed) == "Pasted without AI polish.")
     #expect(
       DictationNarrator.copy(
@@ -227,6 +249,13 @@ import Testing
     #expect(
       DictationNarrator.copy(for: RecordingNoticeReason.secureInputActive)
         == "Secure Input is on, so some keyboard features are paused")
+    // #4841: founder-approved silent-mic copy, calm then strong.
+    #expect(
+      DictationNarrator.copy(for: RecordingNoticeReason.micSilent(.calm))
+        == "We’re not hearing anything from your microphone.")
+    #expect(
+      DictationNarrator.copy(for: RecordingNoticeReason.micSilent(.strong))
+        == "Your microphone isn’t sending sound. Stop and check it in Settings.")
   }
 
   // MARK: - Spoken announcements + fixed status copy (E4, #1569)

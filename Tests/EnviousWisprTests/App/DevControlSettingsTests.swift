@@ -76,10 +76,10 @@
 
     // MARK: - Catalog
 
-    @Test("the table lists exactly the 93 declared keys, once each, in four kinds")
+    @Test("the table lists exactly the 97 declared keys, once each, in four kinds")
     func catalogMatchesDeclaration() throws {
       let declared = try Self.declaredKeyNames()
-      #expect(declared.count == 93)
+      #expect(declared.count == 97)
       #expect(Set(declared).count == declared.count)
       let listed = DevControlSettings.allKeys.map(DevControlSettings.name)
       #expect(listed == declared)
@@ -90,7 +90,7 @@
 
       let (_, _, settings) = Self.fixture()
       let rows = DevControlSettings.catalog(settings)
-      #expect(rows.count == 93)
+      #expect(rows.count == 97)
       #expect(rows.compactMap { $0["key"] as? String } == declared)
       for row in rows {
         #expect(row["value"] != nil)
@@ -101,7 +101,7 @@
       for row in rows {
         kinds[row["kind"] as? String ?? "?", default: []].append(row["key"] as? String ?? "?")
       }
-      #expect(kinds["direct"]?.count == 54)
+      #expect(kinds["direct"]?.count == 58)
       #expect(kinds["viaOwner"]?.count == 8)
       #expect(kinds["extractedCheck"]?.count == 19)
       #expect(kinds["staging"]?.count == 12)
@@ -232,6 +232,9 @@
       choice("s1MiniStyling", \.s1MiniStyling, [.formal, .casual], fires: .s1MiniStyling),
       choice("s1MiniStructure", \.s1MiniStructure, [.lists, .prose], fires: .s1MiniStructure),
       choice("s1MiniContext", \.s1MiniContext, [.email, .general], fires: .s1MiniContext),
+      bool(
+        "automaticDictationPasteEnabled", \.automaticDictationPasteEnabled,
+        fires: .automaticDictationPasteEnabled),
       bool("autoCopyToClipboard", \.autoCopyToClipboard, fires: .autoCopyToClipboard),
       // #3972: EnviousMeet's call-sound choice and its explainer acknowledgement.
       bool("meetingCaptureCallSound", \.meetingCaptureCallSound, fires: .meetingCaptureCallSound),
@@ -276,6 +279,7 @@
         holds: { $0.meetingLiveWordsLanguage == "fr-CA" }, fires: .meetingLiveWordsLanguage),
       bool("hotkeyEnabled", \.hotkeyEnabled, fires: .hotkeyEnabled),
       bool("vadAutoStop", \.vadAutoStop, fires: .vadAutoStop),
+      bool("silentMicWarnings", \.silentMicWarnings, fires: .silentMicWarnings),
       Row(
         name: "vadSilenceTimeout", wire: { _ in "7.25" },
         holds: { $0.vadSilenceTimeout == 7.25 }, fires: .vadSilenceTimeout),
@@ -301,6 +305,9 @@
       modifiers("pushToTalkModifiers", \.pushToTalkModifiers, fires: .pushToTalkModifiers),
       choice(
         "modelUnloadPolicy", \.modelUnloadPolicy, [.tenMinutes, .never], fires: .modelUnloadPolicy),
+      choice(
+        "localPolishUnloadPolicy", \.localPolishUnloadPolicy, [.fiveMinutes, .never],
+        fires: .localPolishUnloadPolicy),
       bool(
         "restoreClipboardAfterPaste", \.restoreClipboardAfterPaste,
         fires: .restoreClipboardAfterPaste),
@@ -372,6 +379,7 @@
         "otherAudioWhileDictating", \.otherAudioWhileDictating, [.mute, .nothing],
         fires: .otherAudioWhileDictating),
       bool("learnFromEdits", \.learnFromEdits, fires: .learnFromEdits),
+      bool("fixLearnedWords", \.fixLearnedWords, fires: .fixLearnedWords),
       bool("saveDictationRecordings", \.saveDictationRecordings, fires: .saveDictationRecordings),
       choice(
         "dictationRecordingRetention", \.dictationRecordingRetention, [.day7, .forever],
@@ -396,7 +404,7 @@
       "llmModel": "llmModel",
     ]
 
-    @Test("a forced write lands on the right property for every one of the 93 keys and persists")
+    @Test("a forced write lands on the right property for every one of the 97 keys and persists")
     func forcedWriteEveryKey() throws {
       let declared = try Self.declaredKeyNames()
       #expect(Self.rows.map(\.name) == declared)
@@ -430,8 +438,8 @@
         }
         exercised += 1
       }
-      #expect(exercised == 93)
-      #expect(readChecks == 93)
+      #expect(exercised == 97)
+      #expect(readChecks == 97)
     }
 
     @Test("hasCompletedOnboarding is the onboarding alias; forcing it moves onboardingState")
@@ -819,7 +827,7 @@
 
     @Test("an ordinary silence-timeout write takes only the slider's quarter-second values")
     func silenceTimeoutTakesSliderValues() throws {
-      let offered = ["0.5", "0.75", "1.0", "1.25", "1.5", "1.75", "2.0", "2.25", "2.5", "2.75", "3.0"]
+      let offered = ["0.5", "0.75", "1.0", "1.25", "1.5", "1.75", "2.0", "2.25", "2.5", "2.75", "3.0", "3.25", "3.5", "3.75", "4.0", "4.25", "4.5", "4.75", "5.0"]
       for text in offered {
         let (_, _, settings) = Self.fixture()
         settings.vadSilenceTimeout = text == "0.5" ? 3.0 : 0.5
@@ -838,7 +846,7 @@
     @Test("off-step or out-of-range values are checkFailed, wrong types badValue, nothing written")
     func silenceTimeoutRefusals() throws {
       for (text, code) in [
-        ("0.25", "checkFailed"), ("3.25", "checkFailed"), ("1.1", "checkFailed"),
+        ("0.25", "checkFailed"), ("5.25", "checkFailed"), ("1.1", "checkFailed"),
         ("0.6", "checkFailed"), ("120", "checkFailed"), ("1e30", "badValue"), ("true", "badValue"),
         ("\"2\"", "badValue"), ("null", "badValue"),
       ] {
@@ -874,7 +882,7 @@
         if route == .shortcutField { shortcutFields.insert(DevControlSettings.name(key)) }
       }
       #expect(shortcutFields == Self.shortcutNames)
-      #expect(counts[.typed] == 66)
+      #expect(counts[.typed] == 70)
       #expect(counts[.modelCatalog] == 1)
       #expect(counts[.inputDevice] == 2)
       #expect(counts[.spokenPunctuation] == 1)
@@ -888,7 +896,7 @@
       #expect(counts[.ollamaModel] == 3)
       #expect(counts[.channelCommand] == 1)
       #expect(counts[.shortcutField] == 10)
-      #expect(counts.values.reduce(0, +) == 93)
+      #expect(counts.values.reduce(0, +) == 97)
       #expect(DevControlSettings.route(.llmModel) == .modelCatalog)
       #expect(DevControlSettings.route(.hasCompletedOnboarding) == .typed)
     }
@@ -1138,7 +1146,7 @@
         #expect(fired.contains(row.fires), "\(row.name) fired \(fired)")
         written += 1
       }
-      #expect(written == 66)
+      #expect(written == 70)
     }
 
     private static func model(_ id: String, _ provider: LLMProvider, available: Bool = true, remote: Bool = false)

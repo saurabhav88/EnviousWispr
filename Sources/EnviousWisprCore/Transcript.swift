@@ -5,7 +5,11 @@ import Foundation
 public struct ExecutionMetrics: Codable, Sendable {
   public var asrLatencySeconds: Double?
   public var llmLatencySeconds: Double?
+  package static let automaticPasteDisabledDelivery = "automatic_paste_disabled"
+
   public var pasteTier: String?
+  /// A confirmed intentional clipboard copy, separate from any attempted paste.
+  public var deliveryOutcome: String?
   public var pasteLatencyMs: Int?
   /// Cursor-aware insertion (#1785, extended by #1921 and #1980). All eight are
   /// optional and additive, so a transcript written before any of these features
@@ -227,6 +231,7 @@ public struct ExecutionMetrics: Codable, Sendable {
     asrLatencySeconds: Double? = nil,
     llmLatencySeconds: Double? = nil,
     pasteTier: String? = nil,
+    deliveryOutcome: String? = nil,
     pasteLatencyMs: Int? = nil,
     smartInsertionEnabled: Bool? = nil,
     caretContextOutcome: String? = nil,
@@ -301,6 +306,7 @@ public struct ExecutionMetrics: Codable, Sendable {
     self.asrLatencySeconds = asrLatencySeconds
     self.llmLatencySeconds = llmLatencySeconds
     self.pasteTier = pasteTier
+    self.deliveryOutcome = deliveryOutcome
     self.pasteLatencyMs = pasteLatencyMs
     self.smartInsertionEnabled = smartInsertionEnabled
     self.caretContextOutcome = caretContextOutcome
@@ -386,6 +392,8 @@ public struct Transcript: Codable, Identifiable, Sendable {
   public let createdAt: Date
   public private(set) var llmProvider: String?
   public private(set) var llmModel: String?
+  /// Exact EG-1 size selected in a saved History polish. Older rows use their take's metrics.
+  package private(set) var historyPolishEGOneSize: String?
   public var metrics: ExecutionMetrics?
   /// Links a transcript to its crash-recovery spool (the durable kernel
   /// `SessionID`). On a live transcript it lets the recovery scan dedup — a
@@ -434,7 +442,7 @@ public struct Transcript: Codable, Identifiable, Sendable {
   /// The file this transcript was IMPORTED from, or nil for a dictation (#2772).
   ///
   /// **One field doing three jobs, deliberately.** It is the flag (non-nil means imported),
-  /// the badge's evidence, and the row's title. A separate `isImported` Boolean beside a name
+  /// the badge's evidence, and the row's DEFAULT title (a rename lives in `customTitle`). A separate `isImported` Boolean beside a name
   /// could disagree with it, and the disagreement would be "is this row an import", which is
   /// the question the badge answers.
   ///
@@ -442,6 +450,25 @@ public struct Transcript: Codable, Identifiable, Sendable {
   /// no custom decode), matching `isRecovered` (#1063), `inputDeviceWasRemoved` (#1408) and
   /// `escapeRecoveredAt` (#2087).
   public let importedFileName: String?
+
+  /// The name the user gave this import in History (#4611), or nil for the file name.
+  /// Optional so older rows decode to nil (synthesized `Codable`, no custom decode). Written
+  /// only through `renamed(to:)`. An older build that rewrites the row drops it.
+  public private(set) var customTitle: String?
+
+  /// The title History shows: the user's name for the import, else its file name.
+  public var displayTitle: String? { customTitle ?? importedFileName }
+
+  /// This import with its title set to `title`, trimmed and capped at 120 characters, the way
+  /// a meeting rename is (`MeetingCoordinator.rename`). An empty title goes back to the file
+  /// name. A row that is not an import is returned unchanged.
+  public func renamed(to title: String) -> Transcript {
+    guard isImported else { return self }
+    var copy = self
+    let trimmed = title.trimmingCharacters(in: .whitespacesAndNewlines)
+    copy.customTitle = trimmed.isEmpty ? nil : String(trimmed.prefix(120))
+    return copy
+  }
 
   /// Derived output retained even when no AI polish succeeded (#2772).
   ///
@@ -467,7 +494,8 @@ public struct Transcript: Codable, Identifiable, Sendable {
   /// `turns`. Defaulted to `"Speaker N"` by `TurnAssembler.defaultSpeakerNames`, overwritten
   /// only by an explicit rename (phase 4).
   public private(set) var speakerNames: [String: String]?
-  /// Non-nil only when `speakerAnalysis == .labeled`.
+  /// Non-nil only when `speakerAnalysis` is `.labeled`, or `.single` with paragraph times
+  /// (#4611 T4, `SingleSpeakerParagraphs`; no `speakerNames` then).
   public private(set) var turns: [Turn]?
   /// Who wrote each person name in `speakerNames` (#4013 r2 item 4): `.manual` for a name the
   /// user typed or picked, `.auto` for one read from the call app. A speaker with no entry has
@@ -562,7 +590,7 @@ public struct Transcript: Codable, Identifiable, Sendable {
 
   /// This import with its content replaced by `result`, a fresh transcription of the same
   /// file (#3147 PR3, Transcribe again with). Keeps this row's identity: id, creation date,
-  /// file name, source link and History preference. Replaces every field the transcription
+  /// file name, title, source link and History preference. Replaces every field the transcription
   /// and processing produce, together, and takes `result`'s speaker fields as they are, so
   /// old turn ranges never index the new text.
   public func replacingImportedContent(from result: Transcript, attemptID: UUID) -> Transcript {
@@ -571,6 +599,7 @@ public struct Transcript: Codable, Identifiable, Sendable {
       duration: duration, processingTime: result.processingTime, backendType: result.backendType,
       createdAt: createdAt, llmProvider: result.llmProvider, llmModel: result.llmModel,
       metrics: result.metrics, importedFileName: importedFileName,
+      customTitle: customTitle,
       processedText: result.processedText, speakerAnalysis: result.speakerAnalysis,
       speakerNames: result.speakerNames, turns: result.turns,
       speakerNameSources: result.speakerNameSources,
@@ -598,6 +627,7 @@ public struct Transcript: Codable, Identifiable, Sendable {
     escapeRecoveredAt: Date? = nil,
     escapeRecoveryTakeID: String? = nil,
     importedFileName: String? = nil,
+    customTitle: String? = nil,
     processedText: String? = nil,
     speakerAnalysis: TranscriptSpeakerAnalysis? = nil,
     speakerNames: [String: String]? = nil,
@@ -631,6 +661,7 @@ public struct Transcript: Codable, Identifiable, Sendable {
     self.escapeRecoveredAt = escapeRecoveredAt
     self.escapeRecoveryTakeID = escapeRecoveryTakeID
     self.importedFileName = importedFileName
+    self.customTitle = customTitle
     self.processedText = processedText
     self.speakerAnalysis = speakerAnalysis
     self.speakerNames = speakerNames
@@ -684,6 +715,44 @@ public struct Transcript: Codable, Identifiable, Sendable {
     return copy
   }
 
+  package func withMeetingWordCorrections(_ text: String, turns: [Turn]) -> Transcript {
+    var copy = self
+    copy.processedText = text
+    copy.turns = turns
+    return copy
+  }
+
+  /// Applies a successful History polish to an existing row. The new derived turns come
+  /// from the same original ranges as the current turns. Speaker names and original words
+  /// remain on this row, so independent changes such as a rename or a relink are preserved.
+  package func keepingHistoryPolish(
+    _ output: String, turns cleanedTurns: [Turn]?, provider: LLMProvider, model: String,
+    egOneSize: EGOneSize?
+  ) -> Transcript? {
+    guard provider != .none, !output.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    else { return nil }
+    var copy = self
+    if let turns {
+      guard let cleanedTurns, cleanedTurns.count == turns.count,
+        zip(turns, cleanedTurns).allSatisfy({ original, cleaned in
+          original.id == cleaned.id && original.speakerId == cleaned.speakerId
+            && original.startMs == cleaned.startMs && original.endMs == cleaned.endMs
+            && original.originalTextRange == cleaned.originalTextRange
+            && original.granularity == cleaned.granularity
+        })
+      else { return nil }
+      copy.turns = cleanedTurns
+    } else if cleanedTurns != nil {
+      return nil
+    }
+    copy.polishedText = output
+    copy.llmProvider = provider.rawValue
+    copy.llmModel = model
+    copy.historyPolishEGOneSize = egOneSize?.rawValue
+    if !isImported && !isMeeting { copy.preferredVersion = .polished }
+    return copy
+  }
+
   /// The text to display: the AI-polished words if any, then a derived document if one was
   /// kept, then the raw words. The middle rung is #2772's: an import with no successful
   /// polish still has formatting and saved-word corrections worth showing.
@@ -705,7 +774,8 @@ public struct Transcript: Codable, Identifiable, Sendable {
   /// user action named.
   ///
   /// A non-`.labeled` analysis clears both `turns` and `speakerNames`, matching the invariant
-  /// that `turns` is non-nil only when `speakerAnalysis == .labeled`.
+  /// that `turns` is non-nil only when `speakerAnalysis == .labeled`; the one exception is
+  /// `.single` with paragraph turns (#4611 T4), which keeps its turns and no names.
   ///
   /// #4013: provenance moves with each name. A name the user wrote whose speaker is retired, or
   /// cleared with a non-`.labeled` analysis, is kept in `unassignedSpeakerNames` rather than
@@ -717,6 +787,16 @@ public struct Transcript: Codable, Identifiable, Sendable {
   ) -> Transcript {
     var copy = self
     copy.speakerAnalysis = analysis
+    // #4611 T4: one voice keeps its paragraph turns (`SingleSpeakerParagraphs`) for their
+    // times, with no speaker names: there is nobody to tell apart or rename.
+    if case .single = analysis, let newTurns {
+      copy.unassignedSpeakerNames = Self.keepingNames(
+        unassignedSpeakerNames, adding: manualNames(of: speakerNames?.keys.sorted() ?? []))
+      copy.turns = newTurns
+      copy.speakerNames = nil
+      copy.speakerNameSources = nil
+      return copy
+    }
     guard case .labeled = analysis, let newTurns else {
       copy.unassignedSpeakerNames = Self.keepingNames(
         unassignedSpeakerNames, adding: manualNames(of: speakerNames?.keys.sorted() ?? []))

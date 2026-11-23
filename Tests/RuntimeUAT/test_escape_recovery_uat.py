@@ -160,7 +160,7 @@ ok("control: with grace=0 the late take IS missed", missed is True and presses =
 
 print("\nDOMAIN is bound to the app's own authority")
 import re, pathlib as _pl
-_src = _pl.Path(__file__).resolve().parents[2] / "Sources/EnviousWisprServices/SettingsDefaults.swift"
+_src = _pl.Path(__file__).resolve().parents[2] / "Sources/EnviousWisprCore/SettingsDefaults.swift"
 _m = re.search(r'sharedSuite\s*=\s*"([^"]+)"', _src.read_text())
 ok("the authority was readable", bool(_m),
    "a silent miss here would make the row below pass on nothing")

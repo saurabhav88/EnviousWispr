@@ -609,3 +609,211 @@ public final class AudioDeviceMonitor: Sendable {
     listenerBlock = nil
   }
 }
+
+// MARK: - Frozen device facts for idle-time consumers (#4021)
+
+/// One frozen read of every device fact the idle-time consumers need (#4021): the
+/// microphone list, transport labels, the device Auto would open and the Bluetooth answers.
+///
+/// Read once on `CoreAudioQueryLane`, off the main actor, then published as a whole by
+/// `AudioDeviceList`. Consumers read this value instead of asking Core Audio on the main
+/// thread, where a third-party driver that stops answering froze the whole app.
+package struct AudioDeviceSnapshot: Sendable, Equatable {
+  /// One input device as read in this pass.
+  package struct Device: Sendable, Equatable {
+    package let id: AudioDeviceID
+    /// The device name, or `"Unknown"` when unreadable (the same fallback as
+    /// `allInputDevices()`).
+    package let name: String
+    /// The persistent UID, or nil when the read FAILED. Never collapsed to `""` here, so a
+    /// failed identity read is never mistaken for a device that is simply absent.
+    package let uid: String?
+    package let inputChannelCount: Int
+    /// Raw transport constant, or nil when the read failed.
+    package let rawTransport: UInt32?
+
+    package var transportLabel: String? {
+      AudioDeviceEnumerator.transportLabel(forTransportType: rawTransport)
+    }
+  }
+
+  /// False when the device LIST itself could not be read; `devices` is then empty and proves
+  /// nothing.
+  package let listReadSucceeded: Bool
+  /// Input devices in system-list order, filtered to at least one input channel.
+  package let devices: [Device]
+  /// False when some device's channel count could not be read (it was skipped).
+  package let channelsComplete: Bool
+  /// False when some listed input device's UID could not be read.
+  package let identitiesComplete: Bool
+  /// The device Auto would open now, from one `InputDeviceResolver` pass over these frozen facts.
+  package let resolvedAutoDeviceID: AudioDeviceID?
+
+  /// Whether this inventory may prove a device is ABSENT: the list read succeeded and every
+  /// device's channels and UID were read. Only then may a pinned microphone be treated as
+  /// disconnected. A partial inventory still shows the devices it could read.
+  package var provesAbsence: Bool { listReadSucceeded && channelsComplete && identitiesComplete }
+
+  /// The list in the shape the settings picker and menu already use. A failed UID read shows as
+  /// `""`, exactly as `allInputDevices()` does today.
+  package var displayDevices: [AudioInputDevice] {
+    devices.map {
+      AudioInputDevice(id: $0.id, name: $0.name, uid: $0.uid ?? "", inputChannelCount: $0.inputChannelCount)
+    }
+  }
+
+  /// Transport label for a listed device UID, or nil when the UID is not listed or its
+  /// transport is unreadable (same as `AudioDeviceEnumerator.transportLabel(forUID:)`).
+  package func transportLabel(forUID uid: String) -> String? {
+    devices.first { $0.uid == uid }?.transportLabel
+  }
+
+  /// Whether Auto would open a Bluetooth device. Nil only when Auto resolves to no device.
+  /// An unreadable transport answers false, matching today's
+  /// `AudioDeviceEnumerator.isBluetoothDevice` (preserved on purpose: the Bluetooth presenter
+  /// treats nil as "fall back", so turning an unreadable read into nil would change behaviour).
+  package var autoInputIsBluetooth: Bool? {
+    guard let id = resolvedAutoDeviceID else { return nil }
+    return Self.isBluetooth(rawTransport(for: id))
+  }
+
+  /// Whether the listed device with this UID is Bluetooth. Nil only when no listed device has
+  /// this UID (the presenter then falls back to Auto, as today with `deviceID(forUID:)`).
+  package func uidIsBluetooth(_ uid: String) -> Bool? {
+    guard let device = devices.first(where: { $0.uid == uid }) else { return nil }
+    return Self.isBluetooth(device.rawTransport)
+  }
+
+  /// Transport for the resolved Auto device: from the list when it is an input listed here,
+  /// otherwise the separately frozen default-device transport.
+  private func rawTransport(for id: AudioDeviceID) -> UInt32? {
+    if let device = devices.first(where: { $0.id == id }) { return device.rawTransport }
+    return id == defaultDeviceID ? defaultDeviceTransport : nil
+  }
+
+  private static func isBluetooth(_ raw: UInt32?) -> Bool {
+    raw == kAudioDeviceTransportTypeBluetooth || raw == kAudioDeviceTransportTypeBluetoothLE
+  }
+
+  /// The system default input and its transport as read in this pass (frozen for the resolver).
+  let defaultDeviceID: AudioDeviceID?
+  let defaultDeviceTransport: UInt32?
+}
+
+/// Builds an `AudioDeviceSnapshot` from ONE pass of Core Audio reads (#4021).
+///
+/// Its own reader, beside `allInputDevices()` (the old picker reader) and
+/// `inputDeviceSnapshot()` (capture resolution), which stay unchanged: neither keeps names,
+/// channel counts, nil-preserving UIDs and transports together. The resolver runs once over
+/// facts frozen here, so it never re-reads the device list, the default or a transport.
+package enum AudioDeviceSnapshotReader {
+  /// The Core Audio property reads, injectable so tests touch no real hardware.
+  package struct PropertyReads: Sendable {
+    package var systemDeviceIDs: @Sendable () -> [AudioDeviceID]?
+    package var inputChannelCount: @Sendable (AudioDeviceID) -> Int?
+    package var name: @Sendable (AudioDeviceID) -> String?
+    package var uid: @Sendable (AudioDeviceID) -> String?
+    package var transport: @Sendable (AudioDeviceID) -> UInt32?
+    package var defaultInputDeviceID: @Sendable () -> AudioDeviceID?
+
+    package init(
+      systemDeviceIDs: @escaping @Sendable () -> [AudioDeviceID]?,
+      inputChannelCount: @escaping @Sendable (AudioDeviceID) -> Int?,
+      name: @escaping @Sendable (AudioDeviceID) -> String?,
+      uid: @escaping @Sendable (AudioDeviceID) -> String?,
+      transport: @escaping @Sendable (AudioDeviceID) -> UInt32?,
+      defaultInputDeviceID: @escaping @Sendable () -> AudioDeviceID?
+    ) {
+      self.systemDeviceIDs = systemDeviceIDs
+      self.inputChannelCount = inputChannelCount
+      self.name = name
+      self.uid = uid
+      self.transport = transport
+      self.defaultInputDeviceID = defaultInputDeviceID
+    }
+
+    package static let live = AudioDeviceEnumerator.liveSnapshotReads
+  }
+
+  /// Blocking Core Audio reads: call only on `CoreAudioQueryLane`, never on the main actor.
+  package static func read(_ reads: PropertyReads = .live) -> AudioDeviceSnapshot {
+    let defaultID = reads.defaultInputDeviceID()
+    guard let ids = reads.systemDeviceIDs() else {
+      let defaultTransport = defaultID.flatMap(reads.transport)
+      return AudioDeviceSnapshot(
+        listReadSucceeded: false, devices: [], channelsComplete: false, identitiesComplete: false,
+        resolvedAutoDeviceID: resolveAuto(
+          defaultID: defaultID, defaultTransport: defaultTransport, inventory: .readFailed,
+          transports: [:]),
+        defaultDeviceID: defaultID, defaultDeviceTransport: defaultTransport)
+    }
+
+    var devices: [AudioDeviceSnapshot.Device] = []
+    var channelsComplete = true
+    var identitiesComplete = true
+    for id in ids {
+      // Same rule as `inputDeviceSnapshot()`: an unreadable channel count is neither an
+      // output-only device nor a candidate; it is skipped and the pass can no longer prove absence.
+      guard let channels = reads.inputChannelCount(id) else {
+        channelsComplete = false
+        continue
+      }
+      guard channels > 0 else { continue }
+      let uid = reads.uid(id)
+      if uid == nil { identitiesComplete = false }
+      devices.append(
+        .init(
+          id: id, name: reads.name(id) ?? "Unknown", uid: uid, inputChannelCount: channels,
+          rawTransport: reads.transport(id)))
+    }
+
+    var transports: [AudioDeviceID: UInt32] = [:]
+    for device in devices { if let raw = device.rawTransport { transports[device.id] = raw } }
+    // The default may not be a listed input (or its read may have been skipped): read its
+    // transport once here so the resolver's #2022 check uses a frozen value too.
+    let defaultTransport: UInt32? = defaultID.flatMap { id in
+      devices.contains { $0.id == id } ? transports[id] : reads.transport(id)
+    }
+    if let defaultID, let defaultTransport { transports[defaultID] = defaultTransport }
+
+    // Capture resolution keys candidates by UID with the same `?? ""` as `inputDeviceSnapshot()`.
+    let candidates = devices.map {
+      InputDeviceCandidate(id: $0.id, uid: $0.uid ?? "", rawTransport: $0.rawTransport)
+    }
+    return AudioDeviceSnapshot(
+      listReadSucceeded: true, devices: devices, channelsComplete: channelsComplete,
+      identitiesComplete: identitiesComplete,
+      resolvedAutoDeviceID: resolveAuto(
+        defaultID: defaultID, defaultTransport: defaultTransport,
+        inventory: .success(candidates: candidates, complete: channelsComplete),
+        transports: transports),
+      defaultDeviceID: defaultID, defaultDeviceTransport: defaultTransport)
+  }
+
+  /// One `InputDeviceResolver` pass for Auto over frozen inputs only: the resolver stays the
+  /// single selection authority (#2022 virtual-default divert, #1714 fallback), and it cannot
+  /// reach live Core Audio from here.
+  private static func resolveAuto(
+    defaultID: AudioDeviceID?, defaultTransport: UInt32?, inventory: InputDeviceSnapshot,
+    transports: [AudioDeviceID: UInt32]
+  ) -> AudioDeviceID? {
+    InputDeviceResolver(
+      defaultInputDeviceID: { defaultID },
+      inputDeviceSnapshot: { inventory },
+      transportForDevice: { transports[$0] }
+    ).resolve(preferredUID: nil).selectedDeviceID
+  }
+}
+
+extension AudioDeviceEnumerator {
+  /// Live reads for `AudioDeviceSnapshotReader`, built from this enumerator's existing single
+  /// owners of each property read (declared here so it can reach the private helpers).
+  static let liveSnapshotReads = AudioDeviceSnapshotReader.PropertyReads(
+    systemDeviceIDs: { systemDeviceIDs() },
+    inputChannelCount: { inputChannelCountRaw(for: $0) },
+    name: { stringProperty(for: $0, selector: kAudioDevicePropertyDeviceNameCFString) },
+    uid: { stringProperty(for: $0, selector: kAudioDevicePropertyDeviceUID) },
+    transport: { transportTypeRaw(for: $0) },
+    defaultInputDeviceID: { defaultInputDeviceID() }
+  )
+}

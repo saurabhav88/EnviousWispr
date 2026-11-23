@@ -1,6 +1,6 @@
 {
   "schema": 1,
-  "updated": "2026-11-09",
+  "updated": "2026-11-16",
   "models": [
     {
       "name": "gemma4:e4b",
@@ -57,6 +57,27 @@
       "parameterCount": "12B",
       "sizeBytes": 8021618699,
       "reason": "Larger Gemma 4 size for 16 GB Macs, a step up from the E4B size already offered."
+    },
+    {
+      "name": "llama3.2:3b",
+      "displayName": "Llama 3.2 (3B)",
+      "parameterCount": "3B",
+      "sizeBytes": 2019392628,
+      "reason": "Meta's small, widely requested chat model; a light option for 8 GB Macs."
+    },
+    {
+      "name": "gemma3:4b",
+      "displayName": "Gemma 3 (4B)",
+      "parameterCount": "4B",
+      "sizeBytes": 3350272259,
+      "reason": "A compact Google Gemma 3 size that fits low-memory Macs and follows instructions well."
+    },
+    {
+      "name": "mistral:7b",
+      "displayName": "Mistral 7B",
+      "parameterCount": "7B",
+      "sizeBytes": 4372823897,
+      "reason": "Well-known general chat model that many users ask for, at a mid size for 16 GB Macs."
     }
   ]
 }

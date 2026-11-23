@@ -9,6 +9,7 @@ import os
 @testable import EnviousWisprCore
 @testable import EnviousWisprLLM
 @testable import EnviousWisprPipeline
+@testable import EnviousWisprPostProcessing
 @testable import EnviousWisprServices
 @testable import EnviousWisprStorage
 import EnviousWisprAppKitTestSupport
@@ -270,7 +271,8 @@ struct MeetingWiringTests {
         offlineModeAdmission: ASRManager(
           engineMutationScope: .alwaysAllowedForTesting,
           parakeetSelection: ParakeetSelectionProvider()),
-        meetingSelection: { box.selection }, modelUseGate: gate, isDeliveryEnabled: { true },
+        meetingSelection: { box.selection },
+        parakeet: .init(installed: { true }, installedNow: { true }), modelUseGate: gate, isDeliveryEnabled: { true },
         workChanged: { changes.count += 1 }, log: { logBox.append($0) },
         // An isolated key folder: never the real Keychain or key files.
         keychain: KeychainManager(
@@ -527,7 +529,7 @@ struct MeetingWiringTests {
     #expect(FileManager.default.fileExists(atPath: rig.store.folder(for: record.id).path) == false)
   }
 
-  @Test("#4286: after a relaunch, an invited-only search matches once the launch read lands")
+  @Test("#4286: after a relaunch, an invited-only search matches and the launch read loads the invited people")
   func relaunchInvitedSearch() async throws {
     let rig = try Rig()
     var record = MeetingRecord(engine: .parakeet, trackStatus: [.microphone: .captured])
@@ -544,21 +546,32 @@ struct MeetingWiringTests {
     let row = Transcript(
       id: record.transcriptID, text: "standup", backendType: .parakeet, meetingID: record.id)
     try await rig.transcripts.saveAndShowDurably(row)
-    rig.transcripts.setHistoryQuery("acme.com", in: .meetings)
-    #expect(
-      rig.transcripts.matchingHistoryItems(in: .meetings).isEmpty, "nothing listed before the launch")
 
-    let hold = MeetingDocumentsOwnerTests.holdFileQueue()
+    // History lists through the catalog, as the app wires it (#4586): it indexes the meeting
+    // folder's facts when it starts, with no launch read involved.
+    let changes = HistorySourceChanges()
+    let historyStore = TranscriptStore(
+      directory: rig.root.appendingPathComponent("history"), historyChanges: changes)
+    let catalogRoot = TestTemporaryDirectory.url.appendingPathComponent(
+      "MeetingWiringTests-catalog-\(UUID().uuidString)", isDirectory: true)
+    let session = HistoryCatalogSession(
+      changes: changes, sources: historyStore.historyCatalogSources(meetings: rig.store),
+      directory: catalogRoot)
+    rig.transcripts.catalogSession = session
+    let history = HistoryCatalogRig(
+      root: catalogRoot, changes: changes, store: historyStore, meetings: rig.store,
+      session: session, coordinator: rig.transcripts)
+    defer { history.remove() }
+
     let coordinator = MeetingWiring.make(rig.inputs)
     coordinator.launch()
-    #expect(
-      rig.transcripts.matchingHistoryItems(in: .meetings).isEmpty,
-      "no invited match while the launch read waits")
-    hold.signal()
-    await MeetingCoordinatorTests.eventually("invited-only match after the launch read") {
-      rig.transcripts.matchingRowIDs(in: .meetings) == [row.id]
+    rig.transcripts.startHistoryCatalog()
+    await session.waitForIndexingForTesting()
+    rig.transcripts.browser.setHistoryQuery("acme.com", in: .meetings)
+    #expect(await history.listedRowIDs(.meetings) == [row.id])
+    await MeetingCoordinatorTests.eventually("invited people loaded by the launch read") {
+      coordinator.documents.invitedSearchTerms(record.id).contains("acme.com")
     }
-    #expect(coordinator.documents.invitedSearchTerms(record.id).contains("acme.com"))
   }
 
   @Test("a meeting delete from History that cannot finish shows History's failure message (#4079)")
@@ -636,6 +649,78 @@ struct MeetingWiringTests {
     #expect(try rig.store.segmentFiles(meeting: record.id).count == 1)
     #expect(try rig.store.load(id: record.id).deletionRequested == false)
     #expect(coordinator.meetings.count == 1)
+  }
+
+  @Test("meeting correction preserves source ranges and writes only to an unchanged saved row")
+  func correctedMeetingRow() async throws {
+    let rig = try Rig()
+    let ordinarySpeech =
+      " brought the notes that we wrote during the planning meeting on Monday morning. "
+      + "The team reviewed the questions from the notes and decided to bring them back again "
+      + "at the very next meeting on Friday afternoon."
+    let first = "Sunny" + ordinarySpeech
+    let gap = "Sunny said [Could not transcribe 1:00 to 1:30]"
+    let raw = first + "\n\n" + gap
+    let turns = [
+      Turn(id: "spoken", speakerId: "mic:you", startMs: 0, endMs: 1000,
+        originalTextRange: 0..<first.utf16.count, wasPolished: true, granularity: .word),
+      Turn(id: "gap", speakerId: "sys:guest", startMs: 1000, endMs: 2000,
+        originalTextRange: (first.utf16.count + 2)..<raw.utf16.count,
+        wasPolished: true, granularity: .word),
+    ]
+    let meetingID = UUID()
+    let rowID = UUID()
+    let previous = Transcript(
+      id: rowID, text: raw, speakerAnalysis: .labeled(count: 2),
+      speakerNames: ["mic:you": "Diana"], turns: turns,
+      speakerNameSources: ["mic:you": .manual], meetingID: meetingID, meetingTranscriptAttemptID: UUID())
+    try await rig.transcripts.saveAndShowDurably(previous)
+    let plain = Transcript(
+      id: rowID, text: raw, speakerAnalysis: .labeled(count: 2), turns: turns,
+      meetingID: meetingID, meetingTranscriptAttemptID: UUID())
+    var published: Transcript?
+    try await rig.transcripts.saveAndShowDurably(plain, didPublish: { published = $0 })
+    let base = try #require(published)
+    #expect(base.speakerNames?["mic:you"] == "Diana")
+    let lookups = WordCorrector.buildLookups(
+      words: [CustomWord(canonical: "Sunee-Lee", aliases: ["Sunny"])])
+    let started = ContinuousClock.now
+    let deadline = started.advanced(by: .seconds(1))
+    var admitted = 0
+    let expired = await MeetingWiring.correctedTurns(
+      turns, rawText: raw, lookups: lookups, deadline: deadline,
+      isAdmitted: { admitted += 1; return true },
+      wakes: rig.wakes, canWrite: { true }, setWaiting: { _ in },
+      now: { admitted < 2 ? started : deadline })
+    // The preparation and first matcher unit were admitted, but the second piece wasn't.
+    #expect(admitted == 2)
+    #expect(expired == nil)
+    #expect(try await rig.transcripts.durableRow(id: base.id)?.processedText == nil)
+    let output = try #require(await MeetingWiring.correctedTurns(
+      turns, rawText: raw, lookups: lookups, deadline: .now.advanced(by: .seconds(10)),
+      isAdmitted: { true }, wakes: rig.wakes, canWrite: { true }, setWaiting: { _ in }))
+    #expect(output.text == "Sunee-Lee" + ordinarySpeech + "\n\n" + gap)
+    #expect(output.turns[0].originalTextRange == turns[0].originalTextRange)
+    #expect(output.turns[0].startMs == turns[0].startMs)
+    #expect(output.turns[1] == turns[1])
+    #expect(try await rig.transcripts.applyMeetingWordCorrections(
+      to: base, text: output.text, turns: output.turns, canWrite: { true }))
+    let stored = try #require(await rig.transcripts.durableRow(id: base.id))
+    #expect(stored.text == raw)
+    #expect(stored.displayText == output.text)
+    #expect(stored.speakerNames?["mic:you"] == "Diana")
+    #expect(stored.polishedText == nil)
+    // An intervening edit leaves a different saved base, even with the same generation.
+    try await rig.transcripts.saveAndShowDurably(base)
+    #expect(await rig.transcripts.renameSpeaker(
+      id: base.id, speakerId: "mic:you", name: "Priya", isMeeting: true) == nil)
+    #expect(try await rig.transcripts.durableRow(id: base.id)?.speakerNames?["mic:you"] == "Priya")
+    #expect(try await rig.transcripts.applyMeetingWordCorrections(
+      to: base, text: output.text, turns: output.turns, canWrite: { true }) == false)
+    try await rig.transcripts.removeRow(id: base.id)
+    #expect(try await rig.transcripts.applyMeetingWordCorrections(
+      to: base, text: output.text, turns: output.turns, canWrite: { true }) == false)
+    #expect(try await rig.transcripts.durableRow(id: base.id) == nil)
   }
 
   @Test("the lane's order: dictation first, then a final pass over a local summary (R50)")
@@ -1200,21 +1285,49 @@ struct MeetingWiringTests {
   func engineResolution() async {
     let whisper = MeetingAttemptConfiguration(requestedEngine: .whisper, language: .locked("de"))
     let ready = Self.whisperEngine(path: "/models/turbo.gguf")
+    let yes: @MainActor () async -> Bool = { true }
     #expect(
-      await MeetingWiring.resolve(whisper, whisper: ready)
+      await MeetingWiring.resolve(whisper, whisper: ready, parakeetInstalled: yes)
         == .init(engine: .whisper, effectiveLanguage: "de"))
     #expect(
-      await MeetingWiring.resolve(whisper, whisper: Self.whisperEngine(path: nil))
+      await MeetingWiring.resolve(
+        whisper, whisper: Self.whisperEngine(path: nil), parakeetInstalled: yes)
         == .init(engine: .parakeet, fallbackReason: .notDownloaded, effectiveLanguage: "de"))
     #expect(
       await MeetingWiring.resolve(
-        whisper, whisper: Self.whisperEngine(path: "/models/turbo.gguf", deliveryOn: false))
+        whisper, whisper: Self.whisperEngine(path: "/models/turbo.gguf", deliveryOn: false),
+        parakeetInstalled: yes)
         == .init(engine: .parakeet, fallbackReason: .deliveryDisabled, effectiveLanguage: "de"))
     #expect(
-      await MeetingWiring.resolve(whisper, whisper: nil)
+      await MeetingWiring.resolve(whisper, whisper: nil, parakeetInstalled: yes)
         == .init(engine: .parakeet, fallbackReason: .modelUnavailable, effectiveLanguage: "de"))
     let parakeet = MeetingAttemptConfiguration(requestedEngine: .parakeet, language: .auto)
-    #expect(await MeetingWiring.resolve(parakeet, whisper: nil) == .init(engine: .parakeet))
+    #expect(
+      await MeetingWiring.resolve(parakeet, whisper: nil, parakeetInstalled: yes)
+        == .init(engine: .parakeet))
+  }
+
+  /// #4578: a meeting whose engine was removed is written by the other downloaded engine, in
+  /// both directions; with neither downloaded nothing runs. When this fails, a meeting loses its
+  /// transcript although Whisper is on the Mac, or a pass loads (and downloads) a removed engine.
+  @Test("#4578: a removed Parakeet falls back to Whisper; with no engine there is no pass")
+  func removedParakeetFallsBackToWhisper() async {
+    let parakeet = MeetingAttemptConfiguration(requestedEngine: .parakeet, language: .auto)
+    let no: @MainActor () async -> Bool = { false }
+    #expect(
+      await MeetingWiring.resolve(
+        parakeet, whisper: Self.whisperEngine(path: "/models/turbo.gguf"), parakeetInstalled: no)
+        == .init(engine: .whisper, fallbackReason: .notDownloaded))
+    #expect(
+      await MeetingWiring.resolve(
+        parakeet, whisper: Self.whisperEngine(path: nil), parakeetInstalled: no) == nil)
+    let whisper = MeetingAttemptConfiguration(requestedEngine: .whisper, language: .auto)
+    #expect(
+      await MeetingWiring.resolve(whisper, whisper: nil, parakeetInstalled: no) == nil)
+    #expect(
+      await MeetingWiring.resolve(
+        whisper, whisper: Self.whisperEngine(path: "/models/turbo.gguf", deliveryOn: false),
+        parakeetInstalled: no) == nil)
   }
 
   @Test("#3973 C3: a language only Whisper decodes is Auto on Parakeet, at Start and after a fallback")
@@ -1230,7 +1343,8 @@ struct MeetingWiringTests {
       requestedEngine: .whisper, language: .locked("haw"), supports: MeetingWiring.engineSupports)
     #expect(onWhisper.requestedEffectiveLanguage == "haw")
     #expect(
-      await MeetingWiring.resolve(onWhisper, whisper: Self.whisperEngine(path: nil))
+      await MeetingWiring.resolve(
+        onWhisper, whisper: Self.whisperEngine(path: nil), parakeetInstalled: { true })
         == .init(engine: .parakeet, fallbackReason: .notDownloaded, effectiveLanguage: nil))
   }
 

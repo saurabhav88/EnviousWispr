@@ -77,11 +77,11 @@ final class EGOneSummaryEngine {
   }
 
   /// A cold attempt: checks EG-1 is installed and has a manifest, and loads nothing.
-  func prepare(timeoutSeconds: Double) -> Result<
+  func prepare(timeoutSeconds: Double, modelOverride: LocalPolishModelID? = nil) -> Result<
     MeetingSummaryProviders.Prepared, MeetingSummaryProviders.Unavailable
   > {
     // #4473: the model is captured HERE, once, before the context window below is computed.
-    let model = model()
+    let model = modelOverride ?? model()
     guard !isTerminating, let manifest = manifest(model),
       let runtime = runtimes.runtime(for: model), case .installed = runtime.installState
     else { return .failure(.notReady) }

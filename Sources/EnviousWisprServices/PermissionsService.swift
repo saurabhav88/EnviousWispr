@@ -56,6 +56,11 @@ public final class PermissionsService {
   /// `NSWorkspace` call.
   private let openMicrophoneSettings: @MainActor (URL) -> Void
 
+  /// #4528 M81: injected so tests can count the real Accessibility prompt (and prove a simulated
+  /// request never reaches it); defaults to the system call that shows the macOS alert and lists
+  /// the app in Privacy & Security, Accessibility.
+  private let accessibilityPrompter: () -> Bool
+
   /// #2549: injected so tests can drive the monitor loop through several real
   /// ticks in milliseconds instead of `TimingConstants.accessibilityPollIntervalSec`;
   /// defaults to that same production value.
@@ -70,6 +75,10 @@ public final class PermissionsService {
       await AVCaptureDevice.requestAccess(for: .audio)
     },
     openMicrophoneSettings: @escaping @MainActor (URL) -> Void = { NSWorkspace.shared.open($0) },
+    accessibilityPrompter: @escaping () -> Bool = {
+      AXIsProcessTrustedWithOptions(
+        ["AXTrustedCheckOptionPrompt" as CFString: true as CFBoolean] as CFDictionary)
+    },
     calendarReader: @escaping () -> CalendarAccess.Status = { CalendarAccess.status() },
     permissionPollIntervalNanoseconds: UInt64 = UInt64(
       TimingConstants.accessibilityPollIntervalSec * 1_000_000_000)
@@ -78,6 +87,7 @@ public final class PermissionsService {
     self.microphoneReader = microphoneReader
     self.microphoneRequester = microphoneRequester
     self.openMicrophoneSettings = openMicrophoneSettings
+    self.accessibilityPrompter = accessibilityPrompter
     self.calendarReader = calendarReader
     self.permissionPollIntervalNanoseconds = permissionPollIntervalNanoseconds
     microphoneStatus = microphoneReader()
@@ -86,6 +96,53 @@ public final class PermissionsService {
   }
 
   private let calendarReader: () -> CalendarAccess.Status
+
+  #if DEBUG
+    /// #4528 M5: simulated permissions for CLI UAT (the door's `onboarding permissions`). While
+    /// set, every read answers the simulated value, requests show no system prompt and open no
+    /// System Settings pane, and no permission telemetry is sent. A nil field reads the real
+    /// value. Switchable on the already-built service; clearing it re-reads the real values.
+    public struct SimulatedPermissions: Equatable, Sendable {
+      public var microphone: AVAuthorizationStatus?
+      public var accessibility: Bool?
+
+      public init(microphone: AVAuthorizationStatus? = nil, accessibility: Bool? = nil) {
+        self.microphone = microphone
+        self.accessibility = accessibility
+      }
+    }
+
+    public var simulated: SimulatedPermissions? {
+      didSet {
+        microphoneStatus = readMicrophone()
+        accessibilityGranted = readAccessibility()
+        onPermissionChange?()
+      }
+    }
+  #endif
+
+  /// True while DEBUG simulation is on: no prompt, no settings pane, no telemetry.
+  private var isSimulated: Bool {
+    #if DEBUG
+      return simulated != nil
+    #else
+      return false
+    #endif
+  }
+
+  private func readMicrophone() -> AVAuthorizationStatus {
+    #if DEBUG
+      if let microphone = simulated?.microphone { return microphone }
+    #endif
+    return microphoneReader()
+  }
+
+  private func readAccessibility() -> Bool {
+    #if DEBUG
+      if let accessibility = simulated?.accessibility { return accessibility }
+    #endif
+    return accessibilityReader()
+  }
 
   /// #4017: reads calendar access again (after a request, or back from System Settings).
   public func refreshCalendarStatus() {
@@ -98,25 +155,32 @@ public final class PermissionsService {
   /// actionable "Microphone access is off." notice, not the generic retry.
   /// Reads live (not the cached snapshot) so a mid-session revoke is honored.
   public var microphonePermissionIsDenied: Bool {
-    switch microphoneReader() {
+    switch readMicrophone() {
     case .denied, .restricted: return true
     default: return false
     }
   }
 
   /// #4017: microphone access read now, for a screen that must not show the polled copy.
-  public var microphoneStatusLive: AVAuthorizationStatus { microphoneReader() }
+  public var microphoneStatusLive: AVAuthorizationStatus { readMicrophone() }
 
   /// #3972: macOS has never been asked for the microphone. Read live, like
   /// `microphonePermissionIsDenied`.
   public var microphoneNeedsAsking: Bool {
-    microphoneReader() == .notDetermined
+    readMicrophone() == .notDetermined
   }
 
   /// Request microphone access. Returns true if granted.
   public func requestMicrophoneAccess() async -> Bool {
+    if isSimulated {
+      microphoneStatus = readMicrophone()
+      return microphoneStatus == .authorized
+    }
     let granted = await microphoneRequester()
-    microphoneStatus = microphoneReader()
+    microphoneStatus = readMicrophone()
+    // Simulation may have started while the real request waited: answer the simulated value and
+    // send no telemetry, never a mix of a real result and a simulated status (plan M60).
+    if isSimulated { return microphoneStatus == .authorized }
     TelemetryService.shared.permissionStatus(
       permission: "microphone", status: granted ? "granted" : "denied", context: "request")
     return granted
@@ -130,6 +194,7 @@ public final class PermissionsService {
   /// and onboarding, so the branch is not copied at each call site.
   public func requestMicrophoneAccessOrOpenSettings() async {
     if microphonePermissionIsDenied {
+      if isSimulated { return }
       if let url = URL(
         string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Microphone")
       {
@@ -148,6 +213,19 @@ public final class PermissionsService {
     guard
       let url = URL(
         string: "x-apple.systempreferences:com.apple.preference.security?Privacy_ScreenCapture")
+    else { return }
+    openMicrophoneSettings(url)
+  }
+
+  /// #4528 M81: opens System Settings on Privacy & Security, Accessibility, where the switch for
+  /// EnviousWispr lives. Only on an explicit user action (Setup's second Open Settings press); it
+  /// grants nothing by itself. Opens nothing while simulated. NOT VERIFIED on hardware until #4528
+  /// Live UAT checks the pane anchor.
+  public func openAccessibilitySettings() {
+    if isSimulated { return }
+    guard
+      let url = URL(
+        string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility")
     else { return }
     openMicrophoneSettings(url)
   }
@@ -184,11 +262,11 @@ public final class PermissionsService {
   /// Only called from explicit user action (e.g., Settings button). Never called automatically.
   /// Returns true if already granted; otherwise opens the System Settings prompt.
   public func requestAccessibilityAccess() -> Bool {
-    let options =
-      [
-        "AXTrustedCheckOptionPrompt" as CFString: true as CFBoolean
-      ] as CFDictionary
-    let trusted = AXIsProcessTrustedWithOptions(options)
+    if isSimulated {
+      accessibilityGranted = readAccessibility()
+      return accessibilityGranted
+    }
+    let trusted = accessibilityPrompter()
     accessibilityGranted = trusted
     TelemetryService.shared.permissionStatus(
       permission: "accessibility", status: trusted ? "granted" : "denied", context: "request")
@@ -203,13 +281,13 @@ public final class PermissionsService {
   /// emit points (e.g. the onboarding-abandon posture) where the cache may still be
   /// false in the ~2 s window after a grant but before the next poll/launch/pre-record
   /// refresh. Injectable via the same `accessibilityReader` the init/refresh use.
-  public var accessibilityGrantedLive: Bool { accessibilityReader() }
+  public var accessibilityGrantedLive: Bool { readAccessibility() }
 
   /// Re-check Accessibility permission using `AXIsProcessTrusted()` (no prompt).
   /// Detects revocation transitions (granted → revoked) and re-arms the warning.
   public func refreshAccessibilityStatus() {
     let wasGranted = accessibilityGranted
-    let nowGranted = accessibilityReader()
+    let nowGranted = readAccessibility()
     accessibilityGranted = nowGranted
 
     guard wasGranted != nowGranted else { return }
@@ -222,6 +300,7 @@ public final class PermissionsService {
     // Telemetry Bible Phase 3 (#1172): record the grant/revoke flip wherever the
     // app already re-checks (background poll / onboarding / launch / pre-record).
     // Limb: fire-and-forget metadata only, never blocks the heart path.
+    guard !isSimulated else { return }
     TelemetryService.shared.permissionStatus(
       permission: "accessibility",
       status: nowGranted ? "granted" : "denied",
@@ -264,7 +343,7 @@ public final class PermissionsService {
   /// notices the transition into denied, and nothing notices a later grant
   /// via Open Settings either.
   private var permissionMonitoringStillNeeded: Bool {
-    !accessibilityGranted || microphoneReader() != .authorized
+    !accessibilityGranted || readMicrophone() != .authorized
   }
 
   /// Start smart polling for Accessibility AND Microphone permission (#2549:
@@ -278,7 +357,7 @@ public final class PermissionsService {
     guard permissionMonitoringStillNeeded else { return }
 
     var lastAccessibilityGranted = accessibilityGranted
-    var lastMicrophoneStatus = microphoneReader()
+    var lastMicrophoneStatus = readMicrophone()
     let pollInterval = permissionPollIntervalNanoseconds
 
     permissionMonitorTask = Task { [weak self] in
@@ -302,7 +381,7 @@ public final class PermissionsService {
         // from false to true right there. Comparing the raw status closes the
         // whole class at once — any transition between any two of the four
         // states is caught, not just the ones that cross the authorized line.
-        let microphoneStatusNow = self.microphoneReader()
+        let microphoneStatusNow = self.readMicrophone()
         self.microphoneStatus = microphoneStatusNow
         let microphoneAuthorizedNow = microphoneStatusNow == .authorized
 

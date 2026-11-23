@@ -1,0 +1,12 @@
+{
+  "language": "ro",
+  "title": "scoate modelul de corectare din memorie după",
+  "words": [
+    "memorie EG-1",
+    "memorie S1-mini"
+  ],
+  "phrases": [
+    "după cât timp se eliberează memoria modelului de corectare dacă nu mai dictez",
+    "cum păstrez modelul de corectare mereu în memorie"
+  ]
+}

@@ -5,6 +5,7 @@ import EnviousWisprPipeline
 import EnviousWisprServices
 @preconcurrency import FluidAudio
 import Foundation
+import os
 
 /// App-owned home for the model-delivery layer (#1348 Phase 2): owns the
 /// single `ModelDeliveryController`, the Parakeet registration built from the
@@ -47,10 +48,18 @@ final class ModelDeliveryHome {
   private var parakeetRetiredV3Registration: DeliveryRegistration?
   /// #3546: the Ultra target the upgrade coordinator is built with.
   private var parakeetUpgradeTarget: ParakeetUpgradeCoordinator.UpgradeTarget?
+  /// #4578: the person's Parakeet install choice, beside the upgrade state on the same disk.
+  private var parakeetInstallIntent: ParakeetInstallIntentStore?
   /// #3546 test observations (internal): the launch donor migration's task and
   /// the Parakeet observer setup, so a test can wait for what construction
   /// started without starting either itself. Production never reads them.
-  private(set) var retiredV3LaunchMigrationForTesting: Task<URL?, Never>?
+  private(set) var retiredV3LaunchMigration: Task<Void, Never>?
+
+  /// #4578: waits for the launch migration of a donor v3 copy (if one started), so an
+  /// installation read sees the adopted copy rather than its absence.
+  func awaitLaunchMigration() async {
+    await retiredV3LaunchMigration?.value
+  }
 
   /// #3546: what Settings presents for Parakeet, mirrored from the upgrade
   /// coordinator (it owns every decision; this only re-reads on its signal).
@@ -64,6 +73,12 @@ final class ModelDeliveryHome {
   /// Bumped on every coordinator presentation signal, so Settings re-reads
   /// "Model ready" when the policy changed but no mirrored value did.
   private(set) var parakeetPresentationRevision: UInt64 = 0
+
+  var parakeetAutomaticLoadStopPoint: UInt64? {
+    // The coordinator is not observable; its existing presentation revision invalidates this read.
+    _ = parakeetPresentationRevision
+    return parakeetUpgrade?.automaticLoadStopPoint
+  }
   /// Before any selection: accepted v3 when the retired v3 is admitted on disk,
   /// otherwise the new Ultra default. Read once at construction.
   private(set) var parakeetFallbackModel: ParakeetModel = .ultra
@@ -122,6 +137,7 @@ final class ModelDeliveryHome {
       parakeetSelection: parakeetSelection,
       delivery: parakeetUpgradeTarget == nil ? parakeetHandle : parakeetRetiredV3Handle,
       target: parakeetUpgradeTarget,
+      installIntent: parakeetInstallIntent,
       isOnboardingComplete: isOnboardingComplete)
     coordinator.onUsabilityMayHaveChanged = { [weak self] in self?.notifyParakeetUsable() }
     coordinator.onPresentationChanged = { [weak self] in self?.refreshParakeetPresentation() }
@@ -132,6 +148,13 @@ final class ModelDeliveryHome {
     }
     parakeetUpgrade = coordinator
     refreshParakeetPresentation()
+    // #2697: START THE v3 MIGRATION AT LAUNCH, not at the first dictation (see
+    // `installRetiredV3`). #4578: through the coordinator, which skips it when the person
+    // removed Parakeet, so a donor copy is never adopted back. The coordinator is built at
+    // launch by the bootstrapper, so this is still launch, not the first take.
+    if parakeetRetiredV3Handle != nil {
+      retiredV3LaunchMigration = Task { await coordinator.runLaunchMigration() }
+    }
     return coordinator
   }
 
@@ -185,7 +208,7 @@ final class ModelDeliveryHome {
   func checkerDeliveryEnabled(_ engine: LearnedWordCheckerEngine) -> Bool {
     let defaults =
       checkerDeliveryDefaults
-      ?? UserDefaults(suiteName: DeliveryFlags.suiteName) ?? .standard
+      ?? SettingsDefaults.store
     return DeliveryFlags.snapshot(family: engine.checkerFamily, defaults: defaults).familyEnabled
   }
 
@@ -301,20 +324,6 @@ final class ModelDeliveryHome {
     for observer in parakeetUsableObservers { observer() }
   }
 
-  /// #3385: Settings re-checks the current marker and file stamps. Never trust
-  /// the admitted mirror: files may have been removed since it was published.
-  /// This read neither ensures availability nor takes an engine mutation claim.
-  /// #3546: with an upgrade target, the identity that serves or will serve
-  /// answers, with rejection and load permission applied, so Ultra's raw
-  /// marker never makes a working v3 look unavailable (or the reverse).
-  func currentParakeetAdmission() async -> Bool {
-    if let parakeetUpgrade, parakeetUpgrade.hasUpgradeTarget {
-      return await parakeetUpgrade.currentAdmission()
-    }
-    guard let registration = parakeetRegistration else { return false }
-    return await controller.isAdmitted(registration)
-  }
-
   /// #3546 E12/E13: Settings' Cancel and Resume for the BACKGROUND upgrade.
   func cancelParakeetUpgradeDownload() {
     Task { [weak self] in try? await self?.parakeetUpgrade?.cancelBackgroundUpgrade() }
@@ -358,6 +367,13 @@ final class ModelDeliveryHome {
   /// #3546 row T: the warm-up Settings' Try again runs after a granted cycle.
   /// Set by the bootstrapper to the Parakeet driver's guarded warm-up.
   var warmParakeetAfterExplicitRetry: (@MainActor () async -> Void)?
+
+  /// #4837: the load that follows an admitted Parakeet download (Settings' Set up model and
+  /// Resume, Setup, the dev door), so the engine is not left waiting for the next hotkey press or
+  /// relaunch. Set by the bootstrapper to the Parakeet driver's guarded warm-up, which also
+  /// holds the Parakeet-selected-and-active and Setup-finished conditions. Single-flight: a
+  /// caller that warms itself (Setup) overlaps harmlessly.
+  var warmParakeetAfterAdmission: (@MainActor () async -> Void)?
 
   /// Settings' Try again: grant the bounded cycle, then load now, so the row
   /// does not clear into a model that waits for the next dictation to load.
@@ -568,6 +584,9 @@ final class ModelDeliveryHome {
     // Moving the Whisper pair onto the resolver is #2695's PR 2. This only
     // stops them registering when storage is already known to be unusable.
     guard !storage.isUnavailable else {
+      speakerLiveLaunchProbeTaskDone = true
+      speakerFinalLaunchProbeTaskDone = true
+      maybeFinishSpeakerLaunchProbesForTests()
       Task {
         await AppLogger.shared.log(
           "Model delivery: storage is unavailable, so Parakeet and both Whisper "
@@ -612,6 +631,7 @@ final class ModelDeliveryHome {
         store: ParakeetUpgradeStateStore(
           metadataDirectory: metadataDirectory, targetCacheKey: identity.cacheKey),
         ownedModelsRoot: storage.dataDirectory.appendingPathComponent("Models", isDirectory: true))
+      parakeetInstallIntent = ParakeetInstallIntentStore(metadataDirectory: metadataDirectory)
       installRetiredV3(
         dataDirectory: storage.dataDirectory, metadataDirectory: metadataDirectory,
         legacyDonorDirectory: storage.systemApplicationSupport.map {
@@ -799,17 +819,20 @@ final class ModelDeliveryHome {
       let registration = try Self.speakerLiveDeliveryRegistration(
         manifestBundle: manifestBundle, appSupport: appSupportRoot)
       speakerLiveRegistration = registration
-      Task { await controller.sweepSupersededStaging(registration) }
       speakerLiveHandle = DeliveredModelHandle(
         controller: controller, registration: registration, defaults: deliveryFlagDefaults)
       let speakerHome = self
       let speakerIdentity = registration.manifest.identity
       Task {
+        defer { speakerHome.markSpeakerLiveLaunchProbeDoneForTests() }
+        await speakerHome.controller.sweepSupersededStaging(registration)
         await speakerHome.attachSpeakerLiveObserver(identity: speakerIdentity)
         await speakerHome.recordFirstRunBaseline(for: registration)
         _ = await speakerHome.controller.admitIfComplete(registration)
       }
     } catch {
+      speakerLiveLaunchProbeTaskDone = true
+      maybeFinishSpeakerLaunchProbesForTests()
       Task {
         await AppLogger.shared.log(
           "Speaker labels model manifest unavailable: live speaker labels stay off and no "
@@ -828,12 +851,15 @@ final class ModelDeliveryHome {
       speakerFinalHandle = DeliveredModelHandle(
         controller: controller, registration: registration, defaults: deliveryFlagDefaults)
       Task {
+        defer { self.markSpeakerFinalLaunchProbeDoneForTests() }
         await controller.sweepSupersededStaging(registration)
         await self.attachSpeakerLiveObserver(identity: registration.manifest.identity, finished: true)
         await self.recordFirstRunBaseline(for: registration)
         _ = await controller.admitIfComplete(registration)
       }
     } catch {
+      speakerFinalLaunchProbeTaskDone = true
+      maybeFinishSpeakerLaunchProbesForTests()
       Task {
         await AppLogger.shared.log(
           "Finished-call speaker model manifest unavailable; existing speaker analysis remains available",
@@ -1124,8 +1150,8 @@ final class ModelDeliveryHome {
       // The seam that guarantees it has run lives in the engine adapter's
       // warm-up, and warm-up is driven by a recording session — so without this
       // the whole migration, including a hash of 483 MB, is paid by the user's
-      // FIRST TAKE after updating. Starting it here moves that cost to launch,
-      // where nobody is waiting on it. Measured on the founder's machine: the
+      // FIRST TAKE after updating. Starting it at launch moves that cost to where
+      // nobody is waiting on it. Measured on the founder's machine: the
       // migration itself is ~1s.
       //
       // Through the HANDLE rather than the controller (review A, P2). The handle
@@ -1138,18 +1164,15 @@ final class ModelDeliveryHome {
       // controller's single-flight coordinator, so a warm-up arriving mid-run
       // joins this task rather than starting a second on the same candidate.
       //
-      // THE RESULT IS DISCARDED HERE, AND ONLY HERE, DELIBERATELY. Every other
+      // THE RESULT IS DISCARDED THERE, AND ONLY THERE, DELIBERATELY. Every other
       // caller of this seam ACTS on the location and must honour a refusal:
-      // `resumeParakeetDownload` below guards on it, and
-      // `ParakeetUpgradeCoordinator`'s no-target delivery stage throws on it
-      // (#3546: moved there from `ParakeetEngineAdapter`). This call acts on
-      // nothing — a refusal means the migration inside simply did not run,
-      // which is the outcome we want. Enumerated rather than assumed:
-      // `/usr/bin/grep -rn "ensureModelLocationReady" Sources/` returns three
-      // call sites, and this is the only one with nothing to refuse.
-      // (#3546: the task is kept only so a test can wait for the migration
-      // construction started; nothing in production reads it or its result.)
-      retiredV3LaunchMigrationForTesting = Task { await handle.ensureModelLocationReady() }
+      // `ParakeetUpgradeCoordinator.resumeDownloadInForeground` and its no-target
+      // delivery stage. The launch run acts on nothing — a refusal means the
+      // migration inside simply did not run, which is the outcome we want.
+      //
+      // #4578: started by `installParakeetUpgrade` through the coordinator's
+      // `runLaunchMigration()`, which first reads the install intent: after a
+      // Remove the donor copy must not be adopted back.
     } catch {
       Task {
         await AppLogger.shared.log(
@@ -1641,8 +1664,37 @@ final class ModelDeliveryHome {
   /// `lastAppliedPreviewStateSeq` gives.
   private(set) var speakerLiveState: DeliveryState = .notReady
   private var lastAppliedSpeakerLiveStateSeq: UInt64 = 0
+  private let publishedSpeakerLiveSeq = OSAllocatedUnfairLock<UInt64>(initialState: 0)
   private(set) var speakerFinalState: DeliveryState = .notReady
   private var lastAppliedSpeakerFinalStateSeq: UInt64 = 0
+  private let publishedSpeakerFinalSeq = OSAllocatedUnfairLock<UInt64>(initialState: 0)
+  private var speakerLiveLaunchProbeTaskDone = false
+  private var speakerFinalLaunchProbeTaskDone = false
+  package private(set) var speakerLaunchProbesDidFinishForTests = false
+  var onSpeakerLaunchProbesFinished: (@MainActor () -> Void)? {
+    didSet { if speakerLaunchProbesDidFinishForTests { onSpeakerLaunchProbesFinished?() } }
+  }
+
+  private func markSpeakerLiveLaunchProbeDoneForTests() {
+    speakerLiveLaunchProbeTaskDone = true
+    maybeFinishSpeakerLaunchProbesForTests()
+  }
+
+  private func markSpeakerFinalLaunchProbeDoneForTests() {
+    speakerFinalLaunchProbeTaskDone = true
+    maybeFinishSpeakerLaunchProbesForTests()
+  }
+
+  private func maybeFinishSpeakerLaunchProbesForTests() {
+    guard !speakerLaunchProbesDidFinishForTests,
+      speakerLiveLaunchProbeTaskDone,
+      speakerFinalLaunchProbeTaskDone,
+      lastAppliedSpeakerLiveStateSeq >= publishedSpeakerLiveSeq.withLock({ $0 }),
+      lastAppliedSpeakerFinalStateSeq >= publishedSpeakerFinalSeq.withLock({ $0 })
+    else { return }
+    speakerLaunchProbesDidFinishForTests = true
+    onSpeakerLaunchProbesFinished?()
+  }
 
   /// The download size the card shows, from the bundled manifest.
   var speakerLiveDownloadBytes: Int64? {
@@ -1662,24 +1714,35 @@ final class ModelDeliveryHome {
     await controller.addStateObserver { observedIdentity, state in
       guard observedIdentity == identity else { return }
       let seq = sequencer.next()
+      if finished {
+        home.publishedSpeakerFinalSeq.withLock { $0 = max($0, seq) }
+      } else {
+        home.publishedSpeakerLiveSeq.withLock { $0 = max($0, seq) }
+      }
       Task { @MainActor in
         if finished {
           guard seq > home.lastAppliedSpeakerFinalStateSeq else { return }
           home.lastAppliedSpeakerFinalStateSeq = seq
-          home.speakerFinalState = state
-          home.cancelStaleSpeakerLiveTransfer()
+          home.applySpeakerFinalState(state)
+          home.maybeFinishSpeakerLaunchProbesForTests()
           return
         }
         guard seq > home.lastAppliedSpeakerLiveStateSeq else { return }
         home.lastAppliedSpeakerLiveStateSeq = seq
         home.applySpeakerLiveState(state)
+        home.maybeFinishSpeakerLaunchProbesForTests()
       }
     }
   }
 
   private func applySpeakerLiveState(_ state: DeliveryState) {
     speakerLiveState = state
-    cancelStaleSpeakerLiveTransfer()
+    cancelStaleSpeakerLiveTransfer(on: state)
+  }
+
+  private func applySpeakerFinalState(_ state: DeliveryState) {
+    speakerFinalState = state
+    cancelStaleSpeakerLiveTransfer(on: state)
   }
 
   /// Applies a state as the delivery observer does, for tests that need one the fake fetch
@@ -1689,8 +1752,7 @@ final class ModelDeliveryHome {
   }
 
   package func applySpeakerFinalStateForTests(_ state: DeliveryState) {
-    speakerFinalState = state
-    cancelStaleSpeakerLiveTransfer()
+    applySpeakerFinalState(state)
   }
 
   // The handoffs of this door, in order, and what orders each one (enumerated after two review
@@ -1708,17 +1770,16 @@ final class ModelDeliveryHome {
   // 5. Remove: requests are refused while it runs; the shared removal stops any attempt.
 
   /// Stops an attempt whose request was cancelled before the controller registered it (handoff 3).
-  private func cancelStaleSpeakerLiveTransfer() {
+  private func cancelStaleSpeakerLiveTransfer(on state: DeliveryState) {
     guard let epoch = speakerLiveFetchEpoch, epoch != speakerLiveIntentEpoch,
       speakerLiveScheduledEpoch == nil, !speakerLiveCancelRunning
     else { return }
-    guard [speakerLiveState, speakerFinalState].contains(where: { state in
-      switch state {
-      case .preparing, .downloading, .verifying: true
-      case .notReady, .admitted, .cancelled, .failed: false
-      }
-    }) else { return }
-    cancelSpeakerLiveTransfer()
+    // Check only the incoming update so an unrelated handle's `.notReady` replay cannot fire a
+    // second cancel from the other handle's transfer state (#4540).
+    switch state {
+    case .preparing, .downloading, .verifying: cancelSpeakerLiveTransfer()
+    case .notReady, .admitted, .cancelled, .failed: break
+    }
   }
 
   /// Sends one cancellation, after any earlier one. A later request waits for it (handoff 2).
@@ -2028,8 +2089,26 @@ final class ModelDeliveryHome {
   /// stop it, and cancelling starts no network work. Same shape as
   /// `DeliveredModelHandle.cancelActiveFetch()`
   /// (`DeliveredModelHandle.swift (cancelActiveFetch)`), which is ungated for that stated reason.
-  func resumeParakeetDownload() {
-    guard let handle = parakeetHandle else { return }
+  ///
+  /// #4528 M49: returns the request's own answer for a caller that must tell a refusal from a
+  /// download (Setup). Nil = refused before any work; the task's value is `.refused` for every
+  /// later refusal (kill switch re-read, claim, location, attempt budget) or `.attempted` with
+  /// the attempt's outcome. Settings ignores it, as before.
+  @discardableResult
+  func resumeParakeetDownload() -> Task<ParakeetDownloadAnswer, Never>? {
+    parakeetDownload(explicitInstall: false)
+  }
+
+  /// #4578: "Set up model": the person's explicit install, which also records that Parakeet is
+  /// wanted again and grants a fresh bounded cycle (`installExplicitly`). Same kill-switch,
+  /// claim and answer contract as Resume.
+  @discardableResult
+  func installParakeetExplicitly() -> Task<ParakeetDownloadAnswer, Never>? {
+    parakeetDownload(explicitInstall: true)
+  }
+
+  private func parakeetDownload(explicitInstall: Bool) -> Task<ParakeetDownloadAnswer, Never>? {
+    guard let handle = parakeetHandle else { return nil }
     guard handle.isEnabled() else {
       parakeetResumeRefusalsForTests += 1
       // A DEBUG diagnostic, and it is worth being exact about that rather than
@@ -2050,10 +2129,10 @@ final class ModelDeliveryHome {
             + "(modelDelivery.parakeet.enabled = false)",
           level: .info, category: "Delivery")
       }
-      return
+      return nil
     }
-    Task { [weak self] in
-      guard let self else { return }
+    return Task { [weak self] in
+      guard let self else { return .refused }
       // The re-read (see the doc comment above). Still BEFORE the claim, for the
       // same reason the synchronous one is: a refusal must not take the claim.
       guard handle.isEnabled() else {
@@ -2063,29 +2142,89 @@ final class ModelDeliveryHome {
             + "between the button and the download starting "
             + "(modelDelivery.parakeet.enabled = false)",
           level: .info, category: "Delivery")
-        return
+        return .refused
       }
       // #1707 Phase 3 (§3.2, row 17): hold a mutation claim for the FULL
       // download.
-      _ = await self.engineMutationScope.withClaim(site: "parakeetResumeDownload") {
+      let claim = await self.engineMutationScope.withClaim(site: "parakeetResumeDownload") {
+        () async -> ParakeetDownloadAnswer in
         // Cloud review P2: JOIN the launch migration before the attempt. Resume
         // called `ensureAvailable()` straight through, so pressing it while the
         // launch migration was still publishing put an attempt — which deletes
         // failed components — alongside a migration that publishes them.
         // `ensureModelLocationReady()` is the single-flight door, so this waits
         // for that run rather than racing it, and `nil` from it is a refusal
-        // this path must honour like any other.
-        guard await handle.ensureModelLocationReady() != nil else { return }
+        // this path must honour like any other. #4578: the join now runs inside
+        // `ParakeetUpgradeCoordinator.resumeDownloadInForeground()`.
         // #3546: with an upgrade target the coordinator runs the fetch as a
         // counted foreground operation (progress, location, budget, Cancel).
-        if let upgrade = self.parakeetUpgrade, upgrade.hasUpgradeTarget {
-          _ = await upgrade.fetchInForeground()
+        // #4578: one consent-aware coordinator command for both branches; a removal the
+        // person recorded refuses it (Set up model is the explicit install).
+        guard let upgrade = self.parakeetUpgrade else { return .refused }
+        let outcome: ModelDeliveryController.DeliveryOutcome?
+        if explicitInstall {
+          // A store that cannot record "wanted" starts nothing.
+          outcome = (try? await upgrade.installExplicitly()) ?? nil
         } else {
-          _ = await handle.ensureAvailable()
+          outcome = await upgrade.resumeDownloadInForeground()
         }
+        guard let outcome else { return .refused }
+        return .attempted(outcome)
       }
+      guard case .completed(let answer) = claim else { return .refused }
+      // #4837: after the claim ends (the warm-up takes its own), an admitted download loads
+      // the engine now, on its own task so the download's answer (Setup, Settings' busy flag,
+      // the dev door) never waits for the load. A failed, cancelled or refused one loads nothing.
+      if case .attempted(.admitted) = answer, let warm = self.warmParakeetAfterAdmission {
+        Task { await warm() }
+      }
+      return answer
     }
   }
+}
+
+extension ModelDeliveryHome {
+  /// #4578: deletes both owned Parakeet copies (Ultra and the retired v3). The caller
+  /// (`SpeechModelLibrary.removeParakeet`) has already recorded the removal and unloaded every
+  /// holder. The v3 registration records its donor decline before deleting (the controller),
+  /// so the legacy FluidAudio folder is never adopted again; that folder itself is not ours
+  /// and is never touched. Each deletion waits for a meeting's model claim to end.
+  func removeParakeetCopies() async -> Bool {
+    var removed = true
+    for registration in [parakeetRegistration, parakeetRetiredV3Registration].compactMap({ $0 }) {
+      if case .failed = await controller.remove(registration) {
+        removed = false
+        continue
+      }
+      // The owned folder itself goes too, but only when it is empty: `rmdir` never deletes a
+      // file, so anything this app did not put there stays.
+      _ = rmdir(registration.installDirectory.path)
+    }
+    return removed
+  }
+
+  /// #4578: Parakeet bytes remain on disk without an admitted install (an interrupted
+  /// removal or download), so Settings offers to remove the leftover files.
+  func parakeetHasLeftovers() async -> Bool {
+    for registration in [parakeetRegistration, parakeetRetiredV3Registration].compactMap({ $0 })
+    where await controller.hasLeftoverBytes(registration) {
+      return true
+    }
+    return false
+  }
+
+  /// #4578: the dictation Whisper model's bytes remain on disk without an admitted install (an
+  /// interrupted removal), so Settings offers to remove the leftover files.
+  func whisperHasLeftovers() async -> Bool {
+    guard let registration = whisperRegistration else { return false }
+    return await controller.hasLeftoverBytes(registration)
+  }
+}
+
+/// #4528 M49: what an explicit Parakeet download request came to.
+enum ParakeetDownloadAnswer: Sendable {
+  case refused
+  case attempted(ModelDeliveryController.DeliveryOutcome)
 }
 
 /// The ONE authority for user-facing delivery-failure copy (D6 states

@@ -1,0 +1,84 @@
+{
+  "unloadPolishModel.fifteenMinutes": {
+    "language": "zh",
+    "title": "15 分钟后",
+    "words": [
+      "润色闲置15分钟",
+      "润色闲置一刻钟"
+    ],
+    "phrases": [
+      "润色模型闲置15分钟后释放内存"
+    ]
+  },
+  "unloadPolishModel.fiveMinutes": {
+    "language": "zh",
+    "title": "5 分钟后",
+    "words": [
+      "润色闲置5分钟",
+      "润色闲置五分钟"
+    ],
+    "phrases": [
+      "润色模型闲置5分钟后释放内存",
+      "潤飾模型閒置5分鐘後釋放記憶體"
+    ]
+  },
+  "unloadPolishModel.immediately": {
+    "language": "zh",
+    "title": "立即（约 10 秒）",
+    "words": [
+      "立即释放润色模型内存",
+      "润色闲置10秒",
+      "润色闲置十秒"
+    ],
+    "phrases": [
+      "润色模型闲置约10秒后释放内存"
+    ]
+  },
+  "unloadPolishModel.never": {
+    "language": "zh",
+    "title": "从不卸载",
+    "words": [
+      "润色模型常驻内存",
+      "一直加载润色模型",
+      "永不卸载润色模型"
+    ],
+    "phrases": [
+      "停止听写后也把润色模型留在内存里"
+    ]
+  },
+  "unloadPolishModel.oneHour": {
+    "language": "zh",
+    "title": "1 小时后",
+    "words": [
+      "润色闲置1小时",
+      "润色闲置一小时",
+      "润色闲置60分钟"
+    ],
+    "phrases": [
+      "润色模型闲置一小时后释放内存"
+    ]
+  },
+  "unloadPolishModel.tenMinutes": {
+    "language": "zh",
+    "title": "10 分钟后",
+    "words": [
+      "润色闲置10分钟",
+      "润色闲置十分钟"
+    ],
+    "phrases": [
+      "润色模型闲置10分钟后释放内存"
+    ]
+  },
+  "unloadPolishModel.twoMinutes": {
+    "language": "zh",
+    "title": "2 分钟后",
+    "words": [
+      "润色闲置2分钟",
+      "润色闲置两分钟",
+      "润色闲置120秒"
+    ],
+    "phrases": [
+      "润色模型闲置两分钟后释放内存"
+    ]
+  }
+}

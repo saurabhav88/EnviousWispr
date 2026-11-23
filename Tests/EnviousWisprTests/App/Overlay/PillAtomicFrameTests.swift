@@ -96,7 +96,7 @@ struct PillAtomicFrameTests {
       content: .recording(audioLevel: 0.4, isLocked: locked, notice: notice, design: design),
       expiry: .untilReplaced,
       requestedWidth: .fixed(design.width),
-      reservesFixedHeight: design.reservedHeight)
+      reservesFixedHeight: nil)
   }
 
   private static let capNotice = InPanelNotice(reason: .approachingCap, dismissAfter: nil)

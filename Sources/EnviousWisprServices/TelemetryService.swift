@@ -69,6 +69,8 @@ extension Dictionary where Key == String, Value == Any {
 public enum ApiKeyValidationSource: String, Sendable {
   case save
   case modelDiscovery = "model_discovery"
+  /// #4721: the automatic check of a saved key when the app starts, never a person's action.
+  case launch
 }
 
 /// #1464 — the root cause behind one crash-recovery attempt's `recovery.completed`
@@ -420,6 +422,7 @@ public final class TelemetryService {
       fillerRemoval: false,
       targetApp: m?.targetApp,
       pasteResult: m?.pasteTier,
+      deliveryOutcome: m?.deliveryOutcome,
       focusOwnerState: m?.focusOwnerState,
       e2eSeconds: m?.e2eSeconds ?? t.processingTime,
       asrSeconds: m?.asrLatencySeconds,
@@ -745,22 +748,68 @@ public final class TelemetryService {
   public func appLaunched(
     version: String, build: String, osVersion: String, hardware: String,
     deviceModel: String, isFreshInstall: Bool,
-    aiCapable: Bool, aiEnabled: Bool
+    aiCapable: Bool, aiEnabled: Bool, speechModelsInstalled: String? = nil
   ) {
     PostHogSDK.shared.capture(
       "app.launched",
-      properties: [
-        "version": version,
-        "build": build,
-        "os_version": osVersion,
-        "hardware": hardware,
-        // #1572: the SPECIFIC machine, alongside the architecture. `hardware` keeps
-        // its meaning so its own history stays readable.
-        "device_model": deviceModel,
-        "is_fresh_install": isFreshInstall,
-        "ai_capable": aiCapable,
-        "ai_enabled": aiEnabled,
-      ])
+      properties: Self.appLaunchedProperties(
+        version: version, build: build, osVersion: osVersion, hardware: hardware,
+        deviceModel: deviceModel, isFreshInstall: isFreshInstall, aiCapable: aiCapable,
+        aiEnabled: aiEnabled, speechModelsInstalled: speechModelsInstalled))
+  }
+
+  /// The `app.launched` row. #4578: `speech_models_installed` (`parakeet`, `whisper`, `both`,
+  /// `none`) is absent when the installation reads did not settle; it does not tell a removed
+  /// model from one never installed.
+  nonisolated static func appLaunchedProperties(
+    version: String, build: String, osVersion: String, hardware: String,
+    deviceModel: String, isFreshInstall: Bool, aiCapable: Bool, aiEnabled: Bool,
+    speechModelsInstalled: String?
+  ) -> [String: Any] {
+    var properties: [String: Any] = [
+      "version": version,
+      "build": build,
+      "os_version": osVersion,
+      "hardware": hardware,
+      // #1572: the SPECIFIC machine, alongside the architecture. `hardware` keeps
+      // its meaning so its own history stays readable.
+      "device_model": deviceModel,
+      "is_fresh_install": isFreshInstall,
+      "ai_capable": aiCapable,
+      "ai_enabled": aiEnabled,
+    ]
+    if let speechModelsInstalled { properties["speech_models_installed"] = speechModelsInstalled }
+    return properties
+  }
+
+  /// #4021: a Core Audio device read on the off-main lane got no answer in time
+  /// (`timed_out`), or such a read finally returned (`recovered`). #4601: also a job on the
+  /// audio-unit lane (microphone start, release or check) that passed its own operation limit,
+  /// once per such job; starts refused while it is stuck send nothing here. Shape only: which read, which
+  /// phase, the bound that read was given and, on recovery, how long it took. No device names,
+  /// UIDs or other content. `rare_failure`: zero rows on a healthy Mac; at most one `timed_out`
+  /// and one `recovered` per abandoned read, because the lane refuses new reads while one is stuck.
+  package func coreAudioReadStuck(
+    read: CoreAudioReadTelemetry.Read, phase: CoreAudioReadTelemetry.Phase, boundMs: Int,
+    returnedAfterMs: Int? = nil
+  ) {
+    var props: [String: Any] = [
+      "read": read.rawValue,
+      "phase": phase.rawValue,
+      "bound_ms": boundMs,
+    ]
+    // Only a recovery carries how long the read took.
+    if phase == .recovered, let returnedAfterMs { props["returned_after_ms"] = returnedAfterMs }
+    #if DEBUG
+      testEventHook?(
+        CapturedTelemetryEvent(
+          name: "audio.core_audio_read_stuck",
+          stringProps: ["read": read.rawValue, "phase": phase.rawValue],
+          intProps: props.compactMapValues { $0 as? Int }))
+      testRawPropertiesHook?("audio.core_audio_read_stuck", props)
+    #endif
+    SentryBreadcrumb.add(stage: "core_audio_lane", message: "read_stuck", data: props)
+    PostHogSDK.shared.capture("audio.core_audio_read_stuck", properties: props)
   }
 
   /// #3289: one sample per launch after 12 idle minutes: does an idle app give its memory back?
@@ -806,9 +855,12 @@ public final class TelemetryService {
     PostHogSDK.shared.capture("onboarding.started")
   }
 
-  public func onboardingStepCompleted(step: String, result: String, durationSeconds: Double? = nil)
+  public func onboardingStepCompleted(
+    step: String, result: String, durationSeconds: Double? = nil, polishRan: Bool? = nil
+  )
   {
     var props: [String: Any] = ["step": step, "result": result]
+    if let polishRan { props["polish_ran"] = polishRan }
     if let d = durationSeconds {
       // #2980: Double, the same type as `$value`. This and the fifteen other
       // numbers below travelled as `String(format:)`, which typed each PostHog
@@ -825,18 +877,132 @@ public final class TelemetryService {
         CapturedTelemetryEvent(
           name: "onboarding.step_completed",
           stringProps: props.compactMapValues { $0 as? String },
-          doubleProps: props.compactMapValues { $0 as? Double }))
+          doubleProps: props.compactMapValues { $0 as? Double },
+          boolProps: polishRan.map { ["polish_ran": $0] } ?? [:]))
     #endif
     PostHogSDK.shared.capture("onboarding.step_completed", properties: props)
   }
 
-  public func onboardingCompleted(asrBackend: String, recordingMode: String) {
-    PostHogSDK.shared.capture(
-      "onboarding.completed",
-      properties: [
-        "asr_backend": asrBackend,
-        "recording_mode": recordingMode,
-      ])
+  /// `asr_backend` and `recording_mode` are the original contract (the daily report reads the
+  /// event); #4528 §3.8 adds the Setup summary fields, all optional so existing callers and
+  /// payloads are unchanged.
+  public func onboardingCompleted(
+    asrBackend: String, recordingMode: String, summary: OnboardingTelemetry.CompletionSummary? = nil
+  ) {
+    var props: [String: Any] = ["asr_backend": asrBackend, "recording_mode": recordingMode]
+    if let summary {
+      props["polish_provider"] = summary.polishProvider.rawValue
+      props["polish_model_id"] = summary.polishModel.id
+      props["speech_model_id"] = summary.speechModel.rawValue
+      if let followed = summary.followedAllRecommendations {
+        props["followed_all_recommendations"] = followed
+      }
+      // Mode only, like settings telemetry (`SettingsProjection.languageModeLabel`); the code is on
+      // the language `choice_made` row.
+      switch summary.languageMode {
+      case .auto: props["language_mode"] = "auto"
+      case .locked: props["language_mode"] = "locked"
+      }
+      props["rules_version"] = OnboardingTelemetry.boundedIdentifier(summary.rulesVersion)
+      // The film may not have been shown (Skip practice ends Setup before it); only this
+      // summary can say so, never `onboarding.film_finished`.
+      props["film_result"] = summary.filmResult?.rawValue ?? "not_shown"
+      if let deferred = summary.polishDeferred { props["polish_deferred"] = deferred }
+      if let skipAhead = summary.skipAhead {
+        props.merge(skipAhead.properties) { current, _ in current }
+      }
+    }
+    #if DEBUG
+      testEventHook?(
+        CapturedTelemetryEvent(
+          name: "onboarding.completed",
+          stringProps: props.compactMapValues { $0 as? String },
+          boolProps: props.compactMapValues { $0 as? Bool }))
+    #endif
+    PostHogSDK.shared.capture("onboarding.completed", properties: props)
+  }
+
+  /// #4528 §3.8: one row per Setup screen shown (at most 14 per visit; the coordinator dedupes,
+  /// chunk F2). `elapsed_seconds` is time since the visit began; `$value` carries it.
+  public func onboardingScreenViewed(
+    step: String, entry: OnboardingTelemetry.Entry, elapsedSeconds: Double
+  ) {
+    let props: [String: Any] = [
+      "step": OnboardingTelemetry.boundedIdentifier(step), "entry": entry.rawValue,
+      "elapsed_seconds": elapsedSeconds, "$value": elapsedSeconds,
+    ]
+    captureOnboarding("onboarding.screen_viewed", props)
+  }
+
+  /// #4528 §3.8: one row per final choice of each kind per visit (F2 aggregates). The value is
+  /// typed per kind (`OnboardingTelemetry.Choice`), so only closed values can be sent: engines and
+  /// providers are enums, polish picks and languages must be ones the app offers, a key is a
+  /// closed outcome, and a cloud model must already be the settings-telemetry projection.
+  public func onboardingChoiceMade(
+    _ choice: OnboardingTelemetry.Choice, recommended: OnboardingTelemetry.Choice?,
+    followedRecommendation: Bool?, rulesVersion: String
+  ) {
+    var props: [String: Any] = [
+      "kind": choice.kind.rawValue, "value": choice.value,
+      "rules_version": OnboardingTelemetry.boundedIdentifier(rulesVersion),
+    ]
+    // Unknown agreement (no recommendation for this kind) is omitted, never reported as false.
+    if let followedRecommendation { props["followed_recommendation"] = followedRecommendation }
+    if let recommended, recommended.kind == choice.kind { props["recommended_value"] = recommended.value }
+    captureOnboarding("onboarding.choice_made", props)
+  }
+
+  /// #4528 §3.8: one row per Setup download that ends (ok, failed or cancelled). `seconds` is
+  /// the attempt's duration (`$value`); size is a coarse bucket, never exact bytes.
+  public func onboardingDownloadFinished(
+    model: OnboardingTelemetry.DownloadModel, result: OnboardingTelemetry.DownloadResult,
+    seconds: Double, bytes: Int64?
+  ) {
+    let props: [String: Any] = [
+      "model_kind": model.kind.rawValue, "model_id": model.id,
+      "result": result.rawValue, "seconds": seconds, "$value": seconds,
+      "bytes_bucket": OnboardingTelemetry.bytesBucket(bytes),
+    ]
+    captureOnboarding("onboarding.download_finished", props)
+  }
+
+  /// #4845: Getting ready's Skip ahead offer, at most one `offered`, one `kept_waiting` and one
+  /// of `skipped`/`download_won` per Setup visit (the coordinator latches). `waited_seconds` is the
+  /// time since the visit first reached Getting ready (`$value`); the estimate is a coarse bucket.
+  public func onboardingSkipAhead(
+    action: OnboardingTelemetry.SkipAheadAction, polishModel: String, secondsLeft: Double?,
+    waitedSeconds: Double, visit: String
+  ) {
+    let props: [String: Any] = [
+      "action": action.rawValue,
+      "setup_visit_id": OnboardingTelemetry.boundedIdentifier(visit),
+      "polish_model": OnboardingTelemetry.polishValue(polishModel),
+      "seconds_left_bucket": OnboardingTelemetry.secondsLeftBucket(secondsLeft),
+      "waited_seconds": waitedSeconds, "$value": waitedSeconds,
+    ]
+    captureOnboarding("onboarding.skip_ahead", props)
+  }
+
+  /// #4528 §3.8: once per visit when the refresher film ends.
+  public func onboardingFilmFinished(result: OnboardingTelemetry.FilmResult, lastScene: String) {
+    let props: [String: Any] = [
+      "result": result.rawValue, "last_scene": OnboardingTelemetry.boundedIdentifier(lastScene),
+    ]
+    captureOnboarding("onboarding.film_finished", props)
+  }
+
+  /// One capture path for the #4528 onboarding events: the SDK's consent and volume policy apply
+  /// as for every event; the DEBUG mirror is derived from the emitted payload.
+  private func captureOnboarding(_ name: String, _ props: [String: Any]) {
+    #if DEBUG
+      testEventHook?(
+        CapturedTelemetryEvent(
+          name: name,
+          stringProps: props.compactMapValues { $0 as? String },
+          doubleProps: props.compactMapValues { $0 as? Double },
+          boolProps: props.compactMapValues { $0 as? Bool }))
+    #endif
+    PostHogSDK.shared.capture(name, properties: props)
   }
 
   /// Telemetry Bible Phase 7 (#1176): a first-run user was blocked on a setup
@@ -870,13 +1036,15 @@ public final class TelemetryService {
   /// visible. `app_quit` is best-effort (a `kill -9` bypasses `applicationWillTerminate`).
   public func onboardingAbandoned(
     screen: String, step: String, elapsedSeconds: Double?,
-    micStatus: String, accessibilityStatus: String, abandonReason: String, source: String
+    micStatus: String, accessibilityStatus: String, abandonReason: String, source: String,
+    skipAhead: OnboardingTelemetry.SkipAheadVisitSummary? = nil
   ) {
     var props: [String: Any] = [
       "screen": screen, "step": step, "mic_status": micStatus,
       "accessibility_status": accessibilityStatus, "abandon_reason": abandonReason,
       "source": source,
     ]
+    if let skipAhead { props.merge(skipAhead.properties) { current, _ in current } }
     if let e = elapsedSeconds {
       props["elapsed_seconds"] = e  // #2980: Double
       props["$value"] = e  // raw numeric for PostHog aggregation (matches step_completed)
@@ -889,6 +1057,14 @@ public final class TelemetryService {
           doubleProps: props.compactMapValues { $0 as? Double }))
     #endif
     PostHogSDK.shared.capture("onboarding.abandoned", properties: props)
+  }
+
+  /// #4528 §3.8: the new Setup blockers (key check, disk, download), alongside the existing
+  /// warm-up and permission reasons. Same event and properties as the string form.
+  public func onboardingStepBlocked(
+    step: String, reason: OnboardingTelemetry.BlockedReason, durationSeconds: Double? = nil
+  ) {
+    onboardingStepBlocked(step: step, reason: reason.rawValue, durationSeconds: durationSeconds)
   }
 
   // MARK: - Audio System Events (issue #574)
@@ -1923,6 +2099,7 @@ public final class TelemetryService {
         "vad_stage_reached", "vad_backend", "vad_input_route", "polish_language_hint",
         "polish_setup_problem", "asr_model", "asr_model_revision", "asr_model_variant",
         "outside_stop_engine", "outside_stop_memory_pressure", "outside_stop_polish_result",
+        "silent_mic_notice",
       ] {
         if let value = props[key] as? String { stringProps[key] = value }
       }
@@ -1945,7 +2122,7 @@ public final class TelemetryService {
       var boolProps: [String: Bool] = [:]
       for key in [
         "vad_ready", "vad_model_reused", "vad_first_chunk_should_stop", "asr_model_loaded",
-        "asr_model_inference_reached",
+        "asr_model_inference_reached", "silent_mic_cleared",
       ] {
         if let value = props[key] as? Bool { boolProps[key] = value }
       }
@@ -2099,6 +2276,7 @@ public final class TelemetryService {
     model: ASRModelAttribution?,
     llmProvider: String?, fillerRemoval: Bool,
     targetApp: String?, pasteResult: String?,
+    deliveryOutcome: String? = nil,
     /// #3423: the record-start focus-owner state, one of five closed values; nil omits the key.
     focusOwnerState: String? = nil,
     e2eSeconds: Double, asrSeconds: Double?, llmSeconds: Double?,
@@ -2188,6 +2366,7 @@ public final class TelemetryService {
     if let a = targetApp { props["target_app"] = a }
     if let state = focusOwnerState { props["focus_owner_state"] = state }
     if let pr = pasteResult { props["paste_result"] = pr }
+    if let deliveryOutcome { props["delivery_outcome"] = deliveryOutcome }
     if let asr = asrSeconds { props["asr_seconds"] = asr }
     if let llm = llmSeconds { props["llm_seconds"] = llm }
     // #145: deterministic ITN facts (metadata only — `telemetry-privacy-boundary`).
@@ -2430,7 +2609,7 @@ public final class TelemetryService {
   // MARK: - Cold-boot warm-up (#879)
 
   /// Cold-boot warm-up began for the active engine. `reason` tags the call site
-  /// (launch / onboarding / engine_swap / cold_press / explicit_retry); `warmupInFlight` is true
+  /// (launch / onboarding / engine_swap / cold_press / explicit_retry / after_download); `warmupInFlight` is true
   /// when a prior warm-up was already running and this call joined it. Privacy:
   /// timing/state only, no audio or text (telemetry-privacy boundary).
   /// #3546 §3.7 T1: `model` is the identity this warm-up was asked to load,
@@ -3451,13 +3630,14 @@ public final class TelemetryService {
   /// the population is complete rather than branch-selected. Warm reuse emits
   /// nothing.
   public func audioInputResolution(
-    defaultPresent: Bool,
-    enumerationOutcome: String,
+    defaultPresent: Bool?,
+    enumerationOutcome: String?,
     inputDeviceCount: Int?,
     eligibleDeviceCount: Int?,
     inputResolutionSource: String?,
     selectedTransport: String?,
-    bindOutcome: String,
+    skippedDefaultTransport: String? = nil,
+    bindOutcome: String?,
     prepareOutcome: String,
     prepareFailedStep: String? = nil,
     prepareFailedOSStatus: Int? = nil,
@@ -3471,6 +3651,7 @@ public final class TelemetryService {
       defaultPresent: defaultPresent, enumerationOutcome: enumerationOutcome,
       inputDeviceCount: inputDeviceCount, eligibleDeviceCount: eligibleDeviceCount,
       inputResolutionSource: inputResolutionSource, selectedTransport: selectedTransport,
+      skippedDefaultTransport: skippedDefaultTransport,
       bindOutcome: bindOutcome, prepareOutcome: prepareOutcome,
       prepareFailedStep: prepareFailedStep, prepareFailedOSStatus: prepareFailedOSStatus,
       prepareFailedOSStatusFourCC: prepareFailedOSStatusFourCC)
@@ -3501,30 +3682,33 @@ public final class TelemetryService {
 
   /// The complete `audio.input_resolution` property list (#1714, #1851).
   /// Optional values are omitted when nil because nil means NOT KNOWN; an
-  /// explicit zero is a real answer and rides as zero.
+  /// explicit zero or false is a real answer and rides as such. #4601: a start
+  /// that ended before its resolution or bind was known leaves `default_present`,
+  /// `enumeration_outcome` and `bind_outcome` out instead of inventing them.
   static func inputResolutionProperties(
-    defaultPresent: Bool,
-    enumerationOutcome: String,
+    defaultPresent: Bool?,
+    enumerationOutcome: String?,
     inputDeviceCount: Int?,
     eligibleDeviceCount: Int?,
     inputResolutionSource: String?,
     selectedTransport: String?,
-    bindOutcome: String,
+    skippedDefaultTransport: String? = nil,
+    bindOutcome: String?,
     prepareOutcome: String,
     prepareFailedStep: String?,
     prepareFailedOSStatus: Int?,
     prepareFailedOSStatusFourCC: String?
   ) -> [String: Any] {
-    var props: [String: Any] = [
-      "default_present": defaultPresent,
-      "enumeration_outcome": enumerationOutcome,
-      "bind_outcome": bindOutcome,
-      "prepare_outcome": prepareOutcome,
-    ]
+    var props: [String: Any] = ["prepare_outcome": prepareOutcome]
+    if let present = defaultPresent { props["default_present"] = present }
+    if let outcome = enumerationOutcome { props["enumeration_outcome"] = outcome }
+    if let bind = bindOutcome { props["bind_outcome"] = bind }
     if let c = inputDeviceCount { props["input_device_count"] = c }
     if let c = eligibleDeviceCount { props["eligible_device_count"] = c }
     if let s = inputResolutionSource { props["input_resolution_source"] = s }
     if let t = selectedTransport { props["selected_transport"] = t }
+    // #4601 §3.8: only when Auto deliberately bypassed the default; a bounded transport label.
+    if let t = skippedDefaultTransport { props["skipped_default_transport"] = t }
     props.merge(
       inputResolutionFailureProperties(
         step: prepareFailedStep, osStatus: prepareFailedOSStatus,
@@ -5590,6 +5774,23 @@ public final class TelemetryService {
     }
   }
 
+  // MARK: - Silent-mic notice (#4841, folded onto the terminal row)
+
+  /// Records that the pill accepted a silent-mic notice of `level` for `takeID`; keeps the
+  /// highest level seen (`strong` outranks `calm`). Zero new rows: it folds onto that take's
+  /// `dictation.terminal` through the take ledger, by the explicit take ID. A take with no open
+  /// entry records nothing.
+  public func recordSilentMicNotice(takeID: String, strong: Bool) {
+    takeStages.update(takeID: takeID) {
+      if strong || $0.silentMicNotice == nil { $0.silentMicNotice = strong ? "strong" : "calm" }
+    }
+  }
+
+  /// Records that a displayed silent-mic notice on `takeID` was cleared because sound returned.
+  public func recordSilentMicCleared(takeID: String) {
+    takeStages.update(takeID: takeID) { $0.silentMicCleared = true }
+  }
+
   // MARK: - EG-1 language naming (#3111)
 
   /// Records which instruction EG-1's named-language prompt selected for this take, onto the
@@ -5717,5 +5918,265 @@ public enum LatencyBucket {
     case 50..<100: return "50_to_100ms"
     default: return "over_100ms"
     }
+  }
+}
+
+/// #4528 §3.8: the closed vocabularies of the new onboarding events. Values are closed by TYPE
+/// (enums, the app's own lists, or a caller-built projection), never by a text filter.
+public enum OnboardingTelemetry {
+  public enum Entry: String, Sendable, CaseIterable { case forward, back, resume }
+
+  public enum ChoiceKind: String, Sendable, CaseIterable {
+    case language, speech, polish
+    case cloudProvider = "cloud_provider"
+    case cloudModel = "cloud_model"
+    case key
+  }
+
+  public enum ModelKind: String, Sendable, CaseIterable { case speech, polish }
+
+  public enum DownloadResult: String, Sendable, CaseIterable { case ok, failed, cancelled }
+
+  /// Plan §3.8: the only values `onboarding.film_finished` may carry.
+  public enum FilmResult: String, Sendable, CaseIterable { case watched, skipped, replayed }
+
+  public enum BlockedReason: String, Sendable, CaseIterable {
+    case keyCheckFailed = "key_check_failed"
+    case diskShort = "disk_short"
+    case downloadFailed = "download_failed"
+    /// The engine owner's warm-up failed (the old onboarding's reason name, reused).
+    case warmupFailed = "warmup_failed"
+    /// The picked local polish model is installed but its owner reports a failed load (#4528
+    /// D4a.2, plan §7).
+    case polishFailed = "polish_failed"
+  }
+
+  /// What happened with a cloud key on Setup's key step: an outcome, never the key.
+  public enum KeyOutcome: String, Sendable, CaseIterable {
+    case saved
+    case checkPassed = "check_passed"
+    case checkFailed = "check_failed"
+    case skipped
+  }
+
+  /// A polish model value AFTER the settings-telemetry redaction policy (a recognised cloud id or
+  /// `custom`, `apple-intelligence`, `none`). Services cannot apply that policy (it lives in AppKit,
+  /// `SettingsProjection.model(provider:id:list:)`), so the only way to build one is to say so at
+  /// the call site.
+  public struct ProjectedModel: Sendable, Equatable {
+    public let value: String
+    public init(projectedBySettingsTelemetry value: String) { self.value = value }
+  }
+
+  /// One Setup choice, typed per kind.
+  public enum Choice: Sendable, Equatable {
+    case language(LanguageMode)
+    case speech(ASRBackendType)
+    /// A Setup polish id (`SetupRules.registeredPolish`), `off` or `cloud`; anything else reads `other`.
+    case polish(String)
+    /// Cloud providers only; any other provider reads `other`.
+    case cloudProvider(LLMProvider)
+    case cloudModel(ProjectedModel)
+    case key(KeyOutcome)
+
+    public var kind: ChoiceKind {
+      switch self {
+      case .language: .language
+      case .speech: .speech
+      case .polish: .polish
+      case .cloudProvider: .cloudProvider
+      case .cloudModel: .cloudModel
+      case .key: .key
+      }
+    }
+
+    public var value: String {
+      switch self {
+      case .language(let mode): OnboardingTelemetry.languageValue(mode)
+      case .speech(let engine): engine.rawValue
+      case .polish(let id): OnboardingTelemetry.polishValue(id)
+      case .cloudProvider(let provider):
+        CloudModelMemory.cloudProviders.contains(provider) ? provider.rawValue : "other"
+      case .cloudModel(let projected): projected.value
+      case .key(let outcome): outcome.rawValue
+      }
+    }
+  }
+
+  /// A model Setup downloads, typed.
+  public enum DownloadModel: Sendable, Equatable {
+    case speech(ASRBackendType)
+    /// A local polish pick id (`SetupRules.registeredPolish`); anything else reads `other`.
+    case polish(String)
+
+    public var kind: ModelKind {
+      switch self {
+      case .speech: .speech
+      case .polish: .polish
+      }
+    }
+
+    public var id: String {
+      switch self {
+      case .speech(let engine): engine.rawValue
+      case .polish(let pick): OnboardingTelemetry.polishValue(pick)
+      }
+    }
+  }
+
+  /// The polish model in the completion summary: a local pick (registered id, else `other`), or
+  /// the AppKit projection for everything else (cloud, Apple Intelligence, off).
+  public enum PolishModel: Sendable, Equatable {
+    case local(String)
+    case projected(ProjectedModel)
+
+    public var id: String {
+      switch self {
+      case .local(let pick): OnboardingTelemetry.polishValue(pick)
+      case .projected(let projected): projected.value
+      }
+    }
+  }
+
+  /// The Setup summary `onboarding.completed` gains.
+  public struct CompletionSummary: Sendable, Equatable {
+    public var polishProvider: LLMProvider
+    public var polishModel: PolishModel
+    public var speechModel: ASRBackendType
+    /// nil when agreement is unknown (e.g. an interrupted completion restored after relaunch).
+    public var followedAllRecommendations: Bool?
+    public var languageMode: LanguageMode
+    public var rulesVersion: String
+    /// nil when no film result was recorded (e.g. a completion restored after relaunch); the
+    /// summary then says `not_shown`. Skip practice plays the film too (#4528, 2026-11-13).
+    public var filmResult: FilmResult?
+    /// #4845: the person chose Skip ahead for the polish model they kept (Practice ran with basic
+    /// cleanup while it downloaded). nil when unknown.
+    public var polishDeferred: Bool?
+    /// #4845: this visit's Skip ahead summary; nil off the Setup path.
+    public var skipAhead: SkipAheadVisitSummary?
+
+    public init(
+      polishProvider: LLMProvider, polishModel: PolishModel, speechModel: ASRBackendType,
+      followedAllRecommendations: Bool?, languageMode: LanguageMode, rulesVersion: String,
+      filmResult: FilmResult?, polishDeferred: Bool? = nil,
+      skipAhead: SkipAheadVisitSummary? = nil
+    ) {
+      self.polishProvider = polishProvider
+      self.polishModel = polishModel
+      self.speechModel = speechModel
+      self.followedAllRecommendations = followedAllRecommendations
+      self.languageMode = languageMode
+      self.rulesVersion = rulesVersion
+      self.filmResult = filmResult
+      self.polishDeferred = polishDeferred
+      self.skipAhead = skipAhead
+    }
+  }
+
+  /// #4845 D-H: one Setup window visit's Skip ahead outcome, carried on the visit's own end row
+  /// (`onboarding.completed` or `onboarding.abandoned`), so every offered visit is counted by its
+  /// end row. Metadata only: never editor text.
+  public struct SkipAheadVisitSummary: Sendable, Equatable {
+    /// The visit key also carried by this visit's `onboarding.skip_ahead` rows.
+    public var visit: String
+    /// This visit showed the Skip ahead card.
+    public var offered: Bool
+    /// Seconds from the offer to the first practice take verified in the expected editor in this
+    /// visit; nil when no offer, or no verified delivery in this visit.
+    public var offerToFirstDeliverySeconds: Double?
+
+    public init(visit: String, offered: Bool, offerToFirstDeliverySeconds: Double?) {
+      self.visit = visit
+      self.offered = offered
+      self.offerToFirstDeliverySeconds = offerToFirstDeliverySeconds
+    }
+
+    /// The row properties: `skip_ahead_offered` always, the delivery time when known.
+    public var properties: [String: Any] {
+      var props: [String: Any] = [
+        "skip_ahead_offered": offered,
+        "setup_visit_id": OnboardingTelemetry.boundedIdentifier(visit),
+      ]
+      if let seconds = offerToFirstDeliverySeconds {
+        props["offer_to_first_delivery_seconds"] = seconds
+      }
+      return props
+    }
+  }
+
+  /// #4845: what happened to Getting ready's Skip ahead offer in one Setup visit.
+  public enum SkipAheadAction: String, Sendable, Equatable, CaseIterable {
+    case offered
+    case skipped
+    case keptWaiting = "kept_waiting"
+    /// The polish model became ready while the offer was up, before any skip.
+    case downloadWon = "download_won"
+  }
+
+  /// #4845: the time-left estimate as a coarse bucket; `unknown` when there was none.
+  public static func secondsLeftBucket(_ seconds: Double?) -> String {
+    guard let seconds, seconds >= 0 else { return "unknown" }
+    switch seconds {
+    case ..<60: return "lt_1m"
+    case ..<180: return "1_3m"
+    case ..<600: return "3_10m"
+    default: return "gt_10m"
+    }
+  }
+
+  /// `auto`, or a language code the app supports; anything else reads `other`.
+  public static func languageValue(_ mode: LanguageMode) -> String {
+    switch mode {
+    case .auto: return "auto"
+    case .locked(let code): return LanguageTypes.isSupported(code) ? code.lowercased() : "other"
+    }
+  }
+
+  /// A polish id from the app's own list (or `off`/`cloud`); anything else reads `other`.
+  public static func polishValue(_ id: String) -> String {
+    if id == "off" || id == "cloud" || SetupRules.registeredPolish[id] != nil { return id }
+    return "other"
+  }
+
+  /// SYNTAX ONLY, for values from a caller-owned closed vocabulary (Setup step names, film scene
+  /// names, the rules version): ASCII letters, digits and `._-:`, 1-64 characters, else `invalid`.
+  /// It is not a privacy boundary and must never be the only check on a value a person chose.
+  public static func boundedIdentifier(_ raw: String) -> String {
+    let allowed = CharacterSet.alphanumerics.union(CharacterSet(charactersIn: "._-:"))
+    guard !raw.isEmpty, raw.count <= 64,
+      raw.unicodeScalars.allSatisfy({ allowed.contains($0) && $0.isASCII })
+    else { return "invalid" }
+    return raw
+  }
+
+  /// Download size as a coarse bucket (never exact bytes).
+  public static func bytesBucket(_ bytes: Int64?) -> String {
+    guard let bytes, bytes >= 0 else { return "unknown" }
+    let mb = Double(bytes) / 1_000_000
+    switch mb {
+    case ..<100: return "lt_100mb"
+    case ..<500: return "100_500mb"
+    case ..<1000: return "500mb_1gb"
+    default: return "gte_1gb"
+    }
+  }
+}
+
+/// The closed vocabularies of `audio.core_audio_read_stuck` (#4021).
+package enum CoreAudioReadTelemetry {
+  /// Which lane read: the device snapshot, or the click-time microphone-choice check; and
+  /// (#4601) on the audio-unit lane, the microphone start, its release, or a check of it.
+  package enum Read: String, Sendable, CaseIterable {
+    case deviceSnapshot = "device_snapshot"
+    case choiceValidation = "choice_validation"
+    case microphoneStart = "microphone_start"
+    case microphoneRelease = "microphone_release"
+    case microphoneProbe = "microphone_probe"
+  }
+
+  package enum Phase: String, Sendable, CaseIterable {
+    case timedOut = "timed_out"
+    case recovered
   }
 }

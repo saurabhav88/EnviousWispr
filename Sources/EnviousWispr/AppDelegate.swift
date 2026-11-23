@@ -42,6 +42,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     application?.applicationDidFinishLaunching()
   }
 
+  func application(_ application: NSApplication, open urls: [URL]) {
+    self.application?.applicationOpenFiles(urls)
+  }
+
   /// #2480: Dock-icon click or a double-click on the running app. `flag` is not
   /// forwarded: it counts our floating panels, not whether Settings is open.
   func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {

@@ -1,0 +1,12 @@
+{
+  "language": "es",
+  "title": "liberar la memoria del modelo de corrección después de",
+  "words": [
+    "memoria del modelo de corrección",
+    "inactividad del modelo de corrección"
+  ],
+  "phrases": [
+    "cuándo se libera la memoria del modelo que corrige el texto si no dicto",
+    "cuánto tiempo sigue cargado el modelo de corrección después de dejar de dictar"
+  ]
+}

@@ -35,10 +35,12 @@ enum SettingsProjection {
     case autoCopy = "auto_copy"
     case hotkeyEnabled = "hotkey_enabled"
     case vadAutoStop = "vad_auto_stop"
+    case silentMicWarnings = "silent_mic_warnings"
     case vadSilenceTimeout = "vad_silence_timeout"
     case vadSensitivity = "vad_sensitivity"
     case vadEnergyGate = "vad_energy_gate"
     case modelUnloadPolicy = "model_unload_policy"
+    case localPolishUnloadPolicy = "local_polish_unload_policy"
     case restoreClipboard = "restore_clipboard"
     case keepDictationsOutOfClipboardHistory = "keep_dictations_out_of_clipboard_history"
     /// Quick Add's clipboard fallback (#2465). Instrumented from the start rather than added later,
@@ -76,6 +78,7 @@ enum SettingsProjection {
     /// adoption of a default-ON toggle is measured by who turns it OFF, and that
     /// decides whether the card is welcome. On/off only, never a word.
     case learnFromEdits = "learn_from_edits"
+    case fixLearnedWords = "fix_learned_words"
     case languageMode = "language_mode"
     /// #3124: the English spelling PREFERENCE (`american` / `british`), the adoption signal for
     /// English (UK). A closed enum value, never a language code or any dictated text.
@@ -162,6 +165,7 @@ enum SettingsProjection {
     case .meetingSummaryLLMProvider: return [.meetingSummaryLLMProvider]
     // #4287: provider kind only; model ids never become a summary delta.
     case .meetingSummaryLLMModel, .meetingSummaryOllamaModel: return []
+    case .automaticDictationPasteEnabled: return []
     case .autoCopyToClipboard: return [.autoCopy]
     // #3972: no settings delta. `meeting.ended` carries the call-sound track status of every
     // meeting, which is the question this choice answers.
@@ -191,10 +195,12 @@ enum SettingsProjection {
     case .meetingLiveWordsEngine, .meetingLiveWordsLanguage: return []
     case .hotkeyEnabled: return [.hotkeyEnabled]
     case .vadAutoStop: return [.vadAutoStop]
+    case .silentMicWarnings: return [.silentMicWarnings]
     case .vadSilenceTimeout: return [.vadSilenceTimeout]
     case .vadSensitivity: return [.vadSensitivity]
     case .vadEnergyGate: return [.vadEnergyGate]
     case .modelUnloadPolicy: return [.modelUnloadPolicy]
+    case .localPolishUnloadPolicy: return [.localPolishUnloadPolicy]
     case .restoreClipboardAfterPaste: return [.restoreClipboard]
     case .keepDictationsOutOfClipboardHistory: return [.keepDictationsOutOfClipboardHistory]
     case .quickAddClipboardFallback: return [.quickAddClipboardFallback]
@@ -209,6 +215,7 @@ enum SettingsProjection {
     case .casualModeEnabled: return [.casualMode]
     case .crashRecoveryEnabled: return [.crashRecovery]
     case .learnFromEdits: return [.learnFromEdits]
+    case .fixLearnedWords: return [.fixLearnedWords]
     case .languageMode: return [.languageMode]
     case .englishSpelling: return [.englishSpelling]
     case .egOneSize: return [.egOneSize]
@@ -321,10 +328,12 @@ enum SettingsProjection {
     case .autoCopy: return onOff(settings.autoCopyToClipboard)
     case .hotkeyEnabled: return onOff(settings.hotkeyEnabled)
     case .vadAutoStop: return onOff(settings.vadAutoStop)
+    case .silentMicWarnings: return onOff(settings.silentMicWarnings)
     case .vadSilenceTimeout: return silenceTimeout(settings.vadSilenceTimeout)
     case .vadSensitivity: return sensitivityBucket(settings.vadSensitivity)
     case .vadEnergyGate: return onOff(settings.vadEnergyGate)
     case .modelUnloadPolicy: return settings.modelUnloadPolicy.rawValue
+    case .localPolishUnloadPolicy: return settings.localPolishUnloadPolicy.rawValue
     case .restoreClipboard: return onOff(settings.restoreClipboardAfterPaste)
     case .keepDictationsOutOfClipboardHistory:
       return onOff(settings.keepDictationsOutOfClipboardHistory)
@@ -343,6 +352,7 @@ enum SettingsProjection {
     case .egOneSize: return settings.preferredEGOneSize.rawValue
     case .crashRecovery: return onOff(settings.crashRecoveryEnabled)
     case .learnFromEdits: return onOff(settings.learnFromEdits)
+    case .fixLearnedWords: return onOff(settings.fixLearnedWords)
     case .languageMode: return languageModeLabel(settings.languageMode)
     case .englishSpelling: return settings.englishSpelling.rawValue
     case .streamingASR: return onOff(settings.useStreamingASR)
@@ -474,7 +484,7 @@ enum SettingsProjection {
     }
   }
 
-  /// Already low-cardinality (0.5–3.0, stepped by 0.25); emit the stepped value.
+  /// The saved value, formatted to two decimals (the slider only offers quarter-second stops).
   private static func silenceTimeout(_ v: Double) -> String {
     String(format: "%.2f", v)
   }

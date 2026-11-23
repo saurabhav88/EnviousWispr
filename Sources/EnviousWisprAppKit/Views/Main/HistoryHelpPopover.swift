@@ -50,7 +50,7 @@ enum HistoryHelpContent {
   static func items(for tab: HistoryTab, retention: DictationRecordingRetention) -> [Item] {
     switch tab {
     case .dictations:
-      return [play, playFromParagraph, showEdits, recordings(retention), search, select]
+      return [play, showEdits, recordings(retention), search, select]
     case .transcripts, .meetings:
       return [open(tab), search, select]
     }
@@ -63,14 +63,6 @@ enum HistoryHelpContent {
       localized:
         "Press play, or drag along the wave to jump. The left number is where you are, the right number is the length.",
       comment: "History help: how the dictation player works."))
-
-  private static let playFromParagraph = Item(
-    icon: "clock",
-    title: String(localized: "Play from a paragraph", comment: "History help: item title."),
-    body: String(
-      localized:
-        "When a recording has times, point at a paragraph to see when you said it, or Tab to it. Click the time to hear that part.",
-      comment: "History help: the time beside each paragraph of a dictation."))
 
   private static let showEdits = Item(
     icon: "pencil.and.list.clipboard",
@@ -88,22 +80,22 @@ enum HistoryHelpContent {
     case .day1:
       kept = String(
         localized:
-          "Audio is not uploaded. Dictation recordings are kept for 1 day unless you choose Keep this recording. Change this in Settings > Recordings.",
+          "Audio is not uploaded. Dictation recordings are kept for 1 day unless you choose Keep this recording. Change this in Settings > App Settings > Recordings.",
         comment: "History help: where recordings are stored and for how long (1 day).")
     case .day7:
       kept = String(
         localized:
-          "Audio is not uploaded. Dictation recordings are kept for 7 days unless you choose Keep this recording. Change this in Settings > Recordings.",
+          "Audio is not uploaded. Dictation recordings are kept for 7 days unless you choose Keep this recording. Change this in Settings > App Settings > Recordings.",
         comment: "History help: where recordings are stored and for how long (7 days).")
     case .day30:
       kept = String(
         localized:
-          "Audio is not uploaded. Dictation recordings are kept for 30 days unless you choose Keep this recording. Change this in Settings > Recordings.",
+          "Audio is not uploaded. Dictation recordings are kept for 30 days unless you choose Keep this recording. Change this in Settings > App Settings > Recordings.",
         comment: "History help: where recordings are stored and for how long (30 days).")
     case .forever:
       kept = String(
         localized:
-          "Audio is not uploaded. Dictation recordings are kept until you delete them. Change this in Settings > Recordings.",
+          "Audio is not uploaded. Dictation recordings are kept until you delete them. Change this in Settings > App Settings > Recordings.",
         comment: "History help: where recordings are stored; they are kept until deleted.")
     }
     return Item(

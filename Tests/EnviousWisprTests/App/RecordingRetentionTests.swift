@@ -79,6 +79,7 @@ struct RecordingRetentionTests {
     let clock: Clock
     let hooks: Hooks
     let retention: RecordingRetention
+    let retentionDependencies: RecordingRetention.Dependencies
     var recordings: DictationRecordings { coordinator.recordings! }
   }
 
@@ -93,7 +94,7 @@ struct RecordingRetentionTests {
     throw CancellationError()
   }
 
-  private func rig() -> Rig {
+  private func rig(saveWarning: Bool = false) -> Rig {
     let root = TestTemporaryDirectory.url
       .appendingPathComponent("RecordingRetentionTests-\(UUID().uuidString)", isDirectory: true)
     let store = TranscriptStore(directory: root.appendingPathComponent("transcripts"))
@@ -119,10 +120,11 @@ struct RecordingRetentionTests {
     deps.sleep = Self.neverFires
     deps.thresholdBytes = Self.smallThresholds
     deps.log = { _ in }
+    if saveWarning { deps.warningDefaults = defaults }
     return Rig(
       root: root, store: store, archive: archive, coordinator: coordinator, settings: settings,
       meetings: meetings, meetingStore: meetingStore, usage: usage, clock: clock, hooks: hooks,
-      retention: RecordingRetention(deps))
+      retention: RecordingRetention(deps), retentionDependencies: deps)
   }
 
   /// A saved dictation `ageDays` old with a recording of `bytes` bytes.
@@ -369,6 +371,31 @@ struct RecordingRetentionTests {
     rig.retention.settingsChanged()
     await rig.retention.waitUntilIdle()
     #expect(rig.retention.warning == nil)
+  }
+
+  @Test(
+    "a saved History warning applies only under the threshold and cleanup mode that produced it",
+    .bug("https://github.com/saurabhav88/EnviousWispr/issues/4667"))
+  func savedHistoryWarningRequiresMatchingPolicy() async throws {
+    let rig = rig(saveWarning: true)
+    rig.settings.recordingStorageWarningThreshold = .gb1
+    _ = try await recordedRow(rig, ageDays: 1, bytes: 2_500)
+    await sweep(rig)
+    let verified = try #require(rig.retention.warning)
+    rig.retention.stop()
+
+    let samePolicy = RecordingRetention(rig.retentionDependencies)
+    #expect(samePolicy.historyWarning == verified)
+    #expect(samePolicy.warning == nil, "Settings waits for a live result")
+
+    rig.settings.recordingStorageWarningThreshold = .gb2
+    let differentThreshold = RecordingRetention(rig.retentionDependencies)
+    #expect(differentThreshold.historyWarning == nil)
+
+    rig.settings.recordingStorageWarningThreshold = .gb1
+    rig.settings.recordingThresholdBehavior = .removeOldestDictations
+    let differentMode = RecordingRetention(rig.retentionDependencies)
+    #expect(differentMode.historyWarning == nil)
   }
 
   @Test("automatic mode removes the oldest unkept dictations until under, never meeting audio")

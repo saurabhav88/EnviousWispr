@@ -157,7 +157,7 @@ public final class LearnedWordCheckStep: TextProcessingStep, CorrectorVocabulary
   /// no check row on an ordinary take. The runner asks before the loop (raw text)
   /// and again at the step (current text).
   func isEnabled(for context: TextProcessingContext) -> Bool {
-    guard wordCorrectionEnabled else { return false }
+    guard wordCorrectionEnabled, context.fixLearnedWords else { return false }
     let terms = (context.frozenCorrectorVocabulary ?? correctorVocabulary).terms
     if terms.contains(where: \.isAutoLearned) { return true }
     let shipped = terms.filter { $0.source == .builtin && $0.hasCheckerAliases }
@@ -250,6 +250,7 @@ public final class LearnedWordCheckStep: TextProcessingStep, CorrectorVocabulary
   }
 
   public func process(_ context: TextProcessingContext) async throws -> TextProcessingContext {
+    guard context.fixLearnedWords else { return context }
     let selection = context.frozenLearnedWordChecker
     let checker = selection?.checker ?? (selection == nil ? self.checker : nil)
     defer {

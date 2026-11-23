@@ -77,7 +77,7 @@ struct LocalPolishCarrierCharacterizationTests {
       perform: { request, endpoint in
         captured.append(request, endpoint)
         return LocalPolishHelperResponse(status: 200, body: answer)
-      }, retryPause: {})
+      })
     #expect(returned == answer)
     let (request, endpoint) = try #require(captured.all.first)
     #expect(captured.all.count == 1)
@@ -95,7 +95,7 @@ struct LocalPolishCarrierCharacterizationTests {
         perform: { request, endpoint in
           refused.append(request, endpoint)
           return LocalPolishHelperResponse(status: 503, body: Data())
-        }, retryPause: {})
+        })
     }
     #expect(refused.all.count == 1)
   }

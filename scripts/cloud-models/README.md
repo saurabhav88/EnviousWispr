@@ -52,7 +52,7 @@ It also requires the list at `--target-base` (the PR's current base) to be the r
 
 ## The weekly workflow (`workflow.py`)
 
-`.github/workflows/cloud-models-sweep.yml` runs the routine every Monday at 06:17 UTC, and also when started by hand. `workflow.py` is the helper each job calls. It never decides what a row may be. That is always `propose.py`.
+`.github/workflows/cloud-models-sweep.yml` runs the live routine every Monday at 06:17 UTC and when dispatched on `main`. Manual branch dispatch runs the existing keyless fixtures in `validate-sweep`. Both paths use the dedicated `EnviousWispr-CloudModelRoutine` scheme and the shared Release gut-check build settings. `workflow.py` verifies and stages live evidence. `propose.py` owns which list rows may be added.
 
 | Job | Credentials | What it does |
 |---|---|---|

@@ -64,7 +64,6 @@
     "EnviousWisprTests/LanguageGateBenchmarkTests": 49.789993,
     "EnviousWisprTests/MeetingCoordinatorTests": 11.523142,
     "EnviousWisprTests/ModelDeliveryHomeTests": 10.840826,
-    "EnviousWisprTests/OnboardingSetupKickTests": 7.122002,
     "EnviousWisprTests/KernelFinalizationWiringTests": 4.309386,
     "EnviousWisprTests/RecordingSessionKernelScenarioTests": 3.805021,
     "EnviousWisprTests/CallSpeakerObserverTests": 15.204858,
@@ -451,16 +450,6 @@
         {
           "suite": "EnviousWisprTests/LanguageGateBenchmarkTests",
           "file": "Tests/EnviousWisprTests/Pipeline/LanguageGateBenchmarkTests.swift"
-        }
-      ]
-    },
-    {
-      "name": "isolated/OnboardingSetupKickTests",
-      "reason": "Private defaults-backed manager and injected setup actions.",
-      "suites": [
-        {
-          "suite": "EnviousWisprTests/OnboardingSetupKickTests",
-          "file": "Tests/EnviousWisprTests/App/OnboardingSetupKickTests.swift"
         }
       ]
     },

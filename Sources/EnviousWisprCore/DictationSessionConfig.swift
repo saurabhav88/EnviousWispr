@@ -19,9 +19,7 @@ public enum TriggerSource: String, Sendable, CaseIterable {
   case toolbar = "toolbar"
   /// macOS menu bar item (system menu bar at top of screen, NOT a status bar tray).
   case menuBar = "menu_bar"
-  /// First-run onboarding triggered the dictation. Forward-compatible; no
-  /// production caller today (OnboardingV2View's `recording` method is hotkey
-  /// capture, not dictation).
+  /// Reserved first-run onboarding trigger value for telemetry compatibility.
   case onboarding = "onboarding"
   /// Internal / test / future automation. Reserve value. Used by
   /// `DictationSessionConfig.testDefault()`; do NOT use from production UI code.
@@ -59,6 +57,8 @@ public struct DictationSessionConfig: Sendable {
   /// recordings or when the paste target cannot be resolved. Consolidates the previously
   /// scattered writes to `pipeline.autoPasteToActiveApp` in the former root state.
   public let autoPasteToActiveApp: Bool
+  /// The user explicitly chose clipboard delivery for this take.
+  public let copyOnlyByPreference: Bool
   public let restoreClipboardAfterPaste: Bool
   /// FROZEN at recording start with `restoreClipboardAfterPaste` (#3672): mark the temporary
   /// paste write and the clipboard we give back as transient, so clipboard-history apps that follow
@@ -79,6 +79,12 @@ public struct DictationSessionConfig: Sendable {
   public let vadSensitivity: Float
   public let vadEnergyGate: Bool
 
+  /// #4841: show the silent-mic notice on the pill when the microphone sends
+  /// exact digital silence. Frozen per take like every other field here: a
+  /// change in Settings applies to the next dictation. It only chooses whether
+  /// the notice shows; exact zeros never end a take either way.
+  public let silentMicWarningsEnabled: Bool
+
   // MARK: ASR
 
   /// Single source of truth for language selection. Pipelines derive
@@ -87,6 +93,9 @@ public struct DictationSessionConfig: Sendable {
   /// #3124: the spelling IN FORCE for this take (`EnglishSpelling.effective`), frozen with the
   /// language so a picker change mid-recording applies to the next take.
   public let englishSpelling: EnglishSpelling
+
+  /// Frozen when this recording is accepted.
+  public let fixLearnedWords: Bool
   /// Parakeet-only. Committed at start — there is no mid-record reconfiguration path
   /// in the dictation kernel.
   public let useStreamingASR: Bool
@@ -103,6 +112,7 @@ public struct DictationSessionConfig: Sendable {
   /// races inside `SettingsManager`.
   public let llmModel: String
   public let polishInstructions: PolishInstructions
+  public let translationTarget: DictationTranslationTarget?
   /// #2649: the S1-mini control-line picks this recording polishes under.
   /// Frozen here for the same reason as provider and model: a pick changed
   /// mid-dictation governs the NEXT recording, never the one in flight. Read
@@ -165,6 +175,7 @@ public struct DictationSessionConfig: Sendable {
     inputMode: RecordingMode,
     triggerSource: TriggerSource,
     autoPasteToActiveApp: Bool,
+    copyOnlyByPreference: Bool = false,
     restoreClipboardAfterPaste: Bool,
     keepDictationsOutOfClipboardHistory: Bool,
     smartInsertion: Bool,
@@ -172,8 +183,10 @@ public struct DictationSessionConfig: Sendable {
     vadSilenceTimeout: Double,
     vadSensitivity: Float,
     vadEnergyGate: Bool,
+    silentMicWarningsEnabled: Bool = true,
     languageMode: LanguageMode,
     englishSpelling: EnglishSpelling,
+    fixLearnedWords: Bool = true,
     useStreamingASR: Bool,
     modelUnloadPolicy: ModelUnloadPolicy,
     llmProvider: LLMProvider,
@@ -185,12 +198,14 @@ public struct DictationSessionConfig: Sendable {
     recoverySessionID: String? = nil,
     recoveryPayload: Data? = nil,
     escapeRecoveryEnabled: Bool = false,
-    s1Control: S1ControlSettings = .default
+    s1Control: S1ControlSettings = .default,
+    translationTarget: DictationTranslationTarget? = nil
   ) {
     self.autoCopyToClipboard = autoCopyToClipboard
     self.inputMode = inputMode
     self.triggerSource = triggerSource
     self.autoPasteToActiveApp = autoPasteToActiveApp
+    self.copyOnlyByPreference = copyOnlyByPreference
     self.restoreClipboardAfterPaste = restoreClipboardAfterPaste
     self.keepDictationsOutOfClipboardHistory = keepDictationsOutOfClipboardHistory
     self.smartInsertion = smartInsertion
@@ -198,14 +213,17 @@ public struct DictationSessionConfig: Sendable {
     self.vadSilenceTimeout = vadSilenceTimeout
     self.vadSensitivity = vadSensitivity
     self.vadEnergyGate = vadEnergyGate
+    self.silentMicWarningsEnabled = silentMicWarningsEnabled
     self.languageMode = languageMode
     self.englishSpelling = englishSpelling
+    self.fixLearnedWords = fixLearnedWords
     self.useStreamingASR = useStreamingASR
     self.modelUnloadPolicy = modelUnloadPolicy
     self.llmProvider = llmProvider
     self.polishModelID = polishModelID
     self.llmModel = llmModel
     self.polishInstructions = polishInstructions
+    self.translationTarget = translationTarget
     self.selectedInputDeviceUID = selectedInputDeviceUID
     self.preferredInputDeviceIDOverride = preferredInputDeviceIDOverride
     self.recoverySessionID = recoverySessionID

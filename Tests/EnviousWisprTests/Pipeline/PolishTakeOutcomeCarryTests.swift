@@ -152,7 +152,7 @@ struct PolishTakeOutcomeCarryTests {
         PasteDeliveryResult(
           tier: .cgEvent, durationMs: 1, outcome: .delivered(tier: .cgEvent, durationMs: 1))
       },
-      pasteCompletionRegistry: nil, telemetryState: telemetry, copyToClipboard: { _ in })
+      pasteCompletionRegistry: nil, telemetryState: telemetry, copyToClipboard: { _, _ in true })
   }
 
   private let raw = "so the invoice is still open I think and I was going to send it today"
@@ -323,7 +323,7 @@ struct PolishTakeOutcomeCarryTests {
         PasteDeliveryResult(
           tier: .cgEvent, durationMs: 1, outcome: .delivered(tier: .cgEvent, durationMs: 1))
       },
-      pasteCompletionRegistry: nil, telemetryState: telemetry, copyToClipboard: { _ in })
+      pasteCompletionRegistry: nil, telemetryState: telemetry, copyToClipboard: { _, _ in true })
     TelemetryService.shared.dictationStarted(takeID: takeID, backend: "parakeet", model: nil)
     defer { _ = TelemetryService.shared.takeStages.close(takeID: takeID) }
     _ = try await wiring.processText(raw) {}

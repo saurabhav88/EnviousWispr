@@ -57,6 +57,8 @@ extension MeetingStore {
   /// folder or `meeting.json` is gone or unreadable, one a newer build wrote, one marked for
   /// deletion, and an existing `context.json` that cannot be read.
   public func appendFacts(_ facts: [MeetingFact], meeting id: UUID) throws {
+    historyChanges?.begin()
+    defer { historyChanges?.finish(.meeting(id)) }
     try refuseContextWrite(id)
     var context: MeetingContext
     switch loadContext(meeting: id) {

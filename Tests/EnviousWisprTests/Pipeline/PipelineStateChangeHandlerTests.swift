@@ -38,6 +38,7 @@ struct PipelineStateChangeHandlerTests {
   final class CallbackRecorder {
     var cancelWarningCount = 0
     var scheduleWarningCount = 0
+    var polishWarningReason: RecordingWarningReason?
     var appendedCalls: [Transcript] = []
     var completedCalls: [Transcript] = []
     var failedCalls: [String] = []
@@ -55,7 +56,10 @@ struct PipelineStateChangeHandlerTests {
     PipelineStateChangeHandler(
       showOverlay: { intent in overlay.record(intent) },
       cancelPendingWarning: { callbacks.cancelWarningCount += 1 },
-      schedulePolishFailedWarning: { callbacks.scheduleWarningCount += 1 },
+      schedulePolishFailedWarning: { reason in
+        callbacks.scheduleWarningCount += 1
+        callbacks.polishWarningReason = reason
+      },
       appendCompletedTranscript: { callbacks.appendedCalls.append($0) },
       reportDictationCompleted: { callbacks.completedCalls.append($0) },
       reportPipelineFailed: { callbacks.failedCalls.append($0) },
@@ -107,8 +111,8 @@ struct PipelineStateChangeHandlerTests {
     #expect(calls.scheduleWarningCount == 0)
   }
 
-  @Test("complete + polish failed: schedule warning before showing overlay, then reload + report")
-  func completePolishFailedRoutesWarningSchedule() {
+  @Test("A completed paste schedules the appropriate polish warning", arguments: [false, true])
+  func completePolishFailedRoutesWarningSchedule(translation: Bool) {
     let spy = OverlaySpy()
     let calls = CallbackRecorder()
     let handler = Self.makeHandler(overlay: spy, callbacks: calls)
@@ -117,13 +121,18 @@ struct PipelineStateChangeHandlerTests {
     handler.handle(
       to: PipelineState.complete,
       pipelineOverlayIntent: .hidden,
-      lastPolishNotice: PolishNotice(leadIn: .failed, text: "openai_timeout"),
+      lastPolishNotice: PolishNotice(
+        leadIn: .failed, text: "provider timeout", isTranslationFailure: translation),
       currentTranscript: transcript,
       historySaved: true,
       historySaveReason: nil
     )
 
     #expect(calls.scheduleWarningCount == 1)
+    let expectedReason: RecordingWarningReason = translation
+      ? .translationFailed(message: "Couldn’t translate. Your original-language text was kept.")
+      : .polishFailed
+    #expect(calls.polishWarningReason == expectedReason)
     #expect(calls.cancelWarningCount == 0)
     #expect(spy.calls == [OverlaySpy.Call(intent: .hidden)])
     #expect(calls.appendedCalls.count == 1)
@@ -150,6 +159,54 @@ struct PipelineStateChangeHandlerTests {
     #expect(calls.scheduleWarningCount == 0)
     #expect(calls.appendedCalls.count == 1)
     #expect(calls.completedCalls.count == 1)
+  }
+
+  @Test("a confirmed copy by preference shows Copied without a paste result")
+  func confirmedIntentionalCopyShowsCopied() {
+    let overlay = OverlaySpy()
+    let calls = CallbackRecorder()
+    let handler = Self.makeHandler(overlay: overlay, callbacks: calls)
+    var transcript = Self.makeTranscript()
+    transcript.metrics = ExecutionMetrics(deliveryOutcome: "automatic_paste_disabled")
+
+    handler.handle(
+      to: PipelineState.complete,
+      pipelineOverlayIntent: .hidden,
+      lastPolishNotice: nil,
+      currentTranscript: transcript,
+      historySaved: true,
+      historySaveReason: nil)
+
+    #expect(overlay.calls == [OverlaySpy.Call(intent: .clipboardFallback)])
+    #expect(calls.appendedCalls.count == 1)
+    #expect(calls.completedCalls.count == 1)
+  }
+
+  @Test("clipboard-only completion with a polish failure shows one accurate warning",
+        arguments: [false, true])
+  func intentionalCopyWithPolishFailureWarnsOnce(isTranslationFailure: Bool) {
+    let overlay = OverlaySpy()
+    let callbacks = CallbackRecorder()
+    let handler = Self.makeHandler(overlay: overlay, callbacks: callbacks)
+    let reason = "The model did not answer."
+    var transcript = Self.makeTranscript()
+    transcript.metrics = ExecutionMetrics(deliveryOutcome: "automatic_paste_disabled")
+
+    handler.handle(
+      to: PipelineState.complete,
+      pipelineOverlayIntent: .hidden,
+      lastPolishNotice: PolishNotice(
+        leadIn: .failed, text: reason, isTranslationFailure: isTranslationFailure),
+      currentTranscript: transcript,
+      historySaved: true,
+      historySaveReason: nil,
+      clipboardCopy: true,
+      clipboardPolishReason: reason)
+
+    #expect(overlay.calls == [OverlaySpy.Call(intent: .hidden)])
+    #expect(callbacks.scheduleWarningCount == 1)
+    #expect(callbacks.polishWarningReason == .clipboardPolishFailed(copied: true, reason: reason))
+    #expect(callbacks.completedCalls.count == 1)
   }
 
   @Test("#729: menu_paste tier is a successful delivery, not a clipboard fallback")

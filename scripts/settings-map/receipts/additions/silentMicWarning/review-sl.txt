@@ -1,0 +1,10 @@
+{
+  "language": "sl",
+  "title": "opozori, ko mikrofon ne zazna zvoka",
+  "words": [
+    "opozorilo ob tišini mikrofona"
+  ],
+  "phrases": [
+    "kako vklopim opozorilo, če mikrofon med narekovanjem ne zazna zvoka?"
+  ]
+}

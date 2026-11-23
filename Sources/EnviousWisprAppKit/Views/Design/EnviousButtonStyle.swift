@@ -27,7 +27,8 @@ import SwiftUI
 /// render captures; pressed paint is compared in Live UAT (plan §11.1).
 struct EnviousButtonStyle: PrimitiveButtonStyle {
   var emphasis: EnviousButtonFace.Emphasis = .outlined
-  var shape: EnviousButtonFace.Shape = .capsule
+  /// Nil: the surrounding screen's shape (`EnvironmentValues.enviousButtonShape`).
+  var shape: EnviousButtonFace.Shape? = nil
   var size: EnviousButtonFace.Size = .regular
   /// The legacy paint switch: the caller's own `isEnabled`, which decides the enabled or
   /// disabled colours. It never enables anything: activation and hover follow the effective
@@ -87,7 +88,7 @@ extension View {
   /// this type and kept its own modifier still works when CLICKED, so nothing on
   /// screen would say Escape had stopped answering.
   func settingsButton(
-    _ emphasis: EnviousButtonFace.Emphasis = .outlined, shape: EnviousButtonFace.Shape = .capsule,
+    _ emphasis: EnviousButtonFace.Emphasis = .outlined, shape: EnviousButtonFace.Shape? = nil,
     size: EnviousButtonFace.Size = .regular, isEnabled: Bool, shortcut: KeyboardShortcut? = nil
   ) -> some View {
     buttonStyle(
@@ -208,14 +209,16 @@ struct EnviousButtonFace: ViewModifier {
   /// #2772 finding 9: `quiet` is the SECONDARY of the approved Transcribe a File prototype
   /// — a hairline border in the divider tone, no fill, and the ordinary body colour for the
   /// label. Founder: "Secondary (Back): rounded RECTANGLE ... hairline border, no fill,
-  /// plain white label. NOT a pill, NO purple border." `outlined` is the purple-bordered
-  /// pill that description rejects, and it stays exactly as it is because every other
-  /// settings page ships it.
+  /// plain white label. NOT a pill, NO purple border." `outlined` keeps the purple border.
   enum Emphasis { case outlined, filled, destructive, quiet }
 
-  /// The outline this button is cut from. Capsule everywhere in Settings; the file-import
-  /// wizard uses the prototype's 9pt rounded rectangle (#2772 finding 9).
+  /// Settings and History set their shape through `EnvironmentValues.enviousButtonShape`.
+  /// The file-import wizard uses the prototype's rounded rectangle (#2772 finding 9).
   enum Shape { case capsule, roundedRect }
+
+  static var roundedRectangle: RoundedRectangle {
+    RoundedRectangle(cornerRadius: 9, style: .continuous)
+  }
 
   /// How big. `regular` is every pre-#2772 call site, byte for byte. The other two are the
   /// prototype's `.btn` (14px, 8x14) and `.btn.big` (15px, 10x22), which the founder called
@@ -248,11 +251,13 @@ struct EnviousButtonFace: ViewModifier {
   }
 
   var emphasis: Emphasis = .outlined
-  var shape: Shape = .capsule
+  /// Nil: the surrounding screen's shape (`EnvironmentValues.enviousButtonShape`).
+  var shape: Shape? = nil
   var size: Size = .regular
   /// The caller's own enabled flag, for paint only. See `EnviousButtonStyle.paintsEnabled`.
   var paintsEnabled = true
 
+  @Environment(\.enviousButtonShape) private var screenShape
   @Environment(\.accessibilityReduceMotion) private var reduceMotion
   /// A PARENT can disable this control without touching `isEnabled`, and then
   /// the two disagree. See `SettingsHover.respondsToPointer`.
@@ -265,9 +270,9 @@ struct EnviousButtonFace: ViewModifier {
   }
 
   func body(content: Content) -> some View {
-    switch shape {
+    switch shape ?? screenShape {
     case .capsule: painted(content, in: Capsule())
-    case .roundedRect: painted(content, in: RoundedRectangle(cornerRadius: 9, style: .continuous))
+    case .roundedRect: painted(content, in: Self.roundedRectangle)
     }
   }
 
@@ -363,6 +368,27 @@ struct EnviousCloseGlyph: View {
   }
 }
 
+/// A click region at least `side` wide and tall, centred on the view it shapes, never smaller than
+/// that view. The shape reads the view's own size at layout time, so no caller states it.
+struct MinimumHitShape: Shape {
+  let side: CGFloat
+
+  func path(in rect: CGRect) -> Path {
+    Path(
+      rect.insetBy(dx: min(0, (rect.width - side) / 2), dy: min(0, (rect.height - side) / 2)))
+  }
+}
+
+extension View {
+  /// #4545: widens a small icon button's click and accessibility region to
+  /// `SettingsLayout.minimumHitTarget` (Apple's macOS minimum control size) without changing
+  /// layout or look. Apply to the button's LABEL.
+  func minimumHitRegion() -> some View {
+    contentShape(
+      [.interaction, .accessibility], MinimumHitShape(side: SettingsLayout.minimumHitTarget))
+  }
+}
+
 /// The "?" glyph of `SettingsInfoButton`. ONE `Image`; hover changes only its colour value, and
 /// the capsule is `settingsHoverQuiet`'s.
 struct EnviousHelpGlyph: View {
@@ -382,4 +408,11 @@ struct EnviousHelpGlyph: View {
       // have the hover effect").
       .settingsHoverQuiet(tint: .stAccent, recoloursContent: false)
   }
+}
+
+extension EnvironmentValues {
+  /// The shape of every `EnviousButtonFace` that does not name its own: capsule in Settings,
+  /// rounded rectangle across History (founder #4611, 2026-11-17: "everything in history that is
+  /// a button rectangular and uniform"; media play buttons stay round).
+  @Entry var enviousButtonShape: EnviousButtonFace.Shape = .capsule
 }

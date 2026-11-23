@@ -2462,6 +2462,7 @@ struct CallDetectionPolicyTests {
     for (result, expected) in [
       (Policy.StartResult.couldNotStart, Policy.Note.couldNotStart),
       (.needsAttention, .needsAttention),
+      (.noTranscriptionEngine, .noTranscriptionEngine),
     ] {
       var s = Story()
       s.ready([Self.zoom(.active)])
@@ -2494,6 +2495,78 @@ struct CallDetectionPolicyTests {
     s.startFinished(.recording(meetingID: UUID()))
     end(&s)
     #expect(isCountdown(s.interaction), "the recording is watched for its end")
+  }
+
+  @Test("An automatic Teams guest start still needs proof of the same browser call after waiting",
+    .bug("https://github.com/saurabhav88/EnviousWispr/issues/4094"), arguments: [false, true])
+  func automaticTeamsGuestStartRechecksJoinedCall(browserRelaunches: Bool) throws {
+    var story = Story()
+    story.mode = .startByItself
+    let firstRoom = "teams.live.com/light-meetings/launch?p=first"
+    let otherRoom = "teams.live.com/light-meetings/launch?p=other"
+    let call = Policy.Holder(pid: 16, rule: .browser(.brave), input: .active,
+      evidence: .call(family: .teams, room: firstRoom))
+    let owner = CallEvidenceReader.AppRun(pid: 14, bundleIdentifier: "com.brave.Browser",
+      birthSeconds: 100, birthMicroseconds: 0)
+    story.observeCall(.unknown, holder: call, owner: owner)
+    story.read([call])
+    _ = try #require(story.lastStart)
+    story.meeting = .busy
+    #expect(story.policy.isStartWanted(story.context))
+
+    if browserRelaunches {
+      let relaunched = CallEvidenceReader.AppRun(pid: owner.pid, bundleIdentifier: owner.bundleIdentifier,
+        birthSeconds: 101, birthMicroseconds: 0)
+      story.observeCall(.unknown, holder: call, owner: relaunched)
+      story.read([call])
+    } else {
+      let changedRoom = Policy.Holder(pid: call.pid, rule: call.rule, input: .active,
+        evidence: .call(family: .teams, room: otherRoom))
+      story.read([changedRoom])
+    }
+    #expect(story.policy.isStartWanted(story.context) == false)
+  }
+
+  @Test("Automatic Teams guest capture waits for a single joined room and browser run",
+    .bug("https://github.com/saurabhav88/EnviousWispr/issues/4094"))
+  func automaticTeamsGuestDoesNotChooseBetweenJoinedRooms() throws {
+    var story = Story()
+    story.mode = .startByItself
+    let first = Policy.Holder(pid: 16, rule: .browser(.brave), input: .active,
+      evidence: .call(family: .teams, room: "teams.live.com/light-meetings/launch?p=first"))
+    let second = Policy.Holder(pid: 19, rule: .browser(.chrome), input: .active,
+      evidence: .call(family: .teams, room: "teams.live.com/light-meetings/launch?p=second"))
+    let helper = Policy.Holder(pid: 17, rule: first.rule, input: .active, evidence: first.evidence)
+    let owner = Story.owner(for: first)
+    story.observeCall(.unknown, holder: first, owner: owner)
+    story.observeCall(.unknown, holder: helper, owner: owner)
+    story.observeCall(.unknown, holder: second)
+    story.read([first, helper, second])
+    try #require(story.lastStart == nil)
+
+    let unread = Policy.Holder(pid: second.pid, rule: second.rule, input: .active, evidence: nil)
+    story.read([first, helper, unread])
+    #expect(story.lastStart == nil)
+
+    let inconclusive = Policy.Holder(pid: second.pid, rule: second.rule, input: .active, evidence: .unknown)
+    story.read([first, helper, inconclusive])
+    #expect(story.lastStart == nil)
+
+    let preview = Policy.Holder(pid: second.pid, rule: second.rule, input: .active,
+      evidence: .inconclusiveTeamsPreview(room: "teams.live.com/light-meetings/launch?p=second"))
+    story.read([first, helper, preview])
+    #expect(story.lastStart == nil)
+
+    story.read([first, helper])
+    _ = try #require(story.lastStart)
+    story.meeting = .busy
+    #expect(story.policy.isStartWanted(story.context))
+
+    story.read([first, helper, inconclusive])
+    #expect(story.policy.isStartWanted(story.context) == false)
+
+    story.read([first, helper, second])
+    #expect(story.policy.isStartWanted(story.context) == false)
   }
 
   @Test("detection or the app switched off during a start makes it unwanted")

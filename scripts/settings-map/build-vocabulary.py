@@ -8,7 +8,7 @@ Inputs, all named on the command line:
               which are exempt. Every source id must be one or the other.
   --edits     scripts/settings-map/receipts/reviewed-edits.json: the reviewed stop
               lists and markers for every language, and reviewed replacements of
-              single blocks' words, phrases or (outside English and German) title.
+              single blocks' words, phrases or (outside the interface languages) title.
 
 It writes the resource and prints each language's content hash. It never writes a
 review receipt and never decides validity: the Swift validator
@@ -34,7 +34,7 @@ LANGUAGES = [
     "ar", "bg", "cs", "da", "de", "el", "en", "es", "et", "fi", "fr", "hi", "hr", "hu", "it", "ja",
     "ko", "lt", "lv", "mt", "nl", "pl", "pt", "ro", "ru", "sk", "sl", "sv", "tr", "uk", "vi", "zh",
 ]
-INTERFACE = {"en", "de"}
+INTERFACE = {"en", "de", "es", "fr"}
 
 
 def fail(message):
@@ -209,7 +209,7 @@ def self_test():
                                         for code in LANGUAGES}, "review": "r", "reviewSHA256": "0" * 64}},
                retired={"gone": "x"}), "exemption kept"),
         ("a reviewed title edit replaces the translated title", inventory(["keep"]),
-         edits(retired={"gone": "x"}, blocks={"keep": {"fr": {"title": "nouveau"}}}), "title edited"),
+         edits(retired={"gone": "x"}, blocks={"keep": {"it": {"title": "nuovo"}}}), "title edited"),
         ("an interface language's title is not editable", inventory(["keep"]),
          edits(retired={"gone": "x"}, blocks={"keep": {"de": {"title": "neu"}}}), "not ['title']"),
         ("canonically equal list words", inventory(["keep"]),
@@ -228,7 +228,7 @@ def self_test():
             if want == "title edited":
                 titles = {b["language"]: b.get("title") for e in built["entries"] if e["id"] == "keep"
                           for b in e["blocks"]}
-                got = "title edited" if titles["fr"] == "nouveau" and titles["it"] == "t it" else str(titles)
+                got = "title edited" if titles["it"] == "nuovo" and titles["pt"] == "t pt" else str(titles)
         except BuildError as error:
             got = str(error)
         ok = got == want if isinstance(want, list) else isinstance(got, str) and want in got

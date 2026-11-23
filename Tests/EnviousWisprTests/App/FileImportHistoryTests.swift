@@ -677,11 +677,53 @@ struct FileImportHistoryTests {
 
     c.documentView = .original
     #expect(c.isSavedToHistory, "the raw words are on screen and in History")
+    #expect(c.externalImportBlock == .unsavedDocument)
     #expect(c.exportText == "um one two three")
     #expect(c.historySaveNotice == nil)
 
     c.documentView = .cleaned
     #expect(!c.isSavedToHistory)
+  }
+
+  @Test("A shared copy leaves its transcript and identity in History without keeping staged audio")
+  func sharedCopyLeavesNoTemporaryPlaybackLink() async throws {
+    let source = try Self.writeClip()
+    let directory = TestTemporaryDirectory.url
+      .appendingPathComponent(UUID().uuidString)
+      .resolvingSymlinksInPath()
+    defer {
+      try? FileManager.default.removeItem(at: source)
+      try? FileManager.default.removeItem(at: directory)
+    }
+    let transfer = SharedMediaTransfer(root: directory)
+    let receiver = directory.appendingPathComponent("Receiving App.app")
+    let offer = try transfer.offer(
+      source, suffix: "wav", suggestedName: "Interview.wav", receiver: receiver)
+    let spy = HistorySpy()
+    let coordinator = Self.coordinator(spy: spy)
+    var claim = transfer.claim(offer, receiver: receiver)
+    let staged = try #require(claim?.url)
+    do {
+      let selected = try #require(claim)
+      #expect(coordinator.chooseSharedMedia(selected))
+    }
+    claim = nil
+    try #require(await settleUntil {
+      if case .ready = coordinator.state { return true }
+      return false
+    })
+    #expect(coordinator.file?.isSharedMediaCopy == true)
+    #expect(coordinator.externalImportBlock == .fileInHand)
+    #expect(spy.writes.isEmpty, "Share selected the file without starting transcription")
+    #expect(FileManager.default.fileExists(atPath: staged.path) == false)
+    #expect(FileManager.default.fileExists(atPath: source.path))
+    coordinator.start()
+    try #require(await settleUntil { coordinator.state == .finished })
+    let row = try #require(spy.writes.last)
+    #expect(row.importedFileName == "Interview.wav")
+    #expect(row.sourceBookmark == nil)
+    #expect(row.sourceFingerprint != nil)
+    #expect(coordinator.externalImportBlock == nil)
   }
 
   /// A deletion followed by Stop never reaches the cleaned write, so a flag set there

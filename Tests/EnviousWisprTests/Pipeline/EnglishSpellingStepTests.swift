@@ -123,6 +123,31 @@ struct EnglishSpellingStepTests {
     #expect(noPolish.text == "the color", "the after-polish pass must not touch the floor text")
   }
 
+  @Test("British spelling preserves the prepared source and accepted non-English output")
+  func translatedPolishKeepsItsSpelling() async throws {
+    var source = Self.context("The theater is open.")
+    let beforePolish = try await EnglishSpellingStep(target: .text).process(source)
+    #expect(beforePolish.text == "The theatre is open.")
+    source = beforePolish
+
+    let step = EnglishSpellingStep(target: .polishedText)
+    source.polishedText = "Das Theater ist geöffnet."
+    source.acceptedTranslationTarget = .german
+    let german = try await step.process(source)
+    #expect(german.polishedText == source.polishedText)
+    #expect(german.text == source.text)
+    #expect(german.englishSpellingSwaps == source.englishSpellingSwaps)
+
+    source.polishedText = "The theater is open."
+    source.acceptedTranslationTarget = nil
+    let ordinary = try await step.process(source)
+    source.acceptedTranslationTarget = .english
+    let sameLanguage = try await step.process(source)
+    #expect(ordinary.polishedText == "The theatre is open.")
+    #expect(sameLanguage.polishedText?.utf8.elementsEqual(
+      ordinary.polishedText?.utf8 ?? "".utf8) == true)
+  }
+
   @Test("a missing table disables the step instead of failing the take")
   func missingTableDisables() {
     #expect(EnglishSpellingStep(target: .text, converter: nil).isEnabled == false)

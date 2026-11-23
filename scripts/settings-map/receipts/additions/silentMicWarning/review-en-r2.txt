@@ -1,0 +1,11 @@
+{
+  "language": "en",
+  "words": [
+    "silent mic warning",
+    "no sound alert"
+  ],
+  "phrases": [
+    "warn me if my mic goes silent while dictating",
+    "turn off the no sound warning on the recording pill"
+  ]
+}

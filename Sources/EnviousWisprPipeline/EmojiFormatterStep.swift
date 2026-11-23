@@ -20,11 +20,22 @@ public final class EmojiFormatterStep: TextProcessingStep {
 
   private static let logger = Logger(subsystem: "com.enviouswispr.app", category: "EmojiFormatter")
 
+  /// The first successfully loaded dictionary, shared by every step (#4783): both dictation
+  /// drivers, file import and recovery build this step, and the bundled dictionary never changes
+  /// while the app runs. A failed load is not kept, so the next step retries.
+  private static var sharedFormatter: EmojiFormatter?
+
   private let formatter: EmojiFormatter?
 
   public init() {
+    if let sharedFormatter = Self.sharedFormatter {
+      self.formatter = sharedFormatter
+      return
+    }
     do {
-      self.formatter = try EmojiFormatter.load()
+      let formatter = try EmojiFormatter.load()
+      Self.sharedFormatter = formatter
+      self.formatter = formatter
     } catch {
       Self.logger.warning(
         "EmojiFormatter dictionary load failed — feature will be silently disabled: \(String(describing: error), privacy: .public)"

@@ -160,6 +160,24 @@ import Testing
       #expect(SettingsProjection.value(for: .smartInsertion, settings: settings, list: CloudModelListSeed.current) == "off")
     }
 
+    @Test("#4841: the silent-mic warning switch emits one privacy-safe on-to-off delta")
+    func silentMicWarningsDelta() {
+      let (settings, telemetry, box, _) = makeHarness()
+      defer { TelemetryService.shared.testEventHook = nil }
+
+      settings.silentMicWarnings = false
+      telemetry.flush()
+
+      let d = deltas(box, setting: "silent_mic_warnings")
+      #expect(d.count == 1)
+      #expect(d.first?.stringProps["from"] == "on", "ships on — that is the baseline")
+      #expect(d.first?.stringProps["to"] == "off")
+      #expect(d.first?.stringProps["source"] == "user")
+      #expect(
+        SettingsProjection.value(
+          for: .silentMicWarnings, settings: settings, list: CloudModelListSeed.current) == "off")
+    }
+
     /// #3269: the privacy switches are never reported, so turning metrics off sends no final
     /// "opted out" row (founder 2026-09-28). Smart insertion in the same flush is the positive
     /// control: it proves the harness captured deltas, so an empty privacy result is not a
@@ -680,8 +698,12 @@ import Testing
     func egOneSizeResolutionAtLaunchIsSilent() {
       let suite = TestDefaults.suite("SCT-egsize-\(UUID().uuidString)")!
       let settings = SettingsManager(defaults: suite)
-      settings.onboardingState = .completed
+      // Launch order: the size resolves at launch, before onboarding completes. Completing
+      // onboarding copies the dictation engine into meeting summaries; since #4528 D1 a fresh
+      // install's engine is EG-1, so completing first would make this user look like an existing
+      // EG-1 user and resolve the full size.
       settings.resolveEGOneSizeIfNeeded(hasEGOneInstallRecord: false, recommendation: .micro)
+      settings.onboardingState = .completed
       #expect(settings.egOneSize == .micro)
       let telemetry = SettingsChangeTelemetry(
         settings: settings, cloudModelList: { CloudModelListSeed.current }, emitBaseline: {})
@@ -1281,6 +1303,23 @@ import Testing
         #expect(d.first?.stringProps["source"] == "dev_control")
         #expect(settings.isDevControlWrite == false)
       }
+    }
+
+    @Test("#3853: the polish helper unload choice is its own telemetry setting, default never")
+    func localPolishUnloadPolicyIsReported() {
+      let (settings, telemetry, box, _) = makeHarness()
+      defer { TelemetryService.shared.testEventHook = nil }
+      #expect(settings.localPolishUnloadPolicy == .never)
+      telemetry.flush()
+      box.clear()
+      settings.localPolishUnloadPolicy = .fiveMinutes
+      telemetry.flush()
+      let d = deltas(box, setting: "local_polish_unload_policy")
+      #expect(d.count == 1)
+      #expect(d.first?.stringProps["from"] == "never")
+      #expect(d.first?.stringProps["to"] == "fiveMinutes")
+      // The speech model's setting is a different row and did not move.
+      #expect(deltas(box, setting: "model_unload_policy").isEmpty)
     }
 
     @Test("last writer wins: a user write after a door write in one window is user")

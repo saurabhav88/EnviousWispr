@@ -18,9 +18,12 @@ struct AppWindowCoordinatorDockPolicyTests {
   private func coordinator(
     _ effects: RecordingDesktopPresentationEffects, showInDock: Bool
   ) -> AppWindowCoordinator {
-    AppWindowCoordinator(
-      application: effects, showInDock: { showInDock }, canOpenOnboarding: { false },
+    let sut = AppWindowCoordinator(
+      application: effects, showInDock: { showInDock },
       isOnboardingComplete: { true })
+    // Never `main`: a test must not read or overwrite the user's saved main-window frame (empty turns saving off).
+    sut.mainWindowPresenter.frameName = ""
+    return sut
   }
 
   /// All thirty-two input combinations against an independent literal rule: accessory ONLY when the
@@ -46,16 +49,18 @@ struct AppWindowCoordinatorDockPolicyTests {
   }
 
   /// The reported bug: launch forced accessory. Launch now rises to regular under either setting,
-  /// then asks to come forward.
+  /// then the first window (#4842: the main window on a completed install) asks to come forward.
   @Test(
     "launch is regular and asks to come forward, whatever the switch says",
     arguments: [false, true])
   func launchRisesAndActivates(showInDock: Bool) {
     let effects = RecordingDesktopPresentationEffects()
     let sut = coordinator(effects, showInDock: showInDock)
+    defer { sut.mainWindowPresenter.window?.orderOut(nil) }
     sut.beginLaunch()
-    sut.finishLaunch()
-    #expect(effects.calls == [.setPolicy(.regular), .activate(.ignoringOtherApps)])
+    sut.openFirstSurfaceAtLaunch(automaticallyOpenSetup: true)
+    #expect(
+      effects.calls == [.setPolicy(.regular), .setPolicy(.regular), .activate(.ignoringOtherApps)])
   }
 
   @Test("an update dialog makes the app regular and brings it forward")

@@ -32,7 +32,8 @@ enum WhisperDeliveryWiring {
   static func make(
     modelDelivery: ModelDeliveryHome,
     settings: SettingsManager,
-    engineMutationScope: EngineMutationScope
+    engineMutationScope: EngineMutationScope,
+    removeModel: @escaping @MainActor () async -> WhisperRemoveNotice?
   ) -> Wired {
     let handle = modelDelivery.whisperHandle
     let registration = modelDelivery.whisperRegistration
@@ -74,10 +75,16 @@ enum WhisperDeliveryWiring {
     let legacyPreviewDirectory = modelDelivery.whisperPreviewRegistration?.installDirectory
       .deletingLastPathComponent().appendingPathComponent("whisper-preview", isDirectory: true)
     var ports: [WhisperModelMigration.Artifact: WhisperModelMigration.ArtifactPort] = [:]
+    // #4578: the migration is built after its ports; both transcription adoption paths read
+    // its consent through this holder.
+    let consent = WhisperAdoptionConsent()
     if let handle, let legacyDictationDirectory {
       ports[.dictation] = .init(
         isSelected: { [weak settings] in settings?.selectedBackend == .whisper },
-        isAdmittedOrAdoptable: { [weak handle] in await handle?.adoptIfPresent() == true },
+        isAdmittedOrAdoptable: { [weak handle] in
+          guard let handle else { return false }
+          return await adoptTranscriptionCache(handle, consent: consent)
+        },
         ensureAvailable: { [weak handle] in
           // The kill switch is read at the fetch door, fresh per attempt: that is what makes
           // it a relaunch-free rollback.
@@ -107,6 +114,7 @@ enum WhisperDeliveryWiring {
       // Read again at the TOP of every run: retiring bytes while the switch is off would
       // strand a rollback user with neither model (Codex 2b-r1 P1).
       isDeliveryEnabled: { [weak handle] in handle?.isEnabled() == true })
+    consent.migration = migration
     // The migration must not ship blind: its outcomes ride the shared delivery funnel.
     migration.onEvent = { event in
       var props = ["family": ModelFamily.whisper.rawValue]
@@ -139,7 +147,10 @@ enum WhisperDeliveryWiring {
         // WITHOUT fetching, instead of telling the user to download a model they already
         // have. Absent files fail this check instantly, so the common no-model path stays
         // cheap.
-        if await handle.adoptIfPresent() { return .ready }
+        //
+        // #4578: only while the person has not removed or cancelled it: a payload left by a
+        // failed removal stays unadmitted (leftovers) until an explicit Download.
+        if await adoptTranscriptionCache(handle, consent: consent) { return .ready }
         // Resumable partials read as PAUSED, not not-downloaded (founder ruling 2026-07-17):
         // derived from disk, so the paused row survives refreshes and relaunches alike
         // (Codex 2c-r7 P2).
@@ -164,17 +175,9 @@ enum WhisperDeliveryWiring {
         await handle.cancelActiveFetch()
         return true
       },
-      // Remove: record the decline, stop any fetch, unload the engine, then delete. The
-      // dictation-in-flight refusal already happened in the presentation layer.
-      removeModelAction: { [weak handle, weak migration, removal] in
-        guard let handle, let migration else { return .failed }
-        guard migration.decline(.dictation) == .done else { return .failed }
-        await handle.cancelActiveFetch()
-        await removal.unloadForRemoval()
-        let removed = await handle.remove()
-        await removal.finishRemoval()
-        return removed ? nil : .failed
-      })
+      // #4578: Remove is `SpeechModelLibrary.removeWhisperModel()` (record the decline, stop
+      // any fetch, unload the engine, then delete).
+      removeModelAction: removeModel)
 
     // One delivery-state stream projected onto the setup states the Settings row already
     // renders (D6: one stream, two renderers).
@@ -276,6 +279,30 @@ extension WhisperDeliveryWiring {
     modelDelivery.previewReplacement = .init(
       download: { [weak migration] in await migration?.download(.preview) == .done },
       decline: { [weak migration] in migration?.decline(.preview) == .done })
+  }
+}
+
+extension WhisperDeliveryWiring {
+  /// #4578: the ONE consent-aware adoption of the transcription Whisper cache, for both the
+  /// launch replacement and the availability read. Admits a complete cache without fetching,
+  /// and only when the replacement record permits it (`WhisperModelMigration.permitsAdoption`).
+  /// Preview has its own registration and consent and never comes through here.
+  static func adoptTranscriptionCache(
+    _ handle: DeliveredModelHandle, consent: WhisperAdoptionConsent
+  ) async -> Bool {
+    if await handle.isAdmitted() { return true }
+    guard consent.permitsTranscriptionAdoption() else { return false }
+    return await handle.adoptIfPresent()
+  }
+}
+
+/// #4578: the transcription consent the adoption command reads, set once the migration exists.
+/// No migration yet (construction order) refuses: nothing adopts before the record is readable.
+@MainActor final class WhisperAdoptionConsent {
+  weak var migration: WhisperModelMigration?
+
+  func permitsTranscriptionAdoption() -> Bool {
+    migration?.permitsAdoption(of: .dictation) ?? false
   }
 }
 

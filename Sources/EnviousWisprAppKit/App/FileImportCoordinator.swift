@@ -103,6 +103,7 @@ final class FileImportCoordinator {
     /// either could not be read: the import still saves, as a row with no trusted link.
     var sourceBookmark: Data? = nil
     var sourceFingerprint: String? = nil
+    var isSharedMediaCopy = false
 
     /// "1 hr 12 min · 68.4 MB · AAC · 44.1 kHz · mono"
     var detailLine: String {
@@ -257,6 +258,8 @@ final class FileImportCoordinator {
     case engineNotInstalled
     /// It is installed but did not come up. The next Start retries.
     case engineNotReady
+    /// Installed, but automatic loads stopped and Engine Settings must grant Try Again.
+    case engineRequiresExplicitRetry
     /// The bundled cleanup engine is installed but did not start. The words are already
     /// transcribed and saved; only the cleanup is refused, and Clean it again retries it.
     case polisherNotReady
@@ -590,6 +593,7 @@ final class FileImportCoordinator {
     case ready
     case notInstalled
     case notReady
+    case requiresExplicitRetry
   }
 
   /// Called once, on the main actor, after a run has physically released the
@@ -980,9 +984,48 @@ final class FileImportCoordinator {
 
   // MARK: - The user's four actions
 
-  /// The user picked a file. Reads it far enough to say whether it can be
-  /// transcribed at all, before anything touches an engine.
+  enum ExternalImportBlock: String {
+    case running
+    case settling
+    case fileInHand
+    case unsavedDocument
+  }
+
+  /// An outside request cannot replace a user's current import or unsaved words.
+  /// The explicit picker and drag/drop still let the user replace their own file.
+  var externalImportBlock: ExternalImportBlock? {
+    if isRunning { return .running }
+    if isEngineHeld || isSettlingTurns || hasPendingSettlement || isSettlingRunPersistence
+      || restorationPending
+    { return .settling }
+    if isReadyToRun { return .fileInHand }
+    if case .reading = state { return .fileInHand }
+    guard hasDocument else { return nil }
+    guard savedHistoryRow != nil, let historyID, historyRowExists(historyID),
+      let row = currentHistoryRow(historyID), row.text == rawTranscript,
+      unsavedRestoredTurns == nil
+    else { return .unsavedDocument }
+    // A stopped labeled import intentionally shows its saved raw turns, even
+    // when its earlier cleanup parts are still in memory.
+    if state == .stopped, row.turns != nil, !showsRestoredCleanup { return nil }
+    // Use the cleanup writer's save check for every finished or materialized
+    // version. Equal words alone cannot prove that History saved its credit.
+    guard state == .finished || showsRestoredCleanup || !parts.isEmpty else { return nil }
+    return historyHoldsDocument ? nil : .unsavedDocument
+  }
+
+  func chooseSharedMedia(_ claim: SharedMediaTransfer.Claim) -> Bool {
+    guard externalImportBlock == nil else { return false }
+    choose(url: claim.url, sharedMedia: claim)
+    return true
+  }
+
+  /// Reads the selected file far enough to confirm it can be transcribed.
   func choose(url: URL) {
+    choose(url: url, sharedMedia: nil)
+  }
+
+  private func choose(url: URL, sharedMedia: SharedMediaTransfer.Claim?) {
     guard !isRunning else { return }
     parts = []
     retainedCleanup = nil
@@ -1010,7 +1053,7 @@ final class FileImportCoordinator {
     // is a no-op.
     runTask?.cancel()
     resetSpeakerResult()
-    let name = url.lastPathComponent
+    let name = sharedMedia?.displayName ?? url.lastPathComponent
     // Bumped HERE too, not only when a run starts. Picking a second file while
     // the first is still decoding is an ordinary thing to do, and without this
     // both decodes carry the same generation, so whichever finishes last wins —
@@ -1047,17 +1090,21 @@ final class FileImportCoordinator {
     // already checks cancellation inside its read loop, so this stops it in the
     // middle rather than at the end. Found by Codex.
     decodeTask?.cancel()
-    decodeTask = Task { [weak self] in
+    decodeTask = Task { [weak self, sharedMedia] in
+      // Cancelling a task does not interrupt an in-flight file read.
+      // Retire a staged copy only after every read has unwound.
+      defer { withExtendedLifetime(sharedMedia) {} }
       guard let self else { return }
+      let keepBookmark = sharedMedia == nil
       do {
         // #3147 PR3 (Codex r2): the file is identified before AND after the decode; a link is
         // kept only when both agree, so a file replaced mid-decode never gets a trusted link
         // to audio other than the text's. The import itself always proceeds.
-        let before = await Self.readSource(url)
+        let before = await Self.readSource(url, keepBookmark: keepBookmark)
         guard generationAtStart == generation else { return }
         let decoded = try await decode(url)
         guard generationAtStart == generation else { return }
-        let after = await Self.readSource(url)
+        let after = await Self.readSource(url, keepBookmark: keepBookmark)
         guard generationAtStart == generation else { return }
         let source: (bookmark: Data?, fingerprint: String?) =
           before.fingerprint != nil && before.fingerprint == after.fingerprint
@@ -1066,7 +1113,7 @@ final class FileImportCoordinator {
           name: name, seconds: decoded.seconds, byteCount: decoded.byteCount,
           codec: decoded.codec, sampleRate: decoded.sampleRate,
           channelCount: decoded.channelCount, sourceBookmark: source.bookmark,
-          sourceFingerprint: source.fingerprint)
+          sourceFingerprint: source.fingerprint, isSharedMediaCopy: !keepBookmark)
         state = .ready(fileName: name, seconds: decoded.seconds)
         decodedSamples = decoded.samples
       } catch is CancellationError {
@@ -1081,9 +1128,15 @@ final class FileImportCoordinator {
   /// The chosen file's bookmark and `ImportedSourceIdentity` fingerprint (#3147 PR3), read off
   /// the main actor. Either is nil when it could not be read; a bookmark without an identity
   /// is not kept, so a row never claims a link nothing can verify.
-  nonisolated private static func readSource(_ url: URL) async -> (bookmark: Data?, fingerprint: String?) {
-    guard let identity = try? await ImportedSourceFingerprint.read(url: url),
-      let bookmark = try? url.bookmarkData(options: [], includingResourceValuesForKeys: nil, relativeTo: nil)
+  nonisolated private static func readSource(
+    _ url: URL, keepBookmark: Bool
+  ) async -> (bookmark: Data?, fingerprint: String?) {
+    guard let identity = try? await ImportedSourceFingerprint.read(url: url) else {
+      return (nil, nil)
+    }
+    guard keepBookmark else { return (nil, identity.fingerprint) }
+    guard let bookmark = try? url.bookmarkData(
+      options: [], includingResourceValuesForKeys: nil, relativeTo: nil)
     else { return (nil, nil) }
     return (bookmark, identity.fingerprint)
   }
@@ -2094,6 +2147,9 @@ final class FileImportCoordinator {
       case .notReady:
         showRejection(.engineNotReady)
         return
+      case .requiresExplicitRetry:
+        showRejection(.engineRequiresExplicitRetry)
+        return
       case .ready: break
       }
 
@@ -2146,11 +2202,7 @@ final class FileImportCoordinator {
         showRejection(.engineNotReady)
         return
       }
-      guard await ensureEngineReady() == .ready else {
-        guard generationAtStart == generation else { return }
-        showRejection(.engineNotReady)
-        return
-      }
+      let claimedReadiness = await ensureEngineReady()
       guard generationAtStart == generation else { return }
       // And again after it: the user can change engines while the drive waits (for example
       // during an in-session Ultra activation). The engine owner then stops waiting for a
@@ -2158,6 +2210,11 @@ final class FileImportCoordinator {
       // would record one engine and transcribe on another.
       guard engineSelectionSettled() else {
         showRejection(.engineNotReady)
+        return
+      }
+      guard claimedReadiness == .ready else {
+        showRejection(
+          claimedReadiness == .requiresExplicitRetry ? .engineRequiresExplicitRetry : .engineNotReady)
         return
       }
 
@@ -2559,7 +2616,7 @@ final class FileImportCoordinator {
     guard historyIDAtStart == historyID, !Task.isCancelled else { return }
 
     guard
-      let (assembledTurns, labeledCount) = await assembleTurnsOrPersistTerminal(
+      let (assembledTurns, assembledAnalysis) = await assembleTurnsOrPersistTerminal(
         outcome: outcome, timings: timings, historyIDAtStart: historyIDAtStart)
     else { return }
     guard historyIDAtStart == historyID, !Task.isCancelled else { return }
@@ -2567,7 +2624,7 @@ final class FileImportCoordinator {
     // #2851 follow-up: nothing is written here. The turns wait for their section cleanup and
     // are written once, cleaned, by `finishRun` (or raw, by a refused cleanup).
     pendingSpeakerResult = SpeakerStepResult(
-      analysis: .labeled(count: labeledCount), turns: assembledTurns, terminalOutcome: nil)
+      analysis: assembledAnalysis, turns: assembledTurns, terminalOutcome: nil)
     await AppLogger.shared.log(
       "[TurnStorage] assembled turns=\(assembledTurns.count) both=\(assembledTurns.filter { $0.speakerId == TurnAssembler.bothSpeakersID }.count) ms=\(Self.elapsedMs(since: passStart))",
       level: .info, category: "FileImportCoordinator")
@@ -2585,103 +2642,39 @@ final class FileImportCoordinator {
   /// cleanup (the ordinary path) or direct persistence (retry, which skips cleanup).
   private func assembleTurnsOrPersistTerminal(
     outcome: SpeakerAnalysis, timings: SpeakerTimings, historyIDAtStart: UUID?
-  ) async -> (turns: [Turn], labeledCount: Int)? {
-    // Non-labeled outcomes map directly through the one exhaustive mapping (chunk 1) and
-    // never touch turn assembly. A missing `wordTimings` matters ONLY when assembly is
-    // actually needed — checking it before the outcome type would let a merge-input gap
-    // silently override a perfectly good `.single`/`.failed`/`.timedOut` result that has
-    // nothing to do with timings (found by chunk review).
-    guard case .labeled(let labeledCount, let segments) = outcome else {
-      // `.single` is the one non-labeled outcome worth a turn-storage telemetry event of
-      // its own (there is genuinely nothing to store, by design). `.failed`/`.timedOut`/
-      // `.cancelled` are ANALYZER outcomes `emitSpeakerTelemetry` already reported moments
-      // earlier — `nil` here means "write silently, do not double-report."
-      let turnsOutcome: TelemetryService.FileImportTurnsOutcome? =
-        if case .single = outcome { .singleNoTurns } else { nil }
+  ) async -> (turns: [Turn], analysis: TranscriptSpeakerAnalysis)? {
+    if case .single = outcome, let words = timings.words {
+      // Numbers only: the longest gaps the paragraph rule saw (#4611 T4 tuning).
+      let summary = SingleSpeakerParagraphs.gapSummary(words: words, rawText: timings.rawText)
+      await AppLogger.shared.log(
+        "[TurnStorage] single gaps=\(summary) units=\(words.count)", level: .info,
+        category: "FileImportCoordinator")
+    }
+    // The one assembly (shared with Transcribe again with, #4611): paragraphs for one voice,
+    // speaker turns for several, or the analysis alone. Off the main actor and cancellable.
+    let result = await FileImportTurnAssembly.assemble(
+      outcome: outcome, words: timings.words, segments: timings.segments,
+      rawText: timings.rawText)
+    // A stale/cancelled pass writes NOTHING, matching every other staleness guard in this
+    // file. Compares against the LIVE `historyID`, never a value captured at entry.
+    guard historyIDAtStart == historyID, !Task.isCancelled else { return nil }
+    switch result {
+    case .turns(let turns, let analysis):
+      return (turns, analysis)
+    case .none(let analysis, let turnsOutcome, let labeledWithoutTurns):
       pendingSpeakerResult = SpeakerStepResult(
-        analysis: outcome.asStorageAnalysis, turns: nil, terminalOutcome: turnsOutcome)
+        analysis: analysis, turns: nil, terminalOutcome: turnsOutcome)
+      if labeledWithoutTurns {
+        // #2919: the one line that says WHY a labeled analysis stored no turns. Logged AFTER
+        // the assignment, so a replaced document's failure never lands on the next one.
+        let coverage = retainedWordTimingCoverage
+        let speakers: String = if case .labeled(let count, _) = outcome { "\(count)" } else { "n/a" }
+        await AppLogger.shared.log(
+          "[TurnStorage] no speaker turns: timed=\(coverage?.timed ?? -1) total=\(coverage?.total ?? -1) speakers=\(speakers)",
+          level: .info, category: "FileImportCoordinator")
+      }
       return nil
     }
-    let wordTimings = timings.words
-    // #3735 §3.10: segment timings are the second source, for an engine with no word timing.
-    let segmentTimings = Self.segmentTimingsCanBind(timings.segments) ? timings.segments : nil
-    guard wordTimings != nil || segmentTimings != nil else {
-      pendingSpeakerResult = SpeakerStepResult(
-        analysis: .failed(.noWordTimings), turns: nil, terminalOutcome: .noWordTimings)
-      return nil
-    }
-    // The word path keeps precedence; the segment path runs only when the word path has no
-    // timings or binds no individual speaker.
-    var assembledTurns: [Turn] = []
-    if let wordTimings {
-      // Off the main actor: a multi-hour, highly segmented recording's O(words × segments)
-      // scan would otherwise run synchronously on this MainActor-isolated method and freeze
-      // the UI before the background cleanup even claims the engine (found by cloud review).
-      // `entries`/`segments`/`Turn` are all `Sendable` value types, so handing the pure
-      // computation to a detached task changes nothing about its result.
-      //
-      // `Task.detached` is UNSTRUCTURED: cancelling THIS task (e.g. `stop()`'s unconditional
-      // `speakerStepTask?.cancel()`) would not by itself cancel the detached child, leaving it
-      // to run the full scan to completion and this task waiting on it the whole time
-      // (found by cloud review). `withTaskCancellationHandler` propagates cancellation into
-      // the child explicitly; `TurnAssembler.assemble`'s own loop checks `Task.isCancelled`
-      // per entry so the propagated cancellation actually shortens the scan.
-      let assemblyTask = Task.detached(priority: .utility) {
-        TurnAssembler.assemble(entries: wordTimings, segments: segments)
-      }
-      assembledTurns = await withTaskCancellationHandler(
-        operation: { await assemblyTask.value },
-        onCancel: { assemblyTask.cancel() }
-      )
-      // A stale/cancelled pass writes NOTHING here, matching every other staleness guard in
-      // this file — the caller must not fall through to the all-unknown check below and
-      // persist a failure on behalf of a document nobody is watching anymore. Compares against
-      // the LIVE `historyID` property, never `historyIDForWrite` — a value captured once at
-      // entry cannot detect a document swap that happened during this `await`.
-      guard historyIDAtStart == historyID, !Task.isCancelled else { return nil }
-      if Self.bindsIndividualSpeaker(assembledTurns) { return (assembledTurns, labeledCount) }
-    }
-
-    // #3735 §3.10: the segment path, off the main actor and cancellable for the same reasons
-    // as the word path above. A result whose segments overlapped the diarizer at all is
-    // stored even when every turn is Both: segments that mix speakers are a legitimate,
-    // honest result, not missing timings.
-    if let segmentTimings {
-      let rawText = timings.rawText
-      let segmentTask = Task.detached(priority: .utility) {
-        TurnAssembler.assemble(segmentTimings: segmentTimings, rawText: rawText, segments: segments)
-      }
-      let assembly = await withTaskCancellationHandler(
-        operation: { await segmentTask.value },
-        onCancel: { segmentTask.cancel() }
-      )
-      guard historyIDAtStart == historyID, !Task.isCancelled else { return nil }
-      if assembly.anySegmentBound { return (assembly.turns, labeledCount) }
-      assembledTurns = assembly.turns
-    }
-
-    // A space-free script (Chinese, Japanese, ...) makes the production word-timing mapper
-    // (`WordTimingRangeMapper`, #2809) return exactly one untimed entry for the whole
-    // transcript — there is no whitespace to tokenize on, so no engine word can bind to any
-    // text run. Every entry then resolves to "unknown" here, and persisting `.labeled(count:)`
-    // alongside turns that are ALL "unknown" would store a self-contradictory row: the
-    // analysis claims real speakers while the turns say none were ever found (found by cloud
-    // review). Treated the same as `noWordTimings` — from turn assembly's own perspective,
-    // timings that never bind to anything are exactly "nothing to merge against," matching
-    // that reason's own documented scope. The real fix (a mapper that can tokenize a
-    // space-free script) belongs to `WordTimingRangeMapper` itself, out of this phase's scope.
-    pendingSpeakerResult = SpeakerStepResult(
-      analysis: .failed(.noWordTimings), turns: nil, terminalOutcome: .noWordTimings)
-    // #2919: the one line that says WHY a labeled analysis stored no turns. The WhisperKit
-    // long-file failure ran for a day with `outcome=labeled` in the log and nothing after it.
-    // Logged AFTER the assignment, like the success path: an await between the staleness
-    // guard above and the assignment would let a replaced document's failure land on the
-    // next one (found by Codex).
-    let coverage = retainedWordTimingCoverage
-    await AppLogger.shared.log(
-      "[TurnStorage] no speaker turns: timed=\(coverage?.timed ?? -1) total=\(coverage?.total ?? -1) entries=\(assembledTurns.count) speakers=\(labeledCount)",
-      level: .info, category: "FileImportCoordinator")
-    return nil
   }
 
   /// Whether word-path turns name at least one real speaker (not unknown, not Both).
@@ -2810,7 +2803,7 @@ final class FileImportCoordinator {
     guard historyID != nil, historyID == historyIDAtStart else { return }
 
     guard
-      let (assembledTurns, labeledCount) = await assembleTurnsOrPersistTerminal(
+      let (assembledTurns, assembledAnalysis) = await assembleTurnsOrPersistTerminal(
         outcome: outcome, timings: timings, historyIDAtStart: historyIDAtStart)
     else {
       // A terminal result (one voice, no timings, all unknown): written now, since no
@@ -2823,7 +2816,7 @@ final class FileImportCoordinator {
     // #2851 follow-up: the new turns need their own section cleanup before they are shown;
     // `rePolish` cuts the sections from `pendingSpeakerResult` and `finishRun` writes them.
     pendingSpeakerResult = SpeakerStepResult(
-      analysis: .labeled(count: labeledCount), turns: assembledTurns, terminalOutcome: nil)
+      analysis: assembledAnalysis, turns: assembledTurns, terminalOutcome: nil)
     // The step is done as far as `rePolish`'s guard is concerned; the `defer` above sets the
     // same value again on the way out.
     speakerStepState = .finished

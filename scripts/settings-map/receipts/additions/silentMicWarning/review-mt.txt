@@ -1,0 +1,10 @@
+{
+  "language": "mt",
+  "title": "uri twissija meta l-mikrofonu ma jaqbadx ħoss",
+  "words": [
+    "twissija tal-mikrofonu"
+  ],
+  "phrases": [
+    "kif nixgħel it-twissija meta l-mikrofonu ma jaqbadx ħoss waqt li niddetta?"
+  ]
+}

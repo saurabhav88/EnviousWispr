@@ -54,26 +54,116 @@ enum WhatsNewContent {
   }
 
   static let entries: [Entry] = [
+    // MARK: - v2.6.2
+
+    Entry(
+      id: "separate-dictionary-controls",
+      icon: "text.book.closed",
+      title: "Separate controls for learned words",
+      description: "Choose whether your dictionary learns new words and whether it fixes words it already learned. Words you added yourself still work when learned fixes are off.",
+      version: "2.6.2"
+    ),
+
+    // #3142 French slice: French joins English and German as an interface language.
+    Entry(
+      id: "enviouswispr-in-french",
+      icon: "globe",
+      title: "Now available in French",
+      description: "Choose Français in Settings > App Settings > Appearance > Language, then relaunch to apply. System default follows your Mac's language.",
+      version: "2.6.2"
+    ),
+
+    // #3142 Spanish slice: Spanish joins as an interface language (Gate 1: a second card in the
+    // French card's pattern; the French card stays as it is).
+    Entry(
+      id: "enviouswispr-in-spanish",
+      icon: "globe",
+      title: "Now available in Spanish",
+      description: "Choose Español in Settings > App Settings > Appearance > Language, then relaunch to apply. System default follows your Mac's language.",
+      version: "2.6.2"
+    ),
+
+    // #4841: exact digital silence from the microphone never ends a dictation; the pill warns at
+    // 5 s mid-take (6 s silent since the start) and more strongly at 15 s. Claims checked: the
+    // take keeps recording (no exact-zero exit in RecordingSessionKernel); 5 / 6 s are
+    // AudioConstants.silentMicCalmMidTakeSamples / silentMicCalmSinceStartSamples; zeros carry
+    // no speech; auto-stop still ends on the chosen Pause duration (SilenceDetector path
+    // unchanged); the switch is on by default (SettingsDefaultValues.silentMicWarnings) and lives
+    // on the Microphone tab (DictationSettingsCopy.Microphone.silentMicTitle). de/fr/es reviewed
+    // by GPT and Gemini in two rounds (council session ew-4841-whatsnew-l10n-2026-11-22).
+    Entry(
+      id: "silent-microphone-keeps-recording",
+      icon: "mic.slash",
+      title: "Dictation keeps going when your microphone goes silent",
+      description: "If your microphone sends only digital silence, EnviousWispr keeps recording, and the pill warns you after 5 seconds (6 if it was silent from the start). Words you say during the silence are not captured. If you use Stop recording on silence, your dictation still ends once a pause reaches the length you chose. Turn the warning off in Settings > Dictation Settings > Microphone.",
+      version: "2.6.2"
+    ),
+
     // MARK: - v2.6.1
 
-    // Draft group, 2026-11-12 (#3147 PR1, plan §16 C9): 2.6.0 has shipped, so this opens the next
-    // group (whats-new-protocol.md FACT: whats-new-grouping). Not founder copy yet: the release
-    // checklist puts it before the founder, whose text then ships verbatim. Claims checked against
-    // code: saved dictations only (KernelFinalizationWiring permanentSaveRowID; failed, cancelled
-    // and Escape Recovery takes get none); stored on this Mac (RecordingArchive under Application
-    // Support, nothing uploaded); default keep period forever (SettingsDefaultValues
-    // .dictationRecordingRetention); Save dictation recordings in App Settings > Recordings
-    // affects new dictations only; Delete recording in History and Delete all dictation
-    // recordings remove audio and keep the text.
+    // Founder-approved group, 2026-11-20 (Claude Doc "EnviousWispr 2.6.1 Release Notes"). The
+    // founder wrote or edited this copy; it ships verbatim (whats-new-protocol.md). Declared repairs:
+    // "Transcriptions" -> "Transcripts" (the tab's name), "big" -> "bug", "11+ international
+    // languages" -> "10 more languages" (the sealed exam's ten non-English languages). Codex verified
+    // the claims (run 20261120-101140-release-v2-6-1-notes-verify-11b0). Evidence kept here for the
+    // claim sweep: "faster" = size cards p50 101 / 55 / 35 ms (eg1-size-facts.json) against
+    // EG-1 1.2 p50 260 ms (SCORECARD.md section 10; different harnesses, so no multiplier is
+    // claimed; founder chose this wording 2026-11-20 over re-measuring). "The full-size EG-1 is
+    // more accurate" = pass+minor 96.8% vs 93.4% English, 86.1% vs 74.6% in ten languages, same
+    // sealed exam; Micro scores below 1.2, so the claim names full size only. Playback: saved
+    // dictations only (KernelFinalizationWiring
+    // permanentSaveRowID); "Delete recording, keep text" is the History control. Replaces the
+    // unreleased draft entries remove-either-speech-engine and calmer-self-learning-pill.
+    Entry(
+      id: "brand-new-history-tab-experience",
+      icon: "clock.arrow.circlepath",
+      title: "A Brand New History Tab Experience",
+      description:
+        "The UX has been redesigned to make engaging with your Dictations, Transcripts and Meetings more natural and enjoyable. We added a bunch of new functionality as well for power users.",
+      version: "2.6.1"
+    ),
     Entry(
       id: "play-back-your-dictations",
       icon: "waveform",
       title: "Play back your dictations",
       description:
-        "EnviousWispr now keeps a recording of each saved dictation on your Mac, so you can play it back in History. Recordings stay until you delete them, or for a keep period you choose in Settings > App Settings > Recordings.",
+        "Introducing dictation playback. EnviousWispr now keeps a recording of your dictations on your Mac, so you can play it back in History. Recordings stay until you delete them, or for a keep period you choose in Settings > App Settings > Recordings.",
       bullets: [
         "Turn off Save dictation recordings on that page to stop saving new recordings. Recordings you already have are not deleted.",
-        "Delete a recording in History, or all of them with Delete all dictation recordings. The text always stays.",
+        "Choose Delete recording, keep text in History, or all of them with Delete all dictation recordings. The text always stays.",
+      ],
+      version: "2.6.1"
+    ),
+    Entry(
+      id: "brand-new-faster-eg1",
+      icon: "cpu",
+      title: "Brand new, faster EG-1",
+      description:
+        "Brand new EG-1 models are faster, and the full-size EG-1 is more accurate, in English and 10 more languages. Pick the size that fits your Mac in Settings > AI Polish: EG-1, EG-1 Mini or EG-1 Micro. If you turned polishing off because it felt slow, give it another try.",
+      version: "2.6.1"
+    ),
+    Entry(
+      id: "enviouswispr-in-the-share-menu",
+      icon: "square.and.arrow.up",
+      title: "EnviousWispr is now in the Share menu",
+      description:
+        "Share an audio or video file from a Mac app with Transcribe with EnviousWispr to get a transcript. Turn it on once in the macOS Share menu, check your settings, then press Start transcription.",
+      version: "2.6.1"
+    ),
+    Entry(
+      id: "latest-cloud-models-and-smaller-fixes",
+      icon: "sparkles",
+      title: "The latest cloud AI models, plus smaller fixes",
+      description: "EnviousWispr has been updated to support the latest cloud AI models.",
+      bullets: [
+        "Parakeet can now be uninstalled if you prefer using Whisper.",
+        "More time to undo a self-learned word.",
+        "Stop recording on silence can now wait up to 5 seconds of silence before it stops.",
+        "Fixed a bug where Caps Lock could mess with push-to-talk.",
+        "Pasting into Telegram is more reliable.",
+        "Music resumes more reliably after you dictate.",
+        "Fixed a bug where numbers were being added when dictated back to back.",
+        "EnviousMeet catches more Teams guest calls in Brave and Chrome.",
       ],
       version: "2.6.1"
     ),

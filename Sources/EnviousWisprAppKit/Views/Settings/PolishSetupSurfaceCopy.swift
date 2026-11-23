@@ -35,6 +35,62 @@ enum PolishSetupSurfaceCopy {
     )
   }
 
+  // MARK: - #4721: the EnviousMeet summary engine, alone or with AI polish
+
+  static var summaryMenuLine: String {
+    String(
+      localized: "Finish setting up meeting summaries",
+      comment:
+        "Menu bar menu: opens Settings on EnviousMeet Summaries, whose chosen engine is not set up.")
+  }
+
+  static var bothMenuLine: String {
+    String(
+      localized: "Finish setting up AI polish and meeting summaries",
+      comment:
+        "Menu bar menu: both AI polish and the EnviousMeet summary engine are not set up; opens AI Polish first."
+    )
+  }
+
+  /// "Meeting summaries aren't set up: <reason>." The banner owns the final full stop.
+  static func summaryBanner(reason: String) -> String {
+    String(
+      localized: "Meeting summaries aren't set up: \(reason).",
+      comment:
+        "History page banner about the EnviousMeet summary engine. %@ is a short reason without a full stop, such as Claude did not accept your API key."
+    )
+  }
+
+  static var bothBanner: String {
+    String(
+      localized: "AI polish and meeting summaries both need attention.",
+      comment:
+        "History page banner: both the AI polish engine and the EnviousMeet summary engine are not set up."
+    )
+  }
+
+  /// The menu line's words for what it is about.
+  static func menuLine(_ subjects: PolishSetupWarningSubjects) -> String {
+    switch (subjects.dictation, subjects.summary) {
+    case (.some, .some): bothMenuLine
+    case (nil, .some): summaryMenuLine
+    case (.some, nil), (nil, nil): menuLine
+    }
+  }
+
+  /// The banner's words for what it is about.
+  static func banner(_ subjects: PolishSetupWarningSubjects) -> String {
+    switch (subjects.dictation, subjects.summary) {
+    case (.some, .some): return bothBanner
+    case (nil, .some(let summary)):
+      return summaryBanner(
+        reason: shortReason(summary.problem, egOneSize: summary.egOneSize))
+    case (.some(let dictation), nil):
+      return banner(reason: shortReason(dictation.problem, egOneSize: dictation.egOneSize))
+    case (nil, nil): return ""
+    }
+  }
+
   static var bannerClose: String {
     String(
       localized: "Close the AI polish setup notice",
@@ -74,6 +130,24 @@ enum PolishSetupSurfaceCopy {
   static func engineName(_ provider: LLMProvider, egOneSize: EGOneSize?) -> String {
     if provider == .egOne, let egOneSize { return EGOneSizeCardCopy.title(egOneSize) }
     return provider.displayName
+  }
+
+  @MainActor
+  static func shortReason(for take: PolishTakeOutcome) -> String? {
+    if let stop = PolishSetupMonitor.outsideStopMissed(take) {
+      return shortReason(.localEngineStoppedOutside(stop.provider, stop))
+    }
+
+    let provider = take.context.provider
+    let problem: PolishSetupProblem
+    switch take.setupProblem {
+    case .localNotDownloaded: problem = .localEngineNotDownloaded(provider)
+    case .localDownloadPaused: problem = .localEngineDownloadPaused(provider)
+    case .localUpdatePaused: problem = .localEngineUpdatePaused(provider)
+    case .localDownloadFailed: problem = .localEngineFailed(provider)
+    default: return nil  // The runner supplies the reason for the remaining setup tags.
+    }
+    return banner(reason: shortReason(problem))
   }
 
   /// The short reason: a fragment, no final punctuation, built from the problem itself (never

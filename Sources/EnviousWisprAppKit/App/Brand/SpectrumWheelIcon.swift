@@ -4,9 +4,21 @@ import SwiftUI
 // MARK: - SpectrumWheelIcon
 
 /// 12 rainbow-colored bars arranged radially, spinning slowly.
+///
+/// Under macOS Reduce Motion the wheel holds still (#4528, DESIGN.md Motion: gate every
+/// animation on Reduce Motion). Every surface that shows it also draws a text label beside it
+/// (`PolishingOverlayView`, `ColdStartNoticeView`), so the still wheel loses no information.
 struct SpectrumWheelIcon: View {
-  @State private var rotation: Double = 0
   let size: CGFloat
+  /// Test hook: reports the spin decision each time it changes (360 spinning, 0 parked).
+  var onSpinTarget: ((Double) -> Void)? = nil
+  /// Film use (#4528): seconds on the caller's clock. When set, the wheel turns by that clock
+  /// and runs no timeline of its own, so the caller's Pause holds it. Nil: the wall clock.
+  var clockTime: Double? = nil
+
+  @Environment(\.accessibilityReduceMotion) private var systemReduceMotion
+  @Environment(\.overlayReduceMotionOverride) private var reduceMotionOverride
+  private var reduceMotion: Bool { reduceMotionOverride ?? systemReduceMotion }
 
   private let bars: [(deg: Double, yOffset: CGFloat, height: CGFloat, color: Color)] = [
     (0, 4, 14, Color(red: 1.0, green: 0.176, blue: 0.333)),
@@ -23,10 +35,40 @@ struct SpectrumWheelIcon: View {
     (330, 5, 13, Color(red: 1.0, green: 0.624, blue: 0.039)),
   ]
 
+  /// One full turn every eight seconds, read from the clock (a still 0 under Reduce Motion).
+  static let turnSeconds: Double = 8
+
+  static func angle(at date: Date, reduceMotion: Bool) -> Double {
+    angle(atSeconds: date.timeIntervalSinceReferenceDate, reduceMotion: reduceMotion)
+  }
+
+  static func angle(atSeconds t: Double, reduceMotion: Bool) -> Double {
+    guard OverlayMotion.showsAmbientLoop(reduceMotion: reduceMotion) else { return 0 }
+    return t.truncatingRemainder(dividingBy: turnSeconds) / turnSeconds * 360
+  }
+
   var body: some View {
+    TimelineView(.animation(minimumInterval: 1.0 / 60.0, paused: reduceMotion || clockTime != nil))
+    { timeline in
+      let seconds = clockTime ?? timeline.date.timeIntervalSinceReferenceDate
+      wheel.rotationEffect(.degrees(Self.angle(atSeconds: seconds, reduceMotion: reduceMotion)))
+    }
+    .frame(width: size, height: size)
+    .onAppear { reportSpin() }
+    // Keyed to the SETTING, not only to onAppear (OverlayMotion.syncAmbientLoop's recorded
+    // reason): Reduce Motion can change while the wheel stays on screen, in both directions.
+    .onChange(of: reduceMotion) { _, _ in reportSpin() }
+    .accessibilityHidden(true)
+  }
+
+  private func reportSpin() {
+    onSpinTarget?(OverlayMotion.showsAmbientLoop(reduceMotion: reduceMotion) ? 360 : 0)
+  }
+
+  private var wheel: some View {
     // Scale factor: SVG viewBox is 64x64, we map to `size`
     let scale = size / 64.0
-    Canvas { context, size in
+    return Canvas { context, size in
       let cx = size.width / 2
       let cy = size.height / 2
       for bar in bars {
@@ -52,12 +94,5 @@ struct SpectrumWheelIcon: View {
       }
     }
     .frame(width: size, height: size)
-    .rotationEffect(.degrees(rotation))
-    .onAppear {
-      withAnimation(.linear(duration: 8).repeatForever(autoreverses: false)) {
-        rotation = 360
-      }
-    }
-    .accessibilityHidden(true)
   }
 }

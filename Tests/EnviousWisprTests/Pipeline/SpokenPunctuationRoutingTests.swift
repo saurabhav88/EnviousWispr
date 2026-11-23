@@ -561,6 +561,7 @@ struct SpokenPunctuationRoutingTests {
     let expansion = SnippetExpansionStep(
       expander: SnippetExpander(candidateSource: candidateSource),
       now: { Date(timeIntervalSince1970: 1_789_584_300) },
+      locale: { .current },
       clipboardText: { nil })
     expansion.snippetVocabulary = SnippetVocabulary(
       snippets: snippets, keyword: SnippetVocabulary.defaultKeyword, generation: 1)

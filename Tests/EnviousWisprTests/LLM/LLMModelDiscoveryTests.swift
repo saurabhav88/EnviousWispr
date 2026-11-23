@@ -354,4 +354,61 @@ struct LLMModelReleaseDateTests {
     #expect(kept.map(\.id) == ["gpt-4.1-mini"])
     #expect(kept.first?.releaseDate == date)
   }
+
+  // MARK: - #4528 probe window
+
+  /// When this fails, a person who pastes a working key waits for the slowest model of every
+  /// group of five in turn before the model list appears, or the check floods the provider.
+  @Test("one slow model never holds back the probes behind it, and at most five run at once")
+  func aSlowProbeDoesNotHoldBackTheRest() async throws {
+    final class Probes: @unchecked Sendable {
+      let lock = NSLock()
+      var inFlight = 0
+      var peak = 0
+      var started: [String] = []
+      var othersStartedWhenSlowAnswered = -1
+    }
+    let probes = Probes()
+    let ids = (0..<7).map { "gemini-9-flash-\($0)" }
+    let rows = ids.map {
+      #"{"name":"models/\#($0)","displayName":"\#($0)","supportedGenerationMethods":["generateContent"]}"#
+    }
+    let list = Data(#"{"models":[\#(rows.joined(separator: ","))]}"#.utf8)
+    let discovery = LLMModelDiscovery(
+      cloudModelList: nil,
+      transport: { request in
+        let url = try #require(request.url)
+        let ok = try #require(
+          HTTPURLResponse(url: url, statusCode: 200, httpVersion: nil, headerFields: nil))
+        guard request.httpMethod == "POST",
+          let id = ids.first(where: { url.absoluteString.contains("/\($0):") })
+        else { return (list, ok) }
+        // The first probe to start is the slow one: it is in the first window either way.
+        let isSlow: Bool = probes.lock.withLock {
+          probes.inFlight += 1
+          probes.peak = max(probes.peak, probes.inFlight)
+          probes.started.append(id)
+          return probes.started.count == 1
+        }
+        if isSlow {
+          // Answer only once every other probe has started. The cap only keeps a broken window
+          // from hanging the suite; it then fails on the count below.
+          for _ in 0..<20_000 where probes.lock.withLock({ probes.started.count }) < ids.count {
+            await Task.yield()
+          }
+          probes.lock.withLock {
+            probes.othersStartedWhenSlowAnswered = probes.started.count - 1
+          }
+        }
+        probes.lock.withLock { probes.inFlight -= 1 }
+        return (Data("{}".utf8), ok)
+      })
+
+    let models = try await discovery.discoverModels(provider: .gemini, apiKey: "test-key")
+
+    #expect(Set(models.map(\.id)) == Set(ids))
+    #expect(probes.othersStartedWhenSlowAnswered == ids.count - 1)
+    #expect(probes.peak <= LLMConstants.maxConcurrentProbes)
+    #expect(probes.started.sorted() == ids.sorted(), "every model probed exactly once")
+  }
 }

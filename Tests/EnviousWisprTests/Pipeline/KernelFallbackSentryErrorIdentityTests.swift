@@ -80,6 +80,7 @@ struct KernelFallbackSentryErrorIdentityTests {
       (.formatCreationFailed(source: "test"), "EnviousWisprAudio.AudioError#1"),
       (.alreadyCapturing, "EnviousWisprAudio.AudioError#2"),
       (.noBuiltInMicrophoneFound, "EnviousWisprAudio.AudioError#3"),
+      (.microphoneNotResponding(source: "test"), "EnviousWisprAudio.AudioError#4"),
     ]
     for (error, descriptor) in cases {
       #expect(SentryBreadcrumb.structuredDescriptor(error) == descriptor)
@@ -90,10 +91,11 @@ struct KernelFallbackSentryErrorIdentityTests {
     }
   }
 
-  @Test("all 3 declared AudioError identities are unique")
+  @Test("all 4 declared AudioError identities are unique")
   func audioErrorIdentitiesAreUnique() {
     let cases: [AudioError] = [
       .formatCreationFailed(), .alreadyCapturing, .noBuiltInMicrophoneFound,
+      .microphoneNotResponding(source: "test"),
     ]
     #expect(Set(cases.map(\.sentryFingerprintDescriptor)).count == cases.count)
     #expect(Set(cases.map(\.sentrySemanticID)).count == cases.count)

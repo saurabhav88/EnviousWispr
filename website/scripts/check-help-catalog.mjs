@@ -2,7 +2,7 @@
 // Proves the help catalog (#3275) matches the BUILT help pages: every generated
 // section anchor exists as an element id on its page, and every line of every
 // section's text appears in that page's visible text. Run after `npm run build`
-// (part of `npm run check:help`); it reads dist/, so it cannot pass on a stale build
+// (part of `npm run check:site`); it reads dist/, so it cannot pass on a stale build
 // of different content.
 
 import { readFileSync } from "node:fs";

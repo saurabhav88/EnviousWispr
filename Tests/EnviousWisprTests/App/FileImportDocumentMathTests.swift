@@ -49,7 +49,7 @@ struct FileImportDocumentMathTests {
   @Test("only engine refusals are about the engine; the file and the polisher are not")
   func engineRefusals() {
     let engine: [FileImportCoordinator.FileImportRejection] = [
-      .engineBusy(.dictation), .engineNotInstalled, .engineNotReady,
+      .engineBusy(.dictation), .engineNotInstalled, .engineNotReady, .engineRequiresExplicitRetry,
     ]
     let notEngine: [FileImportCoordinator.FileImportRejection] = [
       .cannotRead, .noAudio, .noSpeechFound, .polisherNotReady, .failed("x"),

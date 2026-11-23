@@ -407,7 +407,7 @@ final class CallSourceDiscovery {
         let age = projectionTime.timeIntervalSince(cached.beganAt)
         return age >= 0 && age <= CallDetectionPolicy.staleAfter ? cached.value : nil
       }
-      return .init(pid: holder.pid, rule: rule, input: input, evidence: read)
+      return .init(pid: holder.pid, rule: rule, input: input, evidence: read, ownerPID: holder.ownerPID)
     }
     return .init(
         sequence: sequence, takenAt: takenAt, complete: complete && eligible, holders: eligible ? mapped : [],
@@ -614,6 +614,7 @@ final class CallSourceDiscovery {
     case .unknown:
       switch value.startEvidence {
       case .call(let family, let room), .microphoneOnly(let family, let room): call = (family, room)
+      case .inconclusiveTeamsPreview(let room): call = (.teams, room)
       case .none, .unknown: return nil
       }
     }
@@ -937,7 +938,7 @@ final class CallSourceDiscovery {
       case .browser:
         switch frame.values[holder.pid] {
         case .call(let pageFamily, _)?: family = pageFamily
-        case .unknown?, nil:
+        case .unknown?, .inconclusiveTeamsPreview?, nil:
           undecided = true
           continue
         case .none?, .microphoneOnly?: continue
@@ -1017,17 +1018,25 @@ final class CallSourceDiscovery {
 
   // MARK: - Helpers
 
-  /// The bundle identifier the catalog knows for a microphone-holding process: its own, or for
-  /// a helper without one, its owning app's (§3.2).
-  nonisolated static func callBundleID(bundle: String, executablePath: String?) -> String? {
+  /// The bundle identifier the catalog knows for a microphone-holding process: its owning app's
+  /// when the catalog knows that app, else its own (§3.2).
+  /// The app folder decides first (#4840): Dia's helpers live inside `Dia.app` but carry Arc's
+  /// helper id (`company.thebrowser.browser.helper`), so their own id names the wrong browser and
+  /// the call is looked for in Arc's window. A helper outside any app folder (Safari's WebKit
+  /// audio process) or inside an app the catalog does not know keeps its own id.
+  nonisolated static func callBundleID(
+    bundle: String, executablePath: String?,
+    bundleIDAt: (String) -> String? = { Bundle(path: $0)?.bundleIdentifier }
+  ) -> String? {
+    if let path = executablePath, let app = CallAppCatalog.owningAppPath(ofExecutable: path),
+      let owner = bundleIDAt(app), CallAppCatalog.rule(forBundleID: owner) != nil
+    {
+      return owner.lowercased()
+    }
     if !bundle.isEmpty, CallAppCatalog.rule(forBundleID: bundle) != nil {
       return bundle.lowercased()
     }
-    guard let path = executablePath, let app = CallAppCatalog.owningAppPath(ofExecutable: path),
-      let owner = Bundle(path: app)?.bundleIdentifier,
-      CallAppCatalog.rule(forBundleID: owner) != nil
-    else { return nil }
-    return owner.lowercased()
+    return nil
   }
 }
 

@@ -133,6 +133,8 @@ struct CustomTermsSection<Actions: View>: View {
               .accessibilityHidden(true)
             TextField(String(localized: SettingsItemCopy.Dictionary.searchWords), text: Bindable(list).query)
               .textFieldStyle(.plain)
+              // #4545: a placeholder alone gives the field no accessible name.
+              .accessibilityLabel(Text(SettingsItemCopy.Dictionary.searchWords))
               .settingsArrivalFocusControl(textEntry: true)
               .settingsMapRegistration(.yourWordsSearch)
             if !list.query.isEmpty {
@@ -284,6 +286,7 @@ struct CustomTermsSection<Actions: View>: View {
             } label: {
               Image(systemName: "chevron.left")
                 .settingsHoverQuiet(isEnabled: list.currentPage > 0)
+                .minimumHitRegion()
             }
             .buttonStyle(.plain)
             .disabled(list.currentPage == 0)
@@ -298,6 +301,7 @@ struct CustomTermsSection<Actions: View>: View {
             } label: {
               Image(systemName: "chevron.right")
                 .settingsHoverQuiet(isEnabled: list.currentPage < pageCount - 1)
+                .minimumHitRegion()
             }
             .buttonStyle(.plain)
             .disabled(list.currentPage >= pageCount - 1)
@@ -388,36 +392,37 @@ struct CustomTermsSection<Actions: View>: View {
       .fixedSize(horizontal: true, vertical: false)
   }
 
-  /// #2494: one pill per `WordCategory` plus "All categories," selected
+  /// #2494: one button per `WordCategory` plus "All categories," selected
   /// state driven by `list.category`. `WrappingHStack` (not a horizontal
   /// scroller) so the row is fully visible and never hides a category behind
   /// a scroll gesture.
   private var categoryFilterRow: some View {
     WrappingHStack(spacing: 6) {
-      categoryPill(
+      categoryFilterButton(
         title: String(localized: SettingsItemCopy.Dictionary.allCategories),
         isSelected: list.category == nil
       ) {
         list.category = nil
       }
       ForEach(WordCategory.allCases, id: \.self) { category in
-        categoryPill(title: category.displayName, isSelected: list.category == category) {
+        categoryFilterButton(title: category.displayName, isSelected: list.category == category) {
           list.category = category
         }
       }
       // #996: not a category. Its own selected state, combined with the
-      // category pill by AND, so "Person + Auto-learned" is one click each.
-      categoryPill(title: CustomTermProvenanceCopy.filterPill, isSelected: list.autoLearnedOnly) {
+      // category button by AND, so "Person + Auto-learned" is one click each.
+      categoryFilterButton(title: CustomTermProvenanceCopy.filterPill, isSelected: list.autoLearnedOnly) {
         list.autoLearnedOnly.toggle()
       }
     }
     .settingsMapRegistration(.yourWordsCategoryFilter)
   }
 
-  private func categoryPill(title: String, isSelected: Bool, action: @escaping () -> Void)
+  private func categoryFilterButton(title: String, isSelected: Bool, action: @escaping () -> Void)
     -> some View
   {
-    Button(action: action) {
+    let outline = EnviousButtonFace.roundedRectangle
+    return Button(action: action) {
       Text(title)
         .font(.stHelper)
         .fontWeight(isSelected ? .semibold : .regular)
@@ -425,25 +430,21 @@ struct CustomTermsSection<Actions: View>: View {
         .padding(.horizontal, 10)
         .padding(.vertical, 5)
         .background {
-          Capsule()
+          outline
             .fill(isSelected ? Color.stAccentLight : Color.stTextPrimary.opacity(0.04))
         }
         .overlay {
           // #2494 review: a filled Shape overlay is hit-testable even where
           // its own fill is invisible, so an undecorated stroke sitting over
-          // the pill's Text can steal the tap from the Button underneath it.
+          // the text can steal the tap from the Button underneath it.
           if isSelected {
-            Capsule()
+            outline
               .strokeBorder(Color.stAccent.opacity(0.35), lineWidth: 1)
               .allowsHitTesting(false)
           }
         }
-        // These pills were the one clickable thing on the page that stayed
-        // dead under the pointer while the Edit buttons beside them lit up
-        // (founder, 2026-08-29). The shared row treatment, at a radius large
-        // enough that the tint is a capsule and matches the pill it covers —
-        // `RoundedRectangle` clamps the radius to half the shorter side.
-        .settingsHoverRow(cornerRadius: 100)
+        // Keep the hover feedback aligned with the visible outline.
+        .settingsHoverRow(cornerRadius: outline.cornerSize.width)
         .contentShape(Rectangle())
     }
     .buttonStyle(.plain)

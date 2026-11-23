@@ -1,0 +1,338 @@
+{
+ "id": "unloadPolishModel.oneHour",
+ "blocks": [
+  {
+   "language": "ar",
+   "title": "بعد ساعة واحدة",
+   "words": [
+    "٦٠ دقيقة"
+   ],
+   "phrases": [
+    "تحرير ذاكرة نموذج تنقيح النص بعد ساعة من دون إملاء"
+   ]
+  },
+  {
+   "language": "bg",
+   "title": "след 1 час",
+   "words": [
+    "60 минути"
+   ],
+   "phrases": [
+    "освободи паметта на модела за изглаждане на текста след час без диктуване"
+   ]
+  },
+  {
+   "language": "cs",
+   "title": "po 1 hodině",
+   "words": [
+    "za hodinu",
+    "60 minut"
+   ],
+   "phrases": [
+    "uvolnit paměť modelu pro úpravu textu po hodině bez diktování"
+   ]
+  },
+  {
+   "language": "da",
+   "title": "efter 1 time",
+   "words": [
+    "60 minutter"
+   ],
+   "phrases": [
+    "frigør hukommelsen fra modellen til tekstforbedring efter en time uden diktering"
+   ]
+  },
+  {
+   "language": "de",
+   "words": [
+    "60 Minuten",
+    "1 Std."
+   ],
+   "phrases": [
+    "RAM des Polish-Modells freigeben, wenn du eine Stunde lang nicht diktierst"
+   ]
+  },
+  {
+   "language": "el",
+   "title": "μετά από 1 ώρα",
+   "words": [
+    "60 λεπτά"
+   ],
+   "phrases": [
+    "απελευθέρωση μνήμης του μοντέλου βελτίωσης κειμένου μετά από μία ώρα χωρίς υπαγόρευση"
+   ]
+  },
+  {
+   "language": "en",
+   "words": [
+    "60 minutes",
+    "1 hr"
+   ],
+   "phrases": [
+    "free up polish model memory after an hour without dictating",
+    "keep the polish model in memory for an hour after dictation"
+   ]
+  },
+  {
+   "language": "es",
+   "words": [
+    "60 minutos",
+    "1 h"
+   ],
+   "phrases": [
+    "liberar la memoria del modelo de pulido si pasas una hora sin dictar"
+   ]
+  },
+  {
+   "language": "et",
+   "title": "1 tunni pärast",
+   "words": [
+    "60 minutit"
+   ],
+   "phrases": [
+    "vabasta teksti viimistlemise mudeli mälu, kui ma pole tund aega dikteerinud"
+   ]
+  },
+  {
+   "language": "fi",
+   "title": "1 tunnin kuluttua",
+   "words": [
+    "60 minuuttia"
+   ],
+   "phrases": [
+    "vapauta tekstin viimeistelymallin muisti tunnin sanelutauon jälkeen"
+   ]
+  },
+  {
+   "language": "fr",
+   "words": [
+    "60 minutes",
+    "1 h"
+   ],
+   "phrases": [
+    "libérer la mémoire du modèle de retouche si vous ne dictez pas pendant une heure"
+   ]
+  },
+  {
+   "language": "hi",
+   "title": "1 घंटे बाद",
+   "words": [
+    "60 मिनट"
+   ],
+   "phrases": [
+    "एक घंटे तक डिक्टेशन न करने पर टेक्स्ट सुधारने वाले मॉडल की मेमोरी खाली करें"
+   ]
+  },
+  {
+   "language": "hr",
+   "title": "nakon 1 sata",
+   "words": [
+    "60 minuta"
+   ],
+   "phrases": [
+    "oslobodi memoriju modela za doradu teksta nakon sat vremena bez diktiranja"
+   ]
+  },
+  {
+   "language": "hu",
+   "title": "1 óra után",
+   "words": [
+    "60 perc"
+   ],
+   "phrases": [
+    "a szövegfinomító modell memóriájának felszabadítása egy óra diktálási szünet után"
+   ]
+  },
+  {
+   "language": "it",
+   "title": "dopo 1 ora",
+   "words": [
+    "60 minuti",
+    "1 h"
+   ],
+   "phrases": [
+    "liberare la memoria del modello di revisione dopo un’ora senza dettare"
+   ]
+  },
+  {
+   "language": "ja",
+   "title": "1時間後",
+   "words": [
+    "60分"
+   ],
+   "phrases": [
+    "音声入力しないまま1時間たったら文章を整えるモデルをメモリから解放"
+   ]
+  },
+  {
+   "language": "ko",
+   "title": "1시간 후",
+   "words": [
+    "60분"
+   ],
+   "phrases": [
+    "한 시간 동안 받아쓰기를 안 하면 텍스트 다듬기 모델을 메모리에서 해제"
+   ]
+  },
+  {
+   "language": "lt",
+   "title": "po 1 valandos",
+   "words": [
+    "60 minučių",
+    "1 val."
+   ],
+   "phrases": [
+    "atlaisvinti teksto tobulinimo modelio atmintį po valandos be diktavimo"
+   ]
+  },
+  {
+   "language": "lv",
+   "title": "pēc 1 stundas",
+   "words": [
+    "60 minūtes"
+   ],
+   "phrases": [
+    "atbrīvot teksta uzlabošanas modeļa atmiņu pēc stundas bez diktēšanas"
+   ]
+  },
+  {
+   "language": "mt",
+   "title": "wara siegħa",
+   "words": [
+    "60 minuta"
+   ],
+   "phrases": [
+    "eħles il-memorja tal-mudell li jirfina t-test wara siegħa bla dettatura"
+   ]
+  },
+  {
+   "language": "nl",
+   "title": "na 1 uur",
+   "words": [
+    "60 minuten"
+   ],
+   "phrases": [
+    "geheugen van het tekstverbeteringsmodel vrijmaken na een uur zonder dicteren"
+   ]
+  },
+  {
+   "language": "pl",
+   "title": "po 1 godzinie",
+   "words": [
+    "60 minut",
+    "1 godz."
+   ],
+   "phrases": [
+    "zwolnij pamięć modelu do poprawiania tekstu po godzinie bez dyktowania"
+   ]
+  },
+  {
+   "language": "pt",
+   "title": "após 1 hora",
+   "words": [
+    "60 minutos",
+    "1 h"
+   ],
+   "phrases": [
+    "liberar a memória do modelo de revisão de texto após uma hora sem ditar"
+   ]
+  },
+  {
+   "language": "ro",
+   "title": "după 1 oră",
+   "words": [
+    "60 de minute",
+    "1 h"
+   ],
+   "phrases": [
+    "eliberează memoria modelului de îmbunătățire a textului după o oră fără dictare"
+   ]
+  },
+  {
+   "language": "ru",
+   "title": "через 1 час",
+   "words": [
+    "60 минут",
+    "1 ч"
+   ],
+   "phrases": [
+    "выгрузить модель правки текста из памяти через час без диктовки"
+   ]
+  },
+  {
+   "language": "sk",
+   "title": "po 1 hodine",
+   "words": [
+    "60 minút",
+    "1 hod."
+   ],
+   "phrases": [
+    "uvoľniť pamäť modelu na úpravu textu po hodine bez diktovania"
+   ]
+  },
+  {
+   "language": "sl",
+   "title": "po 1 uri",
+   "words": [
+    "60 minut"
+   ],
+   "phrases": [
+    "sprosti pomnilnik modela za izboljšavo besedila po eni uri brez narekovanja"
+   ]
+  },
+  {
+   "language": "sv",
+   "title": "efter 1 timme",
+   "words": [
+    "60 minuter",
+    "1 tim"
+   ],
+   "phrases": [
+    "frigör minnet som modellen för textförbättring använder efter en timme utan diktering"
+   ]
+  },
+  {
+   "language": "tr",
+   "title": "1 saat sonra",
+   "words": [
+    "60 dakika"
+   ],
+   "phrases": [
+    "bir saat dikte yapmayınca metin düzeltme modelini bellekten çıkar"
+   ]
+  },
+  {
+   "language": "uk",
+   "title": "через 1 годину",
+   "words": [
+    "60 хвилин",
+    "1 год"
+   ],
+   "phrases": [
+    "вивантажити модель редагування тексту з пам’яті після години без диктування"
+   ]
+  },
+  {
+   "language": "vi",
+   "title": "sau 1 giờ",
+   "words": [
+    "60 phút",
+    "một tiếng"
+   ],
+   "phrases": [
+    "giải phóng bộ nhớ của mô hình chỉnh văn bản sau một giờ không đọc chính tả"
+   ]
+  },
+  {
+   "language": "zh",
+   "title": "1 小时后",
+   "words": [
+    "60 分钟",
+    "一小时"
+   ],
+   "phrases": [
+    "一小时没用语音输入就释放润色模型占用的内存"
+   ]
+  }
+ ]
+}

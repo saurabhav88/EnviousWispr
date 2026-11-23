@@ -90,7 +90,7 @@ struct SpokenPunctuationLanguagePicker: View {
       leading: {
         Image(systemName: "globe")
           .font(.system(size: 14, weight: .medium))
-          .foregroundStyle(isChosen ? Color.stAccent : Color.stTextSecondary)
+          .foregroundStyle(Color.stTextPrimary)
           .frame(width: 18)
       },
       title: name,

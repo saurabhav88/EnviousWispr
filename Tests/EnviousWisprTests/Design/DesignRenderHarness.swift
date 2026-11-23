@@ -179,6 +179,7 @@ struct DesignRenderHarness {
       openMicrophoneSettings: { _ in })
     let root =
       content
+      .environment(\.enviousButtonShape, .roundedRect)
       .environment(permissions)
       .environment(settings)
       .environment(pill)
@@ -376,7 +377,7 @@ struct DesignRenderHarness {
     if entry.fixture == "germanFit" {
       view = try germanFitSheet(pageWidth: width)
     } else if entry.fixture.hasPrefix("pill-") {
-      // pill-<design>-<rest|locked|words|waiting|notice>
+      // pill-<design>-<rest|locked|words|waiting|notice|silent|silentStrong|silentBottom>
       let parts = entry.fixture.split(separator: "-").map(String.init)
       let design = try #require(
         parts.count == 3 ? RecordingPillDesign(rawValue: parts[1]) : nil,
@@ -390,7 +391,16 @@ struct DesignRenderHarness {
       case "waiting": view = DesignPageCaptures.pill(design, locked: false, preview: .waiting)
       case "notice":
         view = DesignPageCaptures.pill(
-          design, locked: false, noticeText: DictationNarrator.copy(for: .secureInputActive))
+          design, locked: false, notice: .secureInputActive)
+      // #4841: the silent-mic notice, calm and strong with the pill at the top of
+      // the screen (bubble below), and strong at the bottom (bubble above).
+      case "silent":
+        view = DesignPageCaptures.pill(design, locked: false, notice: .micSilent(.calm))
+      case "silentStrong":
+        view = DesignPageCaptures.pill(design, locked: false, notice: .micSilent(.strong))
+      case "silentBottom":
+        view = DesignPageCaptures.pill(
+          design, locked: false, position: .bottom, notice: .micSilent(.strong))
       default: throw RenderError("\(entry.name): unknown pill state \(parts[2])")
       }
     } else if entry.fixture.hasPrefix("notice-") {

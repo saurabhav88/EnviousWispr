@@ -121,7 +121,7 @@ struct HotkeyControllerAbandonmentDisarmTests {
         heartControlRecovery: hcr,
         recordingLockedAccess: lockAccess,
         languageSuggestionPresenter: nil,
-        pendingRequests: pendingRequests)
+        pendingRequests: pendingRequests, abandonPendingStart: {})
       let starter = RecordingStarter(
         audioCapture: audio,
         asrManager: asr,

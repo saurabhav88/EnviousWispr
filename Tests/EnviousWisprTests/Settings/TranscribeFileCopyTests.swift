@@ -25,13 +25,15 @@ struct TranscribeFileCopyTests {
       (.engineNotInstalled,
        "That transcription engine isn't downloaded yet. Get it under Settings > Dictation Settings > Engine."),
       (.engineNotReady, "The transcription engine didn't start. Try again."),
+      (.engineRequiresExplicitRetry,
+       "Parakeet couldn't load. Choose Try Again in Settings > Dictation Settings > Engine."),
       (.polisherNotReady,
        "The cleanup engine didn't start. Your words are here. Clean it again to retry."),
       (.engineBusy(.fileImport), "Another file is being transcribed right now."),
       (.engineBusy(.abandonedDecode),
        "The last dictation is still transcribing. Restart the app, then try again."),
       (.engineBusy(.meeting), "A meeting is being transcribed. Try again when it finishes."),
-      (.failed("internal detail"), "Something went wrong reading that file. Try a different one."),
+      (.failed("internal detail"), "The import didn't finish. Select the file again to retry."),
     ]
     for (reason, expected) in rows {
       #expect(TranscribeFileView.sentence(for: reason) == expected, "refusal: \(reason)")

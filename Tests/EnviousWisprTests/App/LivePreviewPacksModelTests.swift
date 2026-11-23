@@ -551,7 +551,7 @@ struct LivePreviewPacksModelTests {
     // through the tab host. Both hops pass it on; neither builds or owns one.
     #expect(
       ownerSource.contains(
-        "DictationSettingsView(selection: $navigationState.dictationTab, packs: livePreviewPacks)"),
+        "DictationSettingsView(selection: guardedDictationTab, packs: livePreviewPacks)"),
       "and pass that same instance in, not build a new one per appearance")
     let host = RepoRoot.url.appending(
       path: "Sources/EnviousWisprAppKit/Views/Settings/DictationSettingsView.swift")

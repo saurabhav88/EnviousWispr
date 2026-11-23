@@ -23,6 +23,7 @@ struct TranscriptRetranscriptionTests {
       lookups += 1
       return stateNow(rowID)
     }
+    func freshState(for rowID: UUID) async -> ImportedSourceState { stateNow(rowID) }
     func playbackSource(for rowID: UUID) async throws -> ImportedPlaybackSource? { nil }
     func relocate(rowID: UUID, to url: URL, userConfirmed: Bool) async throws
       -> ImportedRelocationOutcome

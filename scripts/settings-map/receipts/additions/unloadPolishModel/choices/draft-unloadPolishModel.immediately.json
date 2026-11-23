@@ -1,0 +1,359 @@
+{
+ "id": "unloadPolishModel.immediately",
+ "blocks": [
+  {
+   "language": "ar",
+   "title": "فورًا",
+   "words": [
+    "على طول",
+    "بدون انتظار"
+   ],
+   "phrases": [
+    "حرّر ذاكرة نموذج التنقيح أول ما أخلص الإملاء"
+   ]
+  },
+  {
+   "language": "bg",
+   "title": "веднага",
+   "words": [
+    "незабавно",
+    "без изчакване"
+   ],
+   "phrases": [
+    "освободи паметта на модела за редакция веднага след диктовка"
+   ]
+  },
+  {
+   "language": "cs",
+   "title": "ihned",
+   "words": [
+    "hned",
+    "bez čekání"
+   ],
+   "phrases": [
+    "uvolnit paměť modelu pro úpravu textu hned po diktování"
+   ]
+  },
+  {
+   "language": "da",
+   "title": "med det samme",
+   "words": [
+    "straks",
+    "uden ventetid"
+   ],
+   "phrases": [
+    "frigør RAM brugt af efterbehandlingsmodellen lige efter diktering"
+   ]
+  },
+  {
+   "language": "de",
+   "words": [
+    "direkt danach",
+    "ohne Wartezeit"
+   ],
+   "phrases": [
+    "wie gibst du den RAM des Polish-Modells direkt nach dem Diktieren frei?",
+    "Polish-Modell gleich nach dem Diktieren aus dem RAM entfernen"
+   ]
+  },
+  {
+   "language": "el",
+   "title": "αμέσως",
+   "words": [
+    "χωρίς αναμονή"
+   ],
+   "phrases": [
+    "απελευθέρωσε τη μνήμη του μοντέλου διόρθωσης μόλις τελειώσει η υπαγόρευση"
+   ]
+  },
+  {
+   "language": "en",
+   "words": [
+    "right away",
+    "no wait",
+    "after each dictation"
+   ],
+   "phrases": [
+    "free the polish model’s RAM as soon as I finish dictating",
+    "unload the polish model after every dictation"
+   ]
+  },
+  {
+   "language": "es",
+   "words": [
+    "enseguida",
+    "sin espera",
+    "al terminar de dictar"
+   ],
+   "phrases": [
+    "libera la RAM del modelo de pulido en cuanto termines de dictar"
+   ]
+  },
+  {
+   "language": "et",
+   "title": "kohe",
+   "words": [
+    "viivitamata",
+    "ilma ootamata"
+   ],
+   "phrases": [
+    "vabasta teksti viimistlemise mudeli mälu kohe pärast dikteerimist"
+   ]
+  },
+  {
+   "language": "fi",
+   "title": "heti",
+   "words": [
+    "välittömästi",
+    "ilman viivettä"
+   ],
+   "phrases": [
+    "vapauta tekstin viimeistelymallin muisti heti sanelun jälkeen"
+   ]
+  },
+  {
+   "language": "fr",
+   "words": [
+    "tout de suite",
+    "sans attendre",
+    "dès la fin de la dictée"
+   ],
+   "phrases": [
+    "libérer la mémoire du modèle de retouche dès que vous avez fini de dicter"
+   ]
+  },
+  {
+   "language": "hi",
+   "title": "तुरंत",
+   "words": [
+    "फ़ौरन",
+    "बिना इंतज़ार"
+   ],
+   "phrases": [
+    "डिक्टेशन खत्म होते ही टेक्स्ट सुधारने वाले मॉडल की रैम खाली करें"
+   ]
+  },
+  {
+   "language": "hr",
+   "title": "odmah",
+   "words": [
+    "bez čekanja",
+    "istog trena"
+   ],
+   "phrases": [
+    "oslobodi memoriju modela za doradu teksta čim završim s diktiranjem"
+   ]
+  },
+  {
+   "language": "hu",
+   "title": "azonnal",
+   "words": [
+    "rögtön",
+    "várakozás nélkül"
+   ],
+   "phrases": [
+    "a szövegjavító modell memóriájának felszabadítása rögtön diktálás után"
+   ]
+  },
+  {
+   "language": "it",
+   "title": "subito",
+   "words": [
+    "immediatamente",
+    "senza attesa"
+   ],
+   "phrases": [
+    "libera la RAM del modello di revisione appena finisco di dettare"
+   ]
+  },
+  {
+   "language": "ja",
+   "title": "すぐに",
+   "words": [
+    "即時",
+    "待ち時間なし"
+   ],
+   "phrases": [
+    "音声入力が終わったらすぐに文章推敲モデルのメモリを解放したい"
+   ]
+  },
+  {
+   "language": "ko",
+   "title": "즉시",
+   "words": [
+    "바로",
+    "대기 없이"
+   ],
+   "phrases": [
+    "받아쓰기가 끝나면 바로 문장 다듬기 모델을 메모리에서 내리기"
+   ]
+  },
+  {
+   "language": "lt",
+   "title": "iškart",
+   "words": [
+    "tuoj pat",
+    "nelaukiant"
+   ],
+   "phrases": [
+    "atlaisvinti teksto taisymo modelio atmintį vos baigus diktuoti"
+   ]
+  },
+  {
+   "language": "lv",
+   "title": "uzreiz",
+   "words": [
+    "nekavējoties",
+    "bez gaidīšanas"
+   ],
+   "phrases": [
+    "atbrīvot teksta labošanas modeļa aizņemto atmiņu, tiklīdz beidzu diktēt"
+   ]
+  },
+  {
+   "language": "mt",
+   "title": "minnufih",
+   "words": [
+    "mill-ewwel",
+    "bla stennija"
+   ],
+   "phrases": [
+    "neħħi l-mudell li jirfina t-test mill-memorja malli nispiċċa niddetta"
+   ]
+  },
+  {
+   "language": "nl",
+   "title": "direct",
+   "words": [
+    "meteen",
+    "zonder wachttijd"
+   ],
+   "phrases": [
+    "geheugen van het model voor tekstverbetering meteen vrijmaken na het dicteren"
+   ]
+  },
+  {
+   "language": "pl",
+   "title": "natychmiast",
+   "words": [
+    "od razu",
+    "bez czekania"
+   ],
+   "phrases": [
+    "zwolnij pamięć modelu do poprawiania tekstu zaraz po dyktowaniu"
+   ]
+  },
+  {
+   "language": "pt",
+   "title": "imediatamente",
+   "words": [
+    "na hora",
+    "sem espera"
+   ],
+   "phrases": [
+    "liberar a memória do modelo de revisão assim que terminar de ditar"
+   ]
+  },
+  {
+   "language": "ro",
+   "title": "imediat",
+   "words": [
+    "pe loc",
+    "fără așteptare"
+   ],
+   "phrases": [
+    "eliberează memoria ocupată de modelul de corectare imediat ce termin de dictat"
+   ]
+  },
+  {
+   "language": "ru",
+   "title": "сразу",
+   "words": [
+    "немедленно",
+    "без ожидания"
+   ],
+   "phrases": [
+    "выгружать модель правки текста из памяти сразу после диктовки"
+   ]
+  },
+  {
+   "language": "sk",
+   "title": "ihneď",
+   "words": [
+    "hneď",
+    "bez čakania"
+   ],
+   "phrases": [
+    "uvoľniť pamäť modelu na úpravu textu hneď po diktovaní"
+   ]
+  },
+  {
+   "language": "sl",
+   "title": "takoj",
+   "words": [
+    "nemudoma",
+    "brez čakanja"
+   ],
+   "phrases": [
+    "sprosti pomnilnik modela za urejanje besedila takoj po narekovanju"
+   ]
+  },
+  {
+   "language": "sv",
+   "title": "omedelbart",
+   "words": [
+    "direkt",
+    "på en gång",
+    "utan väntetid"
+   ],
+   "phrases": [
+    "frigör minnet som textbearbetningsmodellen använder direkt efter diktering"
+   ]
+  },
+  {
+   "language": "tr",
+   "title": "hemen",
+   "words": [
+    "anında",
+    "beklemeden"
+   ],
+   "phrases": [
+    "dikte biter bitmez metin düzeltme modelini bellekten kaldır"
+   ]
+  },
+  {
+   "language": "uk",
+   "title": "одразу",
+   "words": [
+    "негайно",
+    "без очікування"
+   ],
+   "phrases": [
+    "вивантажувати модель редагування тексту з пам’яті одразу після диктування"
+   ]
+  },
+  {
+   "language": "vi",
+   "title": "ngay lập tức",
+   "words": [
+    "tức thì",
+    "không chờ"
+   ],
+   "phrases": [
+    "giải phóng bộ nhớ của mô hình chỉnh văn bản ngay khi đọc chính tả xong"
+   ]
+  },
+  {
+   "language": "zh",
+   "title": "立即",
+   "words": [
+    "马上",
+    "不等待",
+    "听写结束就释放"
+   ],
+   "phrases": [
+    "听写一结束就释放润色模型占用的内存"
+   ]
+  }
+ ]
+}

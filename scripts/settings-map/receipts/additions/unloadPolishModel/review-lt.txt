@@ -1,0 +1,12 @@
+{
+  "language": "lt",
+  "title": "kada pašalinti teksto tvarkymo modelį iš atminties",
+  "words": [
+    "EG-1 atmintis",
+    "S1-mini atmintis"
+  ],
+  "phrases": [
+    "kiek laiko laikyti teksto tvarkymo modelį atmintyje, kai nediktuoju",
+    "kada atlaisvinama teksto tvarkymo modelio naudojama atmintis"
+  ]
+}

@@ -67,6 +67,14 @@ final class LiveRecordingState {
     return kernelDriver.state
   }
 
+  /// The same selected driver as pipelineState, with its take-bound terminal evidence.
+  var practiceTake: SetupPracticeTake {
+    let driver = asrManager.activeBackendType == .whisper ? whisperKernelDriver : kernelDriver
+    return SetupPracticeTake(
+      id: driver.practiceTakeID, phase: driver.state, locked: isRecordingLocked,
+      terminal: driver.practiceTakeEvidence)
+  }
+
   /// Audio capture level for waveform/level UI. Replaces the pre-PR7
   /// the former root state getter.
   var audioLevel: Float {

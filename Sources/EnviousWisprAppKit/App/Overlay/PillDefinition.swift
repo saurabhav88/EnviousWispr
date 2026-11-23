@@ -124,25 +124,6 @@ extension RecordingPillDesign {
         comment: "Recording Pill settings: description of the Level Rail recording pill style.")
     }
   }
-
-  /// `nil` means content-sized, which is `fitToContent: true` at the shipped
-  /// site. The classic pill reserves a fixed box; the reading well does not.
-  var reservedHeight: CGFloat? {
-    switch self {
-    // **92 IS THE WITHOUT-WORDS NOTICE BUDGET, and it is inherited rather than
-    // chosen.** The #1060 in-panel banner is rendered by every layout from one
-    // `Text` inside the root stack, and a design that cannot hold words is handed
-    // a no-op growth callback by `OverlayRenderModel` — so it CANNOT resize its
-    // window when the banner arrives mid-recording. Measured 2026-08-25: the
-    // longest shipped banner fills this box EXACTLY, with zero headroom, and a
-    // three-line sentence measures 120 and would be clipped in silence. A 40 or
-    // 44-point box would clip the graceful-cap warning on a shipping path with no
-    // test able to see it, which is why `.levelRail` takes the same number as
-    // `.classic` rather than one sized to its own contents.
-    case .classic, .levelRail: return 92
-    case .readingWell: return nil
-    }
-  }
 }
 
 /// Why the recording pill can or cannot show words as you speak (#2376 Phase 4).
@@ -471,6 +452,8 @@ enum OverlayContent: Equatable, Sendable {
   case polishSetupCard(PolishSetupCardModel)
   /// #3546 A3: the Parakeet Ultra upgrade's pills (downloading, installing, ready).
   case parakeetUpgrade(ParakeetUpgradePillModel)
+  /// #4845 LIFE-5: the AI polish download completion pill.
+  case polishDownloadComplete(PolishDownloadPillModel)
   case escapeRecovery(transcriptID: UUID)
   /// #996 auto-learn: the Undo pill. The model carries the pill UUID and its
   /// phase (learned with the Undo button, or a typed result line); the reducer
@@ -486,18 +469,25 @@ enum OverlayContent: Equatable, Sendable {
   /// Whether the director must ask the owner `isStillWanted` immediately before
   /// this content reaches the screen (#996 chunk 5f, review round 2). Only the
   /// Undo pill's `.learned` phase: it asks a question, and the owner can
-  /// withdraw it while a deferred first render is in flight. A RESULT is the
-  /// outcome of a decision already made; it follows the reducer's same-id
-  /// morph contract and must render regardless.
+  /// withdraw it while a deferred first render is in flight. That phase is the
+  /// only one the pill is FIRST accepted in. `.undoPending` and the results are
+  /// same-id morphs of an offer already accepted: the Undo claim has just
+  /// emptied the owner's record, so the predicate would refuse every one, and
+  /// each is the outcome of a decision already made (#4675, plan §3.2b.7).
   ///
   /// #3106 PR B: the late clipboard notice too. It arrives about 0.3 s after the paste, and by the
   /// deferred first render a newer take or the user's own copy can make it untrue.
   var reChecksOwnerBeforeRender: Bool {
     if case .correctionLearned(let model) = self, case .learned = model.phase { return true }
     if case .retainedClipboardFallback = self { return true }
+    if case .notice(let notice) = self, notice.action?.action == .chooseMeetingSummaryEngine {
+      return true
+    }
     // #3546 A3: a Cancel can stop the download, or the switch can settle, before the first
     // render; the upgrade pill would then announce something no longer true.
     if case .parakeetUpgrade = self { return true }
+    // #4845: the model can stop being the one dictation uses before the first render.
+    if case .polishDownloadComplete = self { return true }
     return false
   }
 }
@@ -510,6 +500,14 @@ enum OverlayContent: Equatable, Sendable {
 struct InPanelNotice: Equatable, Sendable {
   let reason: RecordingNoticeReason
   let dismissAfter: Double?
+}
+
+/// #4841: what a recording leaf renders for its notice — the typed reason (for
+/// styling) and the copy `DictationNarrator` resolved for it. Built only by the
+/// publisher, so a leaf never authors or looks up a sentence.
+struct RecordingNoticeDisplay: Equatable, Sendable {
+  let reason: RecordingNoticeReason
+  let text: String
 }
 
 /// One occupancy of the overlay slot: what to show, how it is identified, and
@@ -554,12 +552,10 @@ struct PillDefinition: Equatable, Sendable {
   /// - Escape Recovery's `EscapeRecoveryPillFace` is content-sized from the title
   ///   and button word's text metrics at runtime (#3747) → `.measured`, and no literal is correct.
   let requestedWidth: OverlayWidth
-  /// True when this presentation must reserve a fixed interaction frame rather
-  /// than shrink to its content. **Only the non-preview recording pill sets
-  /// this**, and its 92-point frame is deliberate: it reserves room for the
-  /// lock state and for in-panel notice expansion (#1060). Everything else is
-  /// content-sized. This migration does not make every kind content-sized, and
-  /// it does not make every kind fixed.
+  /// A fixed interaction frame for the presentation, or nil to size to its
+  /// content. Since #4841 no catalog presentation reserves one (the recording
+  /// pill's 92-point frame became a content-sized pill plus notice bubble); the
+  /// host still honours a value, which its own tests exercise.
   let reservesFixedHeight: CGFloat?
 
   init(
@@ -572,6 +568,12 @@ struct PillDefinition: Equatable, Sendable {
     self.requestedWidth = requestedWidth
     self.reservesFixedHeight = reservesFixedHeight
   }
+}
+
+/// #4845 LIFE-5: what the AI polish download completion pill shows (founder-approved, 2026-11-22):
+/// the model's display name for "<name> is on for your next dictation."
+struct PolishDownloadPillModel: Equatable, Sendable {
+  let modelName: String
 }
 
 /// #3546 A3: what one Parakeet Ultra upgrade pill shows (founder-approved mocks, 2026-10-12).

@@ -32,11 +32,16 @@ struct MicrophoneCaptureWiringTests {
   func viewUsesDisplayedIdentity() throws {
     let page = MicrophoneSettingsWiringTests.codeOnly(try MicrophoneSettingsWiringTests.source(
       MicrophoneSettingsWiringTests.audioPath))
-    #expect(page.contains("microphoneCapturePresentation") == false)
-    #expect(page.contains("capturePresentation:") == false)
-    #expect(page.contains("AudioCaptureManager") == false)
+    // #4528 D6a: the shared picker model is part of the page's reads, so it is held to the same rule.
+    let model = MicrophoneSettingsWiringTests.codeOnly(try MicrophoneSettingsWiringTests.source(
+      MicrophoneSettingsWiringTests.modelPath))
+    for code in [page, model] {
+      #expect(code.contains("microphoneCapturePresentation") == false)
+      #expect(code.contains("capturePresentation:") == false)
+      #expect(code.contains("AudioCaptureManager") == false)
+    }
     let pageTree = try MicrophoneSettingsWiringTests.source(MicrophoneSettingsWiringTests.audioPath)
-    #expect(Self.inputStatusSlots(in: pageTree) == ["MicrophoneInUseStatus(displayedUID: devicePresentation.deviceUID)"])
+    #expect(Self.inputStatusSlots(in: pageTree) == ["MicrophoneInUseStatus(displayedUID: microphone.presentation.deviceUID)"])
     let tree = try MicrophoneSettingsWiringTests.source(
       "Sources/EnviousWisprAppKit/Views/Settings/MicrophoneCapturePresentation.swift")
     let status = try #require(Self.structure(named: "MicrophoneInUseStatus", in: tree))

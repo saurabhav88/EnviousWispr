@@ -99,9 +99,8 @@ class AppTarget:
                 return False
             info = subprocess.run(["lsappinfo", "info", "-only", "pid", asn],
                                   capture_output=True, text=True, timeout=5, check=True).stdout
-            return any(line.split()[:3] == ["pid", "=", str(client.pid)]
-                       for line in info.splitlines()) and self._is_pinned_process(client) and bool(
-                           get_attr(get_ax_app(client.pid), "AXWindows"))
+            return tg.parse_lsappinfo("pid", info) == str(client.pid) and self._is_pinned_process(client) and bool(
+                get_attr(get_ax_app(client.pid), "AXWindows"))
         except (OSError, subprocess.SubprocessError) as error:
             raise tg.SetupFailed("paste-target", f"cannot verify the pinned dev app: {error}") from error
 
@@ -209,6 +208,8 @@ class AudioRig:
                     raise tg.SetupFailed("audio-route", "alert sounds did not move to BlackHole")
                 self.route.apply()
                 self._prove_route()
+                # #4829: the idle check asks THIS app's door, never the first EnviousWispr by name.
+                w._idle_door = self.route.client
                 if self.quiet_app:
                     self.sounds = sa.AppSounds(self.route.client)
                     self.sounds.apply()
@@ -254,6 +255,14 @@ class AudioRig:
         """Every step runs even if another fails; True only when all verified. A take still
         running is stopped FIRST, so no recording outlives its route."""
         player_gone, take_idle = tg.stop_active_take()
+        if player_gone and not take_idle:
+            # #4829: the stop the take sent is not proof capture ended (a menu Stop can even start
+            # a second take on BlackHole, #3107). Cancel through the app's own door and confirm
+            # idle from its own state before any real microphone comes back.
+            take_idle = self._cancel_take()
+            if take_idle:
+                tg.take_proven_idle()
+        w._idle_door = None
         tg.clear_target()
         try:
             self.target.close()
@@ -269,16 +278,13 @@ class AudioRig:
             print("RIG: the test sound is not proven stopped; all audio stays on BlackHole. Stop "
                   "`afplay`, then run `python3 Tests/RuntimeUAT/silent_audio.py restore`", flush=True)
             parts = ()
-        elif not take_idle and self.route is not None:
-            # The app may still be recording: put the SPEAKERS back but leave the system input and
-            # the app's microphone on BlackHole, so it can only hear silence, never the room.
-            try:
-                self._speakers_back(self.route.original_output)
-            except (Exception, SystemExit) as exc:
-                print(f"RIG: speakers not put back: {exc!r}", flush=True)
-            print("RIG: a take could not be proven stopped; the app's microphone stays on BlackHole. "
-                  "Stop the recording, then run `python3 Tests/RuntimeUAT/silent_audio.py restore`", flush=True)
-            parts = (self.sounds, self.alerts)  # quiet sounds back is harmless to a live take
+        elif not take_idle:
+            # Stop sent, cancel sent, still not proven idle. Restore every device anyway and report
+            # the failure (#4829, oversight 2026-11-22): leaving the Mac's input on BlackHole breaks
+            # the founder's next real dictation, and the only thing a restore can cut into is this
+            # test take, already stopped, cancelled and reported as failed.
+            print("RIG: a take could not be proven stopped after a stop and a cancel; every device "
+                  "is restored anyway. Check the app is idle before the next take.", flush=True)
         for part in parts:
             if part is None:
                 continue
@@ -294,10 +300,26 @@ class AudioRig:
         self.restored = ok
         return ok
 
-    @staticmethod
-    def _speakers_back(device):
-        if not sa._restore_device("output", device):
-            raise RuntimeError(f"output was not put back to {device!r}")
+    def _cancel_take(self):
+        """Cancel the app's dictation through the dev control door of the app under test (the
+        rig's pinned client), then confirm idle from that app's own state (#4829). True only when
+        idle is confirmed; never raises."""
+        try:
+            client = self.route.client if self.route is not None else w.door()
+            client.call(["dictation", "cancel"])
+            print("RIG: the take was cancelled through the app's control door", flush=True)
+        except (Exception, SystemExit) as exc:  # nothing to cancel, or the door is unavailable
+            print(f"RIG: cancel through the control door did not run: {exc!r}", flush=True)
+        # Only the app's own state confirms a cancel: its menu shows a disabled Start Recording while
+        # it loads, transcribes or polishes, so a menu read cannot prove the take ended.
+        deadline = time.monotonic() + 10.0
+        while time.monotonic() < deadline:
+            state = w._driver_state(timeout=max(0.2, min(2.0, deadline - time.monotonic())))
+            if state is not None and state not in w._DRIVER_ACTIVE_STATES and time.monotonic() <= deadline:
+                return True
+            time.sleep(0.3)
+        print("RIG: the app's own state did not confirm the cancelled take ended", flush=True)
+        return False
 
     def __exit__(self, exc_type, exc, tb):
         if self._restore_all():
@@ -356,6 +378,10 @@ def _self_test():
             self.closed += 1
 
     print("audio_rig --self-test")
+    # Offline: the cancel step never reaches the real app's door here (#4829); each case below
+    # that needs it says what the cancel reports.
+    cancel_results = []
+    AudioRig._cancel_take = lambda self: cancel_results.pop(0) if cancel_results else False
     rig = AudioRig(target=FakeTarget())
     first_alerts = Fake()
     rig.route, rig.alerts = Fake(boom=True), first_alerts
@@ -417,17 +443,25 @@ def _self_test():
         tg._take = None  # self-test reset: the previous case left an unproven take on purpose
         tg.take_started(stop, idle)
         rig = AudioRig(target=FakeTarget())
-        rig._speakers_back = lambda device: None  # never touch the real devices in a self-test
         route = Fake()
-        route.original_output = "MacBook Pro Speakers"
         alerts = Fake()
         rig.route, rig.alerts = route, alerts
         try:
             rig.__exit__(None, None, None)
             expect(f"{label}: never a pass", False)
         except tg.SetupFailed as exc:
-            expect(f"{label}: SETUP FAILED, app mic left on BlackHole, alerts restored",
-                   exc.step == "restore" and route.calls == 0 and alerts.calls == 1)
+            expect(f"{label}: SETUP FAILED, and every device is restored anyway (#4829)",
+                   exc.step == "restore" and route.calls == 1 and alerts.calls == 1)
+
+    tg._take = None
+    tg.take_started(lambda: None, lambda: False)
+    cancel_results[:] = [True]
+    rig = AudioRig(target=FakeTarget())
+    route, alerts = Fake(), Fake()
+    rig.route, rig.alerts = route, alerts
+    expect("#4829 a take the cancel proves idle restores normally, no SETUP FAILED",
+           rig.__exit__(None, None, None) is False and rig.restored and route.calls == 1)
+    expect("#4829 a take the cancel proves idle is no longer registered", tg._take is None)
 
     class Player:
         def __init__(self):
@@ -487,14 +521,12 @@ def _self_test():
     tg.take_started(lambda: None, lambda: False)
     rig = AudioRig(target=FakeTarget())
     alerts = Fake()
-    rig.route, rig.alerts = Fake(), alerts
-    rig.route.original_output = "MacBook Pro Speakers"
-    rig._speakers_back = lambda device: 1 / 0
+    rig.route, rig.alerts = Fake(boom=True), alerts
     try:
         rig.__exit__(None, None, None)
     except tg.SetupFailed:
         pass
-    expect("a failing speakers-only step still restores the alerts", alerts.calls == 1)
+    expect("an unproven take whose route restore fails still restores the alerts", alerts.calls == 1)
     tg._take = None
 
     class Boom(FakeTarget):
@@ -554,16 +586,14 @@ def _self_test():
     tg._take = None
     tg.take_started(lambda: None, lambda: False)
     rig = AudioRig(target=FakeTarget())
-    rig._speakers_back = lambda device: None
     sounds, route, alerts = Fake(), Fake(), Fake()
-    route.original_output = "MacBook Pro Speakers"
     rig.sounds, rig.route, rig.alerts = sounds, route, alerts
     try:
         rig.__exit__(None, None, None)
     except tg.SetupFailed:
         pass
-    expect("#3990 an unproven take restores sounds and alerts and leaves the microphone pinned",
-           sounds.calls == 1 and alerts.calls == 1 and route.calls == 0)
+    expect("#3990/#4829 an unproven take restores sounds, the route and the alerts",
+           sounds.calls == 1 and alerts.calls == 1 and route.calls == 1)
     tg._take = None
 
     tg.declare_target("com.example.Outer")

@@ -169,8 +169,12 @@ struct SettingsRow<Control: View, HelpContent: View>: View {
     SettingsRowControlLayout(supplementaryBelowWidth: supplementaryControlBelowWidth) {
       SettingsRowIcon(systemName: icon)
       label
+      // The status sits under the title and grey line, outside the label, so the
+      // icon and an inline control line up with the title, not the whole block.
+      // It stays third so VoiceOver still reads it right after the grey line.
+      VStack(alignment: .leading, spacing: 0) { statusContent }
       // A builder may supply zero or several roots. One container keeps the
-      // Layout's three slots stable instead of indexing SwiftUI's flattened roots.
+      // Layout's slots stable instead of indexing SwiftUI's flattened roots.
       VStack(alignment: .leading, spacing: 0) { control }
       VStack(alignment: .leading, spacing: 0) { supplementaryControl }
     }
@@ -191,7 +195,6 @@ struct SettingsRow<Control: View, HelpContent: View>: View {
         .font(.stRowHelper)
         .foregroundStyle(.stTextSecondary)
         .fixedSize(horizontal: false, vertical: true)
-      statusContent
     }
   }
 }
@@ -215,8 +218,9 @@ struct SettingsRowControlLayout: Layout {
 
   private func dimensions(width: CGFloat?, subviews: Subviews) -> (size: CGSize, frames: [CGRect]) {
     let icon = subviews[0].sizeThatFits(.unspecified)
-    let idealControl = subviews[2].sizeThatFits(.unspecified)
-    let secondary = subviews[3].sizeThatFits(.unspecified)
+    // Slots, in `SettingsRow.standardRow` order: icon, label, status, control, secondary.
+    let idealControl = subviews[3].sizeThatFits(.unspecified)
+    let secondary = subviews[4].sizeThatFits(.unspecified)
     let idealLabel = subviews[1].sizeThatFits(.unspecified)
     let width = width ?? icon.width + 11 + idealLabel.width + 12 + idealControl.width + secondary.width
     // 37 = `SettingsRowIcon`'s fixed width (26) + this row's own leading
@@ -228,7 +232,7 @@ struct SettingsRowControlLayout: Layout {
     // localization. Pass the available width back down so adaptive controls
     // can reflow, including their new height, instead of placing an ideal-size bar.
     let control = idealControl.width > available
-      ? subviews[2].sizeThatFits(ProposedViewSize(width: available, height: nil))
+      ? subviews[3].sizeThatFits(ProposedViewSize(width: available, height: nil))
       : idealControl
     let hasSecondary = secondary.height > 0
     let secondaryBelow = hasSecondary && width <= supplementaryBelowWidth
@@ -238,8 +242,14 @@ struct SettingsRowControlLayout: Layout {
     let label = subviews[1].sizeThatFits(ProposedViewSize(width: labelWidth, height: nil))
     let trailingHeight = max(control.height, secondaryBelow ? 0 : secondary.height)
     let headerHeight = inline ? max(icon.height, label.height, trailingHeight) : max(icon.height, label.height)
-    let controlY = inline ? (headerHeight - control.height) / 2 : headerHeight + 10
-    let contentHeight = inline ? headerHeight : controlY + trailingHeight
+    // The status (`rowStatus`) runs below the header across the whole text column,
+    // so the icon and an inline control stay centred on the title and grey line.
+    // The 2pt gap continues the label's own line spacing.
+    let status = subviews[2].sizeThatFits(ProposedViewSize(width: available, height: nil))
+    let statusY = headerHeight + (status.height > 0 ? 2 : 0)
+    let belowHeader = status.height > 0 ? statusY + status.height : headerHeight
+    let controlY = inline ? (headerHeight - control.height) / 2 : belowHeader + 10
+    let contentHeight = inline ? belowHeader : controlY + trailingHeight
     let secondaryY = secondaryBelow ? contentHeight + 10 : (inline ? (headerHeight - secondary.height) / 2 : controlY)
     let secondaryX = secondaryBelow ? labelStart : (inline ? width - trailingWidth : labelStart)
     let primaryX = inline ? width - control.width : labelStart + (hasSecondary && !secondaryBelow ? secondary.width + 12 : 0)
@@ -247,6 +257,7 @@ struct SettingsRowControlLayout: Layout {
     return (CGSize(width: width, height: height), [
       CGRect(x: 0, y: inline ? (headerHeight - icon.height) / 2 : 0, width: icon.width, height: icon.height),
       CGRect(x: labelStart, y: inline ? (headerHeight - label.height) / 2 : 0, width: labelWidth, height: label.height),
+      CGRect(x: labelStart, y: statusY, width: available, height: status.height),
       CGRect(x: primaryX, y: controlY, width: control.width, height: control.height),
       CGRect(x: secondaryX, y: secondaryY, width: secondary.width, height: secondary.height),
     ])
@@ -526,6 +537,7 @@ struct SettingsInfoButton<Content: View>: View {
       showPopover = true
     } label: {
       EnviousHelpGlyph(hovering: glyphHovering)
+        .minimumHitRegion()
         .onHover {
           pointerInside = $0
           helpTrace.pointerChanged($0)
@@ -1322,34 +1334,59 @@ extension BrandedPanel where Footnote == EmptyView {
 /// A quiet inset "note" box for use inside a `BrandedPanel`: a purple info glyph
 /// plus microcopy, on the shared control fill (`stInputBg`). Used for the frozen-per-
 /// recording notice so it reads as owned by its card, not floating beneath it.
-struct InsetNotice: View {
+/// `actions` (#4611): optional buttons on a row under the text, inside the same box. `title`
+/// (#4611): an optional first line in the reading colour, with `text` under it. `busy` (#4611):
+/// a small spinner in place of the glyph, for work still running.
+struct InsetNotice<Actions: View>: View {
   /// Resolved text. A literal goes to `text:`, which the catalog extracts by its type; text
   /// that is already translated goes to `verbatim:` (#3142).
   let text: String
+  var title: String? = nil
   var systemImage: String = "info.circle"
   var tint: Color = .stAccent
+  var busy = false
+  let actions: Actions
 
-  init(text: LocalizedStringResource, systemImage: String = "info.circle", tint: Color = .stAccent)
-  {
-    self.init(verbatim: String(localized: text), systemImage: systemImage, tint: tint)
-  }
-
-  init(verbatim text: String, systemImage: String = "info.circle", tint: Color = .stAccent) {
+  init(
+    verbatim text: String, title: String? = nil, systemImage: String = "info.circle",
+    tint: Color = .stAccent, busy: Bool = false, @ViewBuilder actions: () -> Actions
+  ) {
     self.text = text
+    self.title = title
     self.systemImage = systemImage
     self.tint = tint
+    self.busy = busy
+    self.actions = actions()
   }
 
   var body: some View {
     HStack(alignment: .firstTextBaseline, spacing: 8) {
-      Image(systemName: systemImage)
-        .font(.system(size: 14, weight: .medium))
-        .foregroundStyle(tint)
-        .accessibilityHidden(true)
-      Text(text)
-        .font(.stHelper)
-        .foregroundStyle(.stTextSecondary)
-        .fixedSize(horizontal: false, vertical: true)
+      if busy {
+        ProgressView().controlSize(.small).accessibilityHidden(true)
+      } else {
+        Image(systemName: systemImage)
+          .font(.system(size: 14, weight: .medium))
+          .foregroundStyle(tint)
+          .accessibilityHidden(true)
+      }
+      VStack(alignment: .leading, spacing: 8) {
+        VStack(alignment: .leading, spacing: 2) {
+          if let title {
+            Text(title)
+              .font(.stHelper)
+              .foregroundStyle(.stTextPrimary)
+              .fixedSize(horizontal: false, vertical: true)
+          }
+          Text(text)
+            .font(.stHelper)
+            .foregroundStyle(.stTextSecondary)
+            .fixedSize(horizontal: false, vertical: true)
+        }
+        .accessibilityElement(children: .combine)
+        if Actions.self != EmptyView.self {
+          HStack(spacing: 8) { actions }
+        }
+      }
       Spacer(minLength: 0)
     }
     .padding(.horizontal, 12)
@@ -1359,6 +1396,17 @@ struct InsetNotice: View {
     .overlay(
       RoundedRectangle(cornerRadius: 9).strokeBorder(Color.stDivider, lineWidth: 1)
     )
+  }
+}
+
+extension InsetNotice where Actions == EmptyView {
+  init(text: LocalizedStringResource, systemImage: String = "info.circle", tint: Color = .stAccent)
+  {
+    self.init(verbatim: String(localized: text), systemImage: systemImage, tint: tint)
+  }
+
+  init(verbatim text: String, systemImage: String = "info.circle", tint: Color = .stAccent) {
+    self.init(verbatim: text, systemImage: systemImage, tint: tint) { EmptyView() }
   }
 }
 
@@ -1422,7 +1470,11 @@ struct BrandedRow<Content: View>: View {
 // MARK: - Branded Toggle Style
 
 /// Green ON / lavender OFF toggle matching the brand mockups, 38x22 px.
+/// `onColor` lets a reading surface use the accent instead of green (founder, #4611: the
+/// History page's Timestamps switch is accent purple).
 struct BrandedToggleStyle: ToggleStyle {
+  var onColor: Color = .stToggleOn
+
   func makeBody(configuration: Configuration) -> some View {
     Button {
       configuration.isOn.toggle()
@@ -1430,7 +1482,7 @@ struct BrandedToggleStyle: ToggleStyle {
       HStack {
         configuration.label
         Spacer()
-        BrandedToggleTrack(isOn: configuration.isOn)
+        BrandedToggleTrack(isOn: configuration.isOn, onColor: onColor)
       }
       // The whole row commits the change -- `contentShape(Rectangle())` below
       // has always made the label, the gap and the track one target -- and
@@ -1461,11 +1513,12 @@ struct BrandedToggleStyle: ToggleStyle {
 private struct BrandedToggleTrack: View {
   @Environment(\.accessibilityReduceMotion) private var reduceMotion
   let isOn: Bool
+  let onColor: Color
 
   var body: some View {
     ZStack(alignment: isOn ? .trailing : .leading) {
       Capsule()
-        .fill(isOn ? Color.stToggleOn : Color.stToggleOff)
+        .fill(isOn ? onColor : Color.stToggleOff)
         .frame(width: 38, height: 22)
 
       Circle()
@@ -1536,6 +1589,19 @@ struct BrandedSlider<V: BinaryFloatingPoint>: View where V.Stride: BinaryFloatin
 
 // MARK: - Branded Segmented Picker
 
+/// #4611: a segment's hover explanation and VoiceOver hint, applied only when there is one.
+private struct SegmentHint: ViewModifier {
+  let text: String?
+
+  func body(content: Content) -> some View {
+    if let text {
+      content.help(Text(verbatim: text)).accessibilityHint(Text(verbatim: text))
+    } else {
+      content
+    }
+  }
+}
+
 /// Custom drawn segmented control matching the brand palette. The selected
 /// segment is a solid brand-accent pill with white text (mockup #4); each
 /// segment may carry an optional leading SF Symbol.
@@ -1546,6 +1612,13 @@ struct BrandedSegmentedPicker<T: Hashable>: View {
   /// little bit more padding so they don't look so small"). Every pre-existing
   /// call site keeps the original, tighter padding by leaving this `false`.
   var comfortable: Bool = false
+  /// #4611: a short explanation of one option, shown when the pointer rests on its segment and
+  /// read by VoiceOver as its hint; nil shows none. History's Polished / Marked up / Original
+  /// switch uses it instead of a line of text beside the switch.
+  var hint: (T) -> String? = { _ in nil }
+  /// #4611 D14: a small spinner after an option's label while its work runs (the meeting page's
+  /// AI summary tab while a summary is written). False for every option by default.
+  var busy: (T) -> Bool = { _ in false }
 
   private var verticalPadding: CGFloat { comfortable ? 11 : 7 }
   private var horizontalPadding: CGFloat { comfortable ? 18 : 12 }
@@ -1597,6 +1670,12 @@ struct BrandedSegmentedPicker<T: Hashable>: View {
         }
         Text(option.label)
           .font(.system(size: 14, weight: isSelected ? .semibold : .regular))
+        if busy(option.value) {
+          ProgressView()
+            .controlSize(.mini)
+            .tint(isSelected ? Color.white : .stTextSecondary)
+            .accessibilityHidden(true)
+        }
       }
       .foregroundStyle(isSelected ? Color.white : .stTextSecondary)
       .padding(.vertical, verticalPadding)
@@ -1637,6 +1716,7 @@ struct BrandedSegmentedPicker<T: Hashable>: View {
     .accessibilityValue(
       isSelected
         ? String(localized: "selected", comment: "VoiceOver: a chosen segmented option.") : "")
+    .modifier(SegmentHint(text: hint(option.value)))
   }
 }
 

@@ -199,7 +199,7 @@ struct MeetingAfterPresentationTests {
 
   @Test("Return with the same name writes nothing and closes")
   func titleUnchanged() {
-    var edit = P.TitleEdit()
+    var edit = HistoryTitleEdit()
     edit.begin(storedTitle: "Sync")
     #expect(edit.draft == "Sync")
     edit.draft = "  Sync "
@@ -209,7 +209,7 @@ struct MeetingAfterPresentationTests {
 
   @Test("an empty name is sent so the coordinator restores the untitled label")
   func titleEmpty() {
-    var edit = P.TitleEdit()
+    var edit = HistoryTitleEdit()
     edit.begin(storedTitle: "Sync")
     edit.draft = "   "
     #expect(edit.commit(storedTitle: "Sync") == .rename(""))
@@ -220,7 +220,7 @@ struct MeetingAfterPresentationTests {
 
   @Test("an untitled meeting opens an empty field")
   func titleUntitled() {
-    var edit = P.TitleEdit()
+    var edit = HistoryTitleEdit()
     edit.begin(storedTitle: nil)
     #expect(edit.draft.isEmpty)
     #expect(edit.commit(storedTitle: nil) == .unchanged)
@@ -228,7 +228,7 @@ struct MeetingAfterPresentationTests {
 
   @Test("a failed rename keeps the typed name; Try again sends it again")
   func titleFailure() {
-    var edit = P.TitleEdit()
+    var edit = HistoryTitleEdit()
     edit.begin(storedTitle: nil)
     edit.draft = "Board review"
     #expect(edit.commit(storedTitle: nil) == .rename("Board review"))
@@ -245,46 +245,12 @@ struct MeetingAfterPresentationTests {
 
   @Test("Escape closes the field without writing")
   func titleCancel() {
-    var edit = P.TitleEdit()
+    var edit = HistoryTitleEdit()
     edit.begin(storedTitle: "Sync")
     edit.draft = "Other"
     edit.cancel()
     #expect(edit.isEditing == false)
     #expect(edit.commit(storedTitle: "Sync") == .unchanged)
-  }
-
-  // MARK: - Markers
-
-  static func block(_ ms: Int?, _ text: String = "note") -> MeetingNoteBlock {
-    MeetingNoteBlock(startedAtMs: ms, text: text)
-  }
-
-  @Test("only timed, non-empty notes inside the recording become markers, in time order")
-  func markers() {
-    let document = MeetingNotesDocument(blocks: [
-      Self.block(30_000, "later"), Self.block(nil, "migrated"), Self.block(10_000, "first"),
-      Self.block(20_000, "   "), Self.block(70_000, "past the end"), Self.block(60_000, "at end"),
-    ])
-    let markers = P.noteMarkers(document, durationMs: 60_000)
-    #expect(markers.map(\.text) == ["first", "later", "at end"])
-    #expect(P.noteMarkers(document, durationMs: 0).isEmpty)
-  }
-
-  @Test("markers closer than the gap merge into one cluster; just apart stay separate")
-  func clusters() {
-    // 1 000 pt track over 100 s: 10 pt per second; the gap is 18 pt (1.8 s).
-    let near = [
-      P.NoteMarker(id: UUID(), ms: 10_000, kind: .text, text: "a"),
-      P.NoteMarker(id: UUID(), ms: 11_700, kind: .text, text: "b"),
-      P.NoteMarker(id: UUID(), ms: 11_799, kind: .task, text: "c"),
-      P.NoteMarker(id: UUID(), ms: 11_800, kind: .text, text: "d"),
-    ]
-    let clusters = P.clusters(near, durationMs: 100_000, trackWidth: 1_000)
-    #expect(clusters.map(\.markers.count) == [3, 1])
-    #expect(clusters[0].ms == 10_000)
-    #expect(P.clusterLabel(clusters[0]) == "3 notes")
-    #expect(P.clusterLabel(clusters[1]) == "1 note")
-    #expect(P.clusters(near, durationMs: 100_000, trackWidth: 0).isEmpty)
   }
 
   // MARK: - Participants
@@ -383,5 +349,28 @@ struct MeetingAfterPresentationTests {
       P.strip(
         record: Self.record(.failed), processing: false, queueWaitsForSpace: false,
         writingSummary: false, hasSummary: true) == .none)
+  }
+
+  @Test("#4726: a summary that waits its turn says waiting, never writing")
+  func stripSummaryWaitsForTurn() {
+    let ready = Self.record(.ready)
+    #expect(
+      P.strip(
+        record: ready, processing: false, queueWaitsForSpace: false, writingSummary: true,
+        summaryWaitsForTurn: true, hasSummary: false) == .summaryWaitsForTurn)
+    #expect(
+      P.stripLine(.summaryWaitsForTurn)
+        == "Waiting for your dictation and other meeting work to finish.")
+    #expect(P.stripLine(.summaryWaitsForTurn) != P.stripLine(.writingSummary))
+    // Waiting needs an active attempt: without one the strip is quiet or ready.
+    #expect(
+      P.strip(
+        record: ready, processing: false, queueWaitsForSpace: false, writingSummary: false,
+        summaryWaitsForTurn: true, hasSummary: true) == .summaryReady)
+    // A transcript still queueing outranks a summary wait.
+    #expect(
+      P.strip(
+        record: Self.record(.queued), processing: false, queueWaitsForSpace: false,
+        writingSummary: true, summaryWaitsForTurn: true, hasSummary: false) == .waiting)
   }
 }

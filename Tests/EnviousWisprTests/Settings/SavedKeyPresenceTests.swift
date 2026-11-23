@@ -30,6 +30,18 @@ struct SavedKeyPresenceTests {
       defaults: TestDefaults.suite("ew.tests.saved-key-presence.\(UUID().uuidString)")!)
   }
 
+  @Test("History discovers saved cloud providers before the AI Polish editor opens")
+  func offPageRead() async throws {
+    let keychain = Self.fixtureKeychain()
+    try keychain.store(key: KeychainManager.openAIKeyID, value: "fixture")
+    let presence = SavedKeyPresence()
+    #expect(presence.state(for: .openAI) == .unknown)
+    await presence.readUnknown(using: keychain, access: CredentialAccessLane())
+    #expect(presence.state(for: .openAI) == .present)
+    #expect(presence.state(for: .gemini) == .absent)
+    #expect(presence.state(for: .claude) == .absent)
+  }
+
   private static func cacheDefaults() -> UserDefaults {
     TestDefaults.suite("ew.tests.saved-key-presence.cache.\(UUID().uuidString)")!
   }

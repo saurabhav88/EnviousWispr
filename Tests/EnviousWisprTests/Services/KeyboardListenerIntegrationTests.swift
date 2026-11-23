@@ -20,7 +20,7 @@ struct KeyboardListenerIntegrationTests {
     let timers: HotkeyTestScheduler
     let effects = RecordingDesktopHotkeyEffects()
     let service: HotkeyService
-    var failures: [(mechanism: String, kind: String, shape: String)] = []
+    var failures: [(mechanism: String, kind: String, shape: String, stage: String?)] = []
     /// `listenerAwaitingAccessibility` reports (#3848): kind and shape.
     var awaiting: [(kind: String, shape: String)] = []
     var health: [HotkeyListenerHealthReport] = []
@@ -34,8 +34,8 @@ struct KeyboardListenerIntegrationTests {
       service = HotkeyService(
         effects: effects,
         telemetry: HotkeyTelemetrySink(
-          registrationFailed: { mechanism, kind, _, shape in
-            box.rig?.failures.append((mechanism, kind, shape))
+          registrationFailed: { mechanism, kind, _, shape, stage in
+            box.rig?.failures.append((mechanism, kind, shape, stage))
           },
           pressed: { _, _, _, _, _, _ in box.rig?.presses += 1 },
           listenerHealth: { report in box.rig?.health.append(report) },
@@ -109,6 +109,7 @@ struct KeyboardListenerIntegrationTests {
     #expect(rig.listenerFailures == 1)
     #expect(rig.failures.first?.kind == ShortcutRole.record.telemetryKind)
     #expect(rig.failures.first?.shape == "modifier_only")
+    #expect(rig.failures.first?.stage == "tap_creation_failed")
     #expect(rig.timers.requestedDelays == [TimingConstants.accessibilityPollIntervalSec])
 
     // Still failing: retried, not reported again.

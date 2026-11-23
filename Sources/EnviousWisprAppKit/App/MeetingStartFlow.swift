@@ -42,6 +42,12 @@ final class MeetingStartFlow {
     }
     var acceptedStart: @MainActor (CallDetectionPolicy.AcceptedStart) -> Void = { _ in }
     var settledStart: @MainActor (CallDetectionPolicy.AcceptedStart, UUID?) -> Void = { _, _ in }
+    /// #4578: whether any speech engine can write this meeting's transcript (the
+    /// `.meetingStart` job decision over fresh installation facts). Defaults to yes for tests.
+    var hasTranscriptionEngine: @MainActor () async -> Bool = { true }
+    /// #4578: shows the "No speech engine downloaded" card for a hand-started meeting (the
+    /// call panel shows it itself for detected starts and its own Start recording).
+    var showNoTranscriptionEngine: @MainActor () -> Void = {}
   }
 
   /// A Start waiting on the explainer, and where it was asked from: the page shows the
@@ -74,6 +80,9 @@ final class MeetingStartFlow {
     /// first (#4012 R5): nothing started, nothing was asked, no window opened. The caller
     /// offers "Open EnviousMeet".
     case needsAttention
+    /// #4578: no speech engine is downloaded, so nothing was recorded (no recorder, no audio
+    /// file, no download). The caller shows the "No speech engine downloaded" card.
+    case noTranscriptionEngine
   }
 
   /// A Start waiting on the macOS microphone prompt, and where it was asked from. While it is
@@ -102,6 +111,13 @@ final class MeetingStartFlow {
   {
     // Setup first (#4017 R4): before any prompt, pending state or recording.
     guard admitSetup() else { return .setupRequired }
+    // #4578: no speech engine, no meeting: before any prompt or explainer. A Start cancelled
+    // or replaced during the read ends here, before any prompt, card or recording; every check
+    // below runs after this await, so a change meanwhile is seen.
+    let checkGeneration = startGeneration
+    let hasEngine = await deps.hasTranscriptionEngine()
+    guard checkGeneration == startGeneration else { return .cancelled }
+    guard hasEngine else { return refuseNoEngine(entryPoint, fromCallPanel: fromCallPanel) }
     // A detected call never opens a macOS prompt or the explainer by itself (#4012 R5).
     if entryPoint == .detected {
       guard deps.canStart() else { return .notIdle }
@@ -198,6 +214,13 @@ final class MeetingStartFlow {
     from route: MeetingEntryPoint, captureCallSound: Bool, callApp: CallAppFamily?,
     fromCallPanel: Bool
   ) async -> Outcome {
+    // #4578: the common boundary for direct Starts, the microphone continuation and the
+    // explainer's Continue: an engine removed meanwhile stops here, before anything records.
+    let generation = startGeneration
+    let hasEngine = await deps.hasTranscriptionEngine()
+    guard generation == startGeneration else { return .cancelled }
+    guard deps.canStart() else { return .notIdle }
+    guard hasEngine else { return refuseNoEngine(route, fromCallPanel: fromCallPanel) }
     if let previous = acceptedRequest { settle(previous, recordingID: nil) }
     startGeneration += 1
     let request = CallDetectionPolicy.AcceptedStart(
@@ -210,6 +233,14 @@ final class MeetingStartFlow {
     if case .recording(let id) = result { recordingID = id } else { recordingID = nil }
     settle(request, recordingID: recordingID)
     return .started(result)
+  }
+
+  /// #4578: nothing records. A detected start and the call panel's own Start get the card from
+  /// the call panel through the returned outcome; every other entry shows it here, because its
+  /// caller may ignore the outcome.
+  private func refuseNoEngine(_ entryPoint: MeetingEntryPoint, fromCallPanel: Bool) -> Outcome {
+    if entryPoint != .detected, !fromCallPanel { deps.showNoTranscriptionEngine() }
+    return .noTranscriptionEngine
   }
 
   private func settle(_ request: CallDetectionPolicy.AcceptedStart, recordingID: UUID?) {

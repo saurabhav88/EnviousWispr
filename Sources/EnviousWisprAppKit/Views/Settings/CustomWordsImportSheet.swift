@@ -5,7 +5,7 @@ import SwiftUI
 /// The Custom Words import sheet (#1657 PR-F1 shell, #1669 PR-F2c review).
 ///
 /// One observable model, one root `switch`, one container-level `.animation()`
-/// — the `OnboardingV2View` root-switch pattern without its timers or
+/// — one root switch without timers or
 /// permissions logic. Paste, file, and supported-app sources all feed the same
 /// review and commit path.
 ///
@@ -13,14 +13,26 @@ import SwiftUI
 /// release users from v2.4.1.
 /// Dismissing at any point cancels in-flight work and writes nothing.
 struct CustomWordsImportSheet: View {
-  private static let screenTransition: AnyTransition = .asymmetric(
-    insertion: .opacity.combined(with: .offset(y: 20)),
-    removal: .opacity
-  )
+  /// #4866: with Reduce Motion on, a screen change swaps at once (no 20 pt slide, no fade);
+  /// the state still changes. Same swap shape as swift-patterns RULE: swap-whole-screens-without-animation.
+  private static func screenTransition(reduceMotion: Bool) -> AnyTransition {
+    reduceMotion
+      ? .identity
+      : .asymmetric(
+        insertion: .opacity.combined(with: .offset(y: 20)),
+        removal: .opacity
+      )
+  }
+
+  /// The one container animation for a screen change; nil under Reduce Motion (#4866).
+  static func stepAnimation(reduceMotion: Bool) -> Animation? {
+    reduceMotion ? nil : .easeInOut(duration: 0.25)
+  }
 
   @State private var model: CustomWordsImportFlowModel
   @State private var showDiscardConfirm = false
   @Environment(\.dismiss) private var dismiss
+  @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
   /// `startingWith` opens on that method's screen instead of the method picker (#3034).
   init(
@@ -61,34 +73,35 @@ struct CustomWordsImportSheet: View {
       header
 
       ZStack {
+        let transition = Self.screenTransition(reduceMotion: reduceMotion)
         switch model.step {
         case .methodPicker:
           ImportMethodPickerScreen(model: model)
-            .transition(Self.screenTransition)
+            .transition(transition)
         case .paste:
           ImportPasteScreen(model: model)
-            .transition(Self.screenTransition)
+            .transition(transition)
         case .upload:
           ImportUploadScreen(model: model)
-            .transition(Self.screenTransition)
+            .transition(transition)
         case .smartImportAppPicker:
           ImportSmartAppPickerScreen(model: model)
-            .transition(Self.screenTransition)
+            .transition(transition)
         case .review:
           ImportReviewScreen(model: model)
-            .transition(Self.screenTransition)
+            .transition(transition)
         case .working(let work):
           ImportWorkingScreen(work: work)
-            .transition(Self.screenTransition)
+            .transition(transition)
         case .result(let result):
           ImportResultScreen(
             result: result,
             droppedAliasCollisionCount: model.droppedAliasCollisionCount
           )
-          .transition(Self.screenTransition)
+          .transition(transition)
         }
       }
-      .animation(.easeInOut(duration: 0.25), value: model.step)
+      .animation(Self.stepAnimation(reduceMotion: reduceMotion), value: model.step)
 
       footer
     }

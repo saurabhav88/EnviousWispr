@@ -12,10 +12,10 @@ import Foundation
 /// published card says the opposite for its own model, and the shipped binary
 /// agrees: filler-only input returns an empty string with `finish_reason: stop`.
 ///
-/// Everything else — request body, bearer token, timeout, the single retry that
-/// covers the restart-once window after a crash — comes from
-/// `LocalPolishTransport`, so neither connector can drift from the other on the
-/// parts where they agree.
+/// Everything else — request body, bearer token, timeout, single-attempt
+/// silent bypass when the helper drops out — comes from
+/// `LocalPolishTransport` (#4496), so neither connector can drift from the
+/// other on the parts where they agree.
 /// (#4473: the transport now carries bytes only. The request body is still EG-1's one
 /// builder, called from `send` below, and the shared response rules are
 /// `LlamaServerChatResponse`.)

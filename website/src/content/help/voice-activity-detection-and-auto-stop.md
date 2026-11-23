@@ -6,7 +6,7 @@ section: "Audio Processing"
 order: 4
 keywords: ["auto stop", "stops on silence", "stops too early", "cuts me off", "pause", "silence", "vad", "keeps going after i stop", "waits too long", "voice activity detection", "stop recording on silence", "pause duration", "stops mid sentence"]
 related: ["hands-free-mode-long-dictation", "first-word-gets-cut-off"]
-updated: 2026-11-05
+updated: 2026-11-22
 deflection: "show_but_always_send"
 ---
 EnviousWispr can end a recording by itself once you stop talking, so you do not have to press your keybind again. This is off by default. Switch it on first.
@@ -15,9 +15,9 @@ EnviousWispr can end a recording by itself once you stop talking, so you do not 
 
 1. Go to **Dictation Settings** \> **Engine**.
 2. Under **Applies to both engines**, switch on **Stop recording on silence**.
-3. Use the **Pause duration** slider to set how long a pause has to be, from half a second to three seconds. The default is one and a half seconds.
+3. Use the **Pause duration** slider to set how long a pause has to be, from half a second to five seconds. The default is one and a half seconds.
 
-A pause shorter than your setting is ignored. A longer silence ends the recording.
+A longer setting gives you more time to pause mid-sentence and makes auto-stop wait longer after you finish speaking.
 
 ### Choose a pause length
 
@@ -25,11 +25,11 @@ A pause shorter than your setting is ignored. A longer silence ends the recordin
 | :--- | :--- |
 | **Half a second** | Ends recordings quickly, but an ordinary pause for thought is often enough to stop it. |
 | **One and a half seconds** | A reliable starting point for normal speech. |
-| **Up to three seconds** | Suits speakers who pause often in the middle of a sentence. |
+| **Up to five seconds** | Suits speakers who pause often in the middle of a sentence. |
 
 ### Recording stops while I am still thinking
 
-Raise **Pause duration** on the **Engine** tab of **Dictation Settings**, up to three seconds. Or switch **Stop recording on silence** off and end every recording yourself with your keybind.
+Raise **Pause duration** on the **Engine** tab of **Dictation Settings**, up to five seconds. Or switch **Stop recording on silence** off and end every recording yourself with your keybind.
 
 ### Recording does not stop by itself
 

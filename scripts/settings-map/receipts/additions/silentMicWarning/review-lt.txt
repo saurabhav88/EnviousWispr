@@ -1,0 +1,10 @@
+{
+  "language": "lt",
+  "title": "įspėti, kai mikrofonas nefiksuoja garso",
+  "words": [
+    "įspėjimas apie mikrofono tylą"
+  ],
+  "phrases": [
+    "kaip įjungti įspėjimą, kai diktuojant mikrofonas nefiksuoja garso"
+  ]
+}

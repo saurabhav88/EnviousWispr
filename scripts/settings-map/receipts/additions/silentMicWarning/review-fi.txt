@@ -1,0 +1,11 @@
+{
+  "language": "fi",
+  "title": "varoita, kun mikrofonista ei tule ääntä",
+  "words": [
+    "mikrofonivaroitus",
+    "hiljaisuusvaroitus"
+  ],
+  "phrases": [
+    "miten saan ilmoituksen, jos mikistä ei tule ääntä sanelun aikana?"
+  ]
+}

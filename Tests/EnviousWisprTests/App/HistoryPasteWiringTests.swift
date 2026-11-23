@@ -125,11 +125,12 @@ struct HistoryPasteWiringTests {
     #expect(history.contains("pasteNotice.text ?? \"\""), "the alert shows the page's notice")
     #expect(history.contains("get: { pasteNotice.text != nil }"))
     #expect(history.contains("pasteNotice.dismiss()"), "OK clears it")
-    #expect(history.contains("TranscriptDetailView(transcript: row, showPasteNotice: pasteNotice.show)"))
-    #expect(history.contains("HistoryDictationCard(rowID: rowID, showPasteNotice: pasteNotice.show)"))
+    #expect(history.contains("display: row, query: query, showPasteNotice: pasteNotice.show"))
     // #3147 PR4A: the meeting page reports to the page's notice.
     #expect(history.contains("HistoryMeetingAfterView("))
-    #expect(history.contains("references: meetings.summaryReferences ?? NoMeetingSummaryReferences(),\n              showPasteNotice: pasteNotice.show,"))
+    let meetingCall = try #require(history.components(separatedBy: "HistoryMeetingAfterView(").last)
+    #expect(meetingCall.components(separatedBy: "restorePasteSurface:").first?
+      .contains("showPasteNotice: pasteNotice.show,") == true)
     // #3147 PR3: the imported transcript view reports to the page in History, and to its own
     // window's root when detached; that root holds the window's notice outside the content.
     #expect(history.contains("showPasteNotice: pasteNotice.show,"), "the transcript view reports to the page")
@@ -138,7 +139,7 @@ struct HistoryPasteWiringTests {
     #expect(window.contains("showPasteNotice: pasteNotice.show,"))
     #expect(window.contains("get: { pasteNotice.text != nil }"), "the window presents its own notice")
     for detail in [
-      "TranscriptDetailView.swift", "HistoryMeetingAfterView.swift", "HistoryTranscriptView.swift",
+      "HistoryDictationCard.swift", "HistoryMeetingAfterView.swift", "HistoryTranscriptView.swift",
     ] {
       let (source, _) = try Self.snapshot("\(Self.sources)/Views/Main/\(detail)")
       #expect(source.contains("@State private var pasteNotice") == false, "\(detail) holds its own notice")

@@ -114,8 +114,10 @@ final class RecoverySpoolReplayer: RecoverySpoolReplaying {
   /// #3289: told the recovered recording's frozen polish engine just before it is transcribed, so
   /// the word check can start loading behind the transcription, and again when this replay ends on
   /// any path, so the word check stops counting it as work. Nil in tests that do not care.
-  private let onReplayWillTranscribe: (@MainActor (LLMProvider) -> Void)?
-  private let onReplayFinished: (@MainActor (LLMProvider) -> Void)?
+  private let onReplayWillTranscribe: (@MainActor (LLMProvider, Bool) -> Void)?
+  private let onReplayFinished: (@MainActor (LLMProvider, Bool) -> Void)?
+  /// #4578: the active engine when its model is not on this Mac (the job decision), else nil.
+  private let activeEngineMissing: (@MainActor () async -> ASRBackendType?)?
   /// Current custom-words vocabulary, best-effort (the snapshot carries only the
   /// version, not the terms — recovery promises normal-quality, not byte-exact).
   private let currentVocabulary:
@@ -158,8 +160,9 @@ final class RecoverySpoolReplayer: RecoverySpoolReplaying {
     additionalLocalRuntimes: [LocalPolishModelID: any EGOneEndpointProviding] = [:],
     s1MiniRuntime: (any EGOneEndpointProviding)? = nil,
     checkerSelectionProvider: (@MainActor (LocalPolishModelID, String?) async -> LearnedWordCheckerSelection)? = nil,
-    onReplayWillTranscribe: (@MainActor (LLMProvider) -> Void)? = nil,
-    onReplayFinished: (@MainActor (LLMProvider) -> Void)? = nil,
+    onReplayWillTranscribe: (@MainActor (LLMProvider, Bool) -> Void)? = nil,
+    onReplayFinished: (@MainActor (LLMProvider, Bool) -> Void)? = nil,
+    activeEngineMissing: (@MainActor () async -> ASRBackendType?)? = nil,
     now: @escaping @Sendable () -> Date = { Date() },
     currentCloudModelList: @escaping @MainActor () -> CloudModelList?,
     currentVocabulary: @escaping @MainActor () -> (
@@ -182,6 +185,7 @@ final class RecoverySpoolReplayer: RecoverySpoolReplaying {
     self.checkerSelectionProvider = checkerSelectionProvider
     self.onReplayWillTranscribe = onReplayWillTranscribe
     self.onReplayFinished = onReplayFinished
+    self.activeEngineMissing = activeEngineMissing
     self.currentVocabulary = currentVocabulary
     self.currentSnippets = currentSnippets
     self.currentCloudModelList = currentCloudModelList
@@ -363,6 +367,11 @@ final class RecoverySpoolReplayer: RecoverySpoolReplaying {
       // a limb, and a migration gate here is the crash-recovery coupling that
       // ruling exists to forbid. Reviewers keep re-deriving this — do not
       // "fix" it without a new founder decision.
+      // #4578: a missing engine is refused before the load (which would download a missing
+      // Parakeet). It ends through the same terminal refusal as any load failure below.
+      if let missing = await activeEngineMissing?() {
+        throw SpeechEngineNotDownloadedError(engine: missing)
+      }
       try await activeEngine.load()
     } catch {
       // Discard hard-resets the engine, which can throw here — that's an abort,
@@ -394,8 +403,9 @@ final class RecoverySpoolReplayer: RecoverySpoolReplaying {
     let result: ASRResult
     // Same fallback as `RecoveryTextProcessor.applySettings`: an unknown saved provider is `.none`.
     let replayProvider = recovered.settings.map { LLMProvider(rawValue: $0.llmProvider) ?? .none }
-    if let replayProvider { onReplayWillTranscribe?(replayProvider) }
-    defer { if let replayProvider { onReplayFinished?(replayProvider) } }
+    let allowsLearnedFixes = recovered.settings?.allowsLearnedFixes == true
+    if let replayProvider { onReplayWillTranscribe?(replayProvider, allowsLearnedFixes) }
+    defer { if let replayProvider { onReplayFinished?(replayProvider, allowsLearnedFixes) } }
     do {
       result = try await activeEngine.transcribe(recovered.samples, options, nil)
     } catch {

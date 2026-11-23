@@ -62,12 +62,12 @@
       // Remove this line before launching a website survey.
       disable_surveys: true,
       // #2953: replay is switched on project-side (sampled, minimum duration);
-      // the client side masks every input and any editable text, and blocks
-      // the whole Crisp chat surface so a typed or rendered message is never
-      // in a recording. The marketing site holds no user content otherwise.
+      // the client side masks every input, any editable text, and the reflected
+      // help-search empty status (#3498: repeats the query in ordinary DOM text),
+      // and blocks the Crisp chat surface. The marketing site holds no user content otherwise.
       session_recording: {
         maskAllInputs: true,
-        maskTextSelector: '[contenteditable]',
+        maskTextSelector: '[contenteditable], #help-search-status',
         blockSelector: '.crisp-client',
       },
     });

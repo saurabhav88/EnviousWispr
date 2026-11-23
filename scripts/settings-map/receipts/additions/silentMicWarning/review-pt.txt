@@ -1,0 +1,12 @@
+{
+  "language": "pt",
+  "title": "avisar quando o microfone não capta som",
+  "words": [
+    "aviso de microfone sem som",
+    "alerta de microfone mudo"
+  ],
+  "phrases": [
+    "como ativar o aviso de microfone sem som durante o ditado?",
+    "por que aparece um aviso de que o microfone não está captando som?"
+  ]
+}

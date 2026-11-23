@@ -1,0 +1,22 @@
+{
+  "en": {
+    "words": [
+      "silence warning",
+      "silent input alert"
+    ],
+    "phrases": [
+      "warn me if nothing comes through while I dictate",
+      "stop the silence warning on the recording pill"
+    ]
+  },
+  "de": {
+    "words": [
+      "Tonwarnung",
+      "Hinweis bei fehlendem Ton"
+    ],
+    "phrases": [
+      "warne mich, wenn beim Diktieren kein Ton ankommt",
+      "schalte den Hinweis bei fehlendem Ton auf der Aufnahmeanzeige aus"
+    ]
+  }
+}

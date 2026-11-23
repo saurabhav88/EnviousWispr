@@ -83,7 +83,12 @@ final class ImportedTranscriberRig {
   var processThrowsAfter: Int?
   var identityNow = ImportedSourceIdentity(byteCount: 10, durationMs: 1000, digest: "aa")
   var languageMode: LanguageMode = .auto
+  /// The polish provider and model the frozen snapshot names (EG-1 unless a test says otherwise).
+  var polishProvider: LLMProvider = .egOne
+  var polishModelName = "eg-1"
   var installed: [ImportedASRChoice] = []
+  /// #4611: the speaker step Transcribe again with runs; nil skips it.
+  var speakerLabeler: (@MainActor ([Float], TimeInterval) async -> SpeakerAnalysis)?
 
   static let identity = ImportedSourceIdentity(byteCount: 10, durationMs: 1000, digest: "aa")
   static let parakeetChoice = ImportedASRSelection.parakeet(
@@ -101,7 +106,7 @@ final class ImportedTranscriberRig {
       languageMode: languageMode, wordCorrectionEnabled: true, fillerRemovalEnabled: false,
       emojiFormatterEnabled: false, spokenPunctuationEnabled: false,
       spokenPunctuationStartWords: nil, spokenPunctuationEnglishPeriodWord: nil,
-      llmProvider: LLMProvider.egOne.rawValue, llmModel: "eg-1", egOneSize: nil,
+      llmProvider: polishProvider.rawValue, llmModel: polishModelName, egOneSize: nil,
       s1Control: nil, englishSpelling: nil, casualModeEnabled: false)
   }
 
@@ -143,7 +148,8 @@ final class ImportedTranscriberRig {
           samples: [Float](repeating: 0.1, count: 16_000), seconds: 1, byteCount: 10,
           codec: "PCM", sampleRate: 16_000, channelCount: 1)
       },
-      readIdentity: { [identityNow] _ in identityNow })
+      readIdentity: { [identityNow] _ in identityNow },
+      speakerLabeler: speakerLabeler)
     transcriber = made
     return made
   }
@@ -158,6 +164,59 @@ final class ImportedTranscriberRig {
 @MainActor
 @Suite("Imported file transcriber (#3147 PR3)", .tags(.productOutcome), .timeLimit(.minutes(1)))
 struct ImportedFileTranscriberTests {
+
+  @Test("manual meeting polish sends only visible speech and releases the shared lease")
+  func manualMeetingPolishUsesOriginalVisibleSpeech() async throws {
+    let rig = ImportedTranscriberRig()
+    let speech = "Visible original words."
+    let gap = "Some words [Could not transcribe 0:01 to 0:02] more words."
+    let echo = "Hidden probable echo."
+    let original = [speech, gap, echo].joined(separator: "\n")
+    let source = original as NSString
+    let turns = [speech, gap, echo].enumerated().map { index, words in
+      let range = source.range(of: words)
+      return Turn(
+        id: String(index), speakerId: "speaker", startMs: index * 1000,
+        endMs: (index + 1) * 1000, originalTextRange: range.location..<(range.location + range.length),
+        processedText: "Prior polish.")
+    }
+    let row = Transcript(text: original, turns: turns, meetingID: UUID())
+    let choice = HistoryPolishChoice(provider: .egOne, model: "eg-1")
+    let freeze: (ASRBackendType) -> ImportedFileTranscriber.FrozenRun = { backend in
+      .init(
+        settings: rig.snapshot(backend),
+        configuration: .init(
+          polishIsCloud: false, localPolishModel: nil, polishProvider: .egOne,
+          ollamaModel: nil, polishModel: "eg-1", backendType: backend))
+    }
+    let runner = HistoryRepolishRunner(
+      choices: { _ in [choice] }, admission: .live(lease: rig.lease, as: .fileImport),
+      freeze: { backend, selected, _ in
+        #expect(selected == choice)
+        return freeze(backend)
+      },
+      cleanup: .init(
+        freeze: { freeze($0) },
+        prepareLocalPolish: { _ in rig.lease.currentHolder == .fileImport },
+        processParts: { pieces, _, report in
+          rig.processedParts.append(pieces)
+          for (index, piece) in pieces.enumerated() {
+            _ = report(index, .init(text: piece, polishedText: "Polished visible words."))
+          }
+        },
+        release: { rig.releases += 1 }),
+      polishDictation: { _, _ in nil }, meetingInfo: { _ in .init(echoTurnIDs: ["2"]) },
+      ollamaModelUsed: { _ in })
+
+    let result = try await runner.candidate(for: row, choice: choice)
+    #expect(rig.processedParts == [[speech]])
+    #expect(result.comparisonCurrentText == "Prior polish.\n\nPrior polish.")
+    #expect(result.comparisonNewText == "Polished visible words.\n\n" + gap)
+    #expect(result.turns?.map(\.processedText) == ["Polished visible words.", nil, nil])
+    #expect(result.turns?.map(\.originalTextRange) == turns.map(\.originalTextRange))
+    #expect(rig.lease.currentHolder == nil)
+    #expect(rig.releases == 1)
+  }
 
   @Test("the chosen engine runs, settings freeze for it, and the words are cleaned")
   func chosenEngineAndCleanup() async throws {
@@ -181,6 +240,48 @@ struct ImportedFileTranscriberTests {
     #expect(
       rig.clearAtRelease == [true],
       "the retries run after the lease and job guards clear, or a deferred eviction defers again")
+    #expect(rig.engineIsFree)
+  }
+
+  @Test("one voice: Transcribe again stores paragraph turns, each cleaned as its own part (#4611)")
+  func oneVoiceGetsParagraphTimes() async throws {
+    let rig = ImportedTranscriberRig()
+    // Two sentences of 45 words each with a 3 s pause between them, timed word by word.
+    var text = ""
+    var words: [ASRWordTiming] = []
+    var clock = 0
+    for sentence in 0..<2 {
+      for n in 0..<45 {
+        if !text.isEmpty { text += " " }
+        let lower = text.utf16.count
+        text += "w\(n)" + (n == 44 ? "." : "")
+        words.append(
+          ASRWordTiming(word: "w", range: lower..<text.utf16.count, startMs: clock, endMs: clock + 250))
+        clock += 300
+      }
+      if sentence == 0 { clock += 3_000 }
+    }
+    rig.engines.result = ASRResult(
+      text: text, language: "en", duration: 30, processingTime: 0.5, backendType: .parakeet,
+      wordTimings: words, wordTimingCoverage: ASRWordTimingCoverage(timed: 90, total: 90))
+    var analyzed = 0
+    rig.speakerLabeler = { _, _ in
+      analyzed += 1
+      return .single(segments: [])
+    }
+    let row = try await rig.makeTranscriber().transcribe(
+      url: URL(fileURLWithPath: "/tmp/talk.m4a"), identity: ImportedTranscriberRig.identity,
+      selection: ImportedTranscriberRig.parakeetChoice
+    ).get()
+    #expect(analyzed == 1)
+    #expect(row.speakerAnalysis == .single)
+    let turns = try #require(row.turns)
+    #expect(turns.count == 2)
+    #expect(turns.map(\.startMs) == [0, 16_500])
+    #expect(turns.allSatisfy { $0.speakerId == SingleSpeakerParagraphs.speakerID })
+    #expect(rig.processedParts.first?.count == 2, "one cleanup part per paragraph")
+    #expect(turns.allSatisfy { $0.processedText?.hasPrefix("Polished") == true })
+    #expect(row.speakerNames == nil)
     #expect(rig.engineIsFree)
   }
 

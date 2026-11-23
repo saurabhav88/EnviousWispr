@@ -70,8 +70,12 @@ struct SentryScopeWriterFreezeTests {
   /// speaker summary: fixed stage `meeting`, fixed message, data =
   /// `meetingLiveSpeakersBreadcrumbData` (the `live_*` integers, the closed state and share
   /// bucket strings and the bundled model revision). No name, word, path or id.
+  /// #4021: `TelemetryService.coreAudioReadStuck` adds one breadcrumb per stuck or recovered
+  /// Core Audio lane read: fixed stage `core_audio_lane`, fixed message `read_stuck`, data = the
+  /// closed `read` and `phase` strings and the `bound_ms` / `returned_after_ms` integers. No
+  /// device name, UID or other content.
   static let inventoryFingerprint =
-    "f90a282e6a54f5eca02e4708822d382aaaad843cbdf54c193a1ea3f080714696"
+    "6741d480aa87357b5b4b7925897ecda2cd4332ef73ef42fb5d9851a49dc4356c"
 
   struct Site: Hashable, Comparable {
     let file: String

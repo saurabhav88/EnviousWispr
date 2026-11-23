@@ -44,7 +44,7 @@ struct OverlayPanelSizeOwnershipTests {
     defer { host.hide() }
     let director = OverlayDirector(
       host: host, announce: { _ in }, livePreview: .disabled, grantAccessibility: {},
-      openMicrophoneSettings: {}, advisoryHint: { _ in nil },
+      openMicrophoneSettings: {}, openMicrophoneHelp: {}, advisoryHint: { _ in nil },
       selections: { .shipped },
       firstRenderSchedule: { $0() })
 

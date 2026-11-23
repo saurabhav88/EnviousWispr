@@ -25,8 +25,20 @@ struct UnifiedWindowView: View {
   /// monitor.
   @Environment(SummarySetupMonitorHolder.self) private var summarySetup
   @Environment(SettingsManager.self) private var settings
+  @Environment(AppWindowCoordinator.self) private var appWindow
+  @Environment(TranscriptCoordinator.self) private var transcripts
+  @State private var recordingsTour: RecordingsTourCard.Stop?
+  @State private var recordingsTourCheck: Task<Void, Never>?
   /// The question on screen and its identity; a dismissal clears only the one it belongs to.
   @State private var pendingLeave: PolishSetupLeaveRequest?
+  /// #4578: the speech-engine leave question, when that one is open (never both at once).
+  @State private var pendingSpeechLeave: SpeechSetupLeaveRequest?
+  /// #4578: the engines picked when this window's visit to each speech tab began ("Go back to").
+  @State private var dictationEngineWhenVisitBegan: ASRBackendType?
+  @State private var meetingEngineWhenVisitBegan: ASRBackendType?
+  @Environment(SpeechModelLibrary.self) private var speechModels: SpeechModelLibrary?
+  @Environment(SetupCoordinator.self) private var setupCoordinator: SetupCoordinator?
+  @Environment(ModelDeliveryHome.self) private var modelDelivery: ModelDeliveryHome?
   @State private var pendingLeaveID: UInt64 = 0
   @State private var providerWhenVisitBegan: LLMProvider?
   /// #4321: the summary engine chosen when this visit to Meetings > Summaries began.
@@ -38,6 +50,9 @@ struct UnifiedWindowView: View {
     AccessibilityNotification.Announcement(message).post()
   }
   @FocusState private var searchFocused: Bool
+  /// #4843: delivered dictations, so a search holding dictated text never sends its words.
+  @Environment(\.pasteCompletionRegistry) private var pasteCompletionRegistry
+  @Environment(LiveRecordingState.self) private var liveRecordingState: LiveRecordingState?
 
   /// Owned HERE so a language download survives the user navigating to another section: this view
   /// is retained, the pages inside `detailContent` are not. See
@@ -65,16 +80,34 @@ struct UnifiedWindowView: View {
         searchDropdown(anchor)
       }
       .background(
-        SettingsWindowCloseObserver {
+        SettingsWindowCloseObserver(
+          onKey: checkForRecordingsTour, onResign: endRecordingsTourVisit
+        ) {
+          endRecordingsTourVisit()
+          recordingsTour = nil
           search.reset(endedBy: .windowClose)
           navigationState.endWindowSession()
           historyPaste.windowClosed()
+          navigationCoordinator.cancelSharedMedia()
+          if pendingLeave?.intent.requiresOpenWindow == true { pendingLeave = nil }
+          if pendingSpeechLeave?.intent.requiresOpenWindow == true { pendingSpeechLeave = nil }
         })
       // #3482 §3.4: a direct tab change drops an arrival meant for another tab.
       .onChange(of: navigationState.dictationTab) { _, _ in navigationState.noteTabChange() }
       // #3482 §8.1: the failed-search row follows "Share usage metrics", read at every terminal.
-      .onAppear { search.usageMetricsOn = { settings.shareUsageMetrics } }
+      .onAppear {
+        search.usageMetricsOn = { settings.shareUsageMetrics }
+        // #4843: held weakly and deduplicated by the registry, so a repeat appearance is harmless.
+        pasteCompletionRegistry?.subscribe(search)
+        search.dictationInFlight = { [liveRecordingState] in
+          liveRecordingState?.isDictationActive ?? false
+        }
+        // #4772: build the title-only index now, off the main actor, so typing never waits.
+        search.prepareIndex()
+      }
       .onChange(of: settings.shareUsageMetrics) { _, isOn in search.usageMetricsChanged(isOn: isOn) }
+      // #4772: a dropdown still waiting for its index closes when focus leaves the search.
+      .onChange(of: searchFocused) { _, focused in if !focused { search.searchFocusLeft() } }
       .onChange(of: navigationState.appSettingsTab) { _, _ in navigationState.noteTabChange() }
       .onChange(of: navigationState.dictionaryTab) { _, _ in navigationState.noteTabChange() }
       .onChange(of: navigationState.meetingsTab) { _, _ in navigationState.noteTabChange() }
@@ -102,6 +135,9 @@ struct UnifiedWindowView: View {
         navigate(.destination(destination))
       }
     }
+    .onChange(of: navigationCoordinator.pendingSharedMedia?.url, initial: true) { _, url in
+      if let url { navigate(.sharedMedia(url)) }
+    }
     // #4353 D4: a control the page on screen asked to bring into view and ring. The same
     // arrival a search result uses (scrolls only when the control is not fully visible), applied
     // to the window's state directly: it is not a search, so no search attempt is finished or
@@ -109,9 +145,12 @@ struct UnifiedWindowView: View {
     .onChange(of: navigationCoordinator.pendingReveal, initial: true) { _, id in
       guard let id else { return }
       navigationCoordinator.consumeReveal()
-      guard let request = SettingsSearchRequest(entryID: id.rawValue),
-        request.destination.page == navigationState.selectedPage
-      else { return }
+      guard let request = SettingsSearchRequest(entryID: id.rawValue) else { return }
+      if id == .meetingSummaryEngineChange {
+        navigate(.externalReveal(request))
+        return
+      }
+      guard request.destination.page == navigationState.selectedPage else { return }
       navigationState.apply(request)
     }
     .onPreferenceChange(PolishSetupUnsavedKeyDraftKey.self) { hasUnsavedKeyDraft = $0 }
@@ -119,23 +158,37 @@ struct UnifiedWindowView: View {
     // the same card a dictation without polish raises, not a macOS alert.
     // The unanswered question blocks the window under it for the keyboard too (Tab, Space), and
     // the toolbar with it, as the alert did. The card stays enabled: it is added after this.
-    .disabled(pendingLeave != nil)
+    .disabled(pendingLeave != nil || pendingSpeechLeave != nil)
     .overlay {
       if let question = leaveQuestion {
         PolishSetupLeaveCard(
           content: question.content,
           onAnswer: { button, press in
-            respond(
-              button.action,
-              reportedAs: press == .escape ? .closed : button.action.promptAction,
-              to: question.id)
+            if pendingSpeechLeave != nil {
+              if let action = SpeechSetupLeaveGuard.answer(button, press: press) {
+                respondToSpeechLeave(action, to: question.id)
+              } else if pendingLeaveID == question.id {
+                // Escape: stay on the tab, nothing downloads.
+                cancelSharedMedia(for: pendingSpeechLeave?.intent)
+                pendingSpeechLeave = nil
+              }
+            } else {
+              respond(
+                button.action,
+                reportedAs: press == .escape ? .closed : button.action.promptAction,
+                to: question.id)
+            }
           },
-          onClose: { if pendingLeaveID == question.id { pendingLeave = nil } })
+          onClose: {
+            guard pendingLeaveID == question.id else { return }
+            cancelSharedMedia(for: pendingLeave?.intent ?? pendingSpeechLeave?.intent)
+            pendingLeave = nil
+            pendingSpeechLeave = nil
+          })
       }
     }
     .onChange(of: pendingLeaveID) { _, _ in
-      guard let request = pendingLeave else { return }
-      let content = PolishSetupLeaveDialogContent.make(for: request)
+      guard let content = leaveQuestion?.content else { return }
       AccessibilityNotification.Announcement("\(content.title). \(content.message)").post()
     }
   }
@@ -148,7 +201,10 @@ struct UnifiedWindowView: View {
   }
 
   private var leaveQuestion: LeaveQuestion? {
-    pendingLeave.map { LeaveQuestion(id: pendingLeaveID, content: .make(for: $0)) }
+    if let speech = pendingSpeechLeave {
+      return LeaveQuestion(id: pendingLeaveID, content: SpeechSetupLeaveGuard.content(for: speech))
+    }
+    return pendingLeave.map { LeaveQuestion(id: pendingLeaveID, content: .make(for: $0)) }
   }
 
   /// Every way of changing page comes through here: a sidebar row, an in-page link, and a
@@ -156,8 +212,18 @@ struct UnifiedWindowView: View {
   /// (#4321), while its chosen engine is not set up asks first; while that question is open, the
   /// latest request replaces the pending one.
   private func navigate(_ intent: SettingsNavigationIntent) {
+    if case .sharedMedia(let url) = intent {
+      guard navigationCoordinator.pendingSharedMedia?.url == url else { return }
+    } else {
+      navigationCoordinator.cancelSharedMedia()
+    }
     guard !askedBeforeLeaving(for: intent) else { return }
     commit(intent)
+  }
+
+  private func cancelSharedMedia(for intent: SettingsNavigationIntent?) {
+    guard case .sharedMedia(let url) = intent else { return }
+    _ = navigationCoordinator.takeSharedMedia(matching: url)
   }
 
   /// Whether `intent` is held by a leave question: an open one (the latest request replaces its
@@ -169,6 +235,10 @@ struct UnifiedWindowView: View {
       pendingLeave = PolishSetupLeaveGuard.replacingPendingDestination(of: pending, with: intent)
       return true
     }
+    if pendingSpeechLeave != nil {
+      pendingSpeechLeave?.intent = intent
+      return true
+    }
     for scope in [PolishSetupScope.dictation, .meetingSummary] {
       if let request = leaveRequest(for: intent, scope: scope, from: navigationState) {
         pendingLeaveID &+= 1
@@ -177,7 +247,89 @@ struct UnifiedWindowView: View {
         return true
       }
     }
+    // #4578: the picked speech engine is not downloaded (the AI Polish question's twin).
+    for scope in SpeechSetupScope.allCases {
+      if let request = SpeechSetupLeaveGuard.request(
+        for: intent, from: navigationState, scope: scope, facts: speechFacts,
+        previous: speechEngineWhenVisitBegan(scope))
+      {
+        pendingLeaveID &+= 1
+        pendingSpeechLeave = request
+        return true
+      }
+    }
     return false
+  }
+
+  /// #4578: the facts a speech-engine leave question reads, live, from the installation owner
+  /// and the existing download states.
+  private var speechFacts: SpeechSetupFacts {
+    let settings = settings
+    let library = speechModels
+    let setup = setupCoordinator
+    let delivery = modelDelivery
+    return SpeechSetupFacts(
+      picked: { scope in
+        switch scope {
+        case .dictation: settings.selectedBackend
+        case .meetings: settings.meetingTranscriptEngine.backendType
+        }
+      },
+      installed: { engine in library?.installedSnapshot(engine) },
+      downloading: { engine in
+        let status: SpeechEngineStatus? =
+          switch engine {
+          case .parakeet:
+            library.map {
+              SpeechEngineStatus.parakeet(
+                installed: $0.installedSnapshot(.parakeet), removing: $0.isRemovingParakeet,
+                leftovers: $0.parakeetHasLeftovers,
+                row: delivery.flatMap { SpeechEngineSettingsView.parakeetRow(of: $0) })
+            }
+          case .whisper:
+            setup.map {
+              SpeechEngineStatus.whisper(
+                $0.whisperSetup.setupState, removing: $0.whisperSetup.isRemoving)
+            }
+          }
+        if case .working? = status?.operation { return true }
+        return library?.isInstallingParakeet == true && engine == .parakeet
+      })
+  }
+
+  private func speechEngineWhenVisitBegan(_ scope: SpeechSetupScope) -> ASRBackendType? {
+    switch scope {
+    case .dictation: dictationEngineWhenVisitBegan
+    case .meetings: meetingEngineWhenVisitBegan
+    }
+  }
+
+  /// #4578: an answer to the speech-engine question, judged against the facts now.
+  private func respondToSpeechLeave(_ action: PolishSetupLeaveAction, to id: UInt64) {
+    guard id == pendingLeaveID, let request = pendingSpeechLeave else { return }
+    pendingSpeechLeave = nil
+    defer { cancelSharedMedia(for: request.intent) }
+    switch SpeechSetupLeaveGuard.resolve(
+      action, request: request, facts: speechFacts,
+      previous: speechEngineWhenVisitBegan(request.scope))
+    {
+    case .stay:
+      break
+    case .setUp(let engine):
+      switch engine {
+      case .parakeet: speechModels?.installParakeet()
+      case .whisper: setupCoordinator?.whisperSetup.downloadModel()
+      }
+    case .navigate(let intent):
+      leave(to: intent)
+    case .restore(let engine, let intent):
+      // The tab's own picker setter, as choosing it there.
+      switch request.scope {
+      case .dictation: settings.selectedBackend = engine
+      case .meetings: settings.meetingTranscriptEngine = engine == .whisper ? .whisper : .parakeet
+      }
+      leave(to: intent)
+    }
   }
 
   private func leaveRequest(
@@ -235,6 +387,12 @@ struct UnifiedWindowView: View {
     if PolishSetupScope.meetingSummary.entered(from: before, to: navigationState) {
       summaryProviderWhenVisitBegan = settings.effectiveMeetingSummaryLLMProvider
     }
+    if SpeechSetupScope.dictation.entered(from: before, to: navigationState) {
+      dictationEngineWhenVisitBegan = settings.selectedBackend
+    }
+    if SpeechSetupScope.meetings.entered(from: before, to: navigationState) {
+      meetingEngineWhenVisitBegan = settings.meetingTranscriptEngine.backendType
+    }
   }
 
   /// The Meetings page's tab strip (#4321). A tab change that leaves Summaries with an
@@ -254,7 +412,29 @@ struct UnifiedWindowView: View {
       })
   }
 
+  /// #4578: Dictation's tab strip. A tab change that leaves Engine with the picked speech engine
+  /// not downloaded asks first, like the Meetings strip.
+  private var guardedDictationTab: Binding<DictationTab> {
+    Binding(
+      get: { navigationState.dictationTab },
+      set: { tab in
+        guard tab != navigationState.dictationTab,
+          !askedBeforeLeaving(for: .destination(.dictation(tab)))
+        else { return }
+        let before = navigationState
+        navigationState.dictationTab = tab
+        noteVisitStarts(from: before)
+      })
+  }
+
   private func commit(_ intent: SettingsNavigationIntent) {
+    if case .sharedMedia(let url) = intent {
+      guard let claim = navigationCoordinator.takeSharedMedia(matching: url) else { return }
+      guard fileImportCoordinator.chooseSharedMedia(claim) else {
+        SharedMediaNotice.importInUse.present()
+        return
+      }
+    }
     let stateBefore = navigationState
     let pageBefore = navigationState.selectedPage
     navigationState.perform(intent)
@@ -269,7 +449,7 @@ struct UnifiedWindowView: View {
     case .sidebar(let page):
       search.finish(
         endedBy: .sidebar, sidebarPage: page.rawValue, sidebarTab: openTab(on: page))
-    case .destination:
+    case .destination, .sharedMedia, .externalReveal:
       search.finish(endedBy: .externalDestination)
     }
     search.reset()
@@ -284,6 +464,7 @@ struct UnifiedWindowView: View {
   ) {
     guard id == pendingLeaveID, let request = pendingLeave else { return }
     pendingLeave = nil
+    defer { cancelSharedMedia(for: request.intent) }
     // Reported as pressed (Escape as `closed`), before the guard judges it against the live
     // state.
     reportPrompt(reported, for: request)
@@ -326,8 +507,10 @@ struct UnifiedWindowView: View {
   private func leave(to intent: SettingsNavigationIntent) {
     commit(intent)
     // #3482 §3.4: a search arrival owns focus (the reveal moves it to the chosen control).
-    if case .search = intent { return }
-    focusedSidebarPage = intent.page
+    switch intent {
+    case .search, .externalReveal: break
+    case .sidebar, .destination, .sharedMedia: focusedSidebarPage = intent.page
+    }
   }
 
   /// The left navigation, rendered as a self-contained rounded card that floats
@@ -396,7 +579,7 @@ struct UnifiedWindowView: View {
         .padding(.vertical, 8)
       }
       .scrollContentBackground(.hidden)
-      .searchPanelBlocksBackground(search.isPanelPresented)
+      .searchPanelBlocksBackground(search.showsPanel)
 
       // Issue #343: in-app update banner. Fixed sibling of the scroll (NOT a
       // scrolling row) so it stays pinned to the bottom of the sidebar card.
@@ -424,16 +607,80 @@ struct UnifiedWindowView: View {
   /// (same radius, border, and inset) so the window reads as two balanced,
   /// equally-inset panels on the canvas.
   private var detailCard: some View {
-    detailContent
-      .searchPanelBlocksBackground(search.isPanelPresented)
-      .frame(maxWidth: .infinity, maxHeight: .infinity)
-      .clipShape(
-        RoundedRectangle(cornerRadius: SettingsLayout.windowCardRadius, style: .continuous)
-      )
-      .overlay(
-        RoundedRectangle(cornerRadius: SettingsLayout.windowCardRadius, style: .continuous)
-          .strokeBorder(Color.stDivider, lineWidth: 1)
-      )
+    VStack(spacing: 0) {
+      if let recordingsTour, recordingsTour != .offer || canShowRecordingsTourOffer {
+        recordingsTourCard(recordingsTour)
+          .padding(DesignSpacing.lg)
+          .onAppear {
+            if recordingsTour == .offer && canShowRecordingsTourOffer {
+              settings.acknowledgeRecordingDisclosure()
+            }
+          }
+      }
+      detailContent
+    }
+    .searchPanelBlocksBackground(search.showsPanel)
+    .frame(maxWidth: .infinity, maxHeight: .infinity)
+    .clipShape(
+      RoundedRectangle(cornerRadius: SettingsLayout.windowCardRadius, style: .continuous)
+    )
+    .overlay(
+      RoundedRectangle(cornerRadius: SettingsLayout.windowCardRadius, style: .continuous)
+        .strokeBorder(Color.stDivider, lineWidth: 1)
+    )
+  }
+
+  private var canOfferRecordingsTour: Bool {
+    settings.onboardingState == .completed && !appWindow.mainWindowVisitIsSetupHandoff
+      && !settings.isRecordingDisclosureUpgrade && !settings.recordingDisclosureAcknowledged
+      && settings.saveDictationRecordings
+  }
+
+  private var canShowRecordingsTourOffer: Bool {
+    settings.saveDictationRecordings && !search.showsPanel
+      && pendingLeave == nil && pendingSpeechLeave == nil
+  }
+
+  private func checkForRecordingsTour(in window: NSWindow) {
+    recordingsTourCheck?.cancel()
+    guard canOfferRecordingsTour, let recordings = transcripts.recordings else { return }
+    recordingsTourCheck = Task { [weak window] in
+      guard !Task.isCancelled, await recordings.hasSavedRecording(),
+        !Task.isCancelled, window?.isKeyWindow == true, canOfferRecordingsTour
+      else { return }
+      recordingsTour = .offer
+    }
+  }
+
+  private func endRecordingsTourVisit() {
+    recordingsTourCheck?.cancel()
+    recordingsTourCheck = nil
+    if recordingsTour == .offer && !settings.recordingDisclosureAcknowledged {
+      recordingsTour = nil
+    }
+    appWindow.endMainWindowVisit()
+  }
+
+  private func recordingsTourCard(_ stop: RecordingsTourCard.Stop) -> some View {
+    let showingHistory = navigationState.selectedPage == .history
+    let showingDictations = showingHistory && transcripts.browser.historyTab == .dictations
+    let showingRecordings = navigationState.isShowing(.appSettings(.recordings), dictionaryTab: nil)
+    let dictations = transcripts.browser.requestedHistoryState(for: .dictations)
+    return RecordingsTourCard(
+      stop: stop, showingHistory: showingHistory, showingDictations: showingDictations,
+      showingRecordings: showingRecordings,
+      dictationsFiltered: !dictations.query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        || dictations.listFilter != .none,
+      start: {
+        recordingsTour = .history
+        navigate(.destination(.history))
+      },
+      openHistory: { navigate(.destination(.history)) },
+      openRecordings: {
+        recordingsTour = .recordings
+        navigate(.destination(.appSettings(.recordings)))
+      },
+      dismiss: { recordingsTour = nil })
   }
 
   @ViewBuilder
@@ -446,7 +693,7 @@ struct UnifiedWindowView: View {
       page(.meetings) { MeetingsView(selection: guardedMeetingsTab) }
     case .dictation:
       page(.dictation) {
-        DictationSettingsView(selection: $navigationState.dictationTab, packs: livePreviewPacks)
+        DictationSettingsView(selection: guardedDictationTab, packs: livePreviewPacks)
       }
     case .transcribeFile:
       page(.transcribeFile) { TranscribeFileView() }
@@ -471,7 +718,7 @@ struct UnifiedWindowView: View {
   /// that turns an outside click into closing it (the field and the panel stay clickable).
   @ViewBuilder
   private func searchDropdown(_ anchor: Anchor<CGRect>?) -> some View {
-    if search.isPanelPresented, let anchor {
+    if search.showsPanel, let anchor {
       GeometryReader { proxy in
         let field = proxy[anchor]
         let width = max(0, min(440, proxy.size.width - field.minX - 8))
@@ -555,6 +802,7 @@ struct UnifiedWindowView: View {
   @ViewBuilder
   private func page(_ drawn: SettingsPage, @ViewBuilder content: () -> some View) -> some View {
     content()
+      .environment(\.enviousButtonShape, .roundedRect)
       // #3545: every control on the page carries the page it was drawn in; a tabbed page overrides
       // this around the tab it draws, so the tab strip and fixed headings keep the page-only tag.
       .environment(\.settingsArrivalContent, SettingsArrivalContent(page: drawn))

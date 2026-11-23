@@ -53,8 +53,9 @@
    ]
   },
   "es": {
-   "title": "mantener el motor actual de «Mostrar palabras mientras hablas» en EnviousMeet",
-   "words": [],
+   "words": [
+    "mantener el motor actual de “Mostrar palabras mientras hablas” en EnviousMeet"
+   ],
    "phrases": [
     "cerrar las opciones sin cambiar el motor de la vista previa de EnviousMeet"
    ]
@@ -75,7 +76,6 @@
    ]
   },
   "fr": {
-   "title": "conserver le moteur actuel de l’aperçu en direct dans EnviousMeet",
    "words": [],
    "phrases": [
     "fermer le choix des moteurs sans changer le moteur de l’aperçu en direct des réunions dans EnviousMeet"

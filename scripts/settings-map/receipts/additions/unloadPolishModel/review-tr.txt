@@ -1,0 +1,9 @@
+{
+  "language": "tr",
+  "title": "metin düzenleme modelini bellekten çıkarma süresi",
+  "words": [],
+  "phrases": [
+    "dikte yapmadığımda metin düzenleme modeli bellekte ne kadar kalsın",
+    "yerel metin düzenleme modeli boşta kalınca ne zaman bellekten çıkarılsın"
+  ]
+}

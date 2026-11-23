@@ -1,0 +1,425 @@
+import EnviousWisprAppKitTestSupport
+import EnviousWisprCore
+import Foundation
+import SQLite3
+import Testing
+
+@testable import EnviousWisprStorage
+
+/// The catalog's storage choices keep History correct as it rebuilds and searches (#4586 N3, N4).
+@Suite("History catalog storage rebuilds and counts correctly", .tags(.productOutcome))
+struct HistoryCatalogStorageTests {
+  /// SQLite opens the catalog without following links, and the temporary folder sits under /var.
+  private func databasePath(_ folder: URL, _ name: String = "history.sqlite") -> String {
+    guard let resolved = realpath(folder.path, nil) else { return folder.appendingPathComponent(name).path }
+    defer { free(resolved) }
+    return String(cString: resolved) + "/" + name
+  }
+
+  private func directory() -> URL {
+    TestTemporaryDirectory.url.appendingPathComponent(UUID().uuidString, isDirectory: true)
+  }
+
+  private func key(_ index: Int) -> HistoryCatalog.Key {
+    .init(
+      tab: .dictations, id: UUID(uuid: (0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 3, UInt8(index))))
+  }
+
+  @Test("Day counts scan days outer and use both indexed date bounds")
+  func dayCountPlan() async throws {
+    let folder = directory()
+    defer { try? FileManager.default.removeItem(at: folder) }
+    let catalog = try HistoryCatalog(directory: folder, projectionContext: "en|en_US")
+    let predicate = await catalog.predicate(
+      for: .init(tab: .dictations, search: "budget", meetingSearchOverrides: [UUID(): true]))
+    try await catalog.closeDatabase()
+    let connection = try HistoryCatalogConnection(
+      path: databasePath(folder))
+    defer { try? connection.closeDatabase() }
+    let bounds: [HistoryCatalogConnection.Value] = [
+      .integer(0), .number(0), .number(1), .integer(1), .number(2), .number(3),
+    ]
+    let plan = try connection.rows(
+      "EXPLAIN QUERY PLAN " + HistoryCatalog.dayCountSQL(days: 2, predicate: predicate.sql),
+      bounds + predicate.values
+    ) { HistoryCatalogConnection.text($0, 3) }
+    let days = try #require(plan.firstIndex { $0.hasPrefix("SCAN days") }, "\(plan)")
+    let entries = try #require(
+      plan.firstIndex {
+        $0.contains("USING INDEX saved_order (tab=? AND saved_at>? AND saved_at<?)")
+      }, "\(plan)")
+    #expect(days < entries, "\(plan)")
+  }
+
+  @Test("A catalog from the previous version is rebuilt, never read")
+  func previousVersionRebuilds() async throws {
+    let folder = directory()
+    defer { try? FileManager.default.removeItem(at: folder) }
+    try await HistoryCatalog(directory: folder, projectionContext: "en|en_US").closeDatabase()
+    let connection = try HistoryCatalogConnection(
+      path: databasePath(folder))
+    try connection.execute("PRAGMA user_version = 5")
+    try connection.closeDatabase()
+    var refusal: (any Error)?
+    do { _ = try HistoryCatalog(directory: folder, projectionContext: "en|en_US") } catch {
+      refusal = error
+    }
+    #expect(HistoryCatalog.needsRebuild(try #require(refusal)))
+  }
+
+  @Test("Damaged search data asks for a rebuild instead of hiding rows")
+  func damagedSearchDataRebuilds() async throws {
+    let folder = directory()
+    defer { try? FileManager.default.removeItem(at: folder) }
+    let catalog = try HistoryCatalog(directory: folder, projectionContext: "en|en_US")
+    try await catalog.apply(
+      [
+        .init(
+          summary: .init(
+            key: key(1), date: Date(timeIntervalSinceReferenceDate: 790_000_000), preview: "budget",
+            sources: [.init(name: "record", fingerprint: Data([1]))]),
+          searchableFields: ["budget", ""])
+      ], certifiedRevision: "all")
+    let matched = try await catalog.matchingKeys(
+      .init(tab: .dictations, search: "budget"), sourceRevision: "all")
+    #expect(matched == [key(1)])
+    try await catalog.closeDatabase()
+    let connection = try HistoryCatalogConnection(
+      path: databasePath(folder))
+    // A valid first field followed by a length that runs past the end.
+    try connection.execute(
+      "UPDATE entries SET search_fields = ?",
+      [.bytes(SearchFields.encode(["budget"]) + Data([9, 0, 0, 0, 65]))])
+    try connection.closeDatabase()
+    let reopened = try HistoryCatalog(directory: folder, projectionContext: "en|en_US")
+    var failure: (any Error)?
+    do {
+      _ = try await reopened.matchingKeys(
+        .init(tab: .dictations, search: "budget"), sourceRevision: "all")
+    } catch { failure = error }
+    #expect(HistoryCatalog.needsRebuild(try #require(failure)))
+  }
+
+  @Test("Reused statements survive nesting, a wrong parameter count and cancellation, and still close")
+  func reusedStatementsStayUsable() async throws {
+    let folder = directory()
+    defer { try? FileManager.default.removeItem(at: folder) }
+    try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+    let connection = try HistoryCatalogConnection(path: databasePath(folder, "plain.sqlite"))
+    try connection.execute("CREATE TABLE t (v INTEGER)")
+    for value in 1...3 { try connection.execute("INSERT INTO t VALUES (?)", [.integer(Int64(value))]) }
+    let select = "SELECT v FROM t ORDER BY v"
+    // The same SQL inside its own row reader runs on a second statement, not the one stepping.
+    let nested = try connection.rows(select) { row in
+      (sqlite3_column_int64(row, 0), try connection.rows(select) { sqlite3_column_int64($0, 0) })
+    }
+    #expect(nested.map(\.0) == [1, 2, 3])
+    #expect(nested.allSatisfy { $0.1 == [1, 2, 3] })
+    #expect(throws: HistoryCatalogConnection.Failure.self) {
+      try connection.execute("INSERT INTO t VALUES (?)", [])
+    }
+    try connection.execute("INSERT INTO t VALUES (?)", [.integer(4)])
+    // Awaited before the next use, so the two tasks never touch the connection at once.
+    nonisolated(unsafe) let handoff = connection
+    let cancelled = Task {
+      withUnsafeCurrentTask { $0?.cancel() }
+      return try handoff.rows(select, stopWhenCancelled: true) { sqlite3_column_int64($0, 0) }
+    }
+    await #expect(throws: CancellationError.self) { try await cancelled.value }
+    #expect(try connection.rows(select) { sqlite3_column_int64($0, 0) } == [1, 2, 3, 4])
+    // Every cached or nested statement is finalized, so closing does not report SQLITE_BUSY.
+    try connection.closeDatabase()
+  }
+
+  @Test("Search fields round-trip, including empty fields and an empty list")
+  func searchFieldsRoundTrip() throws {
+    for fields in [[], [""], ["a", "", "Straße\nzwei", "日本語"]] {
+      let data = SearchFields.encode(fields)
+      let decoded = data.withUnsafeBytes { SearchFields.decode($0) }
+      #expect(decoded == fields)
+    }
+    let truncated = SearchFields.encode(["abc"]).dropLast()
+    #expect(Data(truncated).withUnsafeBytes { SearchFields.decode($0) } == nil)
+  }
+
+  @Test("Reconciliation deletes exactly the rows no source still names")
+  func keyReferenceCountsMatchAFullRecount() {
+    // Oracle: the rule before #4586 N4, recounting every key after each batch.
+    var generator = CatalogBatchGenerator(state: 4586)
+    for _ in 0..<200 {
+      var reference: [String: HistoryCatalog.SourceProgress] = [:]
+      for path in 0..<6 where Bool.random(using: &generator) {
+        let entry = HistoryCatalog.SourceProgress(
+          path: "p\(path)", versions: [],
+          key: Bool.random(using: &generator) ? key(Int.random(in: 0..<4, using: &generator)) : nil)
+        reference[entry.path] = entry
+      }
+      var progress = HistoryCatalogReconciliation.KeyedProgress(reference)
+      for _ in 0..<6 {
+        // Batches may repeat a path and may carry no key.
+        let batch = (0..<Int.random(in: 1...4, using: &generator)).map { _ in
+          HistoryCatalog.SourceProgress(
+            path: "p\(Int.random(in: 0..<6, using: &generator))", versions: [],
+            key: Int.random(in: 0..<5, using: &generator) == 0 ? nil : key(Int.random(in: 0..<4, using: &generator)))
+        }
+        let oldKeys = Set(batch.compactMap { reference[$0.path]?.key })
+        for entry in batch { reference[entry.path] = entry }
+        let expected = oldKeys.subtracting(reference.values.compactMap(\.key))
+        #expect(Set(progress.record(batch)) == expected)
+        if let path = reference.keys.sorted().randomElement(using: &generator), Bool.random(using: &generator) {
+          let removed = reference.removeValue(forKey: path)?.key
+          let gone =
+            removed.map { reference.values.compactMap(\.key).contains($0) == false } ?? false
+          let actual = progress.remove(path)?.key
+          #expect(actual == removed)
+          #expect(actual.map(progress.isUnreferenced) ?? false == gone)
+        }
+      }
+    }
+  }
+
+  /// About 200k recursive steps that return no row: a no-match scan with no per-row check.
+  private static let longEmptyScan =
+    "WITH RECURSIVE c(x) AS (SELECT 1 UNION ALL SELECT x + 1 FROM c WHERE x < 200000) SELECT x FROM c WHERE x < 0"
+
+  private func plainConnection(_ folder: URL) throws -> HistoryCatalogConnection {
+    try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+    let connection = try HistoryCatalogConnection(path: databasePath(folder, "plain.sqlite"))
+    try connection.execute("CREATE TABLE t (f BLOB NOT NULL)")
+    try connection.transaction(write: true) {
+      for index in 0..<2_000 {
+        try connection.execute(
+          "INSERT INTO t VALUES (?)", [.bytes(SearchFields.encode(["café \(index) Straße", "日本語"]))])
+      }
+    }
+    return connection
+  }
+
+  @Test("A cancelled search stops, matches no row or not, and never reports an empty success (#4586 B2)")
+  func cancelledSearchStops() async throws {
+    let folder = directory()
+    defer { try? FileManager.default.removeItem(at: folder) }
+    let connection = try plainConnection(folder)
+    defer { try? connection.closeDatabase() }
+    let search = "SELECT rowid FROM t WHERE history_contains(f, ?)"
+    let cases: [(String, [HistoryCatalogConnection.Value])] = [
+      (search, [.text("zzzq")]),  // the real matcher over every stored row
+      (Self.longEmptyScan, []),  // long, no row
+      ("SELECT 1 WHERE 0", []),  // finishes before the handler's first check
+    ]
+    // Uncancelled, each finishes and returns nothing.
+    for (sql, values) in cases {
+      #expect(try connection.rows(sql, values, stopWhenCancelled: true) { sqlite3_column_int64($0, 0) }.isEmpty)
+    }
+    // Awaited before the next use, so the two tasks never touch the connection at once.
+    nonisolated(unsafe) let handoff = connection
+    for (sql, values) in cases {
+      let cancelled = Task {
+        withUnsafeCurrentTask { $0?.cancel() }
+        return try handoff.rows(sql, values, stopWhenCancelled: true) { sqlite3_column_int64($0, 0) }
+      }
+      await #expect(throws: CancellationError.self, "\(sql)") { try await cancelled.value }
+    }
+    let found = try connection.rows(search, [.text("café 7 ")], stopWhenCancelled: true) { sqlite3_column_int64($0, 0) }
+    #expect(found == [8])
+  }
+
+  @Test("A read that does not opt in runs to its end under cancellation, inside a search read too")
+  func plainReadsAreNotStopped() async throws {
+    let folder = directory()
+    defer { try? FileManager.default.removeItem(at: folder) }
+    let connection = try plainConnection(folder)
+    defer { try? connection.closeDatabase() }
+    struct Refused: Error {}
+    nonisolated(unsafe) let handoff = connection
+    let plain = Task {
+      withUnsafeCurrentTask { $0?.cancel() }
+      return (
+        try handoff.rows(Self.longEmptyScan) { sqlite3_column_int64($0, 0) },
+        try handoff.rows("SELECT count(*) FROM t") { sqlite3_column_int64($0, 0) }
+      )
+    }
+    let (empty, counted) = try await plain.value
+    #expect(empty.isEmpty)
+    #expect(counted == [2_000])
+    // Rows 1 and 2 come back first, then the outer search steps through a long empty tail.
+    let outer =
+      "WITH RECURSIVE c(x) AS (SELECT 1 UNION ALL SELECT x + 1 FROM c WHERE x < 200000) SELECT x FROM c WHERE x <= 2"
+    nonisolated(unsafe) var innerAfterCancel: [Int64]?
+    let read = Task {
+      try handoff.rows(outer, stopWhenCancelled: true) { row in
+        let value = sqlite3_column_int64(row, 0)
+        if value == 2 {
+          let count = try handoff.rows("SELECT count(*) FROM t") { sqlite3_column_int64($0, 0) }
+          #expect(count == [2_000])
+          var refused = false
+          do { _ = try handoff.rows("SELECT 1") { _ -> Int64 in throw Refused() } } catch is Refused { refused = true }
+          #expect(refused)
+          withUnsafeCurrentTask { $0?.cancel() }
+          // A plain read nested in the search read is still not stopped.
+          innerAfterCancel = try handoff.rows(Self.longEmptyScan) { sqlite3_column_int64($0, 0) }
+        }
+        return value
+      }
+    }
+    // After every inner read ends, the outer search is stoppable again.
+    await #expect(throws: CancellationError.self) { try await read.value }
+    #expect(innerAfterCancel == [])
+    #expect(try connection.rows(outer, stopWhenCancelled: true) { sqlite3_column_int64($0, 0) } == [1, 2])
+  }
+
+  @Test("A write transaction whose task is cancelled still commits all of its writes")
+  func cancelledTaskStillCommitsWrites() async throws {
+    let folder = directory()
+    defer { try? FileManager.default.removeItem(at: folder) }
+    let connection = try plainConnection(folder)
+    defer { try? connection.closeDatabase() }
+    try connection.execute("CREATE TABLE w (v INTEGER)")
+    nonisolated(unsafe) let handoff = connection
+    let write = Task {
+      try handoff.transaction(write: true) {
+        withUnsafeCurrentTask { $0?.cancel() }
+        try handoff.execute("INSERT INTO w VALUES (1)")
+        // Reads inside the write, like reconciliation's progress read: a long empty one and one
+        // that returns rows, then apply's INSERT ... RETURNING shape.
+        _ = try handoff.rows(Self.longEmptyScan) { sqlite3_column_int64($0, 0) }
+        #expect(try handoff.rows("SELECT v FROM w") { sqlite3_column_int64($0, 0) } == [1])
+        try handoff.execute("INSERT INTO w VALUES (2)")
+        #expect(try handoff.rows("INSERT INTO w VALUES (3) RETURNING v") { sqlite3_column_int64($0, 0) } == [3])
+      }
+    }
+    try await write.value
+    #expect(try connection.rows("SELECT v FROM w ORDER BY v") { sqlite3_column_int64($0, 0) } == [1, 2, 3])
+  }
+
+  @Test("A catalog reports whether it held a certified revision when it opened")
+  func wasCertifiedAtOpen() async throws {
+    let folder = directory()
+    defer { try? FileManager.default.removeItem(at: folder) }
+    let fresh = try HistoryCatalog(directory: folder, projectionContext: "en|en_US")
+    #expect(fresh.wasCertifiedAtOpen == false, "a new catalog")
+    // A batch without a certificate leaves it uncertified: an unfinished first build.
+    try await fresh.apply([], certifiedRevision: nil)
+    try await fresh.closeDatabase()
+    let unfinished = try HistoryCatalog(directory: folder, projectionContext: "en|en_US")
+    #expect(unfinished.wasCertifiedAtOpen == false, "a first build that never finished")
+    try await unfinished.apply([], certifiedRevision: "r1")
+    try await unfinished.closeDatabase()
+    let certified = try HistoryCatalog(directory: folder, projectionContext: "en|en_US")
+    #expect(certified.wasCertifiedAtOpen, "reopened after a certified apply")
+    try await certified.apply([])
+    try await certified.closeDatabase()
+    let interrupted = try HistoryCatalog(directory: folder, projectionContext: "en|en_US")
+    #expect(interrupted.wasCertifiedAtOpen == false, "a partial pass withdrew the old certificate")
+    try await interrupted.closeDatabase()
+    try HistoryCatalog.discardFiles(in: folder)
+    let rebuilt = try HistoryCatalog(directory: folder, projectionContext: "en|en_US")
+    #expect(rebuilt.wasCertifiedAtOpen == false, "rebuilt after discardFiles")
+    try await rebuilt.closeDatabase()
+  }
+}
+
+/// A fixed sequence, so every run checks the same batches.
+private struct CatalogBatchGenerator: RandomNumberGenerator {
+  var state: UInt64
+  mutating func next() -> UInt64 {
+    state = state &* 6_364_136_223_846_793_005 &+ 1_442_695_040_888_963_407
+    return state
+  }
+}
+
+extension HistoryCatalogStorageTests {
+  /// The proof reader as it was before #4656: a URL per read, its `path`, then `lstat`. Kept here
+  /// as the independent reference for the stored-name reader.
+  private static func legacyRead(_ name: String) throws -> HistoryCatalog.SourceVersion {
+    var info = stat()
+    let path = URL(fileURLWithPath: name).path
+    if lstat(path, &info) != 0 {
+      guard errno == ENOENT else { throw POSIXError(POSIXErrorCode(rawValue: errno) ?? .EIO) }
+      return .init(name: path, fingerprint: Data())
+    }
+    guard info.st_mode & S_IFMT == S_IFREG else { throw POSIXError(.EINVAL) }
+    let words = [
+      Int64(info.st_dev), Int64(info.st_ino), info.st_size,
+      Int64(info.st_mtimespec.tv_sec), Int64(info.st_mtimespec.tv_nsec),
+      Int64(info.st_ctimespec.tv_sec), Int64(info.st_ctimespec.tv_nsec),
+    ].map(\.littleEndian)
+    return .init(name: path, fingerprint: words.withUnsafeBytes { Data($0) })
+  }
+
+  /// #4656: proofs are re-read by their stored name without building a URL per proof. Names come
+  /// from the URL producer, as in the app; the legacy reader above is the reference.
+  @Test("Re-reading a stored proof by name matches the legacy URL reader on every file shape")
+  func storedNameReadMatchesTheURLReader() throws {
+    let fm = FileManager.default
+    let root = TestTemporaryDirectory.url.appendingPathComponent("proof-\(UUID().uuidString)")
+    try fm.createDirectory(at: root, withIntermediateDirectories: true)
+    let locked = root.appendingPathComponent("locked")
+    defer {
+      try? fm.setAttributes([.posixPermissions: 0o700], ofItemAtPath: locked.path)
+      try? fm.removeItem(at: root)
+    }
+    let file = root.appendingPathComponent("A.json")
+    try Data("x".utf8).write(to: file)
+    try fm.createSymbolicLink(at: root.appendingPathComponent("link.json"), withDestinationURL: file)
+    try fm.createDirectory(at: root.appendingPathComponent("dir.json"), withIntermediateDirectories: false)
+    try fm.createDirectory(at: locked, withIntermediateDirectories: false)
+    try Data("y".utf8).write(to: locked.appendingPathComponent("B.json"))
+    try fm.setAttributes([.posixPermissions: 0o000], ofItemAtPath: locked.path)
+
+    // Files that read: the stored name is what the URL producer wrote.
+    for url in [file, root.appendingPathComponent("missing.json"), URL(fileURLWithPath: root.path + "//A.json")] {
+      let stored = try HistoryCatalog.SourceVersion.read(url)
+      let reference = try Self.legacyRead(stored.name)
+      let subject = try HistoryCatalog.SourceVersion.read(path: stored.name)
+      #expect(Array(subject.name.utf8) == Array(reference.name.utf8), "\(url.path)")
+      #expect(subject.fingerprint == reference.fingerprint, "\(url.path)")
+      #expect(subject == stored)
+      #expect(try stored.stillMatches(), "\(url.path)")
+    }
+    // Shapes that refuse, with the same error as the legacy reader.
+    let refusals: [(String, POSIXErrorCode)] = [
+      (root.appendingPathComponent("link.json").path, .EINVAL),
+      (root.appendingPathComponent("dir.json").path, .EINVAL),
+      (locked.appendingPathComponent("B.json").path, .EACCES),
+    ]
+    for (name, code) in refusals {
+      #expect(throws: POSIXError(code)) { try Self.legacyRead(name) }
+      #expect(throws: POSIXError(code)) { try HistoryCatalog.SourceVersion.read(path: name) }
+    }
+    // The control: a file that changes after its proof no longer matches.
+    let proof = try HistoryCatalog.SourceVersion.read(file)
+    try Data("changed".utf8).write(to: file)
+    #expect(try proof.stillMatches() == false)
+  }
+}
+
+extension HistoryCatalogStorageTests {
+  /// #4586 N2: a partial progress map never guesses about a key it has no count for. It keeps
+  /// that key's row and flags itself, so the refresh writes nothing and a full pass runs.
+  @Test("A partial progress map flags any key it has no count for and never deletes it")
+  func partialProgressRefusesUnknownKeys() {
+    let known = HistoryCatalog.Key(tab: .dictations, id: UUID())
+    let unknown = HistoryCatalog.Key(tab: .dictations, id: UUID())
+    let other = HistoryCatalog.Key(tab: .dictations, id: UUID())
+    func entry(_ path: String, _ key: HistoryCatalog.Key?) -> HistoryCatalog.SourceProgress {
+      .init(path: path, versions: [], key: key)
+    }
+    // A loaded zero is a real count: releasing the last reference reports the key unreferenced.
+    var counted = HistoryCatalogReconciliation.KeyedProgress(
+      partial: ["/a": entry("/a", known)], references: [known: 1, other: 0])
+    #expect(counted.record([entry("/a", other)]) == [known])
+    #expect(counted.incomplete == false)
+    // A disappearance whose stored key was never counted: flagged, never reported unreferenced.
+    var gap = HistoryCatalogReconciliation.KeyedProgress(
+      partial: ["/a": entry("/a", known), "/b": entry("/b", unknown)], references: [known: 2])
+    #expect(gap.remove("/b")?.key == unknown)
+    #expect(gap.isUnreferenced(unknown) == false)
+    #expect(gap.incomplete)
+    // A proposed key that was never counted is flagged too.
+    var proposed = HistoryCatalogReconciliation.KeyedProgress(
+      partial: ["/a": entry("/a", known)], references: [known: 1])
+    _ = proposed.record([entry("/a", unknown)])
+    #expect(proposed.incomplete)
+  }
+}

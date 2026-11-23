@@ -8,7 +8,7 @@ Each picture is the whole page, top to bottom, at the 820pt window (a 578pt page
 
 ## page-aiPolish-egOne
 **AI Polish > EG-1 on this Mac.** Turns AI Polish on and picks the polish model. In this picture EG-1 runs on this Mac and you pick its size.
-- **Top to bottom:** Enable AI Polish row, MODEL ("Changes apply to the next recording") with the EG-1 summary card, "EG-1 · choose a size" ("This Mac: 64 GB memory") with three size cards, WHY USE EG-1 help text.
+- **Top to bottom:** Enable AI Polish row, MODEL ("Changes apply to the next recording") with the EG-1 summary card, "EG-1 · choose a size" ("This Mac: 64 GB memory") with three size cards, WHY USE EG-1 help text, and Dictation output language with the Claude requirement.
 - **Controls:** Enable AI Polish: switch (on). Size cards: EG-1 ("Best quality", badge "Best for this Mac", selected), EG-1 Mini ("Fast all-rounder"), EG-1 Micro ("Smallest and fastest"), each "Not downloaded".
 - **Buttons:** Change (outlined, up/down chevrons), Download (filled, on EG-1), Download (outlined, on EG-1 Mini and EG-1 Micro).
 - **Parts:** BrandedSection, BrandedToggleStyle, SettingsSectionHeading, SettingsSummaryCard, EngineCard, SettingsHelpText.
@@ -16,15 +16,15 @@ Each picture is the whole page, top to bottom, at the 820pt window (a 578pt page
 
 ## page-aiPolish-off
 **AI Polish > not set up.** The AI Polish page with polish switched off.
-- **Top to bottom:** one card, Enable AI Polish ("Fixes grammar, punctuation and formatting"), then empty page.
+- **Top to bottom:** the Enable AI Polish card ("Fixes grammar, punctuation and formatting"), then Dictation output language with the Claude requirement.
 - **Controls:** Enable AI Polish: switch (off).
 - **Buttons:** none.
-- **Parts:** BrandedSection, BrandedToggleStyle.
+- **Parts:** BrandedSection, BrandedToggleStyle, SettingsRow.
 - **Fixture state:** AI Polish off, so the model sections are hidden.
 
 ## page-aiPolish-openAI-savedKey
 **AI Polish > OpenAI with a saved key.** AI Polish set to the OpenAI cloud model, with an API key already saved.
-- **Top to bottom:** Enable AI Polish row, MODEL ("Changes apply to the next recording") with the OpenAI "Cloud" summary card, "OPENAI · only for this model" card with OpenAI API Key and Model rows, WHY USE OPENAI help text.
+- **Top to bottom:** Enable AI Polish row, MODEL ("Changes apply to the next recording") with the OpenAI "Cloud" summary card, "OPENAI · only for this model" card with OpenAI API Key and Model rows, WHY USE OPENAI help text, and Dictation output language with the Claude requirement.
 - **Controls:** Enable AI Polish: switch (on). OpenAI API Key: secure field (dots) with eye toggle. Model: dropdown (disabled until the key is saved) with a refresh icon button.
 - **Buttons:** Change (outlined, chevrons), Save (quiet, disabled), Clear (destructive), links "Get your free API key at platform.openai.com" and "OpenAI rate limits by tier".
 - **Parts:** BrandedSection, BrandedToggleStyle, SettingsSectionHeading, SettingsSummaryCard, SettingsRow, SettingsRowIcon, .settingsFieldChrome, SettingsHelpText, SettingsHelpArticleLink.
@@ -45,7 +45,7 @@ Each picture is the whole page, top to bottom, at the 820pt window (a 578pt page
 - **Parts:** SettingsTabStrip, SettingsSectionHeading, BrandedSection, SettingsRow, SettingsRowIcon, SettingsInfoButton.
 
 ## page-appSettings-licenseReader
-**App Settings > Licenses > View license.** The license text in a reader: bold title "GPL-3.0 License", the full license in monospaced text in a scrolling area, and an outlined "Done" capsule button at the bottom right. `LicenseDocumentReader` (`Views/Settings/LicenseDocumentReader.swift`).
+**App Settings > Licenses > View license.** The license text in a reader: bold title "GPL-3.0 License", the full license in monospaced text in a scrolling area, and an outlined "Done" button with rounded corners at the bottom right. `LicenseDocumentReader` (`Views/Settings/LicenseDocumentReader.swift`).
 
 ## page-appSettings-noticesReader
 **App Settings > Licenses > View notices.** The same reader with the title "Third-Party Notices" and the notices text (component name, version, license, source, then the license text). `LicenseDocumentReader`.
@@ -53,7 +53,7 @@ Each picture is the whole page, top to bottom, at the 820pt window (a 578pt page
 ## page-appSettings-permissions
 **App Settings > Permissions.** Shows whether the app may use the microphone and Accessibility.
 - **Top to bottom:** tab strip (Permissions selected), PERMISSIONS.
-- **Controls:** Microphone ("Needed to record your voice.") and Accessibility ("Needed to paste text into other apps."), each with a green "Allowed" status chip.
+- **Controls:** Microphone ("Needed to record your voice.") and Accessibility ("Needed to paste text into other apps."), each with a green "Allowed" badge with rounded corners.
 - **Buttons:** none besides the ? help buttons.
 - **Parts:** SettingsTabStrip, SettingsSectionHeading, BrandedSection, SettingsRow, SettingsRowIcon, SettingsInfoButton.
 - **Fixture state:** both permissions allowed.
@@ -83,7 +83,7 @@ Each picture is the whole page, top to bottom, at the 820pt window (a 578pt page
 ## page-dictation-clipboard
 **Dictation > Clipboard.** Sets how dictation uses and restores the clipboard.
 - **Top to bottom:** tab strip (Clipboard selected), CLIPBOARD ("Changes apply to the next recording"), QUICK ADD.
-- **Controls:** Auto-copy to clipboard: switch (on). Restore clipboard after paste: switch (on). Hide dictations from clipboard manager apps: switch (off). Smart insertion: switch (on). Read selections through the clipboard: switch (on).
+- **Controls:** Paste dictations automatically: switch (on). Auto-copy to clipboard: switch (on). Restore clipboard after paste: switch (on). Hide dictations from clipboard manager apps: switch (off). Smart insertion: switch (on). Read selections through the clipboard: switch (on).
 - **Buttons:** none besides the ? help buttons.
 - **Parts:** SettingsTabStrip, SettingsSectionHeading, BrandedSection, SettingsRow, SettingsRowIcon, SettingsInfoButton, BrandedToggleStyle.
 
@@ -106,9 +106,9 @@ Each picture is the whole page, top to bottom, at the 820pt window (a 578pt page
 ## page-dictation-microphone
 **Dictation > Microphone.** Picks the microphone and sets what media does and how long the mic stays ready.
 - **Top to bottom:** tab strip (Microphone selected), INPUT & BEHAVIOR (with mic icon, "Changes apply to the next recording").
-- **Controls:** Input device: dropdown "Choose a microphone / Auto". Media during dictation: choice bar (Continue, Lower, Mute, Pause; Continue selected). Microphone readiness: choice bar (Off, 10 sec, 30 sec, 60 sec, Always; 30 sec selected). Using a Bluetooth microphone?: text row.
+- **Controls:** Input device: dropdown "Choose a microphone / Auto". Media during dictation: choice bar (Continue, Lower, Mute, Pause; Continue selected). Microphone readiness: choice bar (Off, 10 sec, 30 sec, 60 sec, Always; 30 sec selected). Warn when the microphone is silent: switch (on), "Shows a notice on the pill when no sound arrives." (#4841). Using a Bluetooth microphone?: text row.
 - **Buttons:** Learn more (outlined, chevron).
-- **Parts:** SettingsTabStrip, SettingsSectionHeading, BrandedSection, SettingsRow, SettingsRowIcon, SettingsInfoButton, BrandedSegmentedPicker.
+- **Parts:** SettingsTabStrip, SettingsSectionHeading, BrandedSection, SettingsRow, SettingsRowIcon, SettingsInfoButton, BrandedSegmentedPicker, BrandedToggleStyle.
 
 ## page-dictation-pill
 **Dictation > Recording Pill.** Sets where the floating recording pill sits and what it shows.
@@ -118,12 +118,11 @@ Each picture is the whole page, top to bottom, at the 820pt window (a 578pt page
 - **Parts:** SettingsTabStrip, SettingsSectionHeading, BrandedSection, SettingsRow, SettingsRowIcon, SettingsInfoButton, BrandedSegmentedPicker.
 
 ## page-dictionary-learnFrom
-**Dictionary > Learn From.** Lets the app learn new words from your corrections and your Contacts.
-- **Top to bottom:** LEARN FROM... (with icon) and intro line, Self-Learning Dictionary card, Import from Contacts card.
-- **Controls:** Self-Learning Dictionary ("Beta" tag): switch (on, dimmed). Keep in sync on launch: switch (off).
-- **Buttons:** Learn more (link, outward arrow), Import (outlined).
-- **Parts:** SettingsSectionHeading, BrandedToggleStyle.
-- **Fixture state:** only the tab content is shown; "Not available on this version of macOS yet" and "Learn-only: This polish choice doesn't use learned words yet."
+**Dictionary > Learn From.** Controls learning new words from corrections, applying learned corrections, and importing Contacts.
+- **Top to bottom:** LEARN FROM... introduction, Learn new words card, Fix words it learned card, Import from Contacts card.
+- **Controls:** Independent learning and fixing switches with help and availability. Keep in sync on launch belongs to Contacts.
+- **Buttons:** Learn more, Import, and any action needed to restore availability.
+- **Parts:** SettingsSectionHeading, SettingsInfoButton, BrandedToggleStyle.
 
 ## page-dictionary-quickAdd
 **Dictionary > Quick Add.** Explains how to add a highlighted word to the dictionary from any app.
@@ -221,7 +220,16 @@ The pill floats over other apps while you dictate. Three designs exist; the user
 **Capsule, locked (hands-free).** The clock disappears and the lips grow to twice their size in a small round capsule.
 
 ## pill-classic-notice
-**Capsule, with a notice.** The capsule grows to carry a short white sentence under the lips and clock. Sample: "Secure Input is on, so some keyboard features are paused".
+**Capsule, with a notice.** The notice sits in its own rounded dark bubble 4 pt from the capsule (below it when the pill is at the top of the screen, above it at the bottom), as wide as the capsule. The capsule itself does not change. Sample: "Secure Input is on, so some keyboard features are paused".
+
+## pill-classic-silent
+**Capsule, silent microphone (5 s).** The lips turn grey and still; the bubble below reads "We’re not hearing anything from your microphone." with a crossed-out microphone mark.
+
+## pill-classic-silentStrong
+**Capsule, silent microphone (15 s).** Same bubble; the text, the mark and a thin edge turn amber (`stWarning`): "Your microphone isn’t sending sound. Stop and check it in Settings."
+
+## pill-classic-silentBottom
+**Capsule at the bottom of the screen, silent microphone (15 s).** The bubble opens above the capsule, so the capsule stays on the screen edge.
 
 ## pill-readingWell-rest
 **Reading Well, recording.** A 400pt rounded panel: clock on the left, a dotted rainbow level rail, "LISTENING" on the right. Light panel in light mode, dark in dark mode.
@@ -236,7 +244,16 @@ The pill floats over other apps while you dictate. Three designs exist; the user
 **Reading Well, words on, none yet.** The panel before the first words arrive.
 
 ## pill-readingWell-notice
-**Reading Well, with a notice.** The notice sentence sits in a second line under the clock row.
+**Reading Well, with a notice.** The notice is a strip inside the panel, under a hairline below the clock row.
+
+## pill-readingWell-silent
+**Reading Well, silent microphone (5 s).** The strip shows the crossed-out microphone mark and "We’re not hearing anything from your microphone."
+
+## pill-readingWell-silentStrong
+**Reading Well, silent microphone (15 s).** The strip takes a soft amber tint (`stWarningSoft`) with an amber mark; the text is dark in light mode (founder decision 2026-11-22) and amber in dark mode.
+
+## pill-readingWell-silentBottom
+**Reading Well at the bottom of the screen, silent microphone (15 s).** The strip stays inside the panel; the panel grows upward from the screen edge.
 
 ## pill-levelRail-rest
 **Level Rail, recording.** A wide dark capsule: clock on the left, a dotted rainbow level rail with a purple end mark, no lips.
@@ -245,7 +262,16 @@ The pill floats over other apps while you dictate. Three designs exist; the user
 **Level Rail, locked.** Adds a quiet "Hands-free" tag on the right.
 
 ## pill-levelRail-notice
-**Level Rail, with a notice.** The capsule grows to carry the notice sentence under the clock and rail.
+**Level Rail, with a notice.** The notice sits in its own rounded dark bubble 4 pt from the rail, capped at 210 pt so it reads as a bubble, not a second pill.
+
+## pill-levelRail-silent
+**Level Rail, silent microphone (5 s).** The level dots lie flat; the bubble reads "We’re not hearing anything from your microphone."
+
+## pill-levelRail-silentStrong
+**Level Rail, silent microphone (15 s).** The bubble's text, mark and a thin edge turn amber.
+
+## pill-levelRail-silentBottom
+**Level Rail at the bottom of the screen, silent microphone (15 s).** The bubble opens above the rail.
 
 # Pill notices
 
@@ -291,13 +317,16 @@ Short messages that take the pill's place after or around a recording. Built fro
 **Bluetooth microphone.** A tall card (light in light mode, dark in dark mode): title "Bluetooth mic detected", three tips with round icons, a filled purple "Got it" button and an "Adjust settings" link, close X top right, rainbow line on the bottom edge.
 
 ## notice-escape-recovery
-**Escape Recovery.** "Dictation cancelled" with an "Undo" capsule button and a short countdown line along the bottom left. `CorrectionLearnedPillView` family.
+**Escape Recovery.** "Dictation cancelled" with an "Undo" capsule button and a short countdown line along the bottom left. `EscapeRecoveryPillFace`.
 
 ## notice-import-status
 **Import status.** Arrows icon, "Importing your words now. Check progress on the Dictionary page." `ImportStatusOverlayView`.
 
 ## notice-correction-learned
-**Word learned.** "Added “Tuist” to Dictionary" with an "Undo" capsule button and the countdown line. `CorrectionLearnedPillView`.
+**Word learned.** A pill with a round book icon, the word “Tuist” in bold over the small line "Added to dictionary", a filled "Undo" capsule button and a quiet round × button, with the rainbow countdown line along the bottom (drawn 40 percent of the way in this picture). × closes the pill and keeps the word. Stays 12 seconds, and waits while the pointer rests on it. `CorrectionLearnedPillFace` (`CorrectionLearnedPillView.swift`).
+
+## notice-correction-learned-removed
+**Word removed.** The result after Undo on an added word: one line, "“Tuist” removed", on the same pill with the book icon. No Undo, no × and no countdown line. `CorrectionLearnedPillFace`.
 
 ## notice-language-chip
 **Language chip.** Globe icon, "Detected Spanish. Lock it?", a filled blue "Lock" button and a quiet "Dismiss" button. `LanguageChipView`.
@@ -341,10 +370,10 @@ Every approved part on one sheet, from `DesignPartsSheets` (`Tests/EnviousWisprT
 **Cards, rows, headings.** Section heading with icon; titled card (BrandedSection) with a settings row (icon, title, "?" help, short grey line, switch), a row with icon and help button, help text and a "Read the help article" link; a panel (BrandedPanel) with an inset notice; status chips Ready, Needs setup, Not available, Error and a headline chip; a row with the hover modifier at rest.
 
 ## parts-controls
-**Tabs, choices, switches, fields, buttons.** Tab strip (Engine selected, underline), choice bars (Casual, Neutral, Formal; Always, Continue), switches on, off, self-disabled and parent-disabled, a slider with value badge and Low/High labels, a text field and a focused field (2pt accent border); buttons filled "Download", outlined "Test", quiet "Back", destructive "Delete", each enabled, self-disabled and parent-disabled; wizard pair "Back" and large "Continue →"; outlined "Preview" with a play glyph; decorative button; close X; onboarding "Onboarding continue". Known: outlined capsule buttons show slightly flattened side edges (open founder item, #4506 plan §14).
+**Tabs, choices, switches, fields, buttons.** Tab strip (Engine selected, underline), choice bars (Casual, Neutral, Formal; Always, Continue), drop-downs (a square outlined `SettingsMenuPicker` button "Until I delete them" with an up-down chevron; two `SettingsDropdownRow` menu rows "Auto / Follows macOS" with a check and "MacBook Pro Microphone / Built-in"), switches on, off, self-disabled and parent-disabled, a slider with value badge and Low/High labels, a text field and a focused field (2pt accent border); buttons filled "Download", outlined "Test", quiet "Back", destructive "Delete", each enabled, self-disabled and parent-disabled; wizard pair "Back" and large "Continue →"; outlined "Preview" with a play glyph; decorative button; close X; onboarding "Onboarding continue". Settings buttons use the rounded rectangle shown in the wizard pair.
 
 ## parts-cards
-**Summary and engine cards.** A summary card (bolt icon tile, "Fast Parakeet v3", description, "Change" button, "Ready" status) and two engine cards: "Fast" selected (accent border, check badge) and "All Languages" not selected, each with Model and Runs on facts.
+**Summary and engine cards.** A summary card (bolt icon tile, "Fast Parakeet v3", description, "Change" button, "Ready" status) and two engine cards: "Fast" selected (accent border, check badge) and "All Languages" not selected, each with Model and Runs on facts. Below them, labelled "CorrectionLearnedPillFace", the learned-word pill at rest (`CorrectionLearnedPillFace`): a round book icon, "Tuist" with "Added to dictionary" under it, a filled "Undo" button, a quiet ×, and the brand countdown line along the bottom edge, drawn 40% of the way.
 
 # Hand photos
 

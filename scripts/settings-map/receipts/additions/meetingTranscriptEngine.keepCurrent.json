@@ -53,7 +53,6 @@
    ]
   },
   "es": {
-   "title": "mantener el motor actual de transcripción de reuniones",
    "words": [],
    "phrases": [
     "cerrar las opciones sin cambiar el motor de transcripción completa de reuniones en EnviousMeet"
@@ -75,7 +74,6 @@
    ]
   },
   "fr": {
-   "title": "conserver le moteur de transcription actuel",
    "words": [],
    "phrases": [
     "fermer le choix des moteurs sans changer celui qui transcrit toute la réunion après l’enregistrement dans EnviousMeet"

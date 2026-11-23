@@ -1,0 +1,254 @@
+import AVFoundation
+import AppKit
+import EnviousWisprCore
+import EnviousWisprPipeline
+import EnviousWisprServices
+import Observation
+import SwiftUI
+
+struct SetupPracticeTake: Equatable {
+  let id: String
+  let phase: PipelineState
+  let locked: Bool
+  let terminal: PracticeTakeEvidence?
+}
+
+enum SetupPracticeResult: Equatable {
+  case completed(polished: Bool)
+  case missedBox, noSpeech, skipped, pipelineFailed
+  case microphoneDenied, accessibilityDenied
+}
+
+struct SetupPracticeSources {
+  let settings: SettingsManager
+  let devices: AudioDeviceList
+  let live: LiveRecordingState
+  var report: (SetupPracticeResult, TimeInterval) -> Void
+}
+
+/// The backend session retains this across presenter destruction, but not a route or visit reset.
+@MainActor @Observable
+final class SetupPracticeProgress {
+  var text = ""
+  var attempt = SetupPracticeAttempt()
+
+  func reset() {
+    text = ""
+    attempt = SetupPracticeAttempt()
+  }
+}
+
+/// Only a take-bound receipt from the synchronous, verified paste can establish success.
+struct SetupPracticeAttempt {
+  private var activeID: String?
+  private var expectedEditor: String?
+  private(set) var state: SetupPracticeState = .waiting
+  private(set) var result: SetupPracticeResult = .skipped
+  private(set) var success: SetupPracticeResult?
+
+  mutating func detachEditor() {
+    activeID = nil
+    expectedEditor = nil
+  }
+
+  /// Returns true exactly when this observation is a take verified in the expected editor (the
+  /// delivery receipt Skip ahead's summary times). `skippedAhead`: this Practice was opened with
+  /// Skip ahead for the current pick (a flow fact that holds for all of Practice, never a timing
+  /// read). After Skip ahead a take that missed polish only because the model was not ready yet
+  /// (or the take was too short to polish) is the promised basic-cleanup success, decided from
+  /// the take's own polish result, so the moment polish became ready cannot change it. Any other
+  /// miss (a failure, a crash mid-request) keeps today's "AI polish didn't run" copy.
+  @discardableResult
+  mutating func observe(
+    _ take: SetupPracticeTake, focusedEditor: String?, skippedAhead: Bool = false
+  ) -> Bool {
+    if take.phase.isActive {
+      if activeID != take.id {
+        activeID = take.id
+        expectedEditor = focusedEditor
+      }
+      return false
+    }
+    guard let terminal = take.terminal, activeID == take.id else { return false }
+    let editor = expectedEditor
+    detachEditor()
+    switch terminal {
+    case .delivered(let verifiedEditor, let copied, let polished, let waitedForModel):
+      if let editor, verifiedEditor == editor {
+        success = .completed(polished: polished)
+        state = skippedAhead && !polished && waitedForModel ? .workedBasicCleanup : .worked
+        result = .completed(polished: polished)
+        return true
+      } else {
+        state = .missedBox(copiedToClipboard: copied)
+        result = .missedBox
+      }
+    case .noSpeech:
+      state = .noSpeech
+      result = .noSpeech
+    case .failed:
+      state = .pipelineFailed
+      result = .pipelineFailed
+    case .cancelled:
+      break
+    }
+    return false
+  }
+}
+
+struct SetupPracticeRoute: View {
+  let model: SetupScreenModel
+  let epoch: Int
+  let sources: SetupPracticeSources
+  @Bindable var progress: SetupPracticeProgress
+
+  @State private var editorID = PasteService.practiceEditorIdentifierPrefix + UUID().uuidString
+  private var attempt: SetupPracticeAttempt { progress.attempt }
+  @State private var editorFocused = false
+  @State private var window = EGOneHostWindow()
+  @State private var entered = Date()
+  @State private var askedAccessibility = false
+
+  private var editorOwnsFocus: Bool { editorFocused && window.window?.isKeyWindow == true }
+
+  var body: some View {
+    let take = sources.live.practiceTake
+    let state = displayed(take)
+    SetupPracticeScreen(
+      state: state, text: $progress.text,
+      hasSucceeded: attempt.success != nil, key: key,
+      polish: practicePolish,
+      settings: sources.settings, microphone: sources.devices.microphoneFacts,
+      microphoneChoices: sources.devices.choices,
+      onSucceeded: { finish(.practiceSucceeded) },
+      onSkip: { finish(.skipPractice) },
+      onBack: { if isCurrent && !sources.live.isDictationActive { model.send(.back) } },
+      onOpenPermissions: openPermissions,
+      onFocusChange: { editorFocused = $0 },
+      editorIdentifier: editorID,
+      mayFocusEditor: { isCurrent && !sources.live.isDictationActive },
+      voiceLevel: { [live = sources.live] in Double(live.audioLevel) }
+    )
+    .background(EGOneHostWindowReader(host: window).allowsHitTesting(false))
+    .onAppear {
+      entered = Date()
+      progress.attempt.detachEditor()
+      progress.attempt.observe(take, focusedEditor: nil)
+      model.screenMounted(.practice, epoch: epoch)
+    }
+    .onChange(of: take) { _, next in
+      guard isCurrent else { return }
+      let delivered = progress.attempt.observe(
+        next, focusedEditor: editorOwnsFocus ? editorID : nil, skippedAhead: skippedAhead)
+      if delivered { model.sources.practiceDelivered?() }
+    }
+  }
+
+  private var isCurrent: Bool { model.routeEpoch == epoch && model.state.step == .practice }
+
+  private var polishIsOn: Bool {
+    (model.state.choices.polish ?? OnboardingChoices.polishOff) != OnboardingChoices.polishOff
+  }
+
+  /// #4845: the deferred pick's note stage now; nil when polish was not skipped ahead or is ready.
+  private var deferredStage: SetupPracticePolish.DeferredStage? {
+    guard let polish = model.state.choices.polish, model.state.deferredPolish == polish,
+      let p = model.sources.downloads?()
+    else { return nil }
+    return SetupPracticePolish.deferredStage(p)
+  }
+
+  /// This Practice was opened with Skip ahead for the current pick (holds for all of Practice).
+  private var skippedAhead: Bool {
+    guard let polish = model.state.choices.polish else { return false }
+    return model.state.deferredPolish == polish
+  }
+
+  private var practicePolish: SetupPracticePolish {
+    if let stage = deferredStage { return .deferred(stage) }
+    return polishIsOn ? .live : .off
+  }
+
+  /// #4590: a take that landed while polish is on but did not get polished reads
+  /// `workedWithoutPolish`; `latest` is the most recent take's result (a later polished take
+  /// returns `worked`). With polish off, an unpolished take is the expected `worked`.
+  static func shown(_ attempt: SetupPracticeState, latest: SetupPracticeResult, polishOn: Bool)
+    -> SetupPracticeState
+  {
+    // A take that started on basic cleanup after Skip ahead is already `.workedBasicCleanup`.
+    if attempt == .worked, polishOn, latest == .completed(polished: false) {
+      return .workedWithoutPolish
+    }
+    return attempt
+  }
+
+  private var key: String {
+    switch sources.settings.shortcutBindings.record {
+    case .keyboard(let code, let modifiers): KeySymbols.format(keyCode: code, modifiers: modifiers)
+    }
+  }
+
+  private func displayed(_ take: SetupPracticeTake) -> SetupPracticeState {
+    let permissions = model.sources.permissions
+    return Self.displayed(
+      take, microphoneOff: permissions.map { $0.microphone() != .authorized } ?? false,
+      accessibilityOff: permissions.map { !$0.accessibilityAllowed() } ?? false,
+      usable: model.isPracticeUsable, attempt: attempt, polishOn: polishIsOn)
+  }
+
+  /// What Practice shows for `take`, in priority order: a take in flight, a permission that is
+  /// off, not ready yet, then (#4601) a microphone that did not answer, then the attempt's own
+  /// outcome. The not-responding case reads the CURRENT phase, so a first press whose pre-warm
+  /// failed with no session (no take, so no terminal receipt) shows it too; a failed take shows
+  /// it the same way. It never touches the attempt, so it cannot create success or erase one.
+  static func displayed(
+    _ take: SetupPracticeTake, microphoneOff: Bool, accessibilityOff: Bool, usable: Bool,
+    attempt: SetupPracticeAttempt, polishOn: Bool
+  ) -> SetupPracticeState {
+    switch take.phase {
+    case .loadingModel, .transcribing: return .transcribing
+    case .recording: return .listening(handsFree: take.locked)
+    case .polishing: return .polishing
+    case .idle, .complete, .error, .advisory: break
+    }
+    if microphoneOff { return .microphoneOff }
+    if accessibilityOff { return .accessibilityOff }
+    guard usable else { return .preparing }
+    if take.phase == .error(.micNotResponding) { return .microphoneNotResponding }
+    return shown(attempt.state, latest: attempt.result, polishOn: polishOn)
+  }
+
+  private func finish(_ event: OnboardingEvent) {
+    guard isCurrent, !sources.live.isDictationActive else { return }
+    let state = displayed(sources.live.practiceTake)
+    let result: SetupPracticeResult
+    if event == .practiceSucceeded {
+      guard state.canContinue(hasSucceeded: attempt.success != nil), let success = attempt.success
+      else { return }
+      result = success
+    } else {
+      guard state.canSkip(hasSucceeded: attempt.success != nil) else { return }
+      switch state {
+      case .microphoneOff: result = .microphoneDenied
+      case .accessibilityOff: result = .accessibilityDenied
+      // #4601: skipped after a start the microphone did not answer; reported in the existing
+      // failure bucket (no new telemetry value).
+      case .microphoneNotResponding: result = .pipelineFailed
+      default: result = attempt.result
+      }
+    }
+    sources.report(result, max(0, Date().timeIntervalSince(entered)))
+    model.send(event)
+  }
+
+  private func openPermissions() {
+    guard isCurrent, let actions = model.sources.permissions?.actions else { return }
+    switch displayed(sources.live.practiceTake) {
+    case .microphoneOff: Task { await actions.microphone() }
+    case .accessibilityOff:
+      actions.accessibility(askedAccessibility)
+      askedAccessibility = true
+    default: break
+    }
+  }
+}

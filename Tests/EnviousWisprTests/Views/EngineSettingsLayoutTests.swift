@@ -60,69 +60,6 @@ struct EngineSettingsLayoutTests {
     }
   }
 
-  #if DEBUG
-  @MainActor final class DelayedAdmission {
-    var reads = 0
-    var reply: CheckedContinuation<Bool, Never>?
-    let arrived = FastAdmissionReadSignals()
-    func read() async -> Bool {
-      reads += 1
-      if reads == 1 { return false } // initial page probe finishes normally
-      return await withCheckedContinuation { continuation in
-        reply = continuation
-        // Releasable and arrived together, in the same MainActor turn.
-        arrived.record(false)
-      }
-    }
-    func release() { reply?.resume(returning: true); reply = nil }
-  }
-
-  @Test("the real manual re-check drops a delayed reply after switching engines; the same reply applies while Fast stays selected",
-    arguments: [true, false])
-  func delayedReplyHonoursEngineSwitch(switchEngine: Bool) async throws {
-    let defaults = try #require(TestDefaults.suite("ew.fastReply.\(UUID().uuidString)"))
-    let settings = SettingsManager(defaults: defaults)
-    settings.selectedBackend = .parakeet
-    let setup = SetupCoordinator(asrManager: RouterTestASRManager(),
-      whisperSetup: WhisperSetupService(engineMutationScope: .alwaysAllowedForTesting,
-        readAvailability: { .notDownloaded }),
-      setupStateReader: { .notDownloaded }, preloadAction: {}, ollamaStatusProbe: { _ in })
-    let presenter = LanguageSuggestionPresenter(overlay: DictationSettingsRenderHarness.NoOverlay(),
-      onLanguageAccepted: { _ in }, defaults: defaults)
-    let home = try ModelDeliveryHomeTests.fastRenderFixture().home
-    let delayed = DelayedAdmission()
-    let finished = FastAdmissionReadSignals()
-    final class ActionBox { var recheck: (@MainActor @Sendable () -> Void)? }
-    let action = ActionBox()
-    let page = SpeechEngineSettingsView()
-      .environment(settings).environment(setup).environment(presenter).environment(home)
-      .environment(\.fastAdmissionTestHooks, FastAdmissionTestHooks(
-        read: { await delayed.read() }, onFinished: { finished.record($0) },
-        captureRecheck: { action.recheck = $0 }))
-      .frame(width: 508, height: 1250)
-    let host = NSHostingView(rootView: page)
-    let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 508, height: 1250),
-      styleMask: [.borderless], backing: .buffered, defer: false)
-    window.contentView = host
-    defer { delayed.release(); window.contentView = nil }
-    host.layoutSubtreeIfNeeded()
-    try #require(await finished.wait(after: 0), "initial page admission did not finish")
-    #expect(finished.values == [false])
-    let manual = try #require(action.recheck, "the real Button handler was not captured")
-    let baseline = finished.count
-    manual() // same handler as the actual button, deliberately not a view-bound Task
-    try #require(await delayed.arrived.wait(after: 0), "manual check never parked")
-    if switchEngine {
-      settings.selectedBackend = .whisper
-      host.layoutSubtreeIfNeeded()
-    }
-    delayed.release()
-    try #require(await finished.wait(after: baseline), "delayed reply never completed reconciliation")
-    let reconciled = try #require(finished.values.last)
-    #expect(reconciled == (switchEngine ? nil : true))
-    print("DELAYED-FAST switch=\(switchEngine) selected=\(settings.selectedBackend) result=\(String(describing: reconciled)) reads=\(delayed.reads)")
-  }
-  #endif
 }
 
 /// A completion signal from the real page. The five-second bound is the existing

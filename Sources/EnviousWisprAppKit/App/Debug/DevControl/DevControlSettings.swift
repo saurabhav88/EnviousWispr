@@ -52,12 +52,13 @@
       .selectedBackend, .recordingMode, .llmProvider, .llmModel, .ollamaModel,
       .fileImportLLMProvider, .fileImportLLMModel, .fileImportOllamaModel,
       .meetingSummaryLLMProvider, .meetingSummaryLLMModel, .meetingSummaryOllamaModel,
-      .s1MiniStyling, .s1MiniStructure, .s1MiniContext, .autoCopyToClipboard,
-      .meetingCaptureCallSound, .meetingCallSoundExplained, .meetingWriteSummary, .meetingTurnsOffDictation, .meetingFollowsCallMute, .meetingOnboardingComplete, .meetingUseCalendarForNames, .meetingCallDetection, .meetingCallAppsOff, .meetingCallNoCounts, .meetingCallFirstTipShown, .meetingLanguageMode, .meetingTranscriptEngine, .meetingLiveWordsEngine, .meetingLiveWordsLanguage, .hotkeyEnabled, .vadAutoStop, .vadSilenceTimeout, .vadSensitivity, .vadEnergyGate, .onboardingState,
+      .s1MiniStyling, .s1MiniStructure, .s1MiniContext,
+      .automaticDictationPasteEnabled, .autoCopyToClipboard,
+      .meetingCaptureCallSound, .meetingCallSoundExplained, .meetingWriteSummary, .meetingTurnsOffDictation, .meetingFollowsCallMute, .meetingOnboardingComplete, .meetingUseCalendarForNames, .meetingCallDetection, .meetingCallAppsOff, .meetingCallNoCounts, .meetingCallFirstTipShown, .meetingLanguageMode, .meetingTranscriptEngine, .meetingLiveWordsEngine, .meetingLiveWordsLanguage, .hotkeyEnabled, .vadAutoStop, .silentMicWarnings, .vadSilenceTimeout, .vadSensitivity, .vadEnergyGate, .onboardingState,
       .hasCompletedOnboarding, .cancelKeyCode, .cancelModifiers, .quickAddKeyCode,
       .quickAddModifiers, .pasteLastKeyCode, .pasteLastModifiers, .copyLastKeyCode,
       .copyLastModifiers, .toggleKeyCode, .toggleModifiers, .pushToTalkKeyCode,
-      .pushToTalkModifiers, .modelUnloadPolicy, .restoreClipboardAfterPaste,
+      .pushToTalkModifiers, .modelUnloadPolicy, .localPolishUnloadPolicy, .restoreClipboardAfterPaste,
       .keepDictationsOutOfClipboardHistory, .quickAddClipboardFallback, .smartInsertion,
       .escapeRecoveryEnabled, .wordCorrectionEnabled, .fillerRemovalEnabled,
       .emojiFormatterEnabled, .spokenPunctuation, .casualModeEnabled, .crashRecoveryEnabled,
@@ -68,6 +69,7 @@
       .warmEnginePolicy, .appearance, .overlayPillPosition, .recordingPillDesignWithoutWords,
       .recordingPillDesignWithWords, .showBluetoothTips, .showInDock, .showMenuBarUpdateAlert,
       .playRecordingSounds, .recordingSoundPairing, .otherAudioWhileDictating, .learnFromEdits,
+        .fixLearnedWords,
       .saveDictationRecordings, .dictationRecordingRetention, .meetingRecordingRetention,
       .recordingStorageWarningThreshold, .recordingThresholdBehavior,
     ]
@@ -87,12 +89,13 @@
       }
       switch key {
       case .selectedBackend, .recordingMode, .llmProvider, .llmModel, .s1MiniStyling,
-        .s1MiniStructure, .s1MiniContext, .autoCopyToClipboard, .meetingCaptureCallSound,
+        .s1MiniStructure, .s1MiniContext, .automaticDictationPasteEnabled, .autoCopyToClipboard,
+        .meetingCaptureCallSound,
         .meetingCallSoundExplained, .meetingWriteSummary, .meetingTurnsOffDictation,
         .meetingFollowsCallMute, .meetingOnboardingComplete,
         .meetingUseCalendarForNames, .meetingCallDetection, .meetingCallAppsOff,
         .meetingCallNoCounts, .meetingCallFirstTipShown, .meetingLanguageMode,
-        .meetingTranscriptEngine, .meetingLiveWordsEngine, .meetingLiveWordsLanguage, .vadAutoStop, .modelUnloadPolicy,
+        .meetingTranscriptEngine, .meetingLiveWordsEngine, .meetingLiveWordsLanguage, .vadAutoStop, .silentMicWarnings, .modelUnloadPolicy, .localPolishUnloadPolicy,
         .restoreClipboardAfterPaste, .keepDictationsOutOfClipboardHistory,
         .quickAddClipboardFallback, .smartInsertion, .escapeRecoveryEnabled,
         .wordCorrectionEnabled, .fillerRemovalEnabled, .emojiFormatterEnabled,
@@ -101,6 +104,7 @@
         .livePreviewEnabled, .livePreviewEngine, .warmEnginePolicy, .appearance,
         .overlayPillPosition, .showBluetoothTips, .showInDock, .showMenuBarUpdateAlert,
         .playRecordingSounds, .recordingSoundPairing, .otherAudioWhileDictating, .learnFromEdits,
+        .fixLearnedWords,
         .egOneSize, .saveDictationRecordings:
         return make(.direct)
       case .selectedInputDeviceUID, .preferredInputDeviceIDOverride, .spokenPunctuation,
@@ -147,6 +151,7 @@
       case .s1MiniStyling: return settings.s1MiniStyling.rawValue
       case .s1MiniStructure: return settings.s1MiniStructure.rawValue
       case .s1MiniContext: return settings.s1MiniContext.rawValue
+      case .automaticDictationPasteEnabled: return settings.automaticDictationPasteEnabled
       case .autoCopyToClipboard: return settings.autoCopyToClipboard
       case .meetingCaptureCallSound: return settings.meetingCaptureCallSound
       case .meetingCallSoundExplained: return settings.meetingCallSoundExplained
@@ -161,6 +166,7 @@
       case .meetingCallFirstTipShown: return settings.meetingCallFirstTipShown
       case .hotkeyEnabled: return settings.hotkeyEnabled
       case .vadAutoStop: return settings.vadAutoStop
+      case .silentMicWarnings: return settings.silentMicWarnings
       case .vadSilenceTimeout: return settings.vadSilenceTimeout
       case .vadSensitivity: return Double(settings.vadSensitivity)
       case .vadEnergyGate: return settings.vadEnergyGate
@@ -179,6 +185,7 @@
       case .pushToTalkKeyCode: return Int(settings.pushToTalkKeyCode)
       case .pushToTalkModifiers: return settings.pushToTalkModifiers.rawValue
       case .modelUnloadPolicy: return settings.modelUnloadPolicy.rawValue
+      case .localPolishUnloadPolicy: return settings.localPolishUnloadPolicy.rawValue
       case .restoreClipboardAfterPaste: return settings.restoreClipboardAfterPaste
       case .keepDictationsOutOfClipboardHistory: return settings.keepDictationsOutOfClipboardHistory
       case .quickAddClipboardFallback: return settings.quickAddClipboardFallback
@@ -222,6 +229,7 @@
       case .recordingSoundPairing: return settings.recordingSoundPairing.rawValue
       case .otherAudioWhileDictating: return settings.otherAudioWhileDictating.rawValue
       case .learnFromEdits: return settings.learnFromEdits
+      case .fixLearnedWords: return settings.fixLearnedWords
       case .saveDictationRecordings: return settings.saveDictationRecordings
       case .dictationRecordingRetention: return settings.dictationRecordingRetention.rawValue
       case .meetingRecordingRetention: return settings.meetingRecordingRetention.rawValue
@@ -307,6 +315,8 @@
         return set(Codec.raw(value, S1Structure.self)) { settings.s1MiniStructure = $0 }
       case .s1MiniContext:
         return set(Codec.raw(value, S1Context.self)) { settings.s1MiniContext = $0 }
+      case .automaticDictationPasteEnabled:
+        return set(Codec.bool(value)) { settings.automaticDictationPasteEnabled = $0 }
       case .autoCopyToClipboard:
         return set(Codec.bool(value)) { settings.autoCopyToClipboard = $0 }
       case .meetingCaptureCallSound:
@@ -335,6 +345,8 @@
         return set(Codec.bool(value)) { settings.hotkeyEnabled = $0 }
       case .vadAutoStop:
         return set(Codec.bool(value)) { settings.vadAutoStop = $0 }
+      case .silentMicWarnings:
+        return set(Codec.bool(value)) { settings.silentMicWarnings = $0 }
       case .vadSilenceTimeout:
         guard let seconds = Codec.double(value) else { return .badValue("wrong type") }
         guard Self.silenceTimeoutIsConvertible(seconds) else {
@@ -347,7 +359,10 @@
       case .vadEnergyGate:
         return set(Codec.bool(value)) { settings.vadEnergyGate = $0 }
       case .onboardingState:
-        return set(Codec.raw(value, OnboardingState.self)) { settings.onboardingState = $0 }
+        return set(Codec.raw(value, OnboardingState.self)) {
+          // #4528: a reset goes through the one restart entry, which also deletes the checkpoint.
+          if $0 == .notStarted { settings.restartOnboarding() } else { settings.onboardingState = $0 }
+        }
       case .hasCompletedOnboarding:
         return set(Codec.bool(value)) { settings.hasCompletedOnboarding = $0 }
       case .cancelKeyCode:
@@ -376,6 +391,8 @@
         return set(Codec.modifiers(value)) { settings.pushToTalkModifiers = $0 }
       case .modelUnloadPolicy:
         return set(Codec.raw(value, ModelUnloadPolicy.self)) { settings.modelUnloadPolicy = $0 }
+      case .localPolishUnloadPolicy:
+        return set(Codec.raw(value, ModelUnloadPolicy.self)) { settings.localPolishUnloadPolicy = $0 }
       case .restoreClipboardAfterPaste:
         return set(Codec.bool(value)) { settings.restoreClipboardAfterPaste = $0 }
       case .keepDictationsOutOfClipboardHistory:
@@ -487,6 +504,8 @@
         }
       case .learnFromEdits:
         return set(Codec.bool(value)) { settings.learnFromEdits = $0 }
+      case .fixLearnedWords:
+        return set(Codec.bool(value)) { settings.fixLearnedWords = $0 }
       case .saveDictationRecordings:
         return set(Codec.bool(value)) { settings.saveDictationRecordings = $0 }
       case .dictationRecordingRetention:
@@ -629,14 +648,15 @@
         .toggleKeyCode, .toggleModifiers:
         return .shortcutField
       case .selectedBackend, .recordingMode, .llmProvider, .s1MiniStyling, .s1MiniStructure,
-        .s1MiniContext, .autoCopyToClipboard, .meetingCaptureCallSound, .meetingCallSoundExplained,
+        .s1MiniContext, .automaticDictationPasteEnabled, .autoCopyToClipboard, .meetingCaptureCallSound,
+        .meetingCallSoundExplained,
         .meetingWriteSummary, .meetingTurnsOffDictation, .meetingFollowsCallMute,
         .meetingOnboardingComplete, .meetingUseCalendarForNames,
         .meetingCallDetection, .meetingCallAppsOff, .meetingCallNoCounts, .meetingCallFirstTipShown,
         .meetingLanguageMode, .meetingTranscriptEngine, .meetingLiveWordsEngine, .meetingLiveWordsLanguage, .hotkeyEnabled,
-        .vadAutoStop, .vadSensitivity,
+        .vadAutoStop, .silentMicWarnings, .vadSensitivity,
         .vadEnergyGate, .onboardingState, .hasCompletedOnboarding, .pushToTalkKeyCode,
-        .pushToTalkModifiers, .modelUnloadPolicy, .restoreClipboardAfterPaste,
+        .pushToTalkModifiers, .modelUnloadPolicy, .localPolishUnloadPolicy, .restoreClipboardAfterPaste,
         .keepDictationsOutOfClipboardHistory, .quickAddClipboardFallback, .smartInsertion,
         .escapeRecoveryEnabled, .wordCorrectionEnabled, .fillerRemovalEnabled,
         .emojiFormatterEnabled, .casualModeEnabled, .crashRecoveryEnabled, .shareUsageMetrics,
@@ -645,6 +665,7 @@
         .livePreviewEnabled, .livePreviewEngine, .warmEnginePolicy, .appearance,
         .overlayPillPosition, .showBluetoothTips, .showInDock, .showMenuBarUpdateAlert,
         .playRecordingSounds, .recordingSoundPairing, .otherAudioWhileDictating, .learnFromEdits,
+        .fixLearnedWords,
         .egOneSize, .saveDictationRecordings, .dictationRecordingRetention,
         .meetingRecordingRetention, .recordingStorageWarningThreshold,
         .recordingThresholdBehavior:
@@ -740,7 +761,8 @@
         guard SilenceTimeoutSlider.offers(seconds) else {
           return .refused(
             code: "checkFailed",
-            message: "the pause slider offers 0.5 to 3.0 seconds in 0.25 steps; use force to stage another value")
+            message:
+              "the pause slider offers \(SilenceTimeoutSlider.range.lowerBound) to \(SilenceTimeoutSlider.range.upperBound) seconds in \(SilenceTimeoutSlider.step) steps; use force to stage another value")
         }
         return outcome(assign(key, value: value, to: settings, forced: false))
       case .channelCommand:
@@ -1015,7 +1037,7 @@
     /// The silence detector turns the timeout into a chunk count with
     /// `Int(ceil(timeout / chunkDuration))`, which traps when the quotient is not
     /// representable. A finite value whose count is representable is admitted even far
-    /// outside the screen's 0.5-3.0 range.
+    /// outside the screen's slider range.
     nonisolated static func silenceTimeoutIsConvertible(_ seconds: Double) -> Bool {
       guard seconds.isFinite else { return false }
       let chunkDuration = Double(SilenceDetector.chunkSize) / AudioConstants.sampleRate

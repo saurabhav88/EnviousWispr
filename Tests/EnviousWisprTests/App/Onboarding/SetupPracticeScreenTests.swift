@@ -1,0 +1,345 @@
+import AppKit
+import EnviousWisprCore
+import EnviousWisprPipeline
+import EnviousWisprServices
+import SwiftUI
+import Testing
+
+@testable import EnviousWisprAppKit
+@testable import EnviousWisprAudio
+
+@MainActor
+@Suite("Setup Practice screen", .tags(.productOutcome))
+struct SetupPracticeScreenTests {
+  @Test("Continue needs a verified take and navigation waits for an in-flight take")
+  func actions() {
+    #expect(SetupPracticeState.waiting.canContinue(hasSucceeded: false) == false)
+    #expect(SetupPracticeState.waiting.canSkip(hasSucceeded: false))
+    #expect(SetupPracticeState.worked.canContinue(hasSucceeded: true))
+    #expect(SetupPracticeState.worked.canSkip(hasSucceeded: true) == false)
+    for state in [SetupPracticeState.listening(handsFree: false), .transcribing, .polishing] {
+      #expect(state.canContinue(hasSucceeded: true) == false)
+      #expect(state.canSkip(hasSucceeded: false) == false)
+    }
+    #expect(SetupPracticeState.preparing.canContinue(hasSucceeded: true) == false)
+    #expect(SetupPracticeState.microphoneOff.canContinue(hasSucceeded: true) == false)
+    // #4590: a take that landed without polish is still a success.
+    // #4601: neither success nor in flight: Skip stays, and an earlier success still continues.
+    #expect(SetupPracticeState.microphoneNotResponding.inFlight == false)
+    #expect(SetupPracticeState.microphoneNotResponding.isWorked == false)
+    #expect(SetupPracticeState.microphoneNotResponding.canSkip(hasSucceeded: false))
+    #expect(SetupPracticeState.microphoneNotResponding.canContinue(hasSucceeded: false) == false)
+    #expect(SetupPracticeState.microphoneNotResponding.canContinue(hasSucceeded: true))
+    #expect(SetupPracticeState.workedWithoutPolish.canContinue(hasSucceeded: true))
+    #expect(SetupPracticeState.workedWithoutPolish.canSkip(hasSucceeded: true) == false)
+  }
+
+  /// #4590. When this fails, a person whose practice take was not polished is told
+  /// "That is it. You are set." as if AI polish had run, or a polished retry keeps the
+  /// unpolished message.
+  @Test("An unpolished take with polish on reads Dictation worked; a polished retry reads worked")
+  func unpolishedTakeIsHonest() {
+    let shown = SetupPracticeRoute.shown
+    #expect(shown(.worked, .completed(polished: false), true) == .workedWithoutPolish)
+    #expect(shown(.worked, .completed(polished: true), true) == .worked)
+    #expect(shown(.worked, .completed(polished: false), false) == .worked, "polish off by choice")
+    #expect(shown(.missedBox(copiedToClipboard: false), .missedBox, true) == .missedBox(copiedToClipboard: false))
+    #expect(SetupPracticeState.workedWithoutPolish.headline == "Dictation worked")
+    #expect(SetupPracticeState.workedWithoutPolish.lips == .smile)
+
+    // Second takes in both directions, through the real attempt.
+    var attempt = SetupPracticeAttempt()
+    func take(_ id: String, polished: Bool) {
+      attempt.observe(
+        SetupPracticeTake(id: id, phase: .recording, locked: false, terminal: nil),
+        focusedEditor: "box")
+      attempt.observe(
+        SetupPracticeTake(
+          id: id, phase: .complete, locked: false,
+          terminal: .delivered(verifiedEditor: "box", copied: false, polished: polished)),
+        focusedEditor: "box")
+    }
+    take("a", polished: false)
+    #expect(shown(attempt.state, attempt.result, true) == .workedWithoutPolish)
+    take("b", polished: true)
+    #expect(shown(attempt.state, attempt.result, true) == .worked)
+    take("c", polished: false)
+    #expect(shown(attempt.state, attempt.result, true) == .workedWithoutPolish)
+  }
+
+  @Test("The mounted editor writes to the caller and native shortcuts invoke the supplied actions")
+  func mountedEditorAndActions() throws {
+    _ = NSApplication.shared
+    let settings = SettingsManager(
+      defaults: try #require(TestDefaults.suite("ew.tests.practice-editor.\(UUID())")))
+    var text = ""
+    var continued = 0
+    var backed = 0
+    var openedPermissions = 0
+    func screen(_ state: SetupPracticeState, succeeded: Bool = false) -> SetupPracticeScreen {
+      SetupPracticeScreen(
+        state: state, text: Binding(get: { text }, set: { text = $0 }),
+        hasSucceeded: succeeded, key: "Right ⌥", polish: .off, settings: settings, microphone: .empty,
+        microphoneChoices: MicrophoneChoiceOwner(lane: CoreAudioQueryLane(label: "test.setup")),
+        onSucceeded: { continued += 1 }, onSkip: {}, onBack: { backed += 1 },
+        onOpenPermissions: { openedPermissions += 1 })
+    }
+    let rect = NSRect(x: 0, y: 0, width: 460, height: 734)
+    let window = NSWindow(contentRect: rect, styleMask: [.titled], backing: .buffered, defer: false)
+    let host = NSHostingView(rootView: screen(.waiting))
+    window.contentView = host
+    host.frame = rect
+    host.layoutSubtreeIfNeeded()
+    let editor = try #require(textEditor(in: host))
+    editor.insertText("Words in the box", replacementRange: NSRange(location: 0, length: 0))
+    #expect(text == "Words in the box")
+
+    let escape = try keyEvent("\u{1b}", keyCode: 53, window: window)
+    let enter = try keyEvent("\r", keyCode: 36, window: window)
+    _ = host.performKeyEquivalent(with: enter)
+    #expect(continued == 0)
+    _ = host.performKeyEquivalent(with: escape)
+    #expect(backed == 1)
+    host.rootView = screen(.transcribing, succeeded: true)
+    host.layoutSubtreeIfNeeded()
+    _ = host.performKeyEquivalent(with: escape)
+    _ = host.performKeyEquivalent(with: enter)
+    #expect(backed == 1)
+    #expect(continued == 0)
+    host.rootView = screen(.worked, succeeded: true)
+    host.layoutSubtreeIfNeeded()
+    _ = host.performKeyEquivalent(with: enter)
+    #expect(continued == 1)
+    host.rootView = screen(.microphoneOff)
+    host.layoutSubtreeIfNeeded()
+    #expect(textEditor(in: host) != nil)
+    _ = host.performKeyEquivalent(with: enter)
+    #expect(openedPermissions == 1)
+  }
+
+  @Test("A key Practice window focuses the mounted editor and never steals focus during a take")
+  func initialAndReturningFocus() async throws {
+    _ = NSApplication.shared
+    let settings = SettingsManager(
+      defaults: try #require(TestDefaults.suite("ew.tests.practice-focus.\(UUID())")))
+    var taking = false
+    func screen(_ state: SetupPracticeState) -> SetupPracticeScreen {
+      SetupPracticeScreen(
+        state: state, text: .constant(""), hasSucceeded: false, key: "Right ⌥", polish: .off,
+        settings: settings, microphone: .empty,
+        microphoneChoices: MicrophoneChoiceOwner(lane: CoreAudioQueryLane(label: "test.setup")), onSucceeded: {}, onSkip: {}, onBack: {},
+        onOpenPermissions: {}, mayFocusEditor: { !taking })
+    }
+    let rect = NSRect(x: 0, y: 0, width: 460, height: 734)
+    let window = PracticeKeyWindow(
+      contentRect: rect, styleMask: [.titled], backing: .buffered, defer: false)
+    let host = NSHostingView(rootView: screen(.waiting))
+    window.contentView = host
+    host.frame = rect
+    host.layoutSubtreeIfNeeded()
+    await drainFocusRequest()
+    #expect(window.firstResponder === textEditor(in: host))
+
+    window.makeFirstResponder(nil)
+    taking = true
+    NotificationCenter.default.post(name: NSWindow.didBecomeKeyNotification, object: window)
+    await drainFocusRequest()
+    #expect(window.firstResponder !== textEditor(in: host))
+
+    taking = false
+    NotificationCenter.default.post(name: NSWindow.didBecomeKeyNotification, object: window)
+    await drainFocusRequest()
+    #expect(window.firstResponder === textEditor(in: host))
+
+    host.rootView = screen(.transcribing)
+    host.layoutSubtreeIfNeeded()
+    window.makeFirstResponder(nil)
+    host.rootView = screen(.missedBox(copiedToClipboard: false))
+    host.layoutSubtreeIfNeeded()
+    await drainFocusRequest()
+    #expect(window.firstResponder !== textEditor(in: host))
+
+    host.rootView = screen(.accessibilityOff)
+    host.layoutSubtreeIfNeeded()
+    window.makeFirstResponder(nil)
+    host.rootView = screen(.waiting)
+    host.layoutSubtreeIfNeeded()
+    await drainFocusRequest()
+    #expect(window.firstResponder === textEditor(in: host))
+  }
+
+  private final class PracticeKeyWindow: NSWindow {
+    override var isKeyWindow: Bool { true }
+  }
+
+  private func drainFocusRequest() async {
+    // The production focus request is queued on main, so this barrier follows it.
+    await withCheckedContinuation { done in
+      DispatchQueue.main.async { done.resume() }
+    }
+  }
+
+  private func textEditor(in view: NSView) -> NSTextView? {
+    if let editor = view as? NSTextView, editor.isEditable { return editor }
+    return view.subviews.lazy.compactMap { textEditor(in: $0) }.first
+  }
+
+  private func keyEvent(_ character: String, keyCode: UInt16, window: NSWindow) throws -> NSEvent {
+    try #require(
+      NSEvent.keyEvent(
+        with: .keyDown, location: .zero, modifierFlags: [], timestamp: 1,
+        windowNumber: window.windowNumber, context: nil, characters: character,
+        charactersIgnoringModifiers: character, isARepeat: false, keyCode: keyCode))
+  }
+
+  @Test("Practice renders each state in light, dark and Reduce Motion")
+  func renders() throws {
+    _ = NSApplication.shared
+    let folder = RepoRoot.url.appending(path: "build/design-render/practice-d6b")
+    try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+    let settings = SettingsManager(
+      defaults: try #require(TestDefaults.suite("ew.tests.practice-render.\(UUID())")))
+    let states: [(String, SetupPracticeState, SetupPracticePolish)] = [
+      ("preparing", .preparing, .live), ("waiting", .waiting, .live),
+      ("listening", .listening(handsFree: false), .live),
+      ("hands-free", .listening(handsFree: true), .live),
+      ("transcribing", .transcribing, .live), ("polishing", .polishing, .live),
+      ("worked", .worked, .live), ("worked-off", .worked, .off),
+      ("worked-cloud-later", .worked, .cloudLater(providerName: "Claude")),
+      ("worked-without-polish", .workedWithoutPolish, .live),
+      ("waiting-basic-cleanup", .waiting, .deferred(.downloading)),
+      ("waiting-polish-starting", .waiting, .deferred(.starting)),
+      ("waiting-polish-unavailable", .waiting, .deferred(.unavailable)),
+      ("waiting-polish-paused", .waiting, .deferred(.stopped(paused: true))),
+      ("waiting-polish-failed", .waiting, .deferred(.stopped(paused: false))),
+      ("worked-basic-cleanup", .workedBasicCleanup, .deferred(.downloading)),
+      ("no-speech", .noSpeech, .live),
+      ("missed-box", .missedBox(copiedToClipboard: false), .live),
+      ("copied", .missedBox(copiedToClipboard: true), .live),
+      ("pipeline-failed", .pipelineFailed, .live),
+      ("microphone-not-responding", .microphoneNotResponding, .live),
+      ("microphone-off", .microphoneOff, .live), ("accessibility-off", .accessibilityOff, .live),
+    ]
+    let appearances: [(String, ColorScheme, Bool)] = [
+      ("light", .light, false), ("dark", .dark, false), ("reduce-motion", .light, true),
+    ]
+    for (name, state, polish) in states {
+      for (variant, scheme, reduceMotion) in appearances {
+        let size = CGSize(width: SetupLayout.windowWidth, height: SetupLayout.contentHeight)
+        let host = NSHostingView(
+          rootView: SetupPracticeScreen(
+            state: state,
+            text: .constant(state.isWorked ? "I think we should meet tomorrow morning." : ""),
+            hasSucceeded: state.isWorked, key: "Right ⌥", polish: polish,
+            settings: settings, microphone: .empty,
+        microphoneChoices: MicrophoneChoiceOwner(lane: CoreAudioQueryLane(label: "test.setup")), onSucceeded: {}, onSkip: {}, onBack: {},
+            onOpenPermissions: {}
+          )
+          .overlay(alignment: .bottom) {
+            SetupPracticePillPicture(state: state)
+              .padding(
+                .bottom, SetupMetrics.buttonHeight + SetupMetrics.linksHeight + DesignSpacing.xxxl)
+          }
+          .padding(SetupLayout.contentPadding)
+          .frame(width: size.width, height: size.height)
+          .background(Color.obCardBg)
+          .environment(\.colorScheme, scheme)
+          .environment(\.overlayReduceMotionOverride, reduceMotion)
+        )
+        host.frame = NSRect(origin: .zero, size: size)
+        host.appearance = NSAppearance(named: scheme == .dark ? .darkAqua : .aqua)
+        let window = NSWindow(
+          contentRect: host.frame, styleMask: [.borderless], backing: .buffered, defer: false)
+        window.appearance = host.appearance
+        window.contentView = host
+        host.layoutSubtreeIfNeeded()
+        window.displayIfNeeded()
+        let rep = try #require(host.bitmapImageRepForCachingDisplay(in: host.bounds))
+        host.cacheDisplay(in: host.bounds, to: rep)
+        #expect(rep.size == size)
+        let png = try #require(rep.representation(using: .png, properties: [:]))
+        try png.write(to: folder.appending(path: "\(name)-\(variant).png"))
+      }
+    }
+  }
+
+  /// #4845. When this fails, a person who chose Skip ahead is told to try again after a take that
+  /// worked on basic cleanup (including one where polish became ready just as the take started),
+  /// a real polish failure or crash is hidden as basic cleanup, or the delivery time for the Skip
+  /// ahead summary is missed or counted for a take that did not land.
+  @Test("a take after Skip ahead that missed polish waiting for the model reads Dictation worked")
+  func skippedAheadTakeIsASuccess() {
+    var attempt = SetupPracticeAttempt()
+    func take(_ id: String, skipped: Bool, terminal: PracticeTakeEvidence) -> Bool {
+      attempt.observe(
+        SetupPracticeTake(id: id, phase: .recording, locked: false, terminal: nil),
+        focusedEditor: "box", skippedAhead: skipped)
+      return attempt.observe(
+        SetupPracticeTake(id: id, phase: .complete, locked: false, terminal: terminal),
+        focusedEditor: "box", skippedAhead: skipped)
+    }
+    let shown = SetupPracticeRoute.shown
+    func landed(polished: Bool, waited: Bool = false) -> PracticeTakeEvidence {
+      .delivered(verifiedEditor: "box", copied: false, polished: polished, waitedForModel: waited)
+    }
+    #expect(!take("a", skipped: true, terminal: .failed), "a failed take was timed")
+    #expect(attempt.success == nil)
+    // Missed polish (not ready yet, or too short to polish): the promised success.
+    #expect(take("b", skipped: true, terminal: landed(polished: false, waited: true)))
+    #expect(shown(attempt.state, attempt.result, true) == .workedBasicCleanup)
+    #expect(SetupPracticeState.workedBasicCleanup.canContinue(hasSucceeded: attempt.success != nil))
+    #expect(SetupPracticeState.workedBasicCleanup.isWorked)
+    #expect(SetupPracticeState.workedBasicCleanup.headline == "Dictation worked")
+    // Polish got ready in time: the take was polished, so it is the full success.
+    #expect(take("c", skipped: true, terminal: landed(polished: true)))
+    #expect(shown(attempt.state, attempt.result, true) == .worked)
+    // Polish ran and failed, or crashed mid-request: today's honest copy, even after Skip ahead.
+    #expect(take("d", skipped: true, terminal: landed(polished: false)))
+    #expect(shown(attempt.state, attempt.result, true) == .workedWithoutPolish)
+    // Not skipped ahead: today's honest copy.
+    #expect(take("e", skipped: false, terminal: landed(polished: false, waited: true)))
+    #expect(shown(attempt.state, attempt.result, true) == .workedWithoutPolish)
+    // A take outside the box is not a verified delivery.
+    #expect(
+      !take("f", skipped: true,
+        terminal: .delivered(verifiedEditor: "elsewhere", copied: false, polished: false)))
+  }
+
+  @Test("the Basic cleanup note follows the skipped-ahead model's phase and hides once it is ready")
+  func deferredNoteStages() {
+    typealias P = OnboardingDownloadsPresentation
+    func p(_ prep: P.PolishPreparation, phase: OnboardingDownloadPhase? = .downloading(fraction: 0.4),
+      block: OnboardingDownloadBlock? = nil) -> P {
+      P(
+        speech: .parakeet, speechPhase: .installed, polish: "eg1.mini", polishPhase: phase,
+        polishPreparation: prep, block: block, engineWarm: true, warmFailed: false,
+        microphoneGranted: true, accessibilityGranted: true, downloadsFinished: false,
+        isNetworkSlow: false, isCountingDown: false)
+    }
+    let stage = SetupPracticePolish.deferredStage
+    #expect(stage(p(.downloading)) == .downloading)
+    #expect(stage(p(.queued, phase: .notStarted)) == .downloading)
+    #expect(stage(p(.loading, phase: .installed)) == .starting)
+    #expect(stage(p(.failed, phase: .installed)) == .unavailable)
+    #expect(stage(p(.downloadStopped, phase: .paused)) == .stopped(paused: true))
+    var neverStarted = p(.downloadStopped, phase: .paused)
+    neverStarted.polishResumable = false
+    #expect(
+      stage(neverStarted) == .stopped(paused: false),
+      "an update with nothing to resume pointed to a Resume item the menu does not show")
+    #expect(stage(p(.downloadStopped, phase: .failed(.whisper("x")))) == .stopped(paused: false))
+    #expect(stage(p(.downloadStopped, phase: .notStarted)) == .stopped(paused: false))
+    #expect(
+      stage(p(.waiting, phase: .notStarted, block: .insufficientDisk(neededBytes: 9, freeBytes: 1)))
+        == .stopped(paused: false), "a disk refusal pointed at a download still running")
+    #expect(stage(p(.ready, phase: .installed)) == nil)
+    // Live readiness and a moving transfer beat a saved disk refusal from earlier.
+    let disk = OnboardingDownloadBlock.insufficientDisk(neededBytes: 9, freeBytes: 1)
+    #expect(stage(p(.ready, phase: .installed, block: disk)) == nil, "a ready model kept the stopped note")
+    #expect(stage(p(.downloading, block: disk)) == .downloading)
+    #expect(stage(p(.loading, phase: .installed, block: disk)) == .starting)
+    #expect(SetupPracticePolish.deferred(.downloading).note == nil)
+    #expect(SetupPracticePolish.deferred(.downloading).deferredBody != nil)
+    #expect(SetupPracticePolish.live.deferredBody == nil)
+  }
+}

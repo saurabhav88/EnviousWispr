@@ -137,17 +137,90 @@ struct ImportedTranscriptCommandsTests {
         id: row.id, expectedAttemptID: attempt, analysis: .single, turns: nil))
     #expect(try await coordinator.updateExistingRow(row))
 
+    let base = try #require(coordinator.currentRow(id: row.id))
+    let preview = HistoryPolishCandidate(
+      base: base, text: "Old words, cleaned.", turns: nil, provider: .egOne, model: "eg-1")
     let ticket = try #require(try await coordinator.beginImportedReplacement(for: row.id))
     #expect(
       try await coordinator.commitImportedReplacement(
-        Transcript(text: "old words"), ticket: ticket), "identical text is still a new attempt")
+        Transcript(text: base.text, polishedText: base.polishedText), ticket: ticket),
+      "identical text is still a new attempt")
 
     #expect(
       try await coordinator.mergeImportedSpeakerFields(
         id: row.id, expectedAttemptID: attempt, analysis: .labeled(count: 2), turns: nil)
         == false)
     #expect(try await coordinator.updateExistingRow(row) == false)
+    #expect(try await coordinator.keepHistoryPolish(preview) == false)
     #expect(coordinator.currentRow(id: row.id)?.speakerAnalysis != .labeled(count: 2))
+  }
+
+  @Test("renaming an import saves its title; a late cleanup and Transcribe again keep it (#4611)")
+  func titleRenameSurvivesLaterWrites() async throws {
+    let coordinator = makeCoordinator()
+    let row = importRow()
+    try await coordinator.saveAndShow(row)
+
+    let ticket = try #require(try await coordinator.beginImportedReplacement(for: row.id))
+    #expect(await coordinator.renameTitle(id: row.id, title: "Board call"))
+    #expect(try await coordinator.durableRow(id: row.id)?.customTitle == "Board call")
+
+    // The cleanup still holds the copy from before the rename.
+    #expect(
+      try await coordinator.updateExistingRow(
+        row.withImportResult("Edited.", wasPolished: true, llmProvider: nil, llmModel: nil)))
+    #expect(coordinator.currentRow(id: row.id)?.customTitle == "Board call")
+
+    // A title-only change does not make Transcribe again throw its work away; the cleanup
+    // above changed the text, so take a fresh ticket for the content check.
+    #expect(try await coordinator.commitImportedReplacement(Transcript(text: "x"), ticket: ticket) == false)
+    let fresh = try #require(try await coordinator.beginImportedReplacement(for: row.id))
+    #expect(await coordinator.renameTitle(id: row.id, title: "Board call, final"))
+    #expect(try await coordinator.commitImportedReplacement(Transcript(text: "new words"), ticket: fresh))
+    let saved = try #require(try await coordinator.durableRow(id: row.id))
+    #expect(saved.text == "new words")
+    #expect(saved.customTitle == "Board call, final")
+
+    #expect(await coordinator.renameTitle(id: row.id, title: ""))
+    #expect(coordinator.currentRow(id: row.id)?.customTitle == nil)
+    let dictation = Transcript(text: "spoken")
+    try await coordinator.saveAndShow(dictation)
+    #expect(await coordinator.renameTitle(id: dictation.id, title: "Nope") == false)
+  }
+
+  @Test("Keep new updates both texts while keeping a more recent speaker name and file link")
+  func keepPolishPreservesIndependentEdits() async throws {
+    let coordinator = makeCoordinator()
+    let turn = Turn(
+      id: "0-9", speakerId: "A", startMs: 25, endMs: 400, originalTextRange: 0..<9,
+      granularity: .segment)
+    let row = Transcript(
+      text: "old words", importedFileName: "talk.m4a", speakerAnalysis: .labeled(count: 1),
+      speakerNames: ["A": "Speaker 1"], turns: [turn], sourceBookmark: Data([1]),
+      sourceFingerprint: "v1:1:1:aa")
+    try await coordinator.saveAndShow(row)
+    #expect(
+      await coordinator.renameSpeaker(
+        id: row.id, speakerId: "A", name: "Alex", isMeeting: false) == nil)
+    #expect(
+      try await coordinator.setImportedSource(
+        bookmark: Data([2]), fingerprint: "v1:1:1:aa", for: row.id,
+        expected: ImportedSourceReference(row), confirmedLegacy: false))
+    let updatedTurn = Turn(
+      id: turn.id, speakerId: turn.speakerId, startMs: turn.startMs, endMs: turn.endMs,
+      originalTextRange: turn.originalTextRange, processedText: "Old words.", wasPolished: true,
+      granularity: turn.granularity)
+    let preview = HistoryPolishCandidate(
+      base: row, text: "Old words.", turns: [updatedTurn], provider: .egOne, model: "eg-1")
+
+    #expect(try await coordinator.keepHistoryPolish(preview))
+    let saved = try #require(try await coordinator.durableRow(id: row.id))
+    #expect(saved.polishedText == "Old words.")
+    #expect(saved.text == row.text)
+    #expect(saved.turns == [updatedTurn])
+    #expect(saved.speakerNames == ["A": "Alex"])
+    #expect(saved.speakerNameSources == ["A": .manual])
+    #expect(saved.sourceBookmark == Data([2]))
   }
 
   #if DEBUG

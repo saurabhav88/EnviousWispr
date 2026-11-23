@@ -33,8 +33,8 @@ notice armed `dismissAfter: 4.0` (`WisprBootstrapper.swift:573`), staged through
 `force_auto_stop_unavailable_notice`. Firing both into one take would leave the
 persistent notice underneath the self-clearing one and neither transition legible.
 
-    take 1  cap warning     morph 400x34 -> 400x60, stays
-    take 2  autoStop notice morph 400x34 -> 400x60 -> 400x34, recording still live
+    take 1  cap warning     morph 400x34 -> 400x65, stays
+    take 2  autoStop notice morph 400x34 -> 400x65 -> 400x34, recording still live
 
 **The staged notice is the PRODUCTION closure.** `WisprBootstrapper` installs the
 same value it hands the VAD source, so this proves that notice clearing through
@@ -72,7 +72,11 @@ DEV_DOMAIN = "com.enviouswispr.app.dev"
 CAP_SECONDS = 45.0
 LEAD_SECONDS = 30.0          # so the warning fires 15s into the take
 HOLD_SECONDS = 26.0          # comfortably past the warning, well short of the cap
-MORPH_FROM, MORPH_TO = [400, 34], [400, 60]
+MORPH_FROM, MORPH_TO = [400, 34], [400, 65]
+# #4841 (measured 2026-11-22 on the branch's dev build): the in-panel notice is now a strip on
+# Reading Well (11 pt text, 8 pt padding), so the notice adds 31 pt, not the 26 pt measured
+# before. Capsule and Level Rail are content-sized too now and show the notice as a bubble, so
+# the "fixed 185x92 frame" note below describes the build before #4841.
 
 # **THE PAIR ABOVE BELONGS TO ONE OF THREE APPEARANCES, SO THIS ROW PINS IT.**
 # `PillDefinition.swift` is the authority and makes the widths a closed set:

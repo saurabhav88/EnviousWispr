@@ -158,7 +158,16 @@ struct DesignAtlasSyncTests {
       #expect(
         Self.number(blocks.light[name + "-duration"], unit: "s") == motion.duration,
         "\(key): duration")
-      #expect(blocks.light[name + "-curve"] == curves[motion.curve], "\(key): curve")
+      // A timingCurve token is written as CSS cubic-bezier with its four DESIGN.md points.
+      let expectedCurve =
+        motion.curve == "timingCurve"
+        ? motion.points.map { points in
+          "cubic-bezier("
+            + points.map { $0 == $0.rounded() ? String(Int($0)) : String($0) }
+            .joined(separator: ", ") + ")"
+        }
+        : curves[motion.curve]
+      #expect(blocks.light[name + "-curve"] == expectedCurve, "\(key): curve")
     }
 
     #expect(Set(blocks.light.keys) == expectedLight, "light block names differ from DESIGN.md")

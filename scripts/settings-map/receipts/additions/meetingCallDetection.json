@@ -81,10 +81,10 @@
    ]
   },
   "es": {
-   "title": "cuando empieza una llamada",
    "words": [
     "detección de llamadas",
-    "aviso de grabación"
+    "aviso de grabación",
+    "cuando empieza una llamada"
    ],
    "phrases": [
     "preguntarme si quiero grabar la llamada",
@@ -114,7 +114,6 @@
    ]
   },
   "fr": {
-   "title": "au début d’un appel",
    "words": [
     "détection des appels",
     "enregistrement automatique"

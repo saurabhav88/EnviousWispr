@@ -38,7 +38,7 @@ struct SettingsNavigationProducerTests {
       file: views + "Components/AccessibilityWarningBanner.swift", callee: "request",
       owner: "button:Fix Now", argument: ".appSettings(.permissions)"),
     Route(
-      "7 History Paste with Accessibility denied", file: views + "Main/TranscriptDetailView.swift",
+      "7 History Paste with Accessibility denied", file: views + "Main/HistoryDictationCard.swift",
       callee: "request", owner: "else:permissions.accessibilityGranted", argument: ".appSettings(.permissions)"),
     Route(
       "8 Quick Add shortcut callout", file: views + "Settings/QuickAddTeachingSection.swift",
@@ -52,13 +52,24 @@ struct SettingsNavigationProducerTests {
     Route(
       "10 menu Start Meeting Recording before the explainer",
       file: app + "WisprBootstrapper.swift", callee: "request", owner: "binding:meetingStartFlow",
-      argument: ".meetings(.general)"),
+      within: "label:showMeetingPage", argument: ".meetings(.general)"),
+    // #4578: a menu Start with no speech engine downloaded opens EnviousMeet's Models tab, where
+    // an engine is set up (when no call card can show the refusal itself).
+    Route(
+      "10b menu Start Meeting Recording with no speech engine",
+      file: app + "WisprBootstrapper.swift", callee: "request", owner: "binding:meetingStartFlow",
+      within: "label:showNoTranscriptionEngine", argument: ".meetings(.models)"),
     // #4012 D6: the call panel's Open settings (tips, needs attention) opens EnviousMeet's Call
     // Apps tab (#4058), where its turn-off-an-app tips point.
     Route(
       "11 call panel Open settings",
       file: app + "WisprBootstrapper.swift", callee: "request", owner: "binding:callDetection",
       within: "label:showMeetingPage", argument: ".meetings(.callApps)"),
+    // #4578: the "No speech engine downloaded" call card's Open Settings opens Models.
+    Route(
+      "11b call card Open Settings with no speech engine",
+      file: app + "WisprBootstrapper.swift", callee: "request", owner: "binding:callDetection",
+      within: "label:showMeetingModels", argument: ".meetings(.models)"),
     // #4232: Your notes are ready's Open shows that meeting in History, like the menu's Show in
     // History.
     Route(
@@ -297,10 +308,18 @@ struct SettingsNavigationProducerTests {
             binding.accessorBlock == nil
               ? "binding:\(name.identifier.text)" : "var:\(name.identifier.text)")
         } else if let call = parent.as(FunctionCallExprSyntax.self),
-          call.calledExpression.trimmedDescription == "Button",
-          let title = call.arguments.first?.expression.as(StringLiteralExprSyntax.self)
+          call.calledExpression.trimmedDescription == "Button"
         {
-          owners.append("button:\(title.segments.trimmedDescription)")
+          // `Button("Fix Now")`, or the branded `Button { … } label: { EnviousButtonLabel("Fix Now") }`.
+          let direct = call.arguments.first?.expression.as(StringLiteralExprSyntax.self)
+          let label = call.additionalTrailingClosures.first { $0.label.text == "label" }?.closure
+          let branded = label?.statements.first?.item.as(FunctionCallExprSyntax.self)
+          let brandedTitle =
+            branded?.calledExpression.trimmedDescription == "EnviousButtonLabel"
+            ? branded?.arguments.first?.expression.as(StringLiteralExprSyntax.self) : nil
+          if let title = direct ?? brandedTitle {
+            owners.append("button:\(title.segments.trimmedDescription)")
+          }
         } else if let ifExpr = parent.as(IfExprSyntax.self) {
           let condition = ifExpr.conditions.trimmedDescription
           if let elseBody = ifExpr.elseBody, Syntax(elseBody) == child {

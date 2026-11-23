@@ -1,0 +1,84 @@
+{
+  "unloadPolishModel.never": {
+    "language": "lv",
+    "title": "nekad",
+    "words": [
+      "teksta uzlabošanas modelis vienmēr atmiņā",
+      "neizlādēt teksta uzlabošanas modeli"
+    ],
+    "phrases": [
+      "paturēt teksta uzlabošanas modeli atmiņā arī tad, kad nediktēju"
+    ]
+  },
+  "unloadPolishModel.immediately": {
+    "language": "lv",
+    "title": "uzreiz (pēc aptuveni 10 sekundēm)",
+    "words": [
+      "10 sekundes",
+      "teksta uzlabošanas modelis 10 sek"
+    ],
+    "phrases": [
+      "atbrīvot teksta uzlabošanas modeļa aizņemto atmiņu aptuveni 10 sekundes pēc modeļa pēdējās lietošanas"
+    ]
+  },
+  "unloadPolishModel.twoMinutes": {
+    "language": "lv",
+    "title": "pēc 2 minūtēm",
+    "words": [
+      "2 min",
+      "divas minūtes",
+      "teksta uzlabošanas modelis 2 min"
+    ],
+    "phrases": [
+      "atbrīvot teksta uzlabošanas modeļa aizņemto atmiņu pēc 2 minūtēm bez diktēšanas"
+    ]
+  },
+  "unloadPolishModel.fiveMinutes": {
+    "language": "lv",
+    "title": "pēc 5 minūtēm",
+    "words": [
+      "5 min",
+      "piecas minūtes",
+      "teksta uzlabošanas modelis 5 min"
+    ],
+    "phrases": [
+      "atbrīvot teksta uzlabošanas modeļa aizņemto atmiņu pēc 5 minūtēm bez diktēšanas"
+    ]
+  },
+  "unloadPolishModel.tenMinutes": {
+    "language": "lv",
+    "title": "pēc 10 minūtēm",
+    "words": [
+      "10 min",
+      "desmit minūtes",
+      "teksta uzlabošanas modelis 10 min"
+    ],
+    "phrases": [
+      "atbrīvot teksta uzlabošanas modeļa aizņemto atmiņu pēc 10 minūtēm bez diktēšanas"
+    ]
+  },
+  "unloadPolishModel.fifteenMinutes": {
+    "language": "lv",
+    "title": "pēc 15 minūtēm",
+    "words": [
+      "15 min",
+      "ceturtdaļstunda",
+      "teksta uzlabošanas modelis 15 min"
+    ],
+    "phrases": [
+      "atbrīvot teksta uzlabošanas modeļa aizņemto atmiņu pēc 15 minūtēm bez diktēšanas"
+    ]
+  },
+  "unloadPolishModel.oneHour": {
+    "language": "lv",
+    "title": "pēc 1 stundas",
+    "words": [
+      "1 stunda",
+      "60 minūtes",
+      "teksta uzlabošanas modelis 1 stunda"
+    ],
+    "phrases": [
+      "atbrīvot teksta uzlabošanas modeļa aizņemto atmiņu pēc stundas bez diktēšanas"
+    ]
+  }
+}

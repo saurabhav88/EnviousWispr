@@ -112,10 +112,10 @@ struct HistoryDiaryTests {
 
   @Test("day summaries and the newer-version line read one whole sentence per count")
   func countSentences() {
-    #expect(HistoryDiaryLayout.daySummary(tab: .dictations, count: 1) == "1 dictation")
+    #expect(HistoryDiaryLayout.daySummary(tab: .dictations, count: 1) == nil)
     #expect(HistoryDiaryLayout.daySummary(tab: .dictations, count: 1200) == "1200 dictations")
     #expect(HistoryDiaryLayout.daySummary(tab: .transcripts, count: 2) == "2 transcripts")
-    #expect(HistoryDiaryLayout.daySummary(tab: .meetings, count: 1) == "1 meeting")
+    #expect(HistoryDiaryLayout.daySummary(tab: .meetings, count: 1) == nil)
     #expect(HistoryDiaryLayout.newerFormatLine(0) == nil)
     #expect(
       HistoryDiaryLayout.newerFormatLine(1)
@@ -147,6 +147,9 @@ struct HistoryDiaryTests {
     let picked = HistoryDateFilter.day(day(-3).addingTimeInterval(5000))
       .interval(now: Self.now, calendar: Self.calendar)
     #expect(picked == DateInterval(start: day(-3), end: day(-2)))
+    #expect(
+      HistoryDateFilter.interval(from: day(-2), through: day(-21), calendar: Self.calendar)
+        == DateInterval(start: day(-21), end: day(-1)))
   }
 
   @Test("the date button names Any time, a quick pick, one day or a range")
@@ -181,17 +184,38 @@ struct HistoryDiaryTests {
     #expect(shifted.compactMap { $0 }.count == 30)
   }
 
-  @Test("the App picker lists All apps, then apps by count, then Unknown app")
+  @Test("the App picker lists Any app, then apps by count, then Unknown app")
   func appOptions() {
+    // The catalog's per-app counts; nil and "" are both a dictation with no recorded app.
     let options = HistoryFilterLabels.appOptions(
-      ["Slack", "Mail", "Slack", nil, "", "Notes", "Mail", "Slack"])
+      counts: [("Slack", 3), ("Mail", 2), (nil, 1), ("", 1), ("Notes", 1)])
     #expect(
       options == [
         .init(filter: .all, count: 8), .init(filter: .named("Slack"), count: 3),
         .init(filter: .named("Mail"), count: 2), .init(filter: .named("Notes"), count: 1),
         .init(filter: .unknown, count: 2),
       ])
-    #expect(HistoryFilterLabels.appOptions(["Slack"]).contains { $0.filter == .unknown } == false)
+    #expect(HistoryFilterLabels.appOptions(counts: [("Slack", 1)]).contains { $0.filter == .unknown } == false)
+  }
+
+  @MainActor
+  @Test("app labels use Codex's name, macOS app names, and readable fallbacks")
+  func appLabels() {
+    #expect(HistoryFilterLabels.app(.named("com.openai.codex")) == "Codex")
+    #expect(
+      HistoryAppName.label(for: "com.openai.codex", installedName: { _ in "ChatGPT" }) == "Codex")
+    #expect(
+      HistoryAppName.label(for: "com.apple.iWork.Pages", installedName: { _ in "Pages" }) == "Pages"
+    )
+    #expect(
+      HistoryAppName.label(for: "us.zoom.xos", installedName: { _ in "zoom.us" }) == "zoom.us")
+    #expect(
+      HistoryAppName.label(for: "com.example.visual-studio-code", installedName: { _ in nil })
+        == "Visual Studio Code")
+    #expect(
+      HistoryAppName.label(for: "Google Chrome", installedName: { _ in nil }) == "Google Chrome")
+    let options = HistoryFilterLabels.appOptions(counts: [("com.openai.codex", 1), ("Codex", 1)])
+    #expect(Set(options.map(\.filter)) == [.all, .named("com.openai.codex"), .named("Codex")])
   }
 
   @Test("help leaves out Polish again and states the real recording retention")
@@ -210,7 +234,8 @@ struct HistoryDiaryTests {
 
   @Test("a day of thousands of items on page one still counts every one of them")
   func largeDayCountsAll() {
-    let items = (0..<5_000).map { Self.item(daysAgo: 0, minutes: 900 - $0 / 10) }
+    let items =
+      (0..<5_000).map { Self.item(daysAgo: 0, minutes: 900 - $0 / 10) }
       + [Self.item(daysAgo: 1, minutes: 10)]
     let days = HistoryDiaryLayout.days(items: items, boundary: 30, calendar: Self.calendar)
     #expect(days.count == 1)
@@ -237,30 +262,39 @@ struct HistoryDiaryTests {
     #expect(HistoryDiaryLayout.anchorID(for: nil, in: items, calendar: Self.calendar) == nil)
   }
 
-  @Test("opening the live meeting under a filter that hides it clears the filters; a listed one keeps them")
+  @Test(
+    "opening the live meeting under a filter that hides it clears the filters; a listed one keeps them"
+  )
   func openingUnderAHidingFilter() async throws {
     let coordinator = TranscriptCoordinator(
       store: TranscriptStore(
         directory: TestTemporaryDirectory.url
           .appendingPathComponent("ew-3147-open-\(UUID().uuidString)", isDirectory: true)))
-    let meetingID = UUID()
-    coordinator.setTranscriptsForTesting([Transcript(text: "standup", meetingID: meetingID)])
-    let id = HistoryItemID.meeting(meetingID)
+    let record = MeetingRecord(engine: .parakeet, trackStatus: [.microphone: .captured])
+    coordinator.meetingRecord = { $0 == record.id ? record : nil }
+    let id = HistoryItemID.meeting(record.id)
 
     var filtered = HistoryTabState()
     let calendar = Calendar.current
     let lastWeek = calendar.date(byAdding: .day, value: -7, to: calendar.startOfDay(for: Date()))!
     filtered.dateInterval = DateInterval(start: lastWeek, duration: 86_400)
+    #expect(
+      coordinator.browser.isListedMeeting(record.id, under: HistoryTabState()),
+      "precondition: unfiltered, the live meeting is listed")
+    #expect(
+      coordinator.browser.isListedMeeting(record.id, under: filtered) == false,
+      "precondition: the date filter hides today's meeting")
     filtered.query = "budget"
-    coordinator.setHistoryState(filtered, for: .meetings)
-    let listed = coordinator.matchingHistoryItems(in: .meetings).contains { $0.id == id }
-    #expect(listed == false, "precondition: the filter hides today's meeting")
+    coordinator.browser.setHistoryState(filtered, for: .meetings)
+    let listed = coordinator.browser.isListedMeeting(
+      record.id, under: coordinator.browser.requestedHistoryState(for: .meetings))
+    #expect(listed == false, "precondition: the filter and search hide today's meeting")
 
     let opened = HistoryDiaryLayout.opening(
-      id, in: coordinator.historyState(for: .meetings), isListed: listed)
-    coordinator.setHistoryState(opened, for: .meetings)
-    #expect(coordinator.historyState(for: .meetings).openItemID == id)
-    #expect(coordinator.historyState(for: .meetings).dateInterval == nil)
+      id, in: coordinator.browser.requestedHistoryState(for: .meetings), isListed: listed)
+    coordinator.browser.setHistoryState(opened, for: .meetings)
+    #expect(coordinator.browser.requestedHistoryState(for: .meetings).openItemID == id)
+    #expect(coordinator.browser.requestedHistoryState(for: .meetings).dateInterval == nil)
 
     var kept = HistoryTabState()
     kept.query = "standup"
@@ -279,13 +313,13 @@ struct HistoryDiaryTests {
     let dictation = Transcript(text: "a dictation")
     coordinator.setTranscriptsForTesting([transcript, dictation])
 
-    var state = coordinator.historyState(for: .transcripts)
+    var state = coordinator.browser.requestedHistoryState(for: .transcripts)
     state.openItemID = .transcript(transcript.id)
-    coordinator.setHistoryState(state, for: .transcripts)
-    coordinator.selectHistoryTab(.dictations)
-    coordinator.selectHistoryTab(.transcripts)
+    coordinator.browser.setHistoryState(state, for: .transcripts)
+    coordinator.browser.selectHistoryTab(.dictations)
+    coordinator.browser.selectHistoryTab(.transcripts)
 
-    #expect(coordinator.historyState(for: .transcripts).openItemID == .transcript(transcript.id))
-    #expect(coordinator.historyState(for: .dictations).openItemID == nil)
+    #expect(coordinator.browser.requestedHistoryState(for: .transcripts).openItemID == .transcript(transcript.id))
+    #expect(coordinator.browser.requestedHistoryState(for: .dictations).openItemID == nil)
   }
 }

@@ -1,0 +1,11 @@
+{
+  "language": "sk",
+  "title": "uvoľniť model na úpravu textu z pamäte po",
+  "words": [
+    "EG-1 v pamäti",
+    "S1-mini v pamäti"
+  ],
+  "phrases": [
+    "ako dlho zostane model na úpravu textu v pamäti, keď prestanem diktovať"
+  ]
+}

@@ -1,0 +1,85 @@
+{
+  "unloadPolishModel.never": {
+    "language": "sl",
+    "title": "nikoli",
+    "words": [
+      "AI Polish nikoli",
+      "model za izboljšanje besedila vedno naložen"
+    ],
+    "phrases": [
+      "naj model za izboljšanje besedila ostane v pomnilniku tudi, ko ne narekujem"
+    ]
+  },
+  "unloadPolishModel.immediately": {
+    "language": "sl",
+    "title": "takoj (po približno 10 sekundah)",
+    "words": [
+      "AI Polish takoj",
+      "izboljšanje besedila 10 sekund"
+    ],
+    "phrases": [
+      "sprosti pomnilnik modela za izboljšanje besedila po približno 10 sekundah neuporabe"
+    ]
+  },
+  "unloadPolishModel.twoMinutes": {
+    "language": "sl",
+    "title": "po 2 minutah",
+    "words": [
+      "AI Polish 2 min",
+      "izboljšanje besedila 2 minuti",
+      "izboljšanje besedila dve minuti"
+    ],
+    "phrases": [
+      "sprosti pomnilnik modela za izboljšanje besedila po 2 minutah neuporabe"
+    ]
+  },
+  "unloadPolishModel.fiveMinutes": {
+    "language": "sl",
+    "title": "po 5 minutah",
+    "words": [
+      "AI Polish 5 min",
+      "izboljšanje besedila 5 minut",
+      "izboljšanje besedila pet minut"
+    ],
+    "phrases": [
+      "sprosti pomnilnik modela za izboljšanje besedila po 5 minutah neuporabe"
+    ]
+  },
+  "unloadPolishModel.tenMinutes": {
+    "language": "sl",
+    "title": "po 10 minutah",
+    "words": [
+      "AI Polish 10 min",
+      "izboljšanje besedila 10 minut",
+      "izboljšanje besedila deset minut"
+    ],
+    "phrases": [
+      "sprosti pomnilnik modela za izboljšanje besedila po 10 minutah neuporabe"
+    ]
+  },
+  "unloadPolishModel.fifteenMinutes": {
+    "language": "sl",
+    "title": "po 15 minutah",
+    "words": [
+      "AI Polish 15 min",
+      "izboljšanje besedila 15 minut",
+      "izboljšanje besedila petnajst minut",
+      "izboljšanje besedila četrt ure"
+    ],
+    "phrases": [
+      "sprosti pomnilnik modela za izboljšanje besedila po 15 minutah neuporabe"
+    ]
+  },
+  "unloadPolishModel.oneHour": {
+    "language": "sl",
+    "title": "po 1 uri",
+    "words": [
+      "AI Polish 1 ura",
+      "izboljšanje besedila ena ura",
+      "izboljšanje besedila 60 minut"
+    ],
+    "phrases": [
+      "sprosti pomnilnik modela za izboljšanje besedila po eni uri neuporabe"
+    ]
+  }
+}

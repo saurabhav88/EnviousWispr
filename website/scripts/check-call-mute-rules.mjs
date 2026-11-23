@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// Self-mute rules check (#4248, #4013 reading resilience). Runs from `npm run check:help` after
+// Self-mute rules check (#4248, #4013 reading resilience). Runs from `npm run check:site` after
 // `npm run build`.
 //
 // The app downloads public/meet/call-mute-rules.json at most once a day and validates it with

@@ -198,7 +198,7 @@
     /// found through the meeting's transcript id. Stored turns (every turn, echo flagged) and
     /// the default visible projection are reported separately; `includeText` adds the stored
     /// text when it is at most `maxTextBytes`.
-    func get(_ args: [String: Any]) -> Result {
+    func get(_ args: [String: Any]) async -> Result {
       let meetingID: UUID
       switch Self.meetingID(
         args, allowed: ["meetingID", "turnOffset", "turnLimit", "includeText"])
@@ -234,7 +234,12 @@
         return .failure(.notFound, "no meeting has that id")
       }
       var reply: [String: Any] = ["meeting": summary(record, coordinator: coordinator)]
-      guard let row = transcripts.currentRow(id: record.transcriptID) else {
+      let saved: Transcript?
+      do { saved = try await transcripts.savedRowForDiagnostics(id: record.transcriptID) }
+      catch { return .failure(.catalogUnavailable, "could not read the meeting's saved transcript") }
+      guard coordinator.record(id: meetingID)?.committedTranscriptGeneration == record.committedTranscriptGeneration
+      else { return .failure(.catalogUnavailable, "the meeting transcript changed during the read") }
+      guard let row = saved else {
         reply["transcript"] = NSNull()
         return .ok(reply)
       }
@@ -244,10 +249,10 @@
           .tooLarge, "the stored text is \(textBytes) bytes; page the turns instead")
       }
       // #3973 C2: the row's own generation's echo lines (a kept row while a rerun runs).
-      let echo = transcripts.meetingEchoTurnIDs(of: row) ?? []
+      let echo = transcripts.meetingPresenter.meetingEchoTurnIDs(of: row) ?? []
       let turns = row.turns ?? []
       let page = turns.dropFirst(offset).prefix(limit)
-      let projection = transcripts.meetingProjection(of: row)
+      let projection = transcripts.meetingPresenter.meetingProjection(of: row)
       var projected: [String: Any]
       switch projection {
       case .visible(let visible, _):
@@ -701,7 +706,7 @@
       case .notForSummaries: return "notForSummaries"
       case .notReady: return "notReady"
       case .ollamaTooOld: return "ollamaTooOld"
-      case .tooLong: return "tooLong"
+      case .modelLimit(let limit): return limit.reason == .tooLong ? "tooLong" : "truncated"
       case .providerFailed: return "providerFailed"
       case .notesUnreadable: return "notesUnreadable"
       case .storageFailed: return "storageFailed"
@@ -771,6 +776,7 @@
       case .notIdle: return ["outcome": "notIdle"]
       case .setupRequired: return ["outcome": "setupRequired"]
       case .needsAttention: return ["outcome": "needsAttention"]
+      case .noTranscriptionEngine: return ["outcome": "noTranscriptionEngine"]
       case .started(let start):
         switch start {
         case .recording(let id): return ["outcome": "recording", "meetingID": id.uuidString]
@@ -805,6 +811,7 @@
       switch notice {
       case .microphoneDenied: return "microphoneDenied"
       case .microphoneUnavailable: return "microphoneUnavailable"
+      case .microphoneNotResponding: return "microphoneNotResponding"
       case .finishDictationFirst: return "finishDictationFirst"
       case .lowDisk: return "lowDisk"
       case .stoppedLowDisk: return "stoppedLowDisk"

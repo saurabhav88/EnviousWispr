@@ -31,4 +31,4 @@ EnviousWispr shows what macOS reported at the last check on the **AI Polish** pa
 
 ### Which on-device option should I use on an older Mac?
 
-If your Mac cannot run macOS 26, pick **EG-1** or **S1-mini** under **On this Mac**. Both polish on your Mac without Apple Intelligence, and neither needs a key. EG-1 is our own model and is marked **Recommended**. S1-mini by Superwhisper is smaller.
+If your Mac cannot run macOS 26, pick **EG-1** or **S1-mini** under **On this Mac**. Both polish on your Mac without Apple Intelligence, and neither needs a key. EG-1 is our own model, marked **Recommended**, in three sizes. S1-mini by Superwhisper is the smallest built-in download.

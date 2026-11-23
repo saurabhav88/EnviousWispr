@@ -4,13 +4,10 @@ import Testing
 
 @testable import EnviousWisprAudio
 
-// #1317 §3.1 — the app-side mid-recording all-zero harness-glitch detector.
-// Streaming, buffer-by-buffer, so these boundary cases matter twice: once for
-// the classification rules themselves, and once for the EQUIVALENCE claim
-// that a streaming classification agrees with a one-shot classification made
-// after the fact over the same concatenated samples — the plan's split-buffer
-// tile test (a 640-sample tile straddling two proxy callbacks must not
-// classify differently than the same audio delivered in one buffer).
+// #1317 / #4841 — the per-take exact-zero counter. Observation only since #4841:
+// it feeds the silent-mic notice and the DEBUG zero-prefix diagnostic; exact
+// zeros never end a take. Streaming, buffer-by-buffer, so the counts must not
+// depend on where buffer boundaries fall.
 @Suite("Dead-air streaming detector (#1317)")
 struct DeadAirStreamingDetectorTests {
 
@@ -37,128 +34,43 @@ struct DeadAirStreamingDetectorTests {
     return detector
   }
 
-  // MARK: - allZeroFromStart
+  // MARK: - Trailing exact-zero run (#4841)
 
-  @Test("every sample exactly zero, at threshold → allZeroFromStart")
-  func allZeroFromStartAtThreshold() {
+  @Test("the trailing run counts consecutive exact zeros and resets on any non-zero sample")
+  func trailingRunCountsAndResets() {
+    var samples = [Float](repeating: 0, count: 300)
+    samples.append(0.01)
+    samples.append(contentsOf: [Float](repeating: 0, count: 120))
+    let detector = ingestWhole(samples)
+    #expect(detector.totalSampleCount == 421)
+    #expect(detector.consecutiveExactZeroSuffix == 120)
+  }
+
+  @Test("tiny non-zero noise is not an exact zero, so the run stays at zero")
+  func tinyNoiseIsNotExactZero() {
+    let detector = ingestWhole([Float](repeating: 1e-7, count: threshold))
+    #expect(detector.consecutiveExactZeroSuffix == 0)
+    #expect(detector.totalSampleCount == threshold)
+  }
+
+  @Test("an all-zero capture's run equals its whole length")
+  func allZeroRunEqualsLength() {
     let detector = ingestWhole([Float](repeating: 0, count: threshold))
-    #expect(detector.isAllZeroFromStart(ceilingSamples: threshold))
-    #expect(!detector.isBecameZeroMidCapture)
+    #expect(detector.consecutiveExactZeroSuffix == detector.totalSampleCount)
   }
 
-  @Test("every sample exactly zero, BELOW threshold → not yet confident")
-  func allZeroBelowThresholdNotYetConfident() {
-    let detector = ingestWhole([Float](repeating: 0, count: threshold - 1))
-    #expect(!detector.isAllZeroFromStart(ceilingSamples: threshold))
-  }
-
-  // MARK: - No false alarm on genuine quiet-room noise
-
-  /// The discriminator is exact-zero, not amplitude — ANY non-zero noise,
-  /// however tiny, must never read as the harness glitch. Uses the same
-  /// uniform-0.001 shape `RecordingSessionKernelDeadAirFloorTests` uses for
-  /// "dead air but not silence" — below every `RawAudioDeadAirClassifier`
-  /// floor, yet not literally zero.
-  @Test("uniform tiny non-zero noise never triggers allZeroFromStart")
-  func quietRoomNoiseNeverFalseAlarms() {
-    let detector = ingestWhole([Float](repeating: 0.001, count: threshold * 2))
-    #expect(!detector.isAllZeroFromStart(ceilingSamples: threshold))
-    #expect(!detector.isBecameZeroMidCapture)
-  }
-
-  @Test("a single non-zero sample among zeros breaks allZeroFromStart")
-  func oneNonZeroSampleBreaksAllZeroFromStart() {
-    var samples = [Float](repeating: 0, count: threshold)
-    samples[threshold / 2] = 0.01
-    let detector = ingestWhole(samples)
-    #expect(!detector.isAllZeroFromStart(ceilingSamples: threshold))
-  }
-
-  // MARK: - becameZeroMidCapture
-
-  @Test("meaningful signal then a sustained zero suffix → becameZeroMidCapture")
-  func meaningfulThenZeroBecomesMidCapture() {
-    var samples = [Float](repeating: 0.1, count: 4_000)  // clearly above every floor
-    samples.append(contentsOf: [Float](repeating: 0, count: threshold))
-    let detector = ingestWhole(samples)
-    #expect(detector.meaningfulSignalSeen)
-    #expect(detector.isBecameZeroMidCapture)
-    #expect(!detector.isAllZeroFromStart(ceilingSamples: threshold))
-  }
-
-  @Test("meaningful signal then a zero suffix BELOW threshold → not yet confident")
-  func meaningfulThenShortZeroSuffixNotYetConfident() {
-    var samples = [Float](repeating: 0.1, count: 4_000)
-    samples.append(contentsOf: [Float](repeating: 0, count: threshold - 1))
-    let detector = ingestWhole(samples)
-    #expect(detector.meaningfulSignalSeen)
-    #expect(!detector.isBecameZeroMidCapture)
-  }
-
-  @Test("dead-air-floor noise then zero — no meaningful signal, so no becameZeroMidCapture")
-  func deadAirNoiseThenZeroIsNotBecameZeroMidCapture() {
-    var samples = [Float](repeating: 0.001, count: 4_000)  // below every dead-air floor
-    samples.append(contentsOf: [Float](repeating: 0, count: threshold))
-    let detector = ingestWhole(samples)
-    #expect(!detector.meaningfulSignalSeen)
-    #expect(!detector.isBecameZeroMidCapture)
-  }
-
-  @Test("meaningful signal that never goes to zero triggers neither mode")
-  func continuousSignalTriggersNeitherMode() {
-    let detector = ingestWhole([Float](repeating: 0.1, count: threshold * 2))
-    #expect(detector.meaningfulSignalSeen)
-    #expect(!detector.isAllZeroFromStart(ceilingSamples: threshold))
-    #expect(!detector.isBecameZeroMidCapture)
-  }
-
-  // MARK: - Split-buffer-boundary equivalence (the plan's mandatory test)
-
-  /// A capture-start-aligned 640-sample tile split across two buffer
-  /// callbacks must classify identically to the same audio delivered whole.
-  /// The burst is NOT tile-aligned (starts at 3_700, not a multiple of 640)
-  /// so the buffer split at `chunkSize: 500` guarantees at least one 640
-  /// tile straddles two `ingest` calls.
-  @Test("a tile split across two buffers agrees with one-shot classification")
-  func splitBufferTileAgreesWithWholeArray() {
-    var samples = [Float](repeating: 0, count: threshold)
-    // A burst clearing every RawAudioDeadAirClassifier floor, straddling
-    // multiple non-tile-aligned buffer boundaries when chunked at 500.
-    for i in 3_700..<4_340 { samples[i] = 0.05 }
-    samples.append(contentsOf: [Float](repeating: 0, count: threshold))
-
-    let whole = ingestWhole(samples)
-    let chunked = ingestChunked(samples, chunkSize: 500)
-
-    #expect(whole.meaningfulSignalSeen == chunked.meaningfulSignalSeen)
-    #expect(
-      whole.isAllZeroFromStart(ceilingSamples: threshold)
-        == chunked.isAllZeroFromStart(ceilingSamples: threshold))
-    #expect(whole.isBecameZeroMidCapture == chunked.isBecameZeroMidCapture)
-    #expect(whole.totalSampleCount == chunked.totalSampleCount)
-    #expect(whole.consecutiveExactZeroSuffix == chunked.consecutiveExactZeroSuffix)
-
-    // And both streaming results agree with a direct one-shot classification
-    // of the meaningful prefix via the shared authority the plan requires
-    // streaming stats to match (§3.1).
-    let prefix = Array(samples[0..<4_340])
-    let prefixPeak = prefix.reduce(Float(0)) { max($0, abs($1)) }
-    let prefixIsDeadAir = RawAudioDeadAirClassifier.isDeadAir(prefix, peak: prefixPeak)
-    #expect(whole.meaningfulSignalSeen == !prefixIsDeadAir)
-  }
-
-  /// Same equivalence claim, but for audio that never crosses the
-  /// meaningful-signal floor at all — the all-dead-air whole capture must
-  /// also agree at every chunk size.
-  @Test("split-buffer equivalence holds for a whole all-zero capture too")
-  func splitBufferAgreesForAllZeroCapture() {
-    let samples = [Float](repeating: 0, count: threshold + 500)
-    let whole = ingestWhole(samples)
-    let chunked = ingestChunked(samples, chunkSize: 333)  // deliberately not a 640 divisor
-    #expect(
-      whole.isAllZeroFromStart(ceilingSamples: threshold)
-        == chunked.isAllZeroFromStart(ceilingSamples: threshold))
-    #expect(whole.isAllZeroFromStart(ceilingSamples: threshold))
+  @Test("counts are identical whole vs chunked across a run that straddles a buffer boundary")
+  func countsSurviveChunking() {
+    var samples = [Float](repeating: 0.05, count: 1_000)
+    samples.append(contentsOf: [Float](repeating: 0, count: 2_500))
+    for chunk in [1, 7, 333, 640, 1_001, 4_096] {
+      let whole = ingestWhole(samples)
+      let chunked = ingestChunked(samples, chunkSize: chunk)
+      #expect(chunked.totalSampleCount == whole.totalSampleCount, "chunk \(chunk)")
+      #expect(
+        chunked.consecutiveExactZeroSuffix == whole.consecutiveExactZeroSuffix, "chunk \(chunk)")
+      #expect(whole.consecutiveExactZeroSuffix == 2_500)
+    }
   }
 
   // MARK: - RawAudioDeadAirClassifier.isDeadAir generic-slice equivalence
@@ -210,47 +122,6 @@ struct DeadAirStreamingDetectorTests {
     #expect(!arrayResult)  // the loud window must be found, not silently missed
   }
 
-  // MARK: - Caller-supplied ceiling (#1788)
-  //
-  // The ceiling is a PARAMETER so the mid-take owner can raise it for a
-  // transport that legitimately needs longer, without the detector knowing
-  // anything about transports. These tests pin the boundary at an arbitrary
-  // custom ceiling so they cannot silently pass just because it happens to
-  // equal `minimumTranscriptionSamples`.
-
-  @Test("custom ceiling: below it, all-zero is not yet confident")
-  func customCeilingBelowIsNotConfident() {
-    let ceiling = 48_000
-    let detector = ingestWhole([Float](repeating: 0, count: ceiling - 1))
-    #expect(!detector.isAllZeroFromStart(ceilingSamples: ceiling))
-    // ...and the SAME samples DO trip the shipping 1.0s ceiling, proving the
-    // parameter is what moved the verdict rather than the sample shape.
-    #expect(detector.isAllZeroFromStart(ceilingSamples: threshold))
-  }
-
-  @Test("custom ceiling: exactly at it, all-zero fires")
-  func customCeilingAtFires() {
-    let ceiling = 48_000
-    let detector = ingestWhole([Float](repeating: 0, count: ceiling))
-    #expect(detector.isAllZeroFromStart(ceilingSamples: ceiling))
-  }
-
-  /// THE case the #1788 fix exists to protect: a link that wakes up late.
-  /// Once any real sample arrives, all-zero-from-start must be false FOREVER
-  /// for that generation, at every ceiling — otherwise a woken microphone
-  /// could still be aborted later in the same take.
-  @Test("a late wake makes all-zero-from-start permanently false at every ceiling")
-  func lateWakeIsPermanentlyNotAllZero() {
-    let ceiling = 48_000
-    var samples = [Float](repeating: 0, count: ceiling - 1)
-    samples.append(0.05)  // the link comes up
-    samples.append(contentsOf: [Float](repeating: 0, count: ceiling * 2))  // then quiet again
-    let detector = ingestWhole(samples)
-    #expect(!detector.isAllZeroFromStart(ceilingSamples: threshold))
-    #expect(!detector.isAllZeroFromStart(ceilingSamples: ceiling))
-    #expect(!detector.isAllZeroFromStart(ceilingSamples: 1))
-  }
-
   // MARK: - Zero-prefix diagnostic (#1788)
 
   @Test("zero prefix is nil while the capture is still entirely zeros")
@@ -292,33 +163,5 @@ struct DeadAirStreamingDetectorTests {
     let chunked = ingestChunked(samples, chunkSize: 513)  // deliberately not tile-aligned
     #expect(whole.zeroPrefixSampleCount == chunked.zeroPrefixSampleCount)
     #expect(whole.zeroPrefixSampleCount == 7_777)
-  }
-
-  // MARK: - #1788 sibling-threshold freeze
-
-  /// THIS TEST EXISTS TO STOP A FUTURE MAINTAINER "HARMONISING" THE TWO THRESHOLDS.
-  /// #1788 raises the all-zero-FROM-START ceiling on Bluetooth to 3.0s, and the two
-  /// predicates now read as inconsistent — one takes a ceiling parameter, the other
-  /// keeps a hard 1.0s. That is deliberate and they answer different questions:
-  /// `isAllZeroFromStart` asks "did audio ever start" (Bluetooth negotiates, so it
-  /// needs longer), while `isBecameZeroMidCapture` asks "did working audio DIE"
-  /// (nothing negotiates mid-stream, so the longer bar would only delay a real
-  /// failure the user is already living through).
-  @Test("#1788: becameZeroMidCapture keeps 1.0s and ignores the all-zero ceiling")
-  func becameZeroMidCaptureIsNotAffectedByTheCeiling() {
-    var samples: [Float] = [0.5, 0.5, 0.5]  // meaningful signal first
-    samples.append(
-      contentsOf: [Float](repeating: 0, count: AudioConstants.minimumTranscriptionSamples))
-    let detector = ingestWhole(samples)
-
-    // Fires at 1.0s of trailing zeros, well under the 3.0s Bluetooth ceiling...
-    #expect(detector.isBecameZeroMidCapture)
-    // ...and passing that ceiling to the SIBLING predicate changes nothing here,
-    // because real signal was seen, so `isAllZeroFromStart` is permanently false.
-    #expect(
-      !detector.isAllZeroFromStart(
-        ceilingSamples: AudioConstants.bluetoothAllZeroMidTakeCeilingSamples))
-    #expect(
-      !detector.isAllZeroFromStart(ceilingSamples: AudioConstants.minimumTranscriptionSamples))
   }
 }

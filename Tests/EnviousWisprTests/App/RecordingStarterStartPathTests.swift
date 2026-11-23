@@ -197,7 +197,8 @@ import Testing
       heartControlRecovery: hcr,
       recordingLockedAccess: lockAccess,
       languageSuggestionPresenter: nil,
-      pendingRequests: pendingRequests
+      pendingRequests: pendingRequests,
+      abandonPendingStart: { [audio] in audio.abandonPendingStart() }
     )
     let lastRecordingResult = LastRecordingResult()
     let discards = DiscardProbe()
@@ -213,9 +214,9 @@ import Testing
     // and returns a directive (so `config.recoverySessionID` is set), simulating
     // launch recovery starting mid-`start()`.
     let makeRecoveryDirective:
-      @MainActor (SettingsManager, ASRBackendType, Bool, LocalPolishModelID, String) async -> (
+      @MainActor (SettingsManager, ASRBackendType, Bool, LocalPolishModelID, String, Bool) async -> (
         recoverySessionID: String, payload: Data
-      )? = { _, backend, _, polishModel, polishWireModel in
+      )? = { _, backend, _, polishModel, polishWireModel, _ in
         onRecoveryModel?(polishModel, polishWireModel)
         onRecoveryArm?(backend)
         duringRecoveryArm?()
@@ -365,6 +366,39 @@ import Testing
     #expect(fx.kernelDriver.state == .error(.permissionDenied))
   }
 
+  /// #4601 §3.7: a pre-warm the audio system did not answer (timed out, refused while stuck, or
+  /// status 60 from starting the unit) shows the "can't reach your microphone" notice; permission
+  /// still wins, and a status 60 from any other step keeps the generic notice.
+  @Test(
+    "a not-responding pre-warm surfaces its own notice; permission wins; near misses stay generic",
+    arguments: [
+      ("timed_out", false, TerminalNoticeReason.micNotResponding),
+      ("start60", false, .micNotResponding),
+      ("timed_out", true, .permissionDenied),
+      ("init60", false, .micWouldNotOpen),
+    ])
+  func notRespondingPreWarmNotice(_ input: (String, Bool, TerminalNoticeReason)) async {
+    let (kind, denied, expected) = input
+    let fx = Self.makeFixture(micStatus: denied ? .denied : .authorized)
+    fx.asr.activeBackendType = .parakeet
+    fx.asr.isModelLoaded = true
+    switch kind {
+    case "timed_out":
+      fx.audio.preWarmError = AudioError.microphoneNotResponding(
+        source: "HALDeviceInputSource.prepare.timed_out")
+    case "start60":
+      fx.audio.preWarmError = AudioError.formatCreationFailed(
+        source: "HALDeviceInputSource.prepare.start", osStatus: 60)
+    default:
+      fx.audio.preWarmError = AudioError.formatCreationFailed(
+        source: "HALDeviceInputSource.prepare.init", osStatus: 60)
+    }
+
+    _ = await fx.starter.start()
+
+    #expect(fx.kernelDriver.state == .error(expected))
+  }
+
   /// The old `toggleAndStartBothRefreshAccessibilityStatus` had ZERO `#expect` —
   /// it only checked crash-freedom, so deleting the AX re-arm block from
   /// `start()`/`toggle()` left it green. This injects a counting spy and asserts
@@ -411,6 +445,29 @@ import Testing
     #expect(
       Self.showsColdBoot(fx.overlay, engine: "Parakeet"),
       "the honest cold-boot pill, naming the engine, is what the user must see")
+  }
+
+  @Test("an installed engine waiting for Retry warns before warming", arguments: [false, true])
+  func explicitRetryShowsGuidance(toggle: Bool) async {
+    let fx = Self.makeFixture()
+    fx.asr.activeBackendType = .parakeet
+    fx.asr.isModelLoaded = false
+    fx.starter.selectedEngineRequiresRetry = { $0 == .parakeet }
+
+    if toggle {
+      await fx.starter.toggle(source: .toggleHotkey)
+    } else {
+      _ = await fx.starter.start()
+    }
+
+    guard case .notice(let notice)? = fx.overlay.renderModel.state.presentation?.content else {
+      Issue.record("Expected the engine retry warning")
+      return
+    }
+    #expect(notice.kind == .notification)
+    #expect(
+      notice.text == "Parakeet couldn't load. Choose Try Again in Settings > Dictation Settings > Engine.")
+    #expect(fx.kernelDriver.state == .idle)
   }
 
   // #1063 PR2 — the recovery hold. A press (PTT or toggle) while the crash-recovery
@@ -1309,6 +1366,36 @@ import Testing
     fx.engineLease.release(meeting)
   }
 
+  /// #4578 (C2 r1 P1): the installation gate may await a fresh read. When this fails, a key
+  /// released (or a toggle stopped) during that wait still starts a recording afterwards.
+  @Test("a release during the installation read starts nothing; without one the press records")
+  func releaseDuringTheInstallationReadStartsNothing() async {
+    for released in [true, false] {
+      var arms: [ASRBackendType] = []
+      let fx = Self.makeFixture(onRecoveryArm: { arms.append($0) })
+      fx.asr.activeBackendType = .parakeet
+      fx.asr.isModelLoaded = true
+      fx.starter.isSelectedModelInstalled = { [finalizer = fx.finalizer] in
+        if released { await finalizer.userStop() }
+        return true
+      }
+      _ = await fx.starter.start()
+      #expect(arms.isEmpty == released, released ? "PTT: the release won" : "control: PTT records")
+
+      var toggleArms: [ASRBackendType] = []
+      let tfx = Self.makeFixture(onRecoveryArm: { toggleArms.append($0) })
+      tfx.asr.activeBackendType = .parakeet
+      tfx.asr.isModelLoaded = true
+      tfx.starter.isSelectedModelInstalled = { [finalizer = tfx.finalizer] in
+        if released { await finalizer.userStop() }
+        return true
+      }
+      await tfx.starter.toggle(source: .toggleHotkey)
+      #expect(
+        toggleArms.isEmpty == released, released ? "toggle: the stop won" : "control: toggle records")
+    }
+  }
+
   /// Engine facts are read after the wait, not before it: a gate that now fails refuses, and a
   /// backend switched during the wait is the one the press starts on.
   @Test func theResumedPressReadsFreshEngineFacts() async {
@@ -1671,3 +1758,118 @@ final class TurnClock {
   private(set) var now = ContinuousClock.now
   func advance(milliseconds: Int) { now = now.advanced(by: .milliseconds(milliseconds)) }
 }
+
+#if DEBUG
+  /// #4601 §3a and §5: one press, one microphone-start budget; and a release or cancel during a
+  /// sessionless pre-warm gives the waiting microphone start up at once. When these fail, a stuck
+  /// audio driver holds the start past its budget, or a key-up leaves the user waiting for a
+  /// microphone they already let go of (and can later see a failure notice for it).
+  extension RecordingStarterStartPathTests {
+
+    @Test("a press's pre-warm and its take's own start share one microphone deadline")
+    func pressSharesOneDeadline() async {
+      let fx = Self.makeFixture()
+      fx.asr.activeBackendType = .parakeet
+      fx.asr.isModelLoaded = true
+      let takeStarted = AudioUnitLaneTests.Signal()
+      fx.audio.onStartEnginePhase = { takeStarted.fire() }
+      let before = ContinuousClock.now
+
+      _ = await fx.starter.start()
+      #expect(await takeStarted.wait(), "the take's own start ran")
+
+      let preWarm = fx.audio.preWarmDeadlines
+      #expect(preWarm.count == 1)
+      #expect(fx.audio.startEnginePhaseDeadlines == preWarm, "the take must not renew the budget")
+      if let deadline = preWarm.first {
+        #expect(deadline >= MicrophoneStartBudget.deadline(from: before))
+        #expect(deadline <= MicrophoneStartBudget.deadline(from: .now))
+      }
+    }
+
+    @Test("time spent in the press's preflight waits comes out of its microphone budget")
+    func preflightWaitSpendsTheBudget() async {
+      let fx = Self.makeFixture()
+      fx.asr.activeBackendType = .parakeet
+      fx.asr.isModelLoaded = true
+      let entered = AudioUnitLaneTests.Signal()
+      let release = AudioUnitLaneTests.Signal()
+      fx.starter.isSelectedModelInstalled = {
+        entered.fire()
+        _ = await release.wait()
+        return true
+      }
+      let before = ContinuousClock.now
+
+      let start = Task { await fx.starter.start() }
+      #expect(await entered.wait(), "the press is in its installation read")
+      let preflightEnded = ContinuousClock.now
+      release.fire()
+      _ = await start.value
+
+      let deadline = fx.audio.preWarmDeadlines.first
+      #expect(deadline != nil)
+      if let deadline {
+        #expect(deadline >= MicrophoneStartBudget.deadline(from: before))
+        #expect(
+          deadline < MicrophoneStartBudget.deadline(from: preflightEnded),
+          "the budget began at the press, not after the preflight wait")
+      }
+    }
+
+    @Test("a later press gets its own fresh deadline")
+    func laterPressGetsAFreshDeadline() async {
+      let fx = Self.makeFixture()
+      fx.asr.activeBackendType = .parakeet
+      fx.asr.isModelLoaded = true
+      fx.audio.preWarmError = AudioError.noBuiltInMicrophoneFound
+
+      _ = await fx.starter.start()
+      _ = await fx.starter.start()
+
+      let deadlines = fx.audio.preWarmDeadlines
+      #expect(deadlines.count == 2)
+      if deadlines.count == 2 { #expect(deadlines[1] > deadlines[0]) }
+    }
+
+    @Test(
+      "a release or cancel during a sessionless pre-warm gives the start up at once, quietly",
+      arguments: ["release", "cancel"])
+    func releaseDuringPreWarmAbandonsAtOnce(_ how: String) async {
+      let fx = Self.makeFixture()
+      fx.asr.activeBackendType = .parakeet
+      fx.asr.isModelLoaded = true
+      fx.audio.holdPreWarmUntilAbandoned = true
+      let held = AudioUnitLaneTests.Signal()
+      fx.audio.onPreWarmHeld = { held.fire() }
+
+      let start = Task { await fx.starter.start() }
+      #expect(await held.wait(), "the press is waiting in its pre-warm")
+      #expect(fx.kernelDriver.state == .idle, "no session exists yet")
+      if how == "release" {
+        await fx.finalizer.userStop()
+      } else {
+        await fx.finalizer.cancel(trigger: .shortcut)
+      }
+      _ = await start.value
+
+      #expect(fx.audio.abandonPendingStartCallCount == 1)
+      #expect(fx.kernelDriver.state == .idle, "no session and no failure notice")
+      #expect(Self.showsRecording(fx.overlay) == false, "the recording pill is gone")
+      #expect(fx.audio.startEnginePhaseDeadlines.isEmpty, "the take never started")
+    }
+
+    @Test("a stop during a running session does not give up a microphone start")
+    func stopDuringSessionDoesNotAbandon() async {
+      let fx = Self.makeFixture()
+      fx.asr.activeBackendType = .parakeet
+      fx.asr.isModelLoaded = true
+
+      _ = await fx.starter.start()
+      #expect(fx.kernelDriver.state.isActive, "precondition: a session is running")
+      await fx.finalizer.userStop()
+
+      #expect(fx.audio.abandonPendingStartCallCount == 0)
+    }
+  }
+#endif

@@ -47,6 +47,8 @@ enum MeetingsPresentation {
       let lineID: String
       let text: String
       let kind: LiveWordsAssembler.Line.Kind
+      let speaker: LiveWordsAssembler.LiveSpeakerKey
+      let startMs: Int
     }
     let id: String
     let speaker: LiveWordsAssembler.LiveSpeakerKey
@@ -70,7 +72,8 @@ enum MeetingsPresentation {
         current = nil
         guard !text.isEmpty else { return }
         let item = LiveBlock.Run(
-          id: "\(line.id)#\(runStart)", lineID: line.id, text: text, kind: line.kind)
+          id: "\(line.id)#\(runStart)", lineID: line.id, text: text, kind: line.kind,
+          speaker: run.key, startMs: run.startMs)
         if let last = blocks.indices.last, blocks[last].speaker == run.key {
           blocks[last].runs.append(item)
         } else {
@@ -105,7 +108,10 @@ enum MeetingsPresentation {
     struct Segment: Equatable {
       /// Nil when the segment continues the block above.
       let header: Header?
-      let text: String
+      let run: LiveBlock.Run
+      var text: String { run.text }
+
+      var quote: LiveBlock.Run? { run.kind == .confirmed ? run : nil }
     }
     let id: String
     let kind: LiveWordsAssembler.Line.Kind
@@ -131,9 +137,9 @@ enum MeetingsPresentation {
           lineID = run.lineID
           kind = run.kind
           header = opens
-          segments = [LiveRow.Segment(header: nil, text: run.text)]
+          segments = [LiveRow.Segment(header: nil, run: run)]
         } else {
-          segments.append(LiveRow.Segment(header: opens, text: run.text))
+          segments.append(LiveRow.Segment(header: opens, run: run))
         }
       }
     }
@@ -568,6 +574,13 @@ enum MeetingsPresentation {
       return String(
         localized: "No audio could be read from this recording.",
         comment: "EnviousMeet detail: why a meeting has no transcript.")
+    case "no_engine_downloaded"?:
+      // #4578: neither speech engine was on the Mac when the transcript was due.
+      return String(
+        localized:
+          "No speech engine was downloaded. Download one in Settings, then use Transcribe again.",
+        comment:
+          "EnviousMeet detail: why a meeting has no transcript: neither Parakeet nor Whisper is on this Mac.")
     case "audio_deleted"?:
       return String(
         localized: "The audio was deleted before it was transcribed.",
@@ -603,40 +616,16 @@ enum MeetingsPresentation {
       delete: record.isWritableByThisBuild && !record.deletionRequested)
   }
 
-  /// The kept audio's size, or why it cannot be shown.
-  enum AudioSize: Equatable {
-    case measuring
-    case bytes(Int64)
-    case deleted
-    case unreadable
-  }
-
-  static func audioSizeLine(_ size: AudioSize) -> String {
-    switch size {
-    case .measuring:
-      return String(
-        localized: "Measuring the audio", comment: "EnviousMeet detail: the audio size is loading.")
-    case .bytes(let bytes):
-      let formatted = ByteCountFormatter.string(fromByteCount: bytes, countStyle: .file)
-      return String(
-        localized: "Audio: \(formatted)",
-        comment: "EnviousMeet detail: how much space the kept recording takes, like 42 MB.")
-    case .deleted:
-      return String(
-        localized: "The audio was deleted. The transcript is kept.",
-        comment: "EnviousMeet detail: after Delete audio.")
-    case .unreadable:
-      return String(
-        localized: "The audio size could not be read.",
-        comment: "EnviousMeet detail: the recording's folder could not be measured.")
-    }
-  }
-
   // MARK: - Notices
 
   /// Whether a notice offers Allow Microphone (the macOS prompt, or System Settings).
   static func offersMicrophoneFix(_ notice: MeetingCoordinator.Notice) -> Bool {
     notice == .microphoneDenied
+  }
+
+  /// #4601: whether a notice offers "How to fix" (the help section). Never the permission fix.
+  static func offersMicrophoneHelp(_ notice: MeetingCoordinator.Notice) -> Bool {
+    notice == .microphoneNotResponding
   }
 
   static func notice(_ notice: MeetingCoordinator.Notice) -> String {
@@ -650,6 +639,9 @@ enum MeetingsPresentation {
       return String(
         localized: "The microphone could not start. Check your microphone and try again.",
         comment: "EnviousMeet: the microphone did not start.")
+    case .microphoneNotResponding:
+      // #4601: one copy owner for dictation and meetings.
+      return DictationNarrator.copy(for: .micNotResponding)
     case .finishDictationFirst:
       return String(
         localized: "Finish your dictation first, then start the meeting.",
@@ -819,16 +811,74 @@ enum MeetingExport {
 
   static func document(
     meetingID: UUID, rowID: UUID, documents: MeetingDocumentsOwner,
-    transcripts: TranscriptCoordinator
+    transcripts: TranscriptCoordinator, mode: FileImportCoordinator.DocumentView = .cleaned,
+    timesOn: Bool = false
   ) async -> Outcome {
     guard await documents.load(meetingID) else {
       // A failed read is reported; a meeting deleted meanwhile simply delivers nothing.
       return documents.loadState(meetingID) == .failed ? .notesUnreadable : .nothingToDeliver
     }
     guard let live = transcripts.currentRow(id: rowID),
-      let text = transcripts.textForDelivery(live)
+      let text = MeetingHistoryPresentation.deliveryText(
+        live, projection: transcripts.meetingPresenter.meetingProjection(of: live), timesOn: timesOn, mode: mode)
     else { return .nothingToDeliver }
     let notes = documents.notes(meetingID).trimmingCharacters(in: .whitespacesAndNewlines)
     return .document(MeetingsPresentation.exportDocument(transcript: text, notes: notes))
+  }
+
+  /// The row whose words are delivered now: the committed row of a meeting EnviousMeet holds
+  /// (nothing while it is being deleted), else the row of a meeting whose folder is gone.
+  /// `orphanRow` is read only when no meeting record exists.
+  static func deliveryRow(
+    meetingID: UUID, meetings: MeetingCoordinator, transcripts: TranscriptCoordinator,
+    orphanRow: () -> Transcript?
+  ) -> Transcript? {
+    if let record = meetings.record(id: meetingID) {
+      guard !record.deletionRequested, record.committedTranscriptGeneration != nil else {
+        return nil
+      }
+      return transcripts.verifiedRowForDelivery(id: record.transcriptID)
+    }
+    guard let orphanRow = orphanRow() else { return nil }
+    return transcripts.verifiedRowForDelivery(id: orphanRow.id)
+  }
+
+  /// The visible words of the meeting's current delivery row. The row and its projection are
+  /// resolved before `timesOn` and `mode` are read, so the caller's settings apply at that point.
+  static func deliveryText(
+    meetingID: UUID, meetings: MeetingCoordinator, transcripts: TranscriptCoordinator,
+    orphanRow: () -> Transcript?, timesOn: () -> Bool,
+    mode: () -> FileImportCoordinator.DocumentView
+  ) -> String? {
+    guard
+      let row = deliveryRow(
+        meetingID: meetingID, meetings: meetings, transcripts: transcripts, orphanRow: orphanRow)
+    else { return nil }
+    return MeetingHistoryPresentation.deliveryText(
+      row, projection: transcripts.meetingPresenter.meetingProjection(of: row),
+      timesOn: timesOn(), mode: mode())
+  }
+
+  /// What the page's Save as… writes, built after the panel closes from the row chosen before it.
+  static func saveDocument(
+    meetingID: UUID, rowID: UUID, documents: MeetingDocumentsOwner,
+    transcripts: TranscriptCoordinator, mode: FileImportCoordinator.DocumentView, timesOn: Bool
+  ) async -> HistoryDelivery.Document {
+    switch await document(
+      meetingID: meetingID, rowID: rowID, documents: documents,
+      transcripts: transcripts, mode: mode, timesOn: timesOn)
+    {
+    case .document(let document):
+      return .text(document)
+    case .notesUnreadable:
+      return .refused(
+        String(
+          localized: "Your notes could not be read, so nothing was saved. Try again.",
+          comment:
+            "History, a meeting: Save stopped because the meeting's notes file could not be read."
+        ))
+    case .nothingToDeliver:
+      return .nothing
+    }
   }
 }

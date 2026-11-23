@@ -1170,33 +1170,54 @@ struct LivePreviewCoordinatorTests {
   // so it has to be told one before it hears anything and Auto has to become a
   // guess. An engine that detects language itself must not inherit that guess.
 
-  @Test("A locked language previews in that language; Auto follows the system")
-  func languagePolicy() {
+  @Test("A locked language previews in that language, whatever the Mac or the interface")
+  func languagePolicyLocked() {
+    #expect(
+      ApplePreviewEngineResolver.languageCode(
+        for: .locked("de"), macLanguages: ["en-US"], current: Locale(identifier: "fr_CA")) == "de")
     #expect(ApplePreviewEngineResolver.languageCode(for: .locked("de")) == "de")
-    let auto = ApplePreviewEngineResolver.languageCode(for: .auto)
-    #expect(auto == Locale.current.identifier(.bcp47))
-    #expect(auto.isEmpty == false)
+    #expect(ApplePreviewEngineResolver.languageCode(for: .auto).isEmpty == false)
   }
 
-  /// Auto must keep REGION and SCRIPT, not just language. Reducing to the language
-  /// code sends a Traditional Chinese Mac to the Simplified model, Brazilian
-  /// Portuguese to European, and Canadian French to Swiss — measured against
-  /// Apple's real resolver, not inferred. This asserts the property that prevents
-  /// it, on a fixed locale rather than the machine's, so it means the same thing
-  /// on every runner.
-  @Test("Auto preserves region and script, which is what picks the right model")
-  func autoPreservesRegionAndScript() {
-    // The reduction that caused it, applied to the cases it breaks. If
-    // `ApplePreviewEngineResolver.languageCode(for: .auto)` ever goes back to a
-    // bare language code, these are the users who silently get another region's
-    // model.
-    for id in ["zh-TW", "pt-BR", "fr-CA", "en-GB"] {
-      let full = Locale(identifier: id)
-      let bare = full.language.languageCode?.identifier
-      #expect(
-        full.identifier(.bcp47) != bare,
-        "\(id) must not survive as a bare language code")
-    }
+  /// #4813: Auto asks for the MAC's language with the Mac's region, never the interface
+  /// language `Locale.current` carries (an English Mac with the app in German was `de-US`,
+  /// reproduced on 481193acc). Each row: why it exists, the Mac's preferred languages, the
+  /// app's `Locale.current`, and the tag Apple must be asked for. Region and script survive
+  /// (a bare code sends `zh-TW` to the Simplified model, `pt-BR` to European Portuguese),
+  /// except a script the region already implies, which is dropped to Apple's own spelling.
+  nonisolated static let autoRows: [(String, [String], String, String)] = [
+    ("interface override", ["en-US"], "de_US", "en-US"),
+    ("Mac language the app does not ship", ["it-IT"], "en_IT", "it-IT"),
+    ("implied script dropped to Apple's spelling", ["zh-Hant-TW"], "en_TW", "zh-TW"),
+    ("unusual script kept", ["sr-Latn-RS"], "en_RS", "sr-Latn-RS"),
+    ("unusual script kept in its region", ["zh-Hans-TW"], "en_TW", "zh-Hans-TW"),
+    ("a regional entry's implied script survives the Mac's region", ["zh-TW"], "en_US", "zh-Hant-US"),
+    ("#4828: Mandarin stays Mandarin in a Cantonese region", ["zh-Hant-TW"], "en_HK", "zh-TW"),
+    ("#4828: Cantonese stays Cantonese in a Mandarin region", ["zh-HK"], "en_TW", "zh-HK"),
+    ("region from the Mac's Region setting, as before", ["en-GB"], "en_US", "en-US"),
+    ("language-only entry takes the Mac's region", ["es-419"], "en_MX", "es-MX"),
+    ("no Mac list: today's locale", [], "fr_CA", "fr-CA"),
+    ("unparseable first entry: today's locale", [""], "de_DE", "de-DE"),
+  ]
+
+  /// #4828: Apple's speech lists carry one Chinese tag per spoken language. False for a bare
+  /// `zh` means only that the tag carries no Cantonese marker.
+  nonisolated static let cantoneseRows: [(String, Bool)] = [
+    ("yue", true), ("zh-Hant-HK", true), ("zh-HK", true), ("zh-TW", false), ("zh", false),
+  ]
+
+  @Test("Apple's Cantonese tags are told apart from Mandarin", arguments: cantoneseRows)
+  func cantoneseTags(row: (String, Bool)) {
+    #expect(ApplePreviewEngineResolver.isCantonese(row.0) == row.1, "\(row.0)")
+  }
+
+  @Test("Auto previews in the Mac's language with the Mac's region", arguments: autoRows)
+  func languagePolicyAuto(row: (String, [String], String, String)) {
+    let (why, macLanguages, current, expected) = row
+    #expect(
+      ApplePreviewEngineResolver.languageCode(
+        for: .auto, macLanguages: macLanguages, current: Locale(identifier: current)) == expected,
+      "\(why): \(macLanguages) with \(current)")
   }
 
   // MARK: - The engine seam (#2077)
@@ -1487,15 +1508,27 @@ struct LivePreviewCoordinatorTests {
   @Test("the meeting's vocabulary carries word corrections only while Dictionary is on (#3973)")
   func meetingVocabularyFollowsDictionarySwitch() {
     let dictionaryOn = OSAllocatedUnfairLock(initialState: true)
+    let fixesOn = OSAllocatedUnfairLock(initialState: true)
     let coordinator = LivePreviewCoordinator(
       readSamples: { _ in ([], 0) },
       isPreviewOn: { true },
       isDictionaryOn: { dictionaryOn.withLock { $0 } },
       languageMode: { .locked("en") },
-      selectedRoute: previewRoute { _ in .blocked(.unsupportedSystem) })
-    coordinator.correctorVocabulary = CorrectorVocabulary(terms: [word("Qualtrics")], generation: 1)
+      selectedRoute: previewRoute { _ in .blocked(.unsupportedSystem) },
+      fixLearnedWords: { fixesOn.withLock { $0 } })
+    let learned = CustomWord(canonical: "Tuist", learnedAt: Date(timeIntervalSince1970: 1))
+    coordinator.correctorVocabulary = CorrectorVocabulary(
+      terms: [word("Qualtrics"), learned], generation: 1)
     let on = coordinator.vocabularySnapshot()
     #expect(on.dictionaryEnabled && on.lookups != nil, "control: corrections while on")
+    #expect(on.contextualPhrases.contains("Tuist"))
+
+    fixesOn.withLock { $0 = false }
+    let savedOnly = coordinator.vocabularySnapshot()
+    #expect(savedOnly.contextualPhrases.contains("Tuist") == false)
+    #expect(savedOnly.contextualPhrases.contains("Qualtrics"))
+    #expect(savedOnly.lookups != nil)
+
     dictionaryOn.withLock { $0 = false }
     let off = coordinator.vocabularySnapshot()
     #expect(!off.dictionaryEnabled)
@@ -2563,7 +2596,7 @@ private final class CountingAudioCapture: AudioCaptureInterface {
   var inputChannelByDeviceUID: [String: Int] = [:]
   var warmEnginePolicy: WarmEnginePolicy = .off
 
-  func startEnginePhase() async throws {}
+  func startEnginePhase(startDeadline: ContinuousClock.Instant) async throws {}
   func beginCapturePhase(recoveryPayload: Data?) async throws -> AsyncStream<AVAudioPCMBuffer> {
     AsyncStream { $0.finish() }
   }
@@ -2573,7 +2606,8 @@ private final class CountingAudioCapture: AudioCaptureInterface {
   func stopCapture(sessionID: UInt64) async -> CaptureResult { CaptureResult(samples: []) }
   func rebuildEngine() {}
   func retireCapturingSource(sessionID: UInt64) -> ZeroSignalRetireResult { .sourceNotRunning }
-  func preWarm() async throws {}
+  func preWarm(startDeadline: ContinuousClock.Instant) async throws {}
+  func abandonPendingStart() {}
   func abortPreWarm() {}
   func releaseUnstartedCapture() {}
   func waitForFormatStabilization(maxWait: TimeInterval, pollInterval: TimeInterval) async -> Bool {

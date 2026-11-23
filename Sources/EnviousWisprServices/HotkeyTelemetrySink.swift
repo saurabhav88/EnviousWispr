@@ -20,10 +20,12 @@ public struct HotkeyTelemetrySink: Sendable {
   /// the keyboard listener's event tap). An event-tap failure arrives here only
   /// while the Accessibility grant is present (#3848); without it the failure goes
   /// to `listenerAwaitingAccessibility`. All args are metadata — never key codes.
+  /// `listenerStartFailure` describes this report's failing attempt when its stage is known.
   public var registrationFailed:
-    @MainActor (_ mechanism: String, _ hotkeyKind: String, _ osStatus: Int32?, _ keyShape: String)
-      ->
-      Void
+    @MainActor (
+      _ mechanism: String, _ hotkeyKind: String, _ osStatus: Int32?, _ keyShape: String,
+      _ listenerStartFailure: String?
+    ) -> Void
   /// A raw accepted hotkey keydown routed to a recording action.
   ///
   /// `keyIdentity` (#1987) is the content-free class of the key that produced this
@@ -57,7 +59,7 @@ public struct HotkeyTelemetrySink: Sendable {
     @MainActor (_ hotkeyKind: String, _ keyShape: String) -> Void
 
   public init(
-    registrationFailed: @escaping @MainActor (String, String, Int32?, String) -> Void,
+    registrationFailed: @escaping @MainActor (String, String, Int32?, String, String?) -> Void,
     pressed: @escaping @MainActor (String, String, String, String, String, String?) -> Void,
     lockResolved: @escaping @MainActor (Bool, String) -> Void = { _, _ in },
     listenerHealth: @escaping @MainActor (HotkeyListenerHealthReport) -> Void = { _ in },
@@ -72,7 +74,7 @@ public struct HotkeyTelemetrySink: Sendable {
 
   /// Inert sink — the default for tests and any non-app construction.
   public static let noop = HotkeyTelemetrySink(
-    registrationFailed: { _, _, _, _ in }, pressed: { _, _, _, _, _, _ in },
+    registrationFailed: { _, _, _, _, _ in }, pressed: { _, _, _, _, _, _ in },
     lockResolved: { _, _ in }, listenerHealth: { _ in }, listenerAwaitingAccessibility: { _, _ in })
 
   /// Production sink. Registration failure → PostHog breakdown + Sentry handled
@@ -81,16 +83,23 @@ public struct HotkeyTelemetrySink: Sendable {
   /// PostHog, deferred to the next run loop so the input-press turn does zero
   /// telemetry I/O before the recording callback.
   public static let live = HotkeyTelemetrySink(
-    registrationFailed: { mechanism, hotkeyKind, osStatus, keyShape in
+    registrationFailed: { mechanism, hotkeyKind, osStatus, keyShape, listenerStartFailure in
       TelemetryService.shared.hotkeyRegistration(
         mechanism: mechanism, hotkeyKind: hotkeyKind, osStatus: osStatus, keyShape: keyShape)
       var extra: [String: Any] = [
         "mechanism": mechanism, "hotkey_kind": hotkeyKind, "key_shape": keyShape,
       ]
       if let osStatus { extra["os_status"] = Int(osStatus) }
+      var tags: [String: String] = [:]
+      if mechanism == "event_tap",
+        let listenerStartFailure,
+        let value = KeyboardListenerStartFailure(rawValue: listenerStartFailure)?.sentryValue
+      {
+        tags["hotkey.listener_start_failure"] = value
+      }
       SentryBreadcrumb.captureError(
         HotkeyRegistrationError(mechanism: mechanism, hotkeyKind: hotkeyKind, osStatus: osStatus),
-        category: .hotkeyRegistrationFailed, stage: "input", extra: extra,
+        category: .hotkeyRegistrationFailed, stage: "input", extra: extra, tags: tags,
         // Cloud-review P3: a struct Error bridges to one stable NSError code, so
         // `structuredDescriptor` would group every registration failure into one
         // Sentry bin. Split by (mechanism, kind) — low cardinality — so a Carbon

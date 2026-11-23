@@ -1,0 +1,13 @@
+{
+  "language": "vi",
+  "title": "giải phóng bộ nhớ của mô hình chỉnh văn bản sau",
+  "words": [
+    "giải phóng RAM của AI chỉnh văn bản",
+    "giải phóng RAM EG-1",
+    "giải phóng RAM S1-mini"
+  ],
+  "phrases": [
+    "giải phóng bộ nhớ của mô hình chỉnh văn bản khi không đọc chính tả",
+    "giữ mô hình chỉnh văn bản trong bộ nhớ bao lâu khi không dùng"
+  ]
+}

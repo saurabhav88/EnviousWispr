@@ -140,6 +140,7 @@ final class LLMModelDiscoveryCoordinator {
   func admitCredentialMutation(
     provider: LLMProvider, settings: SettingsManager?, surface: ProviderSetupSurface
   ) -> CredentialAdmission {
+    advanceForegroundEpoch(provider)
     invalidateInFlightDiscovery()
     // A previous key's terminal display verdict must not label the replacement valid
     // while it is being stored, even if reopening supersedes its automatic validation.
@@ -175,6 +176,7 @@ final class LLMModelDiscoveryCoordinator {
   func finishCredentialMutation(
     _ admission: CredentialAdmission, cleared: Bool, settings: SettingsManager?
   ) {
+    advanceForegroundEpoch(admission.provider)
     // Revision changes invalidate this provider's old verdict regardless of who now owns
     // discovery. Never erase a newer unrelated provider's check after a slow Clear.
     pendingVerdicts[admission.provider] = nil
@@ -189,7 +191,8 @@ final class LLMModelDiscoveryCoordinator {
   }
 
   func validateSavedCredential(
-    _ value: String, revision: UInt64?, admission: CredentialAdmission, settings: SettingsManager
+    _ value: String, revision: UInt64?, admission: CredentialAdmission, settings: SettingsManager,
+    setupProgress: SetupProgress? = nil
   ) async {
     guard admissionIsCurrent(admission, settings: settings) else { return }
     if savedKeyPresence != nil {
@@ -197,8 +200,16 @@ final class LLMModelDiscoveryCoordinator {
     }
     await validateKeyAndDiscoverModels(
       provider: admission.provider, settings: settings, surface: admission.surface, source: .save,
-      savedCredential: SavedCredential(value: value, revision: revision, admission: admission))
+      savedCredential: SavedCredential(value: value, revision: revision, admission: admission),
+      setupProgress: setupProgress)
   }
+
+  /// Setup observes actual discovery milestones. The callback never carries credential bytes.
+  enum SetupPhase: Equatable { case listingModels, probingModels }
+  typealias SetupProgress = @MainActor @Sendable (SetupPhase, UInt64?) -> Void
+  typealias SetupDiscovery = @MainActor (
+    LLMProvider, String, @escaping @Sendable () async -> Void
+  ) async throws -> [LLMModelInfo]
 
   private let keychainManager: KeychainManager
   private let credentialAccess: CredentialAccessLane
@@ -221,6 +232,7 @@ final class LLMModelDiscoveryCoordinator {
   /// The network call, injectable so a test drives every publication path below with a
   /// scripted answer instead of a provider. Required: production passes a closure that builds
   /// `LLMModelDiscovery` around the cloud model list read once per discovery run (#4353 D6).
+  private let setupDiscovery: SetupDiscovery?
   private let discoverModels: @MainActor (LLMProvider, String) async throws -> [LLMModelInfo]
 
   init(
@@ -228,6 +240,7 @@ final class LLMModelDiscoveryCoordinator {
     savedKeyPresence: SavedKeyPresence? = nil,
     credentialAccess: CredentialAccessLane = .live,
     validationEmitter: ValidationEmitter? = nil,
+    setupDiscovery: SetupDiscovery? = nil,
     discoverModels: @escaping @MainActor (LLMProvider, String) async throws -> [LLMModelInfo]
   ) {
     self.keychainManager = keychainManager
@@ -235,6 +248,7 @@ final class LLMModelDiscoveryCoordinator {
     self.validationEmitter = validationEmitter
     self.cacheDefaults = cacheDefaults
     self.savedKeyPresence = savedKeyPresence
+    self.setupDiscovery = setupDiscovery
     self.discoverModels = discoverModels
   }
 
@@ -284,8 +298,15 @@ final class LLMModelDiscoveryCoordinator {
     provider: LLMProvider, settings: SettingsManager,
     surface: ProviderSetupSurface = .dictation,
     source: ApiKeyValidationSource = .modelDiscovery,
-    savedCredential: SavedCredential? = nil
+    savedCredential: SavedCredential? = nil,
+    setupProgress: SetupProgress? = nil
   ) async {
+    // #4721: a foreground check owns this provider from entry, before its first `await`, until
+    // it returns by ANY path. The decrement is its own unconditional `defer`, registered before
+    // every early return (the generation-guarded `defer` below does not run on all of them).
+    advanceForegroundEpoch(provider)
+    foregroundInFlight[provider, default: 0] += 1
+    defer { foregroundInFlight[provider, default: 1] -= 1 }
     // Every earlier request is dismissed here, so none of their `.checking` markers can
     // outlive them (a superseded check never publishes again).
     if let savedCredential {
@@ -397,16 +418,36 @@ final class LLMModelDiscoveryCoordinator {
         // presence fact (`SavedKeyPresence`), never a typed rejection.
         keyValidationState = .invalid(Self.noKeyMessage)
         // No key could be read (absent, or a Keychain that did not answer): the check asked
-        // nothing, so it ends without touching the last completed answer, which is about a
-        // credential revision and stops counting by itself when the key changes.
-        pendingVerdicts[provider] = nil
+        // nothing, so it ends without a new answer about the key. #4721: where an earlier
+        // answer about this key is known, the check is recorded as one that could not tell,
+        // keeping that answer beneath it, so the chip shows this check's own failure rather
+        // than the older "Key valid". With nothing known, nothing is written.
+        if let revisionAtStart, lastDefinitive(provider, revision: revisionAtStart) != nil {
+          publishVerdict(.inconclusive, provider: provider, revision: revisionAtStart)
+        } else {
+          pendingVerdicts[provider] = nil
+        }
         return
       }
       apiKey = key
     }
 
     do {
-      let models = try await discoverModels(provider, apiKey)
+      let models: [LLMModelInfo]
+      if let setupProgress, let setupDiscovery {
+        // Bind the progress closure to the request that actually owns the saved key.
+        let revision = revisionAtStart
+        setupProgress(.listingModels, revision)
+        models = try await setupDiscovery(provider, apiKey) { @MainActor [weak self] in
+          guard let self, self.discoveryGeneration == generation,
+            self.credentialStillCurrent(provider, revision),
+            surface.selectionRevision(in: settings) == selectionRevisionAtStart
+          else { return }
+          setupProgress(.probingModels, revision)
+        }
+      } else {
+        models = try await discoverModels(provider, apiKey)
+      }
       guard requestStillCurrent() else { return }
       discoveredModels = models
       if provider != .appleIntelligence {
@@ -427,6 +468,7 @@ final class LLMModelDiscoveryCoordinator {
         modelCount: models.count,
         discoveryOutcome: models.isEmpty ? "zero_models" : "models_found")
 
+      guard setupProgress == nil else { return }
       switch surface {
       case .dictation:
         settings.applyDiscoveredModels(models, for: provider)
@@ -491,11 +533,151 @@ final class LLMModelDiscoveryCoordinator {
   ) {
     pendingVerdicts[provider] = nil
     if let revision {
-      // A check that could not tell keeps the last definitive answer about this key.
-      completedVerdicts[provider] = PolishCloudVerdict(
-        provider: provider, credentialRevision: revision, result: result,
-        definitive: result == .inconclusive ? lastDefinitive(provider, revision: revision) : nil)
+      writeCompletedVerdict(result, provider: provider, revision: revision, decidedAt: .now)
     }
+  }
+
+  /// The one completed-verdict write, shared by the foreground check and the launch check
+  /// (#4721). A check that could not tell keeps the last definitive answer about this key.
+  private func writeCompletedVerdict(
+    _ result: PolishCloudVerdict.Result, provider: LLMProvider, revision: UInt64,
+    decidedAt: ContinuousClock.Instant
+  ) {
+    completedVerdicts[provider] = PolishCloudVerdict(
+      provider: provider, credentialRevision: revision, result: result, decidedAt: decidedAt,
+      definitive: result == .inconclusive ? lastDefinitive(provider, revision: revision) : nil)
+  }
+
+  /// #4721: a dictation's own answer about the saved key (the provider refused it, or a polish
+  /// with it worked), at the moment it arrived. Newest answer wins for the same key, so the
+  /// Settings chip, the summary engine's monitor and dictation's warnings agree. A check still
+  /// running keeps showing as checking; this answer sits beneath it as the last known one.
+  func recordTakeKeyOutcome(
+    provider: LLMProvider, credentialRevision revision: UInt64, rejected: Bool,
+    observedAt: ContinuousClock.Instant
+  ) {
+    guard PolishSetupMonitor.usesCloudKey(provider), credentialRevision(for: provider) == revision
+    else { return }
+    mergeDefinitive(rejected: rejected, provider: provider, revision: revision, decidedAt: observedAt)
+  }
+
+  // MARK: - Launch key check ownership (#4721)
+
+  /// Per provider: moves at every foreground entry (Save or Clear admission, a finished
+  /// mutation, any foreground check), synchronously, before that entry's first `await`. A launch
+  /// answer whose admission saw an older value is about a world that has since moved.
+  private var foregroundEpoch: [LLMProvider: UInt64] = [:]
+  /// Per provider: foreground checks running now, counted from entry to return, so a Refresh
+  /// still waiting on the credential lane (no pending verdict yet) already counts.
+  private var foregroundInFlight: [LLMProvider: Int] = [:]
+
+  private func advanceForegroundEpoch(_ provider: LLMProvider) {
+    foregroundEpoch[provider, default: 0] &+= 1
+  }
+
+  /// The launch check's claim on one provider, taken before its first `await` and reused by its
+  /// one retry, so anything the person did since launch, finished or running, wins.
+  struct LaunchAdmission: Equatable {
+    let provider: LLMProvider
+    fileprivate let epoch: UInt64
+  }
+
+  /// What one launch check learned about the saved key.
+  enum LaunchCheckOutcome {
+    /// The provider answered the list (the key works); one row per probed chosen model.
+    case accepted([LLMModelInfo])
+    /// The provider refused this key (`LLMError.invalidAPIKey`).
+    case rejected
+    /// Anything that says nothing about the key: offline, timeout, Gemini 403, 5xx.
+    case inconclusive
+  }
+
+  /// A launch check may claim `provider` now: onboarding is done, and no foreground check and
+  /// no Save or Clear owns it. nil otherwise.
+  func beginLaunchCheck(provider: LLMProvider, settings: SettingsManager) -> LaunchAdmission? {
+    guard launchMayProceed(provider, settings: settings) else { return nil }
+    return LaunchAdmission(provider: provider, epoch: foregroundEpoch[provider, default: 0])
+  }
+
+  /// The admission still stands: nothing foreground has entered for its provider since it was
+  /// taken, nothing owns the provider now, and onboarding is still done (setup can be restarted
+  /// from Diagnostics). Read before a retry spends a request, and again at publication.
+  func launchAdmissionIsCurrent(_ admission: LaunchAdmission, settings: SettingsManager) -> Bool {
+    launchMayProceed(admission.provider, settings: settings)
+      && foregroundEpoch[admission.provider, default: 0] == admission.epoch
+  }
+
+  private func launchMayProceed(_ provider: LLMProvider, settings: SettingsManager) -> Bool {
+    settings.onboardingState == .completed
+      && foregroundInFlight[provider, default: 0] == 0
+      && savedKeyPresence?.hasPendingMutation(for: provider) != true
+  }
+
+  /// A launch check's answer. Writes ONLY the provider's completed verdict and its chosen
+  /// models' observations, and only while its admission stands and the saved key is still the
+  /// one it read (`credentialRevision`). Never touches the published catalog, the shared
+  /// validation state, `pendingVerdicts`, the generation, the cache or any setting. Otherwise
+  /// the answer is dropped without a trace: a newer foreground answer owns the provider.
+  ///
+  /// `decidedAt` is when the provider answered the list over HTTP: always present for an
+  /// accepted or rejected key; nil for a check with no HTTP answer, which then writes no new
+  /// definitive answer and keeps the last one about this key. Each model row keeps its own
+  /// probe's time, so a dictation's newer answer about the key or a model stays newer.
+  func recordLaunchCheck(
+    admission: LaunchAdmission, credentialRevision revision: UInt64,
+    decidedAt: ContinuousClock.Instant?, outcome: LaunchCheckOutcome, settings: SettingsManager
+  ) {
+    let provider = admission.provider
+    guard PolishSetupMonitor.usesCloudKey(provider) else { return }
+    // The request was sent whatever happens next: every attempt is counted, even one whose
+    // answer is dropped below because a Save, Clear or Refresh owns the provider now.
+    switch outcome {
+    case .accepted(let models):
+      emitValidationCompleted(
+        provider: provider, result: "valid", source: .launch, modelCount: models.count)
+    case .rejected:
+      emitValidationCompleted(provider: provider, result: "invalid", source: .launch)
+    case .inconclusive:
+      emitValidationCompleted(provider: provider, result: "error", source: .launch)
+    }
+    guard launchAdmissionIsCurrent(admission, settings: settings),
+      credentialRevision(for: provider) == revision
+    else { return }
+    switch outcome {
+    case .accepted(let models):
+      guard let decidedAt else { return }
+      mergeDefinitive(rejected: false, provider: provider, revision: revision, decidedAt: decidedAt)
+      // Each model's answer keeps its own probe time; the per-model merge decides which is
+      // newest, whatever happened to the key verdict.
+      for model in models {
+        guard let observation = Self.observation(of: model, credentialRevision: revision)
+        else { continue }
+        recordCloudModelObservation(provider: provider, model: model.id, observation: observation)
+      }
+    case .rejected:
+      guard let decidedAt else { return }
+      mergeDefinitive(rejected: true, provider: provider, revision: revision, decidedAt: decidedAt)
+    case .inconclusive:
+      // A check that could not tell writes nothing: it neither creates an "unknown" for a key
+      // nobody judged (which would hide History actions) nor touches a known answer.
+      break
+    }
+  }
+
+  /// The one write of a background DEFINITIVE answer (a launch check's list, a dictation's own
+  /// request) about `provider`'s key at `revision`: kept only when no answer about the same key
+  /// is newer. Written beneath any check still running, so that check's own answer, or its
+  /// inconclusive carry-forward, starts from it. The foreground check (`publishVerdict`) is
+  /// "now" and writes directly.
+  private func mergeDefinitive(
+    rejected: Bool, provider: LLMProvider, revision: UInt64, decidedAt: ContinuousClock.Instant
+  ) {
+    if let known = lastDefinitive(provider, revision: revision), known.decidedAt >= decidedAt {
+      return
+    }
+    writeCompletedVerdict(
+      rejected ? .rejected : .accepted, provider: provider, revision: revision,
+      decidedAt: decidedAt)
   }
 
   /// The last accepted or rejected answer about `provider`'s key at `revision`, if any.

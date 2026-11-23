@@ -17,10 +17,11 @@ import SwiftUI
 /// can link this code WITHOUT launching the app. The thin `EnviousWisprApp`
 /// shell (still `@main`, still owning the `@NSApplicationDelegateAdaptor` and
 /// app identity) constructs ONE of these in `App.init()`, attaches it to the
-/// shell `AppDelegate`, and shows `mainWindowContent()` / `onboardingWindowContent()`.
+/// shell `AppDelegate`. The main window is an AppKit window `AppWindowCoordinator` owns
+/// (#4842), so the shell declares no main scene.
 /// App-owned homes stay `internal` to this module (no public leak); only the
-/// bootstrapper type + its init + 4 lifecycle methods + 2 view factories + 2
-/// window-title accessors cross to the shell.
+/// bootstrapper type + its init + the lifecycle methods + the transcript view factory +
+/// `showMainWindow()` cross to the shell.
 @MainActor
 package final class WisprBootstrapper {
   // App-owned homes (epic #763 composition root). Held as `let` on this
@@ -36,6 +37,10 @@ package final class WisprBootstrapper {
   let updateCoordinatorHolder: UpdateCoordinatorHolder
   /// #3545: injected into the main window for the Settings search arrival's key watcher.
   let settingsKeyMonitor: any SettingsKeyMonitoring
+  /// #4611: History's click watcher, so clicking away from a rename field saves it.
+  let historyClickMonitor: any HistoryClickMonitoring
+  /// #4528 D5: the Setup shortcut screen's window-scoped rehearsal listener.
+  let setupShortcutMonitor: any SetupShortcutMonitoring
   /// #3147 PR4A: the meeting page's macOS 14 scroll watcher (`HistoryScrollMonitoring`).
   let historyScrollMonitor: any HistoryScrollMonitoring
   let sparkleUpdateController: SparkleUpdateController
@@ -66,6 +71,7 @@ package final class WisprBootstrapper {
   /// #2648 — Transcribe a File's state machine, held here so the run survives
   /// the page being closed.
   let fileImportCoordinator: FileImportCoordinator
+  let historyRepolish: HistoryRepolishRunner
   /// #3147 PR3: the original files of imported transcripts (lookup, relink, playback reader).
   let importedSources: ImportedSources
   /// #3147 PR3: the installed models Transcribe again with offers.
@@ -90,6 +96,8 @@ package final class WisprBootstrapper {
   let backendMetadata: BackendMetadata
   /// #1171 — the sole owner of ASR-engine selection, status, and switching.
   let engineCoordinator: EngineCoordinator
+  /// #4578: the one owner of the speech engine models on this Mac (report, install, remove).
+  let speechModels: SpeechModelLibrary
   let dictationRuntime: DictationRuntime
   let hotkeyService: HotkeyService
   let appWindowCoordinator: AppWindowCoordinator
@@ -99,6 +107,11 @@ package final class WisprBootstrapper {
   /// #4101: History's Paste, one instance, so both details and the main window share the one
   /// paste that may be waiting.
   let historyPaste: HistoryPaste
+  /// #4611: History's own More menu, shown through the panel seam.
+  let historyMenu: HistoryMenuPresenter
+  /// #4799: History's Save audio, one owner for every surface, so a save in flight is seen by
+  /// both meeting menus and by both retention sweeps.
+  let historyAudioExport: HistoryAudioExport
   let menuBarController: MenuBarController
   let appLifecycleCoordinator: AppLifecycleCoordinator
 
@@ -108,6 +121,7 @@ package final class WisprBootstrapper {
   let permissions: PermissionsService
   /// #1176: in-flight onboarding session, read at app-quit to emit abandon.
   let onboardingProgress = OnboardingProgress()
+  let setupSession: SetupSession
   let asrManager: any ASRManagerInterface
   /// #1386 PR-2: the one door to whichever engine is active. Shared plumbing —
   /// crash recovery (constructed here) and the Diagnostics benchmark (via the
@@ -150,6 +164,8 @@ package final class WisprBootstrapper {
   let llmDiscovery: LLMModelDiscoveryCoordinator
   /// #4353 D6: the cloud model list (website, last good copy, bundled copy). Started at launch.
   let cloudModelList: CloudModelListHolder
+  /// #4721: the once-per-launch check of the saved cloud keys both AI engines use.
+  let cloudKeyLaunchCheck: CloudKeyLaunchCheck
   /// #3438: the AI polish setup warnings as ONE slot (the `learnFromEdits` shape): which cloud
   /// keys are saved, and which warnings may show.
   let polishSetup: PolishSetupWiring
@@ -192,6 +208,8 @@ package final class WisprBootstrapper {
   /// coordinator and the paste registry hold their collaborators weakly, so
   /// this property is what keeps the feature alive for the app's lifetime.
   let learnFromEdits: LearnFromEditsWiring
+  /// #4843: the delivered-dictation broadcast, also read by Settings search (`AppHomesEnvironment`).
+  let pasteCompletionRegistry: PasteCompletionRegistry
 
   /// - Parameter makeHotkeyEffects: supplies the live desktop-effect adapter the
   ///   one shared `HotkeyService` will use.
@@ -212,9 +230,8 @@ package final class WisprBootstrapper {
   /// One stored property, not two: the panel seam is consumed by collaborators
   /// rather than by this type, so only the activator is retained.
   ///
-  /// `fileprivate`, not `private`: `ActionWirer` below is a separate type in this
-  /// file and is handed this seam at construction. Swift's `private` does not reach
-  /// across type boundaries even within one file. Still unreachable from anywhere
+  /// `fileprivate`, not `private`, from when a separate view type in this file was handed it
+  /// (that type went with the SwiftUI main scene in #4842). Still unreachable from anywhere
   /// else, which is what the C3 seam is for.
   fileprivate let application: any ApplicationActivating
 
@@ -233,6 +250,12 @@ package final class WisprBootstrapper {
     // #3545: the Settings search arrival's key watcher. Required and non-defaulted for the same
     // reason as `scrollWheelMonitor`.
     settingsKeyMonitor: any SettingsKeyMonitoring,
+    // #4611: History's click watcher. Required and non-defaulted for the same reason as
+    // `scrollWheelMonitor`.
+    historyClickMonitor: any HistoryClickMonitoring,
+    // #4528 D5: the Setup shortcut rehearsal listener. Required and non-defaulted for the same
+    // reason as `scrollWheelMonitor`.
+    setupShortcutMonitor: any SetupShortcutMonitoring,
     // #3147 PR4A: the meeting page's scroll watcher. Required and non-defaulted for the same
     // reason as `scrollWheelMonitor`.
     historyScrollMonitor: any HistoryScrollMonitoring,
@@ -263,7 +286,7 @@ package final class WisprBootstrapper {
         metadataDirectory: FileManager.default.urls(
           for: .applicationSupportDirectory, in: .userDomainMask)[0]
           .appendingPathComponent("EnviousWispr/ModelDelivery", isDirectory: true)),
-      recommendation: EGOneSizeRecommendation.forThisMac(language: settings.languageMode))
+      recommendation: SetupAdvice.recommendedEGOneSize(languageMode: settings.languageMode))
     // #1047: apply the persisted appearance before any window is built so a
     // pinned Dark never flashes white. `.system` clears the override (follow OS).
     AppearanceController.apply(settings.appearancePreference)
@@ -285,13 +308,24 @@ package final class WisprBootstrapper {
     // ASR pipelines, so hoisting the installer would mean hoisting those — the
     // move that does work is this one.
     let overlayHost = OverlayWindowHost(effects: overlayEffects)
-    let audioDeviceList = AudioDeviceList()
+    // #4021: one Core Audio lane for every idle-time device read, owned for the app's lifetime
+    // through `audioDeviceList.lane`, so only one read can ever be stuck in a driver.
+    let coreAudioLane = CoreAudioQueryLane(hooks: CoreAudioLaneReporting.hooks())
+    // #4601 §3.8: the audio-unit lane (every microphone start, release and check) reports a job
+    // that stops answering. Installed here, before any microphone work.
+    AudioUnitLane.shared.installHooks(AudioUnitLaneReporting.hooks())
+    // #4021: the one microphone-choice owner, shared by Settings, Setup and the menu bar, so
+    // only the latest choice can be saved after its off-main check.
+    let microphoneChoices = MicrophoneChoiceOwner(lane: coreAudioLane)
+    let audioDeviceList = AudioDeviceList(lane: coreAudioLane, choices: microphoneChoices)
     let inputDevicePreferenceReconciler = InputDevicePreferenceReconciler(settings: settings)
+    // Reconciles only from an inventory that proves absence. There is deliberately no
+    // synchronous launch reconcile any more: the list is empty until the first snapshot arrives
+    // off the main actor, and reconciling that empty list would un-pin a microphone. The first
+    // complete snapshot reconciles through this callback.
     audioDeviceList.onDevicesChanged = { [weak inputDevicePreferenceReconciler] devices in
       inputDevicePreferenceReconciler?.reconcile(availableDevices: devices)
     }
-    inputDevicePreferenceReconciler.reconcile(
-      availableDevices: audioDeviceList.availableInputDevices)
     let captureTelemetry = CaptureTelemetryState()
     let customWordsCoordinator = CustomWordsCoordinator()
     let snippetsCoordinator = SnippetsCoordinator()
@@ -364,9 +398,13 @@ package final class WisprBootstrapper {
     // #3147 PR3: Transcribe again with is a file import too (same lease, same cleanup runner),
     // so every gate that sees a running import sees it.
     weak var transcriptRetranscriptionForGates: TranscriptRetranscription?
+    weak var historyRepolishForGates: HistoryRepolishRunner?
     // #4287: same pattern; the settings sync is built long before the meeting summary owner,
     // and its eviction check must see a summary call that is running on an Ollama model.
     weak var meetingSummariesForEviction: MeetingSummaryOwner?
+    // #3853 (#4360): same pattern; a running meeting final pass keeps the selected summary
+    // model wanted, because it may start a summary on it.
+    weak var meetingCoordinatorForEviction: MeetingCoordinator?
     // #3853: same pattern; the import's frozen polish provider lives on the runner.
     weak var fileImportRunnerForGates: FileImportRunner?
     // GitHub cloud review, PR #1732: captured by `isDictationActive` below,
@@ -429,13 +467,27 @@ package final class WisprBootstrapper {
     let cloudModelList = CloudModelListHolder.live()
     let llmDiscovery = LLMModelDiscoveryCoordinator(
       keychainManager: keychainManager, savedKeyPresence: savedKeyPresence,
+      setupDiscovery: { [cloudModelList] provider, apiKey, didListModels in
+        try await LLMModelDiscovery(cloudModelList: cloudModelList.snapshot?.list)
+          .discoverModels(provider: provider, apiKey: apiKey, didListModels: didListModels)
+      },
       discoverModels: { [cloudModelList] provider, apiKey in
         // One read per discovery run: the probes and filters of this run share one list.
         try await LLMModelDiscovery(cloudModelList: cloudModelList.snapshot?.list)
           .discoverModels(provider: provider, apiKey: apiKey)
       })
+    // #4721: started after the setup monitors (below), retried once on a later activation.
+    let cloudKeyLaunchCheck = CloudKeyLaunchCheck(
+      settings: settings, savedKeyPresence: savedKeyPresence, keychain: keychainManager,
+      credentialAccess: .live, discovery: llmDiscovery,
+      check: { [cloudModelList] provider, apiKey, models in
+        try await LLMModelDiscovery(cloudModelList: cloudModelList.snapshot?.list)
+          .checkSavedKey(provider: provider, apiKey: apiKey, chosenModels: models)
+      })
 
-    let transcriptStore = TranscriptStore()
+    let historySourceChanges = HistorySourceChanges()
+    let transcriptStore = TranscriptStore(historyChanges: historySourceChanges)
+    let meetingStore = MeetingStore(historyChanges: historySourceChanges)
     let recordingArchive = RecordingArchive()
     // The History half of #2811's turn-label telemetry; the wizard half is wired on
     // `FileImportCoordinator` below, and both emit the same shape-only events.
@@ -449,9 +501,12 @@ package final class WisprBootstrapper {
       },
       // #3147: the one dictation recording archive.
       recordingArchive: recordingArchive)
+    transcriptCoordinator.catalogSession = HistoryCatalogSession(
+      changes: historySourceChanges, sources: transcriptStore.historyCatalogSources(meetings: meetingStore),
+      directory: AppConstants.appSupportURL.appendingPathComponent("HistoryCatalog", isDirectory: true))
     // #3147 §3.3: History opens on the tab the user left it on.
-    transcriptCoordinator.restoreHistoryTab(settings.lastHistoryTab)
-    transcriptCoordinator.onHistoryTabSelected = { [weak settings] tab in
+    transcriptCoordinator.browser.restoreHistoryTab(settings.lastHistoryTab)
+    transcriptCoordinator.browser.onHistoryTabSelected = { [weak settings] tab in
       settings?.lastHistoryTab = tab
     }
     // #3147: interrupted encodes and orphaned recordings are cleaned once, before any new
@@ -470,6 +525,7 @@ package final class WisprBootstrapper {
     // share the same registry. (#1106 re-homed this from the deleted re-polish
     // service per `state-ownership.md` shared-infra-homes-not-feature-services.)
     let pasteCompletionRegistry = PasteCompletionRegistry()
+    self.pasteCompletionRegistry = pasteCompletionRegistry
 
     // #1348 Phase 2/3 — owned model delivery. Constructed BEFORE EG-1 so the
     // EG-1 adapter receives the ONE shared `ModelDeliveryController` (#1348
@@ -496,8 +552,18 @@ package final class WisprBootstrapper {
     // can be constructed with BOTH backend references before the Parakeet
     // driver below. No circular dependency: `WhisperDeliveryWiring.make`'s
     // inputs are already in scope. #3735: the backend is transcribe.cpp.
+    // #4578: the one speech-model owner. Built before the Whisper wiring, whose Remove is this
+    // library's command; the Whisper parts it drives are attached right after they exist.
+    let speechModels = SpeechModelLibrary(modelDelivery: modelDelivery)
     let whisper = WhisperDeliveryWiring.make(
-      modelDelivery: modelDelivery, settings: settings, engineMutationScope: engineMutationScope)
+      modelDelivery: modelDelivery, settings: settings, engineMutationScope: engineMutationScope,
+      removeModel: SpeechModelLibrary.whisperRemoveAction(speechModels))
+    speechModels.attachWhisper(
+      .init(setupService: whisper.setupService, migration: whisper.migration, removal: whisper.removal))
+    // The first Parakeet installation read (joins the launch migration started just above).
+    speechModels.refreshParakeet()
+    // #4578: whether an interrupted removal left Parakeet bytes behind.
+    Task { await speechModels.refreshLeftovers() }
     let whisperBackend = whisper.backend
     // #3973 C3: EnviousMeet's own Whisper Large v3 Turbo (used only while dictation runs
     // Parakeet). One instance for the process; loaded for one engine operation at a time.
@@ -575,6 +641,11 @@ package final class WisprBootstrapper {
       let debugS1LearnedWordAdapter: (url: URL, threshold: Double)? = nil
     #endif
 
+    // #3853: the bundled polish helpers' idle time. One value both engines read at each launch;
+    // the settings-change route (`PipelineSettingsSync`) keeps it in step with the setting.
+    let localPolishSleepIdle = LocalPolishSleepIdleSetting(
+      seconds: LocalPolishSleepIdle.seconds(for: settings.localPolishUnloadPolicy))
+
     // #4473: one EG-1 size on the EnviousDecode engine. Each size is its own model: its own
     // runtime facts, delivery registration (model folder plus draft model), engine, checker
     // adapter and persisted keys. Only the server coordinator is shared.
@@ -604,8 +675,11 @@ package final class WisprBootstrapper {
         manifest: facts?.runtimeFacts(
           expectedModelName: LLMProvider.localModel(for: .egOne, ollamaModel: "") ?? ""),
         serverBinaryURL: egOneHelperURL, delivery: adapter,
-        engine: registration.map { EGOneArtifactCatalog.engine(for: $0) }
-          ?? EGOneArtifactCatalog.unregisteredEngine(size, appSupport: egOneAppSupport),
+        engine: registration.map {
+          EGOneArtifactCatalog.engine(for: $0, sleepIdleSeconds: localPolishSleepIdle.reader)
+        }
+          ?? EGOneArtifactCatalog.unregisteredEngine(
+            size, appSupport: egOneAppSupport, sleepIdleSeconds: localPolishSleepIdle.reader),
         coordinator: localPolishCoordinator, modelID: .egOne(size),
         launchLocation: { folders?.model },
         learnedWordAdapterProvider: {
@@ -731,7 +805,7 @@ package final class WisprBootstrapper {
       manifest: s1Manifest?.runtimeFacts(
         expectedModelName: LLMProvider.localModel(for: .s1Mini, ollamaModel: "") ?? ""),
       serverBinaryURL: llamaServerBinaryURL, delivery: s1Adapter,
-      engine: LlamaServerEngine(),
+      engine: LlamaServerEngine(sleepIdleSeconds: localPolishSleepIdle.reader),
       coordinator: localPolishCoordinator, modelID: .singleModel(for: .s1Mini),
       learnedWordAdapterProvider: s1LearnedWordAdapterProvider)
     s1MiniRuntime.removeLearnedWordAdapter = { await modelDelivery.removeCheckerAdapter(.s1Mini) }
@@ -997,7 +1071,6 @@ package final class WisprBootstrapper {
           base: s1BaseRegistration, promptTemplateID: s1Manifest?.promptTemplateID,
           runtime: s1MiniRuntime, debugThreshold: debugS1LearnedWordAdapter?.threshold),
       ],
-      currentModel: { [settings] in settings.polishModelID(for: $0) },
       debugScriptedChecker: debugScriptedChecker)
     for runtime in [egOneFull.runtime] + egOneOtherSizes.map(\.wiring.runtime) {
       let report = EGOneTelemetryBridge.handler(engine: .egOne, size: runtime.modelID.size)
@@ -1076,6 +1149,7 @@ package final class WisprBootstrapper {
       importPinnedLocalModel: {
         fileImportCoordinatorForGates?.pinnedLocalPolishModel
           ?? transcriptRetranscriptionForGates?.heldRun?.configuration.localPolishModel
+          ?? historyRepolishForGates?.heldRun?.configuration.localPolishModel
       },
       summaryPinnedLocalModel: { [localPolishRuntimes] in
         localPolishRuntimes.summaryHeldModel
@@ -1083,8 +1157,22 @@ package final class WisprBootstrapper {
       importPinnedOllamaModel: {
         fileImportCoordinatorForGates?.pinnedOllamaModel
           ?? transcriptRetranscriptionForGates?.heldRun?.configuration.ollamaModel
+          ?? historyRepolishForGates?.heldRun?.configuration.ollamaModel
       },
       summaryPinnedOllamaModel: { meetingSummariesForEviction?.summaryPinnedOllamaModel },
+      // #3853 (#4360): only summary WORK keeps a summary model wanted, never the setting: each
+      // attempt from its start to its end, plus the selected model while a final pass runs.
+      summaryOllamaDemand: {
+        var demand = meetingSummariesForEviction?.ollamaSummaryDemand ?? []
+        if meetingCoordinatorForEviction?.processing != nil,
+          let selected = OllamaConnector.effectiveOllamaModel(
+            provider: settings.effectiveMeetingSummaryLLMProvider,
+            model: settings.effectiveMeetingSummaryLLMModel)
+        {
+          demand.insert(selected)
+        }
+        return demand
+      },
       outputClassifierHolder: outputClassifierHolder,
       loadOutputClassifier: { [outputClassifierHolder] in
         WisprBootstrapper.prewarmOutputClassifier(holder: outputClassifierHolder)
@@ -1094,16 +1182,19 @@ package final class WisprBootstrapper {
         guard
           fileImportCoordinatorForGates?.isEngineHeld == true
             || transcriptRetranscriptionForGates?.isEngineHeld == true
+            || historyRepolishForGates?.heldRun != nil
         else { return nil }
         return fileImportRunnerForGates?.frozenLLMProvider
       }
     )
+    settingsSync.localPolishSleepIdle = localPolishSleepIdle
     settingsSync.applyInitialSettings(settings)
     // #3242: the word check for polish engines without their own. Held by the eligibility
     // owner (its only reader); driven by the Dictionary switch and both engine choices.
     let wordCheck = WordCheckRuntime(
       delivery: modelDelivery,
       isDictionaryEnabled: { [weak settings] in settings?.wordCorrectionEnabled ?? false },
+      areLearnedFixesEnabled: { [weak settings] in settings?.fixLearnedWords ?? false },
       someEngineLacksOwnChecker: { [weak settings] in
         guard let settings else { return false }
         return !LearnedWordCheckerEngine.hasOwnChecker(settings.llmProvider)
@@ -1115,6 +1206,7 @@ package final class WisprBootstrapper {
     settingsSync.onWordCheckInputsChanged = { [weak wordCheck] in
       wordCheck?.refresh(trigger: .settingsChanged)
     }
+    settingsSync.onWordCheckWorkFinished = { [weak wordCheck] in wordCheck?.workFinished() }
 
     // #1988: the live-preview limb, wired ONLY to the overlay. See the installer.
     //
@@ -1122,7 +1214,12 @@ package final class WisprBootstrapper {
     // rather than pushing providers into an overlay that had to already exist.
     let livePreviewInstallation = LivePreviewInstaller.install(
       capture: audioCapture, settings: settings,
-      settingsSync: settingsSync, modelDelivery: modelDelivery)
+      settingsSync: settingsSync, modelDelivery: modelDelivery,
+      recordingFixLearnedWords: { [weak kernelDriver, weak whisperKernelDriver] in
+        kernelDriver?.currentSessionConfig?.fixLearnedWords
+          ?? whisperKernelDriver?.currentSessionConfig?.fixLearnedWords
+          ?? settings.fixLearnedWords
+      })
     let livePreview = livePreviewInstallation.coordinator
 
     // **The director is constructed HERE, roughly 360 lines below where it used
@@ -1163,6 +1260,10 @@ package final class WisprBootstrapper {
       openMicrophoneSettings: {
         Task { await permissions.requestMicrophoneAccessOrOpenSettings() }
       },
+      // #4601: the not-responding notice's "How to fix" opens the help section in the browser.
+      openMicrophoneHelp: {
+        NSWorkspace.shared.open(DictationNarrator.microphoneNotRespondingHelpURL)
+      },
       // #2664: the silent-take advisory names the multi-input device the user
       // would find selected in Settings right now. Same device rule as the
       // settings row (`InputSocket.socketDevice`), same strong captures as the
@@ -1173,7 +1274,8 @@ package final class WisprBootstrapper {
           socketDevice: InputSocket.socketDevice(
             preferredInputDeviceIDOverride: settings.preferredInputDeviceIDOverride,
             devices: audioDeviceList.availableInputDevices,
-            resolvedAutoInputDeviceID: AudioDeviceEnumerator.resolvedAutoInputDeviceID))
+            // #4021: the Auto device from the same accepted snapshot as the list.
+            resolvedAutoInputDeviceID: { audioDeviceList.snapshot?.resolvedAutoDeviceID }))
       },
       // **THE SEAM PHASE 3 LEFT, NOW SPENT** (#2376 Phase 4, C6). It is a closure
       // so that it can be: the director lives for the app's lifetime, so a stored
@@ -1224,6 +1326,20 @@ package final class WisprBootstrapper {
         upgradePills.backgroundUpgradeChanged(state)
       }
     }
+    // #4845 LIFE-5: the one "AI polish download complete" pill, for a download this process
+    // completed (Setup's Skip ahead or Settings). Held by the onboarding completion below.
+    let polishDownloadPills = PolishDownloadPillPresenter(
+      overlay: recordingOverlay,
+      inputs: .init(
+        sources: { [localPolishRuntimes] in localPolishRuntimes.all },
+        setupComplete: { [settings] in settings.onboardingState == .completed },
+        summaryHoldsServer: { [localPolishRuntimes] in localPolishRuntimes.summaryHeldModel != nil },
+        modelName: { model in
+          if let size = model.size { return EGOneSizeCardCopy.title(size) }
+          return model.provider.displayName
+        },
+        schedule: PolishDownloadPillPresenter.mainActorSchedule))
+    polishDownloadPills.start()
 
     // #996 chunk 5h: composed here because every collaborator it needs already
     // exists (settings, the word list, the packs, the overlay director, the
@@ -1382,10 +1498,6 @@ package final class WisprBootstrapper {
       // Strong: `settings` holds no reference back to the coordinator, and a nil fallback
       // would be a second copy of the default, which lives only in `SettingsDefaultValues`.
       showInDock: { [settings] in settings.showInDock },
-      canOpenOnboarding: { [weak settings] in
-        guard let settings else { return false }
-        return settings.onboardingState != .completed
-      },
       isOnboardingComplete: { [weak settings] in
         settings?.onboardingState == .completed
       }
@@ -1410,7 +1522,7 @@ package final class WisprBootstrapper {
         weak settingsSync, weak settings, weak settingsChangeTelemetry,
         bluetoothAwarenessPresenterHolder, weak egOneCoordinator = egOneUpgrade?.coordinator,
         weak learnFromEdits, weak appWindowCoordinator, polishSetupMonitorHolder,
-        menuBarControllerHolder, meetingBox
+        menuBarControllerHolder, meetingBox, weak kernelDriver, asrManager
       ] key
       in
       guard let settingsSync, let settings else { return }
@@ -1467,6 +1579,20 @@ package final class WisprBootstrapper {
         learnFromEdits?.onboardingDidComplete()
         // #3546 E22: a held background Parakeet upgrade starts now.
         parakeetUpgrade.onboardingDidComplete()
+        // #4845 LIFE-5: a download-complete pill held back during Setup can show now.
+        polishDownloadPills.attempt()
+        // #4528: launch skips the speech warm until Setup completes (LaunchEngineWarm), so
+        // completion warms instead. Setup usually left the engine warm already (this joins or
+        // no-ops); after a completion restored on relaunch, or Skip practice while Practice
+        // was still preparing, it is what keeps the first dictation from starting cold.
+        Task { [weak kernelDriver, weak speechModels] in
+          // #4578: a missing engine is not warmed (a warm of a missing Parakeet downloads it).
+          guard await speechModels?.freshInstalled(.parakeet) == true else { return }
+          guard settings.selectedBackend == .parakeet,
+            asrManager.activeBackendType == .parakeet
+          else { return }
+          _ = await kernelDriver?.ensureEngineWarm(reason: .onboarding)
+        }
       }
       // #1480: tips on/off, input-device change, and onboarding completion each
       // re-evaluate the Bluetooth card (dismiss/suppress, route re-check, or first
@@ -1501,10 +1627,25 @@ package final class WisprBootstrapper {
       _ = await kernelDriver?.ensureEngineWarm(reason: .explicitRetry)
     }
 
-    if settings.selectedBackend == .parakeet {
+    // #4837: a Parakeet download admitted while the app runs loads the engine now. Setup warms
+    // itself and launch skips the warm until Setup ends, so this runs only after Setup finished.
+    modelDelivery.warmParakeetAfterAdmission = { [weak kernelDriver, asrManager] in
+      guard
+        LaunchEngineWarm.allowedAfterDownload(
+          selectedBackend: settings.selectedBackend, activeBackend: asrManager.activeBackendType,
+          onboardingState: settings.onboardingState)
+      else { return }
+      _ = await kernelDriver?.ensureEngineWarm(reason: .afterDownload)
+    }
+
+    if LaunchEngineWarm.allowed(
+      selectedBackend: settings.selectedBackend, onboardingState: settings.onboardingState)
+    {
       // #3546: launch is a model-selection point.
       parakeetUpgrade.markSelectionPoint()
-      Task { [weak kernelDriver] in
+      Task { [weak kernelDriver, weak speechModels] in
+        // #4578: the initial installation read settles first; a missing engine is not warmed.
+        guard await speechModels?.freshInstalled(.parakeet) == true else { return }
         // Discard the outcome so the Task's Success type stays Void
         // (`EngineWarmupOutcome` does not declare Sendable conformance).
         _ = await kernelDriver?.ensureEngineWarm(reason: .launch)
@@ -1538,7 +1679,15 @@ package final class WisprBootstrapper {
     let diagnosticsCoordinator = DiagnosticsCoordinator(
       benchmark: BenchmarkSuite(
         engineMutationScope: engineMutationScope, engineLease: engineLease,
-        isEngineSwitching: { engineCoordinatorForRecoveryGate?.isSwitching ?? false }))
+        isEngineSwitching: { engineCoordinatorForRecoveryGate?.isSwitching ?? false },
+        // #4578: both speed-test entry points load through `ensureModelLoaded`; the job
+        // decision runs there first. The active engine is the one the test loads.
+        missingEngineLabel: { [weak speechModels, asrManager, kernelDriver, whisperKernelDriver] in
+          guard let speechModels else { return nil }
+          let engine = asrManager.activeBackendType
+          guard await !speechModels.admits(.benchmark, requested: engine) else { return nil }
+          return (engine == .whisper ? whisperKernelDriver : kernelDriver).engineDisplayName
+        }))
 
     // **Two arguments, and no self-reference problem to solve** (#2292 C3).
     // This used to hand over three closures, one of which resolved the chip's
@@ -1602,15 +1751,21 @@ package final class WisprBootstrapper {
       // #3289: start loading the word check behind the recovered recording's transcription when
       // its frozen polish engine uses it (the model is no longer loaded at launch).
       // #3853: and the output classifier counts the replay as a consumer, by the same provider.
-      onReplayWillTranscribe: { [weak checkerEligibility, weak settingsSync, settings] provider in
+      onReplayWillTranscribe: { [weak checkerEligibility, weak settingsSync, settings] provider, allowsLearnedFixes in
         checkerEligibility?.wordCheck?.recoveryStarted(
-          needsWordCheck: !LearnedWordCheckerEngine.hasOwnChecker(provider))
+          needsWordCheck: allowsLearnedFixes && !LearnedWordCheckerEngine.hasOwnChecker(provider))
         settingsSync?.outputClassifierRecoveryStarted(provider: provider, settings: settings)
       },
-      onReplayFinished: { [weak checkerEligibility, weak settingsSync, settings] provider in
+      onReplayFinished: { [weak checkerEligibility, weak settingsSync, settings] provider, allowsLearnedFixes in
         checkerEligibility?.wordCheck?.recoveryFinished(
-          needsWordCheck: !LearnedWordCheckerEngine.hasOwnChecker(provider))
+          needsWordCheck: allowsLearnedFixes && !LearnedWordCheckerEngine.hasOwnChecker(provider))
         settingsSync?.outputClassifierRecoveryFinished(provider: provider, settings: settings)
+      },
+      // #4578: replay never downloads a missing engine; it ends through the terminal refusal.
+      activeEngineMissing: { [weak speechModels, asrManager] in
+        guard let speechModels else { return nil }
+        let engine = asrManager.activeBackendType
+        return await speechModels.admits(.recoveryReplay, requested: engine) ? nil : engine
       },
       // Best-effort: the snapshot carries only the custom-words version, so recovery
       // applies the user's CURRENT words (pack terms omitted) — normal-quality, not
@@ -1695,6 +1850,7 @@ package final class WisprBootstrapper {
         isFileImportRunning: {
           fileImportCoordinatorForGates?.isEngineHeld == true
             || transcriptRetranscriptionForGates?.isEngineHeld == true
+            || historyRepolishForGates?.heldRun != nil
         },
         isEngineHeld: { [engineLease] in engineLease.isBusy },
         isMeetingEngineResident: { [meetingBox] in
@@ -1703,8 +1859,19 @@ package final class WisprBootstrapper {
         isMeetingOwnModelResident: { [meetingBox] backend in
           meetingBox.coordinator?.isFinalPassOwnModelResident(backend) ?? false
         },
-        isInstalled: { [setup] backend in
-          backend == .parakeet ? true : setup.whisperSetup.setupState == .ready
+        // #4578: the library's settled fact; unknown is not installed here, and
+        // `isInstallationKnown` keeps the switch and warm waiting until it settles.
+        isInstalled: { [weak speechModels] backend in
+          speechModels?.installedSnapshot(backend) ?? false
+        },
+        isInstallationKnown: { [weak speechModels] backend in
+          speechModels?.installedSnapshot(backend) != nil
+        },
+        automaticLoadStopPoint: { [weak modelDelivery] backend in
+          backend == .parakeet ? modelDelivery?.parakeetAutomaticLoadStopPoint : nil
+        },
+        awaitInstallation: { [weak speechModels] backend in
+          _ = await speechModels?.freshInstalled(backend)
         },
         stateLabel: { [kernelDriver, whisperKernelDriver] backend in
           (backend == .whisper ? whisperKernelDriver : kernelDriver).state.telemetryLabel
@@ -1766,10 +1933,19 @@ package final class WisprBootstrapper {
     // #3546 A3: an activation deferred because the engine lease was held (a speed test, a
     // decode still finishing for an abandoned take) is offered again when it is released.
     // #3849: every poke re-runs every gate, so a switch deferred by gate 6c applies here too.
-    engineLease.onReleased = { [weak engineCoordinator, meetingWakes] in
+    engineLease.onReleased = { [weak engineCoordinator, meetingWakes, localPolishRuntimes] in
       engineCoordinator?.poke(.parakeetUpgradeOwed)
       // #4052: a meeting pass waiting for the engine takes its turn.
       meetingWakes.poke()
+      // #4845 LIFE-5: a completed AI polish download waiting for its readiness check asks again
+      // whenever the engine frees up, whoever held it (a take, including a cancelled or too-short
+      // one, a decode still finishing for an abandoned take, a file import, a speed test).
+      for runtime in localPolishRuntimes.all { runtime.confirmPendingDownload() }
+    }
+    // #4845 LIFE-5: that check never makes a holder wait: claiming the engine cancels it, and the
+    // helper stops the cancelled request at its next generation round.
+    engineLease.onGranted = { [localPolishRuntimes] in
+      for runtime in localPolishRuntimes.all { runtime.standDownDownloadConfirmation() }
     }
     // #3973 C1: a meeting operation waiting behind a dictation's reservation looks again when
     // that press ends without taking the turn.
@@ -1807,6 +1983,10 @@ package final class WisprBootstrapper {
     for driver in [kernelDriver, whisperKernelDriver] {
       driver.onDictationEndedForRecovery = { [weak recoveryCoordinator] in
         recoveryCoordinator?.requestRecoveryRecheck()
+      }
+      // #4537: any settled warm-up republishes engine status (a launch preload never poked it).
+      driver.onEngineWarmSettled = { [weak engineCoordinator] in
+        engineCoordinator?.poke(.driverStateChanged)
       }
     }
     // Row 7: Parakeet's idle-unload choke point. #1741 Chunk 3 — `asrManager`
@@ -1958,14 +2138,17 @@ package final class WisprBootstrapper {
       // removed (founder: no new dictations during a removal drain; the drain's
       // first instants can still read installed+ready). Defaults OPEN on a
       // missing authority.
-      isSelectedModelInstalled: { [weak engineCoordinator, weak setup] in
-        guard let engineCoordinator else { return true }
-        if engineCoordinator.status.selected == .whisper,
-          setup?.whisperSetup.isRemoving == true
-        {
-          return false
-        }
-        return engineCoordinator.status.selectedInstalled
+      isSelectedModelInstalled: { [weak engineCoordinator, weak speechModels] in
+        guard let engineCoordinator, let speechModels else { return true }
+        // #4578: one decision over fresh facts. A model mid-removal reads not installed
+        // (`installedSnapshot`), as before.
+        return await speechModels.admits(.dictation, requested: engineCoordinator.status.selected)
+      },
+      selectedEngineRequiresRetry: { [weak engineCoordinator] backend in
+        engineCoordinator?.selectedEngineRequiresRetry(backend) ?? false
+      },
+      confirmSelectedEngineRequiresRetry: { [weak engineCoordinator] backend in
+        await engineCoordinator?.confirmSelectedEngineRequiresRetry(backend) ?? false
       },
       endMinting: { [weak engineCoordinator] in engineCoordinator?.endMinting() },
       // #3546 A3: a press during the in-session Ultra activation gets the upgrade pills.
@@ -2035,15 +2218,21 @@ package final class WisprBootstrapper {
           if let url = URL(string: HelpCenter.rootURL) { NSWorkspace.shared.open(url) }
         },
         // #3454: the Settings dropdown's own titles ("<name> · <connection>"), read as the menu opens.
+        // #4021: from the frozen snapshot facts, never a Core Audio read as the menu opens.
         microphoneChoices: {
-          audioDeviceList.availableInputDevices.map { device in
+          let facts = audioDeviceList.microphoneFacts
+          return facts.devices.map { device in
             MicrophoneMenuChoice(
               uid: device.uid,
               title: MicrophoneDevicePicker.optionTitle(
-                for: device, transportToken: AudioDeviceEnumerator.transportLabel(for: device.id)))
+                for: device, transportToken: facts.transportTokens[device.id]))
           }
         },
-        isMicrophoneConnected: { MicrophoneChoiceValidation.isSelectable(uid: $0) },
+        // #3479 / #4021: one shared owner checks the device off the main actor at click time
+        // and saves only the latest choice.
+        chooseMicrophone: { uid in
+          microphoneChoices.choose(uid: uid) { settings.chooseInputDevice(uid: $0) }
+        },
         openTranscribeFile: {
           navigationCoordinator.request(.transcribeFile)
           appWindowCoordinator.showWindow()
@@ -2052,15 +2241,24 @@ package final class WisprBootstrapper {
         // #3438: evaluated live as the menu is built (the monitor is bound later; until it is,
         // nothing shows).
         polishSetupWarning: { [polishSetupMonitorHolder] in
-          guard let monitor = polishSetupMonitorHolder.monitor else { return nil }
-          _ = monitor.currentContext()
-          return monitor.shows(.menu) ? monitor.promptSubject : nil
+          // #4721: each monitor answers for its own engine; the line names one or both.
+          @MainActor func shown(_ monitor: PolishSetupMonitor?) -> PolishSetupPromptSubject? {
+            guard let monitor else { return nil }
+            _ = monitor.currentContext()
+            return monitor.shows(.menu) ? monitor.promptSubject : nil
+          }
+          return PolishSetupWarningSubjects(
+            dictation: shown(polishSetupMonitorHolder.monitor),
+            summary: shown(polishSetupMonitorHolder.summaryMonitor))
         },
-        openAIPolish: { [polishSetupMonitorHolder] subject in
-          // The menu line is the only way here; report what it showed when it was built.
-          polishSetupMonitorHolder.monitor?.recordPrompt(.menu, .finishSetup, subject: subject)
-          navigationCoordinator.request(.aiPolish)
-          appWindowCoordinator.showWindow()
+        openAIPolish: { [polishSetupMonitorHolder] subjects in
+          // The menu line is the only way here; report what it showed when it was built, one
+          // row per engine it named.
+          subjects.finishSetup(
+            dictationMonitor: polishSetupMonitorHolder.monitor,
+            summaryMonitor: polishSetupMonitorHolder.summaryMonitor, on: .menu,
+            request: { navigationCoordinator.request($0) },
+            showWindow: { appWindowCoordinator.showWindow() })
         },
         toggleRecording: { await dictationRuntime.toggleRecording(source: .menuBar) },
         meetingPhase: { [meetingBox] in meetingBox.coordinator?.phase },
@@ -2076,7 +2274,7 @@ package final class WisprBootstrapper {
             waitingOnSummary: coordinator.passWaitsOnSummary)
         },
         showMeeting: { [weak transcriptCoordinator] meetingID in
-          transcriptCoordinator?.showMeetings(meetingID: meetingID)
+          transcriptCoordinator?.browser.showMeetings(meetingID: meetingID)
           navigationCoordinator.request(.history)
           appWindowCoordinator.showWindow()
         },
@@ -2086,6 +2284,26 @@ package final class WisprBootstrapper {
         },
         pasteLastDictation: { rowID, target in
           lastDictationAction.pasteFromMenu(rowID: rowID, target: target)
+        },
+        // #4845 D-F: the selected bundled model's download, after Setup only (the slot is
+        // Setup-gated by `renderMenu` too); verifying shows nothing, failed keeps the warning.
+        polishDownload: { [settings, localPolishRuntimes] in
+          let model = settings.polishModelID(for: settings.llmProvider)
+          return PolishDownloadMenu.line(
+            setupComplete: settings.onboardingState == .completed, selected: model,
+            installState: localPolishRuntimes.runtime(for: model)?.installState)
+        },
+        openAIPolishForDownload: {
+          navigationCoordinator.request(.aiPolish)
+          appWindowCoordinator.showWindow()
+        },
+        resumePolishDownload: { [settings, localPolishRuntimes] model in
+          // A stale line (another model selected since, or no longer paused) starts nothing.
+          let runtime = localPolishRuntimes.runtime(for: model)
+          PolishDownloadMenu.resume(
+            model, selected: settings.polishModelID(for: settings.llmProvider),
+            installState: runtime?.installState
+          ) { runtime?.startDownload() }
         }
       )
     )
@@ -2102,9 +2320,17 @@ package final class WisprBootstrapper {
       settings: settings,
       liveRecordingState: liveRecordingState,
       navigationCoordinator: navigationCoordinator,
-      appWindowCoordinator: appWindowCoordinator
+      appWindowCoordinator: appWindowCoordinator,
+      audioDeviceList: audioDeviceList
     )
     bluetoothAwarenessPresenterHolder.presenter = bluetoothAwarenessPresenter
+    // #4021: the card is judged on fresh device facts, after each accepted snapshot
+    // (including the first after launch, so that first evaluation's breadcrumb trigger
+    // may read `device_changed` rather than `launch`; the trigger labels breadcrumbs and
+    // selects no behaviour).
+    audioDeviceList.onSnapshotApplied = { [weak bluetoothAwarenessPresenter] in
+      bluetoothAwarenessPresenter?.reconcile(trigger: .deviceChanged)
+    }
 
     // #3289 §8b: is the app working, for the idle-memory sample. A dictation is in flight from
     // arming to its terminal (the drivers' session config, which outlives an `.error` the pipeline
@@ -2153,13 +2379,15 @@ package final class WisprBootstrapper {
     // PR-B.4 of #763: process-lifecycle home. Constructed last. It receives the
     // 10 specific homes it reads.
     let previousApplicationTracker = PreviousApplicationTracker()
+    let wheelScrollSmoother = WheelScrollSmoother(monitor: scrollWheelMonitor)
     let appLifecycleCoordinator = AppLifecycleCoordinator(
-      wheelScrollSmoother: WheelScrollSmoother(monitor: scrollWheelMonitor),
+      wheelScrollSmoother: wheelScrollSmoother,
       previousApplicationTracker: previousApplicationTracker,
       settings: settings,
       permissions: permissions,
       keychainManager: keychainManager,
       cloudModelList: { [cloudModelList] in cloudModelList.snapshot?.list },
+      speechModelsInstalled: { [weak speechModels] in speechModels?.launchInstalledLabel() },
       standingSnapshotBuilder: standingSnapshotBuilder,
       contactsImportCoordinator: contactsImportCoordinator,
       aiAvailability: aiAvailability,
@@ -2176,10 +2404,14 @@ package final class WisprBootstrapper {
       hotkeyService: hotkeyService,
       applicationRelocationCoordinator: applicationRelocationCoordinator,
       bluetoothAwarenessPresenter: bluetoothAwarenessPresenter,
-      onboardingProgress: onboardingProgress,
       transcriptionCheckpointStore: transcriptionCheckpointStore,
       batchDecodeFaultController: batchDecodeFaultController,
       whisperMemoryPressure: whisperMemoryPressure,
+      requestDeviceRefresh: { [weak audioDeviceList] in audioDeviceList?.requestRefresh() },
+      // #4721: one retry of a launch key check that could not tell, on a later return.
+      onBecameActive: { [cloudKeyLaunchCheck] in cloudKeyLaunchCheck.appBecameActive() },
+      coreAudioStall: debugCoreAudioStall(lane: audioDeviceList.lane),
+      audioUnitStall: debugAudioUnitStall(lane: .shared),
       // #996: each real transition into `.recording` cancels a live edit watch.
       // #3242: and pre-loads the word check so the take's check finds it ready.
       // #3988: and restarts the take's local polish engine if something outside
@@ -2187,7 +2419,7 @@ package final class WisprBootstrapper {
       onRecordingStarted: {
         [
           weak learnFromEdits, weak checkerEligibility, weak kernelDriver,
-          weak whisperKernelDriver, localPolishRuntimes
+          weak whisperKernelDriver, localPolishRuntimes, localPolishSleepIdle
         ] in
         learnFromEdits?.recordingStarted()
         // The take's frozen provider (set at arming), never the mutable setting.
@@ -2196,9 +2428,24 @@ package final class WisprBootstrapper {
             ?? whisperKernelDriver?.currentSessionConfig
         else { return }
         checkerEligibility?.wordCheck?.recordingStarted(
-          needsWordCheckForRecording: !LearnedWordCheckerEngine.hasOwnChecker(config.llmProvider))
+          needsWordCheckForRecording: config.fixLearnedWords && settings.wordCorrectionEnabled
+            && !LearnedWordCheckerEngine.hasOwnChecker(config.llmProvider))
         // #4473: the take's exact model. A size no runtime serves gets none, never another's.
-        localPolishRuntimes.runtime(for: config.polishModelID)?.recordingStarted()
+        let runtime = localPolishRuntimes.runtime(for: config.polishModelID)
+        runtime?.recordingStarted()
+        // #3853: EG-1 with an unload time chosen: ask a sleeping helper to load its model now, so
+        // the take's polish and learned-word check find it ready. Fire and forget: the recording
+        // never waits, a helper that is not running or already awake costs one quick answer, and
+        // every failure is silent (the polish request wakes the helper by itself, only later).
+        if config.polishModelID.provider == .egOne, localPolishSleepIdle.seconds != nil,
+          let runtime
+        {
+          Task {
+            if let endpoint = await runtime.activeEndpoint() {
+              await LocalPolishWake.send(to: endpoint)
+            }
+          }
+        }
       }
     )
 
@@ -2225,6 +2472,8 @@ package final class WisprBootstrapper {
     self.languageSuggestionPresenter = languageSuggestionPresenter
     self.updateCoordinatorHolder = updateCoordinatorHolder
     self.settingsKeyMonitor = settingsKeyMonitor
+    self.historyClickMonitor = historyClickMonitor
+    self.setupShortcutMonitor = setupShortcutMonitor
     self.historyScrollMonitor = historyScrollMonitor
     self.sparkleUpdateController = sparkleUpdateController
     self.updateTriggerCoordinator = updateTriggerCoordinator
@@ -2282,15 +2531,26 @@ package final class WisprBootstrapper {
     // — reachable through the ordinary memory-saving unload setting. Found by
     // Codex. `load()`'s postcondition is readiness, not merely that the call
     // returned, so a warm that fails still refuses.
-    let ensureSelectedEngineReady: @MainActor () async -> FileImportCoordinator.EngineReadiness = {
-      [weak engineCoordinator, activeEngine] in
+    let ensureSelectedEngineReady:
+      @MainActor (ASRBackendType?) async -> FileImportCoordinator.EngineReadiness = {
+      [weak engineCoordinator, activeEngine, settings, asrManager] fileBackend in
       guard let engineCoordinator else { return .notReady }
       switch await engineCoordinator.ensureSelectedReadyForPress() {
       case .ready: return .ready
       case .notInstalled: return .notInstalled
       case .notReady:
-        guard (try? await activeEngine.load()) != nil else { return .notReady }
-        return await activeEngine.isLoaded() ? .ready : .notReady
+        if let fileBackend {
+          let needsRetry = await engineCoordinator.confirmSelectedEngineRequiresRetry(fileBackend)
+          // Convergence can give up while a different engine is still busy.
+          guard settings.selectedBackend == fileBackend, asrManager.activeBackendType == fileBackend
+          else { return .notReady }
+          if needsRetry { return .requiresExplicitRetry }
+        }
+        if (try? await activeEngine.load()) != nil, await activeEngine.isLoaded() { return .ready }
+        if let fileBackend, await engineCoordinator.confirmSelectedEngineRequiresRetry(fileBackend) {
+          return .requiresExplicitRetry
+        }
+        return .notReady
       }
     }
     // **The disarm/re-arm pair, handed over as a pair.** A dictation minutes
@@ -2421,7 +2681,24 @@ package final class WisprBootstrapper {
       engineSelectionSettled: { [settings, asrManager] in
         settings.selectedBackend == asrManager.activeBackendType
       },
-      ensureEngineReady: ensureSelectedEngineReady,
+      // #4578: Transcribe a File asks the one decision first (fresh facts), then the shared
+      // readiness drive; a missing engine is refused before any load, so nothing downloads.
+      ensureEngineReady: { [weak engineCoordinator, weak speechModels, settings, asrManager] in
+        guard let engineCoordinator, let speechModels else { return .notReady }
+        let selected = settings.selectedBackend
+        let installed = await speechModels.admits(.fileImport, requested: selected)
+        guard settings.selectedBackend == selected else { return .notReady }
+        guard installed else { return .notInstalled }
+
+        let needsRetry = await engineCoordinator.confirmSelectedEngineRequiresRetry(selected)
+        guard settings.selectedBackend == selected else { return .notReady }
+        if needsRetry { return .requiresExplicitRetry }
+
+        let readiness = await ensureSelectedEngineReady(selected)
+        guard settings.selectedBackend == selected else { return .notReady }
+        if readiness == .notInstalled { return .notInstalled }
+        return asrManager.activeBackendType == selected ? readiness : .notReady
+      },
       // The same three retries a finished dictation fires
       // (`DictationLifecycleCoordinator` on its terminal), because an import
       // blocks the same three things: an engine switch deferred by gate 6b, an
@@ -2444,6 +2721,7 @@ package final class WisprBootstrapper {
         engineCoordinator?.poke(.driverStateChanged)
         settingsSync.retryDeferredOllamaEviction(settings: settings)
         settingsSync.retryDeferredOutputClassifierRelease(settings: settings)
+        settingsSync.onWordCheckWorkFinished()
         Task { @MainActor in
           await releaseHold?.value
           // #2772: FORCED. An import that started its own bundled polisher armed no
@@ -2478,7 +2756,7 @@ package final class WisprBootstrapper {
         // check now for a run whose FROZEN engine has no checker of its own, so the first part finds
         // it loading or ready. Opening the page or a refused claim never reaches this line.
         checkerEligibility.wordCheck?.fileImportStarted(
-          needsWordCheck: !LearnedWordCheckerEngine.hasOwnChecker(
+          needsWordCheck: snapshot.allowsLearnedFixes && !LearnedWordCheckerEngine.hasOwnChecker(
             LLMProvider(rawValue: snapshot.llmProvider) ?? .none))
         var configuration = FileImportSettingsFreeze.configuration(
           for: snapshot,
@@ -2593,10 +2871,35 @@ package final class WisprBootstrapper {
         dictationProviders: [
           kernelDriver?.currentSessionConfig, whisperKernelDriver?.currentSessionConfig,
         ]
-        .compactMap { $0?.llmProvider },
+        .compactMap { $0 }.filter(\.fixLearnedWords).map(\.llmProvider),
         importHoldsEngine: fileImportCoordinator?.isEngineHeld == true
-          || transcriptRetranscriptionForGates?.isEngineHeld == true,
-        importProvider: fileImportRunner?.frozenLLMProvider)
+          || transcriptRetranscriptionForGates?.isEngineHeld == true
+          || historyRepolishForGates?.heldRun != nil,
+        importProvider: fileImportRunner?.frozenAllowsLearnedFixes == true
+          ? fileImportRunner?.frozenLLMProvider : nil)
+    }
+    let setupOwners = OnboardingLiveOwners(
+      settings: settings, modelDelivery: modelDelivery, whisperSetup: setup.whisperSetup,
+      speechModels: speechModels,
+      localPolish: localPolishRuntimes, engineCoordinator: engineCoordinator,
+      aiAvailability: aiAvailability, llmDiscovery: llmDiscovery,
+      savedKeyPresence: savedKeyPresence, permissions: permissions,
+      egOneSizeCatalog: egOneSizeCatalog, cloudModelList: cloudModelList,
+      dictationRuntime: dictationRuntime, application: presentationEffects.application,
+      setupShortcutMonitor: setupShortcutMonitor,
+      credentials: CredentialWriter(
+        keychainManager: keychainManager, presence: savedKeyPresence,
+        discovery: llmDiscovery),
+      liveRecording: liveRecordingState, audioDevices: audioDeviceList)
+    let setupSession = SetupSession.live(setupOwners, progress: onboardingProgress)
+    self.setupSession = setupSession
+    appWindowCoordinator.setupSession = setupSession
+    setupSession.onCompleted = { [weak appWindowCoordinator, weak menuBarController] in
+      menuBarController?.updateIcon()
+      appWindowCoordinator?.finishSetup()
+    }
+    setupSession.onProgrammaticDismissal = { [weak appWindowCoordinator] in
+      appWindowCoordinator?.refreshActivationPolicy(excluding: nil)
     }
     #if DEBUG
       self.debugImportDoor = DebugImportDoor(
@@ -2689,7 +2992,15 @@ package final class WisprBootstrapper {
             savedKeyState: { [savedKeyPresence] in savedKeyPresence.state(for: $0) }),
           history: DevControlDispatcher.HistorySource(
             visibleTranscripts: { [transcriptCoordinator] in
-              transcriptCoordinator.visibleTranscripts
+              try await transcriptCoordinator.savedHistoryForDiagnostics()
+            },
+            savedRow: { [transcriptCoordinator] id in
+              try await transcriptCoordinator.savedRowForDiagnostics(id: id)
+            },
+            // #4798: the History card's own Delete (text and recordings).
+            delete: { [transcriptCoordinator] id in
+              await transcriptCoordinator.deleteHistoryItem(
+                id: .transcript(id), kind: .textAndRecordings)
             }),
           models: DevControlDispatcher.ModelActions(
             parakeetDownload: { [modelDelivery] in modelDelivery.resumeParakeetDownload() },
@@ -2701,10 +3012,23 @@ package final class WisprBootstrapper {
             egOneRemove: { [egOneSizeActions, settings] size in
               egOneSizeActions.remove(
                 size, settings: settings,
-                recommendation: EGOneSizeRecommendation.forThisMac(
-                  language: settings.languageMode))
+                recommendation: SetupAdvice.recommendedEGOneSize(
+                  languageMode: settings.languageMode))
             },
-            egOneState: { [egOneSizeActions] in egOneSizeActions.installState($0) }),
+            egOneState: { [egOneSizeActions] in egOneSizeActions.installState($0) },
+            s1MiniDownload: { [localPolishRuntimes] in
+              guard let runtime = localPolishRuntimes.runtime(for: .singleModel(for: .s1Mini)),
+                runtime.installState.acceptsDownloadStart
+              else { return false }
+              runtime.startDownload()
+              return true
+            },
+            s1MiniCancel: { [localPolishRuntimes] in
+              localPolishRuntimes.runtime(for: .singleModel(for: .s1Mini))?.cancelDownload()
+            },
+            s1MiniState: { [localPolishRuntimes] in
+              localPolishRuntimes.runtime(for: .singleModel(for: .s1Mini))?.installState
+            }),
           dictation: devControlDictation,
           credentials: CredentialWriter(
             keychainManager: keychainManager, presence: savedKeyPresence,
@@ -2720,7 +3044,9 @@ package final class WisprBootstrapper {
               })),
           calls: DevControlCalls(
             sources: DevControlCalls.Sources(
-              coordinator: { [meetingBox] in meetingBox.callDetection }))))
+              coordinator: { [meetingBox] in meetingBox.callDetection })),
+          onboarding: .live(
+            setupOwners, setupSession: setupSession)))
     #endif
     // #3972 C4a: EnviousMeet, bootstrapped here so it lives independently of any view.
     engineCoordinator.onMintingEnded = { [meetingWakes] in meetingWakes.poke() }
@@ -2800,7 +3126,7 @@ package final class WisprBootstrapper {
     PreviewModelRemoval.install(
       on: modelDelivery, dictation: livePreview, meeting: meetingLiveWords)
     var meetingInputs = MeetingWiring.Inputs(
-      store: MeetingStore(),
+      store: meetingStore,
       settings: settings, permissions: permissions, otherAudioHold: otherAudioHold,
       transcriptCoordinator: transcriptCoordinator,
       isDictationIdle: { [liveRecordingState, engineCoordinator] in
@@ -2825,10 +3151,10 @@ package final class WisprBootstrapper {
               return status.selected != status.active && !status.selectedInstalled
             },
             ensureSelected: {
-              switch await ensureSelectedEngineReady() {
+              switch await ensureSelectedEngineReady(nil) {
               case .ready: .ready
               case .notInstalled: .notInstalled
-              case .notReady: .notReady
+              case .notReady, .requiresExplicitRetry: .notReady
               }
             },
             readyRunning: {
@@ -2854,16 +3180,24 @@ package final class WisprBootstrapper {
       memoryPressure: meetingMemoryPressure,
       offlineModeAdmission: concreteASRManager,
       meetingSelection: { [parakeetUpgrade] in await parakeetUpgrade.meetingSelection() },
+      parakeet: MeetingWiring.ParakeetInstallation(
+        installed: { [weak speechModels] in await speechModels?.freshInstalled(.parakeet) ?? false },
+        installedNow: { [weak speechModels] in speechModels?.installedSnapshot(.parakeet) == true }),
       modelUseGate: modelDelivery.controller.meetingModelUseGate,
       isDeliveryEnabled: { [modelDelivery] in modelDelivery.parakeetHandle?.isEnabled() ?? false },
-      workChanged: { [weak engineCoordinator] in engineCoordinator?.poke(.parakeetUpgradeOwed) },
+      // #3853: a final pass ending also rechecks Ollama residency (a Transcribe again starts no
+      // summary, so no summary hook would).
+      workChanged: { [weak engineCoordinator, weak settingsSync, settings] in
+        engineCoordinator?.poke(.parakeetUpgradeOwed)
+        settingsSync?.retryDeferredOllamaEviction(settings: settings)
+      },
       log: { line in
         Task { await AppLogger.shared.log(line, level: .info, category: "Meetings") }
       },
       keychain: keychainManager,
       cloudModelList: { [cloudModelList] in cloudModelList.snapshot?.list },
       detectedStartWanted: { [meetingBox] in
-        meetingBox.callDetection?.detectedStartStillWanted() ?? false
+        await meetingBox.callDetection?.detectedStartStillWanted() ?? false
       })
     meetingInputs.liveWords = meetingLiveWords
     meetingInputs.neuralSpeakersAvailable = { [modelDelivery] in
@@ -2904,6 +3238,7 @@ package final class WisprBootstrapper {
     meetingInputs.importPinnedLocalProvider = {
       fileImportCoordinatorForGates?.pinnedLocalPolishProvider
         ?? transcriptRetranscriptionForGates?.heldRun?.configuration.localPolishModel?.provider
+        ?? historyRepolishForGates?.heldRun?.configuration.localPolishModel?.provider
     }
     // #4319: EG-1 summaries borrow the bundled server and give it back to dictation's engine
     // through the same forced reconcile a file import uses.
@@ -2916,6 +3251,16 @@ package final class WisprBootstrapper {
       restoreSelection: { [weak settingsSync, settings] in
         settingsSync?.retryDeferredEGOneDeactivation(settings: settings, forceReconciliation: true)
       })
+    meetingInputs.presentSummaryLimit = {
+      [weak recordingOverlay, weak navigationCoordinator, weak appWindowCoordinator] failure, isCurrent in
+      recordingOverlay?.present(.meetingSummaryLimit(
+        provider: failure.provider, isStillWanted: isCurrent,
+        onChooseEngine: {
+          guard let navigationCoordinator, let appWindowCoordinator else { return }
+          MeetingSummarySettingsLink.highlightChoice(navigationCoordinator)
+          appWindowCoordinator.showWindow()
+        }))
+    }
     let refreshRules: @Sendable () -> Void = {
       Task.detached(priority: .utility) {
         // Independent stores: one document's failure never delays the other.
@@ -2925,8 +3270,10 @@ package final class WisprBootstrapper {
       }
     }
     meetingInputs.refreshRules = refreshRules
-    // The day's rules downloads at launch, off the launch path.
+    // The day's rules downloads at launch, off the launch path. Setup rules refresh on their own
+    // (#4528 B2): a meeting start never triggers them.
     refreshRules()
+    Task.detached(priority: .utility) { await SetupRulesStore.inForce.refreshIfDue() }
     let callDetectionNow: @MainActor () -> Date = {
       Date(timeIntervalSinceReferenceDate: ProcessInfo.processInfo.systemUptime)
     }
@@ -2963,6 +3310,14 @@ package final class WisprBootstrapper {
     let playbackArbiter = PlaybackArbiter()
     meetingCoordinator.playbackArbiter = playbackArbiter
     transcriptCoordinator.recordings?.arbiter = playbackArbiter
+    // #4799: retention never removes audio that History's Save audio is saving.
+    let historyAudioExport = HistoryAudioExport()
+    meetingCoordinator.isExportingAudio = { [weak historyAudioExport] in
+      historyAudioExport?.isExporting(.meeting($0)) ?? false
+    }
+    transcriptCoordinator.recordings?.isExporting = { [weak historyAudioExport] in
+      historyAudioExport?.isExporting(.dictation($0)) ?? false
+    }
     // #3147 PR3: an import's original-file players stop before its link, content or row
     // changes (relink, Transcribe again with, deletion, Delete All).
     transcriptCoordinator.onImportedContentWillChange = { [weak playbackArbiter] rowID in
@@ -2981,6 +3336,58 @@ package final class WisprBootstrapper {
     // #3147 PR3: Transcribe again with. Same `.fileImport` lease and the same cleanup runner and
     // polisher hold as Transcribe a File (the lease keeps the two from overlapping), the chosen
     // model on its own copy, and the wizard's release retries afterwards.
+    let freezeHistoryCleanup: @MainActor (ASRBackendType, HistoryPolishChoice?, Bool) -> ImportedFileTranscriber.FrozenRun = {
+      backend, choice, appliesDictionaryCleanup in
+      let snapshot = FileImportSettingsFreeze.snapshot(
+        settings: settings, backend: backend, polishOverride: choice,
+        appliesDictionaryCleanup: appliesDictionaryCleanup)
+      fileImportRunner.freeze(
+        settings: snapshot, vocabulary: customWordsPropagator.corrector,
+        cloudModelList: cloudModelList.snapshot?.list)
+      checkerEligibility.wordCheck?.fileImportStarted(
+        needsWordCheck: snapshot.allowsLearnedFixes && !LearnedWordCheckerEngine.hasOwnChecker(
+          LLMProvider(rawValue: snapshot.llmProvider) ?? .none))
+      let configuration = FileImportSettingsFreeze.configuration(
+        for: snapshot,
+        ollamaModelIsRemote: snapshot.llmProvider == LLMProvider.ollama.rawValue
+          ? ollamaRemoteness(snapshot.llmModel) : false)
+      return ImportedFileTranscriber.FrozenRun(settings: snapshot, configuration: configuration)
+    }
+    let historyCleanup = ImportedFileTranscriber.Cleanup(
+      freeze: { freezeHistoryCleanup($0, nil, true) },
+      prepareLocalPolish: { [localPolishRuntimes] configuration in
+        // The wizard's `prepareLocalPolish`, verbatim in behaviour.
+        guard let localPolish = configuration.localPolishModel else { return true }
+        guard let runtime = localPolishRuntimes.runtime(for: localPolish),
+          let activation = runtime.activateAndProbe()
+        else { return false }
+        await activation.value
+        guard await runtime.activeEndpoint() != nil else { return false }
+        return await localPolishRuntimes.holdForImport(localPolish)
+      },
+      processParts: { [fileImportRunner] parts, language, onOutcome in
+        try await fileImportRunner.process(
+          parts: parts, engineLanguage: language, onOutcome: onOutcome)
+      },
+      release: {
+        [
+          weak engineCoordinator, weak settingsSync, settings, localPolishRuntimes,
+          fileImportRunner
+        ] in
+        // The wizard's `onEngineReleased` retries, for the same deferred work.
+        let releaseHold = localPolishRuntimes.releaseImportHold()
+        fileImportRunner.releaseCheckerSelections()
+        engineCoordinator?.poke(.driverStateChanged)
+        settingsSync?.retryDeferredOllamaEviction(settings: settings)
+        settingsSync?.retryDeferredOutputClassifierRelease(settings: settings)
+        settingsSync?.onWordCheckWorkFinished()
+        Task { @MainActor in
+          await releaseHold?.value
+          settingsSync?.retryDeferredEGOneDeactivation(
+            settings: settings, forceReconciliation: true)
+        }
+        recoveryCoordinatorForEngineMutationScope?.requestRecoveryRecheck()
+      })
     let importedFileTranscriber = ImportedFileTranscriber(
       admission: .live(lease: engineLease, as: .fileImport),
       engines: ImportedEngineCopies(
@@ -2998,86 +3405,81 @@ package final class WisprBootstrapper {
         whisper: .live(
           engine: importWhisperEngine, admittedModelPath: whisper.admittedModelPath,
           isDeliveryEnabled: whisper.isDeliveryEnabled)),
-      cleanup: .init(
-        freeze: {
-          [settings, customWordsPropagator, cloudModelList, checkerEligibility, fileImportRunner]
-          backend in
-          // The wizard's freeze (`beginRun`) for the CHOSEN engine. No `asrModel` from
-          // dictation's serving model: this run never uses dictation's engine.
-          let snapshot = FileImportSettingsFreeze.snapshot(settings: settings, backend: backend)
-          fileImportRunner.freeze(
-            settings: snapshot, vocabulary: customWordsPropagator.corrector,
-            cloudModelList: cloudModelList.snapshot?.list)
-          checkerEligibility.wordCheck?.fileImportStarted(
-            needsWordCheck: !LearnedWordCheckerEngine.hasOwnChecker(
-              LLMProvider(rawValue: snapshot.llmProvider) ?? .none))
-          let configuration = FileImportSettingsFreeze.configuration(
-            for: snapshot,
-            ollamaModelIsRemote: snapshot.llmProvider == LLMProvider.ollama.rawValue
-              ? ollamaRemoteness(snapshot.llmModel) : false)
-          return ImportedFileTranscriber.FrozenRun(settings: snapshot, configuration: configuration)
-        },
-        prepareLocalPolish: { [localPolishRuntimes] configuration in
-          // The wizard's `prepareLocalPolish`, verbatim in behaviour.
-          guard let localPolish = configuration.localPolishModel else { return true }
-          guard let runtime = localPolishRuntimes.runtime(for: localPolish),
-            let activation = runtime.activateAndProbe()
-          else { return false }
-          await activation.value
-          guard await runtime.activeEndpoint() != nil else { return false }
-          return await localPolishRuntimes.holdForImport(localPolish)
-        },
-        processParts: { [fileImportRunner] parts, language, onOutcome in
-          try await fileImportRunner.process(
-            parts: parts, engineLanguage: language, onOutcome: onOutcome)
-        },
-        release: {
-          [
-            weak engineCoordinator, weak settingsSync, settings, localPolishRuntimes,
-            fileImportRunner
-          ] in
-          // The wizard's `onEngineReleased` retries, for the same deferred work.
-          let releaseHold = localPolishRuntimes.releaseImportHold()
-          fileImportRunner.releaseCheckerSelections()
-          engineCoordinator?.poke(.driverStateChanged)
-          settingsSync?.retryDeferredOllamaEviction(settings: settings)
-          settingsSync?.retryDeferredOutputClassifierRelease(settings: settings)
-          Task { @MainActor in
-            await releaseHold?.value
-            settingsSync?.retryDeferredEGOneDeactivation(
-              settings: settings, forceReconciliation: true)
-          }
-          recoveryCoordinatorForEngineMutationScope?.requestRecoveryRecheck()
-        }),
+      cleanup: historyCleanup,
       captureASRFailure: { error, backend in
         SentryBreadcrumb.captureError(
           SentryCaptureBoundaryError.normalizingTranscriptionFailure(error),
           category: .asrFailed, stage: "file_import",
           extra: ["backend": backend.rawValue, "trigger": "transcribe_again"])
+      },
+      installedEngines: { [weak speechModels] in
+        await speechModels?.freshInstalledEngines() ?? []
+      },
+      // #4611: the wizard's speaker step, so Transcribe again with keeps speakers and gives a
+      // one-voice file its paragraph times.
+      speakerLabeler: { samples, durationSeconds in
+        await SpeakerLabeler().run(samples: samples, durationSeconds: durationSeconds)
       })
     let transcriptRetranscription = TranscriptRetranscription(
       history: transcriptCoordinator, sources: importedSources,
       transcriber: importedFileTranscriber,
       installedModels: { [importedModelCatalog] in importedModelCatalog.choices })
     transcriptRetranscriptionForGates = transcriptRetranscription
+    let historyChoices = HistoryPolishChoices(
+      settings: settings, monitor: polishSetupMonitorHolder, runtime: localPolishRuntimes,
+      availability: aiAvailability, setup: setup, discovery: llmDiscovery,
+      savedKeys: savedKeyPresence, ollamaRemoteness: { ollamaRemoteness($0) })
+    let historyRepolish = HistoryRepolishRunner(
+      choices: historyChoices.available(for:),
+      refreshAvailability: {
+        await savedKeyPresence.readUnknown(using: keychainManager)
+      },
+      admission: .live(lease: engineLease, as: .fileImport),
+      freeze: { freezeHistoryCleanup($0, $1, $2) },
+      cleanup: historyCleanup,
+      polishDictation: { try await fileImportRunner.polishSavedDictation($0, language: $1) },
+      meetingInfo: { [weak meetingCoordinator] row in
+        guard let id = row.meetingID, let record = meetingCoordinator?.record(id: id),
+          !record.deletionRequested, MeetingWiring.isCommittedRow(row, of: record)
+        else { return nil }
+        return MeetingHistoryInfo.paired(with: record)
+      },
+      // #3853 (#4851): a Polish again with run may leave its Ollama model resident; the release
+      // retry after the run (`historyCleanup.release`) pays the owed unload.
+      ollamaModelUsed: { [weak settingsSync] model in
+        settingsSync?.recordOllamaModelUsedByOneOffWork(model)
+      })
+    historyRepolishForGates = historyRepolish
+    self.historyRepolish = historyRepolish
     // #3147: usage across both recording owners, and the one retention policy acting through
     // each owner's own removal. Starts after both owners exist; each sweep waits for their
     // launch work on its own task.
-    let recordingUsage = RecordingUsage(archive: recordingArchive, meetingStore: MeetingStore())
+    let recordingUsage = RecordingUsage(archive: recordingArchive, meetingStore: meetingStore)
     let recordingRetention = transcriptCoordinator.recordings.map { recordings in
       RecordingRetention(
         RecordingRetention.Dependencies(
           settings: settings, recordings: recordings, archive: recordingArchive,
           savedDates: { [transcriptStore] ids in await transcriptStore.savedDates(of: ids) },
           meetings: { [weak meetingCoordinator] in meetingCoordinator },
-          usage: recordingUsage))
+          usage: recordingUsage, warningDefaults: .standard))
     }
     recordingRetentionForSettings = recordingRetention
     recordingRetention?.start()
     meetingSummariesForEviction = meetingCoordinator.summaries
+    meetingCoordinatorForEviction = meetingCoordinator
     // #4287: an eviction deferred while a summary call used its Ollama model runs once the
     // call releases it, as dictation and file import retry theirs on completion.
     meetingCoordinator.summaries?.onOllamaModelReleased = { [weak settingsSync, settings] in
+      settingsSync?.retryDeferredOllamaEviction(settings: settings)
+    }
+    // #3853 (#4360): a local summary reaching the queue for an Ollama model owes it an unload; an
+    // attempt ending (finish, failure or cancel) rechecks whether anything still needs it.
+    meetingCoordinator.summaries?.onOllamaSummaryWorkChanged = {
+      [weak settingsSync, settings] model in
+      if let model {
+        if model.isEmpty { return }
+        settingsSync?.recordOllamaModelUsedByOneOffWork(model)
+      }
       settingsSync?.retryDeferredOllamaEviction(settings: settings)
     }
     // #4287 PR 3: both live dictation polish steps skip polish while a summary call runs on
@@ -3156,10 +3558,7 @@ package final class WisprBootstrapper {
       onActive: { [weak meetingSpeakerLabels] in meetingSpeakerLabels?.meetingBecameActive() })
     self.meetingTranscriptEngineRow = MeetingTranscriptEngineRowModel(
       environment: .init(
-        settings: settings, whisperSetup: whisper.setupService,
-        isMeetingActive: { [weak meetingCoordinator] in
-          meetingCoordinator?.isMeetingActive ?? false
-        }))
+        settings: settings, whisperSetup: whisper.setupService))
     let meetingStartFlow = MeetingStartFlow(
       dependencies: .init(
         isSetUp: { [settings] in settings.meetingOnboardingComplete },
@@ -3187,6 +3586,21 @@ package final class WisprBootstrapper {
         },
         settledStart: { [weak meetingBox] request, recordingID in
           meetingBox?.callDetection?.settledStart(request, recordingID: recordingID)
+        },
+        // #4578: the meeting-start rule over fresh facts: any downloaded engine can write the
+        // transcript (the meeting uses the other one when its own is missing).
+        hasTranscriptionEngine: { [weak speechModels, settings] in
+          guard let speechModels else { return false }
+          let installed = await speechModels.freshInstalledEngines()
+          return SpeechJobAdmission.decide(
+            .meetingStart, requested: settings.meetingTranscriptEngine.backendType,
+            installed: installed
+          ).engine != nil
+        },
+        showNoTranscriptionEngine: { [weak meetingBox, navigationCoordinator, appWindowCoordinator] in
+          if meetingBox?.callDetection?.showNoTranscriptionEngine() == true { return }
+          navigationCoordinator.request(.meetings(.models))
+          appWindowCoordinator.showWindow()
         }))
     meetingBox.startFlow = meetingStartFlow
     self.meetingStartFlow = meetingStartFlow
@@ -3242,6 +3656,10 @@ package final class WisprBootstrapper {
           navigationCoordinator.request(.meetings(.callApps))
           appWindowCoordinator.showWindow()
         },
+        showMeetingModels: { [navigationCoordinator, appWindowCoordinator] in
+          navigationCoordinator.request(.meetings(.models))
+          appWindowCoordinator.showWindow()
+        },
         anchor: { [menuBarControllerHolder] in menuBarControllerHolder.controller?.statusItemFrame
         },
         emit: { TelemetryService.shared.trackMeetingCallPrompt($0) },
@@ -3258,7 +3676,7 @@ package final class WisprBootstrapper {
             ?? .ended
         },
         showMeeting: { [weak transcriptCoordinator] meetingID in
-          transcriptCoordinator?.showMeetings(meetingID: meetingID)
+          transcriptCoordinator?.browser.showMeetings(meetingID: meetingID)
           navigationCoordinator.request(.history)
           appWindowCoordinator.showWindow()
         },
@@ -3296,11 +3714,15 @@ package final class WisprBootstrapper {
     self.lastRecordingResult = lastRecordingResult
     self.backendMetadata = backendMetadata
     self.engineCoordinator = engineCoordinator
+    self.speechModels = speechModels
     self.dictationRuntime = dictationRuntime
     self.hotkeyService = hotkeyService
     self.appWindowCoordinator = appWindowCoordinator
     self.previousApplicationTracker = previousApplicationTracker
     self.historyPaste = historyPaste
+    self.historyMenu = HistoryMenuPresenter(
+      panels: presentationEffects.panels, scrollHold: wheelScrollSmoother)
+    self.historyAudioExport = historyAudioExport
     self.menuBarController = menuBarController
     self.appLifecycleCoordinator = appLifecycleCoordinator
 
@@ -3325,6 +3747,7 @@ package final class WisprBootstrapper {
     self.keychainManager = keychainManager
     self.llmDiscovery = llmDiscovery
     self.cloudModelList = cloudModelList
+    self.cloudKeyLaunchCheck = cloudKeyLaunchCheck
     let polishSetupMonitor = PolishSetupMonitor(
       readInputs: {
         [settings, localPolishRuntimes, aiAvailability, setup, llmDiscovery, savedKeyPresence] in
@@ -3346,11 +3769,18 @@ package final class WisprBootstrapper {
         llmDiscovery?.recordCloudModelObservation(
           provider: provider, model: model, observation: observation)
       },
+      // #4721: and its answer about the key joins the key verdict store, newest wins.
+      recordCloudKeyOutcome: { [weak llmDiscovery] provider, revision, rejected, observedAt in
+        llmDiscovery?.recordTakeKeyOutcome(
+          provider: provider, credentialRevision: revision, rejected: rejected,
+          observedAt: observedAt)
+      },
       // #3988: the notice history lives in THIS build's own defaults domain, never the unified
       // settings suite, so the dev build and the shipped app never share a day or a quiet.
       noticeStore: OutsideStopNoticeStore(defaults: .standard))
-    // #4321: the summary engine's own monitor. No refresh hooks (dictation's monitor owns the
-    // Ollama and Apple refreshes, and both read the same facts), no take ingestion, no card.
+    // #4321: the summary engine's own monitor. No Apple refresh (dictation's monitor owns it),
+    // no take ingestion, no card. #4721: it asks for the same shared off-page Ollama refresh on
+    // activation, since its warnings now show outside Settings; the refresh is single-flight.
     let summarySetupMonitor = PolishSetupMonitor(
       readInputs: {
         [settings, localPolishRuntimes, aiAvailability, setup, llmDiscovery, savedKeyPresence] in
@@ -3358,7 +3788,10 @@ package final class WisprBootstrapper {
           settings: settings, localPolishRuntimes: localPolishRuntimes,
           aiAvailability: aiAvailability, setup: setup, llmDiscovery: llmDiscovery,
           savedKeyPresence: savedKeyPresence, scope: .meetingSummary)
-      })
+      },
+      ollamaRefresh: OllamaOffPageRefresh(
+        requestOnce: { [weak setup] in setup?.requestOffPageOllamaRefresh() },
+        cancel: { [weak setup] in setup?.cancelOffPageOllamaRefresh() }))
     polishSetupMonitorHolder.monitor = polishSetupMonitor
     polishSetupMonitorHolder.summaryMonitor = summarySetupMonitor
     menuBarControllerHolder.controller = menuBarController
@@ -3461,6 +3894,45 @@ package final class WisprBootstrapper {
         || (engineLease?.isBusy ?? true)
     }
     engineCoordinator.start()
+    // #4578: an installation fact changed (a read settled, a removal or install finished):
+    // the coordinator re-reads its status and switch gate.
+    speechModels.onInstallationChanged = { [weak engineCoordinator] in
+      engineCoordinator?.poke(.setupStateChanged)
+    }
+    // #4578: Parakeet Remove refuses, before any work, whatever may be using Parakeet now: a
+    // dictation on either engine (Parakeet's own config, a session being made, the live
+    // recording), any workload holding the one inference slot (file import, Transcribe again,
+    // benchmark, recovery, a meeting's shared pass, an abandoned decode), recovery, an engine
+    // switch, and an active meeting (its final pass may still need Parakeet, own copy or
+    // shared). With those refused, the dictation engine is the only resident copy left.
+    speechModels.parakeetRemoval.refusal = {
+      [weak kernelDriver, weak whisperKernelDriver, weak engineCoordinator, weak engineLease,
+       liveRecordingState, weak recoveryCoordinator, weak diagnosticsCoordinator,
+       meetingIsActive] in
+      let busy =
+        kernelDriver?.currentSessionConfig != nil
+        || whisperKernelDriver?.currentSessionConfig != nil
+        || (engineCoordinator?.isMintingAnySession ?? true)
+        || (engineCoordinator?.isSwitching ?? true)
+        || liveRecordingState.isDictationActive
+        || (engineLease?.isBusy ?? true)
+        || (recoveryCoordinator?.isRecovering ?? true)
+        || (diagnosticsCoordinator?.benchmark.isRunning ?? true)
+      if busy { return .refusedDictationInFlight }
+      if meetingIsActive() { return .refusedMeetingActive }
+      return nil
+    }
+    speechModels.parakeetRemoval.unloadForRemoval = { [weak kernelDriver, asrManager] in
+      // The idle-unload timer must not race the unload; the same order as the Ultra
+      // activation's unload.
+      kernelDriver?.cancelPendingEngineUnload()
+      await asrManager.unloadModel()
+      // Freed only when no Parakeet model stays loaded (an unload refused mid-stream).
+      return !(asrManager.activeBackendType == .parakeet && asrManager.isModelLoaded)
+    }
+    speechModels.parakeetRemoval.finishRemoval = { [weak engineCoordinator] in
+      engineCoordinator?.poke(.setupStateChanged)
+    }
 
     // Initialize observability (PostHog + Sentry) unconditionally at launch.
     // #919: same timing as before — the shell's `App.init()` constructs this
@@ -3546,6 +4018,12 @@ package final class WisprBootstrapper {
   // evaluates (issue #739 / SparkleUpdateController contract).
 
   package func applicationWillFinishLaunching() {
+    // #4842: the main window's content, installed before any launch presentation can run. Weak:
+    // a strong capture would cycle bootstrapper → coordinator → presenter → closure.
+    appWindowCoordinator.mainWindowPresenter.makeContent = { [weak self] in
+      guard let self else { return AnyView(EmptyView()) }
+      return AnyView(MainWindowRoot(b: self))
+    }
     // #2480: regular before any scene or Sparkle window exists, so the launch window
     // opens with the app menu, Dock icon and Cmd-Tab entry.
     appWindowCoordinator.beginLaunch()
@@ -3585,18 +4063,32 @@ package final class WisprBootstrapper {
     // dictation hotkey (`AppLifecycleCoordinator.swift` → `startHotkeyServiceIfEnabled`):
     // a Mac left lowered by a dead process is put back before any take can start.
     dictationRuntime.otherAudioHold.adoptOrphans()
+    transcriptCoordinator.catalogSession?.didRecoverSources = { [weak meetingCoordinator] in
+      meetingCoordinator?.discoverRestoredMeetings()
+    }
     // #3972 R3/R15: meetings recover after the orphaned hold is restored, before any take.
     meetingMemoryPressure.start()
     meetingCoordinator.launch()
+    transcriptCoordinator.startHistoryCatalog()
     callDetection.start()
     appLifecycleCoordinator.runDidFinishLaunching()
-    // #2480: bring the launch window to the front.
-    appWindowCoordinator.finishLaunch()
+    // #4842: the launch's first window (Setup or the main window), after the close observer is
+    // installed above; the window that opens brings the app to the front. On a relocation launch
+    // this runs in `LaunchSequencer.startNormally()`'s replay, while the phase is `.starting`.
+    #if DEBUG
+      let automaticallyOpenSetup = !DevControlOnboarding.holdsAutomaticPresentation
+    #else
+      let automaticallyOpenSetup = true
+    #endif
+    appWindowCoordinator.openFirstSurfaceAtLaunch(automaticallyOpenSetup: automaticallyOpenSetup)
     // #2381.
     quickAdd.install()
     // #3438: the setup warnings watch dictation's chosen model from launch, Settings open or not;
     // #4321: the summary engine's monitor watches its own.
     polishSetup.start()
+    // #4721: the saved cloud keys both AI engines use are checked once, without a Settings
+    // visit; returns at once.
+    cloudKeyLaunchCheck.start()
     // #4353 D6: the launch fetch of the cloud model list; returns at once.
     cloudModelList.start()
     // #1063 PR2: recover orphan crash-recovery spools behind the blocking
@@ -3638,8 +4130,10 @@ package final class WisprBootstrapper {
 
   package func applicationDidBecomeActive() {
     appLifecycleCoordinator.runDidBecomeActive()
+    setupSession.components?.runtime.appDidBecomeActive()
     // #3438: after the pane-scoped probe above, so a visible watch is never doubled.
     polishSetup.monitor.applicationDidBecomeActive()
+    polishSetup.summary.monitor.applicationDidBecomeActive()
     // #958: proactive foreground check (post-sleep freshness), strict >=3600 gated.
     sparkleUpdateController.updateCoordinator?.checkForUpdatesProactively(trigger: "foreground")
   }
@@ -3681,6 +4175,8 @@ package final class WisprBootstrapper {
     callDetection.shutDown()
     callDetection.discovery.shutDown()
     meetingCoordinator.prepareForTermination(deadline: .now() + 1)
+    // #4799: History's Save audio stops without publishing; the quit does not wait for it.
+    historyAudioExport.cancelAll()
     meetingMemoryPressure.stop()
     // #3147: no retention pass starts after this.
     recordingRetention?.stop()
@@ -3702,10 +4198,7 @@ package final class WisprBootstrapper {
     // bypasses this). Capture BEFORE the Phase-1 flush in runWillTerminate so it is
     // durable. Deduped by the box's terminal guard (a clean finish or a prior
     // window-close abandon suppresses it).
-    onboardingProgress.emitAbandonIfInFlight(
-      reason: "app_quit", micStatus: permissions.microphoneStatusString,
-      // Live read so a just-before-quit grant isn't logged denied (cloud Codex r3).
-      accessibilityStatus: permissions.accessibilityGrantedLive ? "granted" : "denied")
+    setupSession.stop(reason: "app_quit")
     appLifecycleCoordinator.runWillTerminate()
     // #3849: LAST, synchronously, after every step above: free every transcribe.cpp model
     // (Whisper, Universal Live Preview) so the Metal device destructor at exit finds none
@@ -3714,23 +4207,29 @@ package final class WisprBootstrapper {
     TranscribeCppProcessExit.releaseBeforeExit()
   }
 
-  // MARK: - Window titles (so the shell needs no EnviousWisprCore dependency)
+  package func openSharedMedia(_ claim: SharedMediaTransfer.Claim) {
+    guard settings.onboardingState == .completed else {
+      SharedMediaNotice.finishSetup.present()
+      appWindowCoordinator.openOnboardingWindow()
+      return
+    }
+    guard fileImportCoordinator.externalImportBlock == nil,
+      navigationCoordinator.requestSharedMedia(claim)
+    else {
+      SharedMediaNotice.importInUse.present()
+      return
+    }
+    appWindowCoordinator.showWindow()
+  }
 
-  package var mainWindowTitle: String { LaunchWindowIdentity.mainTitle }
-  package var onboardingWindowTitle: String { LaunchWindowIdentity.onboardingTitle }
-  package var onboardingWindowID: String { LaunchWindowIdentity.onboardingID }
+  /// #4842: the Window menu's EnviousWispr command (through `LiveApplication`).
+  package func showMainWindow() {
+    appWindowCoordinator.showWindow()
+  }
 
   // MARK: - Root content
   // Homes are injected here, INSIDE the kit — the shell injects nothing, so no
   // home type crosses the module boundary (keeps the public surface tiny).
-
-  package func mainWindowContent() -> some View {
-    MainWindowRoot(b: self)
-  }
-
-  package func onboardingWindowContent() -> some View {
-    OnboardingWindowRoot(b: self)
-  }
 
   /// #3147 PR3: one detached transcript window's content.
   package func transcriptWindowContent(rowID: UUID) -> some View {
@@ -3787,9 +4286,12 @@ private struct AppHomesEnvironment: ViewModifier {
         .environment(b.languageSuggestionPresenter)
         .environment(b.updateCoordinatorHolder)
         .environment(\.settingsKeyMonitor, b.settingsKeyMonitor)
+        .environment(\.pasteCompletionRegistry, b.pasteCompletionRegistry)
         .environment(\.historyScrollMonitor, b.historyScrollMonitor)
+        .environment(\.historyClickMonitor, b.historyClickMonitor)
         .environment(b.transcriptCoordinator)
         .environment(b.fileImportCoordinator)
+        .environment(b.historyRepolish)
         .environment(b.meetingCoordinator)
         // #3147: Recordings settings and History's storage warning.
         .environment(b.recordingRetention)
@@ -3804,11 +4306,15 @@ private struct AppHomesEnvironment: ViewModifier {
         .environment(b.backendMetadata)
         .environment(b.engineCoordinator)
         .environment(b.modelDelivery)
+        // #4578: the speech-model owner the Settings engine rows read and command.
+        .environment(b.speechModels)
         .environment(b.checkerEligibility)
         .environment(b.dictationRuntime)
         .environment(b.appWindowCoordinator)
         .environment(b.previousApplicationTracker)
         .environment(b.historyPaste)
+        .environment(b.historyMenu)
+        .environment(b.historyAudioExport)
         // The nine view-facing homes (epic #763).
         .environment(b.settings)
         .environment(b.pillAppearance)
@@ -3860,140 +4366,18 @@ extension View {
   }
 }
 
-/// The main window's root view. Owns the onboarding-presented view-state (was
-/// `@State` on the old App struct) and injects every App-owned home.
+/// Injects the App-owned homes into the main window.
 private struct MainWindowRoot: View {
   let b: WisprBootstrapper
-  @State private var isOnboardingPresented: Bool
-
-  init(b: WisprBootstrapper) {
-    self.b = b
-    // #923: derive from the SettingsManager instance, not a raw `.standard` read
-    // (which on the dev build would hit the wrong per-build store).
-    _isOnboardingPresented = State(initialValue: !b.settings.hasCompletedOnboarding)
-  }
 
   var body: some View {
     UnifiedWindowView()
       // 750 = two-card frame chrome (outer inset 28 + sidebar 200 + spacing 14 =
       // 242) + the History split floors inside the detail card (230+8+260=498),
       // so the window can never crush the History split (#1024; #1296 frame).
-      .frame(minWidth: 750, minHeight: 400)
+      .frame(
+        minWidth: MainWindowLayout.minimum.width, minHeight: MainWindowLayout.minimum.height)
       .appHomes(b)
-      .background(
-        ActionWirer(
-          settings: b.settings,
-          appWindowCoordinator: b.appWindowCoordinator,
-          menuBarController: b.menuBarController,
-          onboardingProgress: b.onboardingProgress,
-          isOnboardingPresented: $isOnboardingPresented
-        )
-      )
-  }
-}
-
-/// The onboarding window's root view.
-private struct OnboardingWindowRoot: View {
-  let b: WisprBootstrapper
-
-  var body: some View {
-    OnboardingV2View(
-      onComplete: { b.appWindowCoordinator.closeOnboardingWindow() },
-      onboardingProgress: b.onboardingProgress
-    )
-    .environment(b.navigationCoordinator)
-    .environment(b.languageSuggestionPresenter)
-    .environment(b.dictationRuntime)
-    // #3546: the warming screen's retry reaches the Parakeet upgrade policy.
-    .environment(b.modelDelivery)
-    // #2196 — the practice screen reads BOTH of these, and a type-based
-    // `@Environment` with no default TRAPS AT RUNTIME rather than failing to
-    // compile. Cloud review caught this as a P1: `liveRecordingState` was added
-    // here when the screen started reading it, and `transcriptCoordinator` was
-    // added to the SCREEN a round later without coming back to this list. The
-    // Live UAT that would have caught it ran before that round.
-    .environment(b.transcriptCoordinator)
-    // The practice screen needs to know a take is in flight.
-    // `LiveRecordingState.isDictationActive` is true while EITHER pipeline is
-    // recording, transcribing or polishing, and it is already @Observable, so
-    // the screen reads an existing signal rather than growing a new one. The
-    // main window has had this injected all along; onboarding never needed it
-    // until it hosted a dictation target.
-    .environment(b.liveRecordingState)
-    .environment(b.appWindowCoordinator)
-    // The nine view-facing homes (epic #763).
-    .environment(b.settings)
-    .environment(b.permissions)
-    .environment(b.customWordsCoordinator)
-    .environment(b.setup)
-    .environment(b.audioDeviceList)
-    .environment(b.aiAvailability)
-    .environment(b.llmDiscovery)
-    // #4353 D6: the cloud model list the model menus and labels read.
-    .environment(b.cloudModelList)
-    .environment(b.polishSetup.savedKeyPresence)
-    .environment(b.polishSetup.monitor)
-    .environment(b.polishSetup.summary)
-    .environment(\.asrManager, b.asrManager)
-    .environment(\.activeEngine, b.activeEngine)
-    .environment(\.keychainManager, b.keychainManager)
-  }
-}
-
-/// Hidden view that wires SwiftUI environment actions into App-owned homes.
-/// Must live inside a SwiftUI view hierarchy to access @Environment.
-private struct ActionWirer: View {
-  /// The onboarding-auto-open gate reads `onboardingState` off the settings
-  /// store directly (epic #763).
-  let settings: SettingsManager
-  /// PR-B.2 of #763: the three SwiftUI window bridges are wired onto the
-  /// coordinator now, not AppDelegate.
-  let appWindowCoordinator: AppWindowCoordinator
-  /// PR-B.3 of #763: onboarding-dismissal icon refresh targets the menu home.
-  let menuBarController: MenuBarController
-  /// #1176: begin a fresh onboarding session on every window open (first-run AND
-  /// Diagnostics restart both funnel through `openOnboardingAction`).
-  let onboardingProgress: OnboardingProgress
-  @Binding var isOnboardingPresented: Bool
-  @Environment(\.openWindow) private var openWindow
-  @Environment(\.dismissWindow) private var dismissWindow
-
-  var body: some View {
-    Color.clear
-      .frame(width: 0, height: 0)
-      .task {
-        appWindowCoordinator.openMainWindowAction = { [openWindow] in
-          openWindow(id: "main")
-        }
-        appWindowCoordinator.openOnboardingAction = { [openWindow, onboardingProgress, settings] in
-          // #1176: every onboarding presentation funnels through here. `begin` starts
-          // a fresh session only when none is in flight, so a refocus of the open
-          // window (status-menu "Continue Setup…") never rewinds it — see the guard
-          // in `OnboardingProgress.begin`. `source` reads the durable everCompleted
-          // flag from the shared settings store.
-          let source = settings.onboardingEverCompleted ? "diagnostics_restart" : "first_run"
-          onboardingProgress.begin(source: source)
-          openWindow(id: AppConstants.onboardingWindowID)
-        }
-        appWindowCoordinator.dismissOnboardingAction = { [dismissWindow] in
-          dismissWindow(id: AppConstants.onboardingWindowID)
-        }
-        // PR-B.2 of #763: drain any queued onboarding-open request FIRST.
-        let replayed = appWindowCoordinator.consumePendingOpenOnboarding()
-        // Auto-open onboarding if needed (first launch), only if nothing was
-        // already replayed.
-        if !replayed, settings.onboardingState != .completed {
-          appWindowCoordinator.openOnboardingWindow()
-        }
-      }
-      .onChange(of: isOnboardingPresented) { _, newValue in
-        if !newValue {
-          // State-driven dismissal: binding flipped to false → close window.
-          dismissWindow(id: AppConstants.onboardingWindowID)
-          appWindowCoordinator.refreshAfterOnboardingDismissal()
-          menuBarController.updateIcon()
-        }
-      }
   }
 }
 

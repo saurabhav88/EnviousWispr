@@ -1,0 +1,13 @@
+{
+  "language": "nl",
+  "title": "opschoonmodel uit het geheugen halen na",
+  "words": [
+    "geheugen opschoonmodel",
+    "EG-1 uit geheugen",
+    "S1-mini uit geheugen"
+  ],
+  "phrases": [
+    "hoelang blijft het opschoonmodel in het geheugen",
+    "geheugen vrijmaken als het opschoonmodel niet wordt gebruikt"
+  ]
+}

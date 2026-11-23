@@ -243,16 +243,19 @@ html[data-theme='dark'] .source-mark.reddit { color:#f97f56; }
   .proof-grid {
     grid-template-columns: 1.1fr 1fr;
   }
-  .proof-card:last-child {
+}
+/* Three-column grid: the feature fills two rows, so the last card stretches to close its row. */
+@media (min-width: 1000px) {
+  .proof-card:last-child:nth-child(3n) {
     grid-column: 1/-1;
+  }
+  .proof-card:last-child:nth-child(3n + 1) {
+    grid-column: span 2;
   }
 }
 @media (max-width: 999px) {
   .proof-feature {
     grid-column: 1/-1;
-  }
-  .proof-card:last-child {
-    grid-column: auto;
   }
 }
 @media (max-width: 600px) {

@@ -16,6 +16,18 @@
             "state" : "translated",
             "value" : "EnviousWispr verwendet AppleScript, um deinen diktierten Text in die aktive App einzufügen, wenn das direkte Einfügen nicht möglich ist, und um Musik oder Spotify während des Diktierens anzuhalten, wenn du diese Einstellung wählst."
           }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "EnviousWispr utilise AppleScript pour coller votre texte dicté dans l’app active lorsque l’insertion directe n’est pas disponible, et pour mettre en pause Musique ou Spotify pendant que vous dictez si vous choisissez ce réglage."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "EnviousWispr usa AppleScript para pegar tu texto dictado en la app activa cuando no es posible insertarlo directamente, y para pausar Música o Spotify mientras dictas si eliges ese ajuste."
+          }
         }
       }
     },
@@ -33,6 +45,18 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "EnviousWispr nimmt den Ton auf, den dein Mac abspielt, zum Beispiel die Stimmen anderer Personen bei einem Anruf, aber nur, während du ein Meeting aufnimmst. Die Aufnahme bleibt auf deinem Mac."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "EnviousWispr enregistre le son lu par votre Mac, comme celui des autres participants à un appel, uniquement pendant l’enregistrement d’une réunion. L’enregistrement reste sur votre Mac."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "EnviousWispr graba el sonido que reproduce tu Mac, como las voces de otras personas en una llamada, solo mientras grabas una reunión. La grabación se queda en tu Mac."
           }
         }
       }
@@ -52,6 +76,18 @@
             "state" : "translated",
             "value" : "EnviousWispr liest den Kalendertermin zur Startzeit eines Meetings, um das Meeting zu benennen und festzuhalten, wer eingeladen war. Es ändert deinen Kalender nie. Was es speichert, bleibt beim Meeting auf deinem Mac."
           }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "EnviousWispr lit l’événement du calendrier au moment où une réunion commence pour nommer la réunion et noter les personnes invitées. Il ne modifie jamais votre calendrier. Les données enregistrées restent associées à la réunion sur votre Mac."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "EnviousWispr lee el evento del calendario cuando empieza una reunión para ponerle nombre y anotar quién estaba invitado. Nunca modifica tu calendario. Lo que guarda permanece con la reunión en tu Mac."
+          }
         }
       }
     },
@@ -69,6 +105,18 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "EnviousWispr liest die Namen deiner Kontakte, damit die Namen von Menschen, die du kennst, beim Diktieren richtig geschrieben werden. Dein Adressbuch wird nie hochgeladen."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "EnviousWispr lit les noms de vos contacts afin que la dictée écrive correctement le nom des personnes que vous connaissez. Votre carnet d’adresses n’est jamais envoyé."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "EnviousWispr lee los nombres de tus contactos para escribirlos correctamente cuando los dictas. Tu agenda nunca se sube a internet."
           }
         }
       }
@@ -88,6 +136,18 @@
             "state" : "translated",
             "value" : "Copyright © 2025–2026 Envious Labs LLC. Alle Rechte vorbehalten."
           }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Copyright © 2025–2026 Envious Labs LLC. Tous droits réservés."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Copyright © 2025–2026 Envious Labs LLC. Todos los derechos reservados."
+          }
         }
       }
     },
@@ -106,6 +166,18 @@
             "state" : "translated",
             "value" : "EnviousWispr benötigt Zugriff auf dein Mikrofon, um deine Sprache in Text umzuwandeln."
           }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "EnviousWispr a besoin d’accéder au micro pour convertir la parole en texte lors de la dictée."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "EnviousWispr necesita acceso al micrófono para convertir tu voz en texto mediante el dictado."
+          }
         }
       }
     },
@@ -123,6 +195,18 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "EnviousWispr verwendet die Spracherkennung auf dem Gerät, um deine Worte beim Sprechen in der Aufnahmeanzeige anzuzeigen. Diese Vorschau bleibt auf deinem Mac und ist nie der Text, der eingefügt wird."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "EnviousWispr utilise la reconnaissance vocale sur votre Mac pour afficher vos mots dans la pastille d’enregistrement pendant que vous parlez. Cet aperçu reste sur votre Mac et n’est jamais utilisé comme texte à coller."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "EnviousWispr usa el reconocimiento de voz en el dispositivo para mostrar tus palabras en la píldora de grabación mientras hablas. Esta vista previa se queda en tu Mac y nunca es el texto que se pega."
           }
         }
       }

@@ -241,7 +241,10 @@ public struct LLMModelDiscovery: Sendable {
 
   /// Discover and probe models for the given provider.
   /// Returns models sorted: available first, then locked, alphabetically within each group.
-  public func discoverModels(provider: LLMProvider, apiKey: String) async throws -> [LLMModelInfo] {
+  public func discoverModels(
+    provider: LLMProvider, apiKey: String,
+    didListModels: (@Sendable () async -> Void)? = nil
+  ) async throws -> [LLMModelInfo] {
     let candidates: [DiscoveryCandidate]
 
     // #1914: each cloud branch now filters at its own call site. Previously one
@@ -274,36 +277,38 @@ public struct LLMModelDiscovery: Sendable {
       return []
     }
 
-    // Probe models with concurrency limit to avoid rate limiting
-    var results: [LLMModelInfo] = []
+    await didListModels?()
 
-    // Process in batches to limit concurrent requests
-    for batch in candidates.chunked(into: LLMConstants.maxConcurrentProbes) {
-      let batchResults = await withTaskGroup(of: LLMModelInfo.self, returning: [LLMModelInfo].self)
-      { group in
-        for model in batch {
-          group.addTask {
-            let availability = await probeModel(
-              id: model.id, provider: provider, apiKey: apiKey)
-            // #4353: this model's answer arrived now, inside its own probe task; neither the
-            // discovery's start nor the list's publication stands in for it.
-            let observedAt = ContinuousClock.now
-            return Self.modelInfo(
-              from: model,
-              provider: provider,
-              availability: availability,
-              observedAt: observedAt
-            )
-          }
-        }
-
-        var batchItems: [LLMModelInfo] = []
-        for await result in group {
-          batchItems.append(result)
-        }
-        return batchItems
+    // Probe with at most `maxConcurrentProbes` requests in flight, to avoid rate limiting.
+    // A sliding window, not fixed batches: a new probe starts the moment any probe answers,
+    // so one slow model no longer holds back every model after it (#4528: the key check
+    // waited for the slowest model of each batch in turn).
+    let probe: @Sendable (DiscoveryCandidate) async -> LLMModelInfo = { model in
+      let availability = await probeModel(id: model.id, provider: provider, apiKey: apiKey)
+      // #4353: this model's answer arrived now, inside its own probe task; neither the
+      // discovery's start nor the list's publication stands in for it.
+      let observedAt = ContinuousClock.now
+      return Self.modelInfo(
+        from: model, provider: provider, availability: availability, observedAt: observedAt)
+    }
+    let results = await withTaskGroup(of: LLMModelInfo.self, returning: [LLMModelInfo].self) {
+      group in
+      var next = 0
+      while next < Swift.min(LLMConstants.maxConcurrentProbes, candidates.count) {
+        let model = candidates[next]
+        group.addTask { await probe(model) }
+        next += 1
       }
-      results.append(contentsOf: batchResults)
+      var collected: [LLMModelInfo] = []
+      for await result in group {
+        collected.append(result)
+        if next < candidates.count {
+          let model = candidates[next]
+          group.addTask { await probe(model) }
+          next += 1
+        }
+      }
+      return collected
     }
 
     return Self.sortedForPicker(results)
@@ -316,6 +321,104 @@ public struct LLMModelDiscovery: Sendable {
     rows.sorted { lhs, rhs in
       if lhs.isSelectable != rhs.isSelectable { return lhs.isSelectable }
       return lhs.displayName < rhs.displayName
+    }
+  }
+
+  // MARK: - Launch key check (#4721)
+
+  /// What the launch key check learned. The key was accepted: the provider answered the model
+  /// list with HTTP 200.
+  package struct SavedKeyCheck: Sendable {
+    /// When the list answered: the moment the key verdict was decided.
+    package let listAnsweredAt: ContinuousClock.Instant
+    /// One row per distinct chosen model that was probed, each stamped when its probe answered.
+    /// Empty when no model was chosen or the 200 body could not be read.
+    package let chosenModels: [LLMModelInfo]
+  }
+
+  /// Why the launch key check did not accept the key: the list read's own typed error, kept as
+  /// is (`LLMError.invalidAPIKey`, `ModelDiscoveryFailure.permissionDenied`,
+  /// `.invalidKeyUnconfirmed`, `.httpStatus`, or a transport error), with the answer time.
+  package struct SavedKeyCheckFailure: Error, Sendable {
+    package let error: any Error
+    /// When the provider answered over HTTP; nil when there was no HTTP answer (offline,
+    /// timeout, not HTTP).
+    package let listAnsweredAt: ContinuousClock.Instant?
+    /// The provider refused this key: the only rejection. Every other failure says nothing
+    /// about the key.
+    package var isRejection: Bool { (error as? LLMError) == .invalidAPIKey }
+  }
+
+  /// #4721: the launch key check. ONE model-list request (no pagination, Claude included) proves
+  /// the key on HTTP 200 before any decoding; then each distinct chosen model is probed once,
+  /// in order. Never probes the catalog, so it costs at most one tiny request per chosen model.
+  /// A chosen id the page did not list is still probed: one page is not evidence it is gone.
+  package func checkSavedKey(
+    provider: LLMProvider, apiKey: String, chosenModels: [String]
+  ) async throws -> SavedKeyCheck {
+    let request: URLRequest
+    switch provider {
+    case .openAI: request = try Self.openAIListRequest(apiKey: apiKey)
+    case .claude: request = try Self.claudeListRequest(apiKey: apiKey, afterID: nil)
+    case .gemini: request = try Self.geminiListRequest(apiKey: apiKey, pageToken: nil, strict: false)
+    case .ollama, .appleIntelligence, .egOne, .s1Mini, .none:
+      throw CatalogFailure.unsupportedProvider
+    }
+    let data: Data
+    let response: URLResponse
+    do {
+      (data, response) = try await transport(request)
+    } catch {
+      throw SavedKeyCheckFailure(error: error, listAnsweredAt: nil)
+    }
+    guard let httpResponse = response as? HTTPURLResponse else {
+      throw SavedKeyCheckFailure(error: ModelDiscoveryFailure.invalidResponse, listAnsweredAt: nil)
+    }
+    let answeredAt = ContinuousClock.now
+    let failure: (any Error)?
+    switch provider {
+    case .gemini:
+      failure = Self.geminiFailure(
+        statusCode: httpResponse.statusCode, body: String(data: data, encoding: .utf8) ?? "")
+    case .openAI, .claude, .ollama, .appleIntelligence, .egOne, .s1Mini, .none:
+      failure = Self.keyListFailure(statusCode: httpResponse.statusCode)
+    }
+    if let failure { throw SavedKeyCheckFailure(error: failure, listAnsweredAt: answeredAt) }
+    // Accepted. The body only names the chosen models; a body that cannot be read probes nothing.
+    guard let rows = Self.listRows(provider: provider, data: data) else {
+      return SavedKeyCheck(listAnsweredAt: answeredAt, chosenModels: [])
+    }
+    let listed: [DiscoveryCandidate]
+    switch provider {
+    case .openAI: listed = Self.openAICandidates(fromModels: rows, list: cloudModelList)
+    case .claude: listed = Self.claudeCandidates(fromModels: rows)
+    case .gemini: listed = Self.geminiCandidates(fromModels: rows)
+    case .ollama, .appleIntelligence, .egOne, .s1Mini, .none: listed = []
+    }
+    var seen: Set<String> = []
+    var probed: [LLMModelInfo] = []
+    for id in chosenModels where !id.isEmpty && seen.insert(id).inserted {
+      let candidate =
+        listed.first { $0.id == id } ?? DiscoveryCandidate(id: id, displayName: id, isRemote: false)
+      let availability = await probeModel(id: id, provider: provider, apiKey: apiKey)
+      probed.append(
+        Self.modelInfo(
+          from: candidate, provider: provider, availability: availability,
+          observedAt: ContinuousClock.now))
+    }
+    return SavedKeyCheck(listAnsweredAt: answeredAt, chosenModels: probed)
+  }
+
+  /// The model rows of one list page, or nil when the body is not the provider's list shape.
+  static func listRows(provider: LLMProvider, data: Data) -> [[String: Any]]? {
+    guard let json = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any] else {
+      return nil
+    }
+    switch provider {
+    case .openAI, .claude: return json["data"] as? [[String: Any]]
+    // Google omits an empty `models` list.
+    case .gemini: return json["models"] == nil ? [] : json["models"] as? [[String: Any]]
+    case .ollama, .appleIntelligence, .egOne, .s1Mini, .none: return nil
     }
   }
 
@@ -371,18 +474,7 @@ public struct LLMModelDiscovery: Sendable {
   private func geminiModelPage(apiKey: String, pageToken: String?, strict: Bool) async throws
     -> (rows: [[String: Any]], nextPageToken: Any?)
   {
-    guard var components = URLComponents(
-      string: "https://generativelanguage.googleapis.com/v1beta/models")
-    else { throw ModelDiscoveryFailure.invalidURL }
-    if strict {
-      components.queryItems =
-        [URLQueryItem(name: "pageSize", value: "1000")]
-        + (pageToken.map { [URLQueryItem(name: "pageToken", value: $0)] } ?? [])
-    }
-    guard let url = components.url else { throw ModelDiscoveryFailure.invalidURL }
-    var request = URLRequest(url: url)
-    request.setValue(apiKey, forHTTPHeaderField: "x-goog-api-key")
-    request.timeoutInterval = 15
+    let request = try Self.geminiListRequest(apiKey: apiKey, pageToken: pageToken, strict: strict)
 
     let (data, response) = try await transport(request)
     guard let httpResponse = response as? HTTPURLResponse else {
@@ -404,6 +496,26 @@ public struct LLMModelDiscovery: Sendable {
     }
     guard let models = json?["models"] as? [[String: Any]] else { return ([], nil) }
     return (models, nil)
+  }
+
+  /// One Gemini `/v1beta/models` page request. #4721: shared by `geminiModelPage` and the launch
+  /// key check, so both send the same request.
+  static func geminiListRequest(apiKey: String, pageToken: String?, strict: Bool) throws
+    -> URLRequest
+  {
+    guard var components = URLComponents(
+      string: "https://generativelanguage.googleapis.com/v1beta/models")
+    else { throw ModelDiscoveryFailure.invalidURL }
+    if strict {
+      components.queryItems =
+        [URLQueryItem(name: "pageSize", value: "1000")]
+        + (pageToken.map { [URLQueryItem(name: "pageToken", value: $0)] } ?? [])
+    }
+    guard let url = components.url else { throw ModelDiscoveryFailure.invalidURL }
+    var request = URLRequest(url: url)
+    request.setValue(apiKey, forHTTPHeaderField: "x-goog-api-key")
+    request.timeoutInterval = 15
+    return request
   }
 
   private func probeGemini(modelID: String, apiKey: String) async -> LLMModelAvailability {
@@ -446,22 +558,14 @@ public struct LLMModelDiscovery: Sendable {
   /// The OpenAI `/v1/models` rows. `strict` (the routine's catalog, #4353 PR 5) refuses a reply
   /// without a `data` list of objects instead of reading it as an empty catalog.
   private func openAIModelRows(apiKey: String, strict: Bool) async throws -> [[String: Any]] {
-    guard let url = URL(string: "https://api.openai.com/v1/models") else {
-      throw ModelDiscoveryFailure.invalidURL
-    }
-    var request = URLRequest(url: url)
-    request.setValue("Bearer \(apiKey)", forHTTPHeaderField: "Authorization")
-    request.timeoutInterval = 15
+    let request = try Self.openAIListRequest(apiKey: apiKey)
 
     let (data, response) = try await transport(request)
     guard let httpResponse = response as? HTTPURLResponse else {
       throw ModelDiscoveryFailure.invalidResponse
     }
 
-    if httpResponse.statusCode == 401 { throw LLMError.invalidAPIKey }
-    guard httpResponse.statusCode == 200 else {
-      throw ModelDiscoveryFailure.httpStatus(httpResponse.statusCode)
-    }
+    if let failure = Self.keyListFailure(statusCode: httpResponse.statusCode) { throw failure }
 
     let json = try JSONSerialization.jsonObject(with: data) as? [String: Any]
     guard let models = json?["data"] as? [[String: Any]] else {
@@ -469,6 +573,26 @@ public struct LLMModelDiscovery: Sendable {
       return []
     }
     return models
+  }
+
+  /// The OpenAI `/v1/models` request. #4721: shared with the launch key check.
+  static func openAIListRequest(apiKey: String) throws -> URLRequest {
+    guard let url = URL(string: "https://api.openai.com/v1/models") else {
+      throw ModelDiscoveryFailure.invalidURL
+    }
+    var request = URLRequest(url: url)
+    request.setValue("Bearer \(apiKey)", forHTTPHeaderField: "Authorization")
+    request.timeoutInterval = 15
+    return request
+  }
+
+  /// What an OpenAI or Claude model-list answer that is not 200 means: 401 is the provider
+  /// refusing the key; any other status says nothing about it. nil for 200. #4721: shared by
+  /// both list fetchers and the launch key check (Gemini has its own, `geminiFailure`).
+  static func keyListFailure(statusCode: Int) -> (any Error)? {
+    if statusCode == 401 { return LLMError.invalidAPIKey }
+    guard statusCode == 200 else { return ModelDiscoveryFailure.httpStatus(statusCode) }
+    return nil
   }
 
   /// Whether an OpenAI model id belongs in the picker's candidate list.
@@ -568,27 +692,14 @@ public struct LLMModelDiscovery: Sendable {
     var seenCursors: Set<String> = []
 
     while true {
-      var urlString = "https://api.anthropic.com/v1/models?limit=1000"
-      if let afterID {
-        urlString += "&after_id=\(afterID)"
-      }
-      guard let url = URL(string: urlString) else {
-        throw ModelDiscoveryFailure.invalidURL
-      }
-      var request = URLRequest(url: url)
-      request.setValue(apiKey, forHTTPHeaderField: "x-api-key")
-      request.setValue("2023-06-01", forHTTPHeaderField: "anthropic-version")
-      request.timeoutInterval = 15
+      let request = try Self.claudeListRequest(apiKey: apiKey, afterID: afterID)
 
       let (data, response) = try await transport(request)
       guard let httpResponse = response as? HTTPURLResponse else {
         throw ModelDiscoveryFailure.invalidResponse
       }
 
-      if httpResponse.statusCode == 401 { throw LLMError.invalidAPIKey }
-      guard httpResponse.statusCode == 200 else {
-        throw ModelDiscoveryFailure.httpStatus(httpResponse.statusCode)
-      }
+      if let failure = Self.keyListFailure(statusCode: httpResponse.statusCode) { throw failure }
 
       let json = try JSONSerialization.jsonObject(with: data) as? [String: Any]
       guard let models = json?["data"] as? [[String: Any]] else {
@@ -622,6 +733,22 @@ public struct LLMModelDiscovery: Sendable {
     }
 
     return allModels
+  }
+
+  /// One Claude `/v1/models` page request. #4721: shared with the launch key check.
+  static func claudeListRequest(apiKey: String, afterID: String?) throws -> URLRequest {
+    var urlString = "https://api.anthropic.com/v1/models?limit=1000"
+    if let afterID {
+      urlString += "&after_id=\(afterID)"
+    }
+    guard let url = URL(string: urlString) else {
+      throw ModelDiscoveryFailure.invalidURL
+    }
+    var request = URLRequest(url: url)
+    request.setValue(apiKey, forHTTPHeaderField: "x-api-key")
+    request.setValue("2023-06-01", forHTTPHeaderField: "anthropic-version")
+    request.timeoutInterval = 15
+    return request
   }
 
   private func probeClaude(modelID: String, apiKey: String) async -> LLMModelAvailability {
@@ -947,18 +1074,6 @@ public struct LLMModelDiscovery: Sendable {
     }
 
     return nil
-  }
-}
-
-// MARK: - Array Helper Extension
-
-extension Array {
-  /// Split array into chunks of specified size.
-  fileprivate func chunked(into size: Int) -> [[Element]] {
-    guard size > 0 else { return [self] }
-    return stride(from: 0, to: count, by: size).map {
-      Array(self[$0..<Swift.min($0 + size, count)])
-    }
   }
 }
 

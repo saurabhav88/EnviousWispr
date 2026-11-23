@@ -484,6 +484,60 @@ struct PasteTargetWindowGateTests {
     #expect(PasteTargetWindowGate.Pass.replacementField.rawValue == "replacement_field")
   }
 
+  // MARK: #1070 remote session: the captured window itself must be the focus
+
+  private func strict(
+    _ target: PasteTargetWindow, element: AXUIElement?, admit: ((AXUIElement) -> Bool)? = nil
+  ) -> PasteTargetWindowGate.Decision {
+    PasteTargetWindowGate.decide(
+      target: target, element: element, pid: pid, ax: ax, admit: admit ?? budget().admit,
+      requireCapturedFocus: true)
+  }
+
+  @Test("Remote session: the captured window being the focus passes, whatever the target shape")
+  func strictCapturedFocusPasses() {
+    ax.focusedByApplication[pid] = .element(field)
+    for target: PasteTargetWindow in [.window(windowA), .unreadable, .startFieldWindow(windowA)] {
+      ax.landingCalls = []
+      #expect(strict(target, element: field) == .pass(.fieldFocused), "\(target)")
+      #expect(ax.landingCalls.map(\.call) == ["focusedElement"], "one focus read, \(target)")
+    }
+  }
+
+  @Test("Remote session: the same focused window with focus on another element is refused")
+  func strictSameWindowOtherFocusRefused() {
+    ax.focusedWindows[pid] = .window(windowA)
+    ax.focusedByApplication[pid] = .element(otherField)
+    // Control: without the flag this exact state passes on the same window.
+    #expect(
+      PasteTargetWindowGate.decide(
+        target: .window(windowA), element: field, pid: pid, ax: ax, admit: budget().admit)
+        == .pass(.sameWindow))
+    #expect(strict(.window(windowA), element: field) == .refuse(.capturedFocusMismatch))
+    #expect(strict(.startFieldWindow(windowA), element: field) == .refuse(.capturedFocusMismatch))
+  }
+
+  @Test("Remote session: an unreadable focus or a missing element is refused")
+  func strictUnreadableRefused() {
+    for focus: PastedRegionFocus in [.noFocus, .queryFailed(.cannotComplete)] {
+      ax.focusedByApplication[pid] = focus
+      #expect(strict(.window(windowA), element: field) == .refuse(.capturedFocusMismatch))
+    }
+    ax.focusedByApplication[pid] = .element(field)
+    #expect(strict(.none, element: nil) == .refuse(.capturedFocusMismatch))
+  }
+
+  @Test("Remote session: a refused budget reads nothing, and a match that arrives after it is refused")
+  func strictBudget() {
+    ax.focusedByApplication[pid] = .element(field)
+    #expect(strict(.window(windowA), element: field, admit: { _ in false }) == .refuse(.budget))
+    #expect(ax.landingCalls.isEmpty)
+    let spent = budget(totalMs: 500)
+    ax.onLandingCall = { call in if call == "focusedElement" { self.scheduler.advance(ms: 500) } }
+    #expect(strict(.window(windowA), element: field, admit: spent.admit) == .refuse(.budget))
+    ax.onLandingCall = nil
+  }
+
   @Test("Refusal reasons are the strings logged and sent as paste.tier_failures")
   func reasonStrings() {
     #expect(PasteTargetWindowGate.Refusal.windowMismatch.rawValue == "window_mismatch")
@@ -493,6 +547,8 @@ struct PasteTargetWindowGateTests {
       PasteTargetWindowGate.Refusal.windowUnreadableFocusMismatch.rawValue
         == "window_unreadable_focus_mismatch")
     #expect(PasteTargetWindowGate.Refusal.budget.rawValue == "budget")
+    #expect(
+      PasteTargetWindowGate.Refusal.capturedFocusMismatch.rawValue == "captured_focus_mismatch")
   }
 }
 
@@ -692,6 +748,57 @@ struct PasteTargetWindowGateWiringTests {
       #expect(arguments.contains { $0 == ("recordedWindow", "request.recordedWindow") })
       #expect(arguments.contains { $0 == ("startFieldWindow", "request.capturedFieldWindow") })
     }
+  }
+
+  /// #1070: the strict focus check is decided once, from the remote-session classification, and
+  /// reaches Tier 2's activation and both Tier 2 and 2b dispatch gates; Tier 2c never asks for it.
+  @Test("The remote-session focus check reaches Tier 2 activation and the Tier 2 and 2b gates only")
+  func remoteSessionFlagWiring() throws {
+    let (calls, tree) = try Self.parse()
+    // The flag's one declaration, read from the syntax tree so a comment cannot satisfy it.
+    final class Bindings: SyntaxVisitor {
+      var initializers: [String] = []
+      init() { super.init(viewMode: .sourceAccurate) }
+      override func visit(_ node: PatternBindingSyntax) -> SyntaxVisitorContinueKind {
+        if node.pattern.trimmedDescription == "requireCapturedFocus",
+          let value = node.initializer?.value.trimmedDescription
+        {
+          initializers.append(value)
+        }
+        return .visitChildren
+      }
+    }
+    let bindings = Bindings()
+    bindings.walk(tree)
+    #expect(bindings.initializers == ["classification == .remoteSession"])
+    func forwards(_ call: FunctionCallExprSyntax) -> Bool {
+      call.arguments.contains {
+        $0.label?.text == "requireCapturedFocus"
+          && $0.expression.trimmedDescription == "requireCapturedFocus"
+      }
+    }
+    /// Tier 2c relies on the `false` default: it names no flag at all.
+    func namesNoFlag(_ call: FunctionCallExprSyntax) -> Bool {
+      !call.arguments.contains { $0.label?.text == "requireCapturedFocus" }
+    }
+    let activations = calls.found.filter { $0.callee == "activate" }.map(\.node)
+    try #require(activations.count == 2)
+    #expect(activations.filter(forwards).count == 1, "Tier 2 forwards, Tier 2c does not")
+    #expect(namesNoFlag(activations.max { $0.position < $1.position }!), "Tier 2c is the later call")
+    let gates = calls.found.filter { $0.callee == "dispatchGate" }.map(\.node)
+    try #require(gates.count == 3)
+    #expect(gates.filter(forwards).count == 2, "Tier 2 and 2b forward, Tier 2c does not")
+    #expect(namesNoFlag(gates.max { $0.position < $1.position }!), "Tier 2c is the last gate")
+    let poll = calls.found.filter { $0.callee == "PasteTargetWindowGate.refusal" }.map(\.node)
+    try #require(poll.count == 1)
+    #expect(forwards(poll[0]), "the activation poll uses the same strict check")
+    let inside = calls.found.filter { $0.callee == "PasteTargetWindowGate.decide" }.map(\.node)
+    try #require(inside.count == 1)
+    #expect(forwards(inside[0]), "dispatchGate hands the flag to the gate")
+    // `refusal` (the activation poll's entry) hands the flag on to `decide`.
+    let viaRefusal = calls.found.filter { $0.callee == "decide" }.map(\.node)
+    try #require(viaRefusal.count == 1)
+    #expect(forwards(viaRefusal[0]), "refusal hands the flag to decide")
   }
 
   @Test(

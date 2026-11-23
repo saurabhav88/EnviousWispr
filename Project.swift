@@ -1,6 +1,24 @@
 import ProjectDescription
 
 let appBundleId = "com.enviouswispr.app"
+let shareGroup = "9UT54V24XG.com.enviouswispr.mac-share"
+
+// The eight file formats advertised by Transcribe a File. The importer still decides
+// whether a selected file contains readable audio.
+let shareMediaTypes = [
+  "com.apple.m4a-audio", "public.mp3", "com.microsoft.waveform-audio",
+  "public.aiff-audio", "com.apple.coreaudio-format", "public.mpeg-4",
+  "com.apple.quicktime-movie", "org.xiph.flac",
+]
+let shareTypeMatches = shareMediaTypes.map {
+  "ANY $attachment.registeredTypeIdentifiers UTI-CONFORMS-TO \"\($0)\""
+}.joined(separator: " OR ")
+let shareActivation = """
+  SUBQUERY(extensionItems, $item,
+    $item.attachments.@count == 1 AND
+    SUBQUERY($item.attachments, $attachment, \(shareTypeMatches)).@count == 1
+  ).@count == 1 AND extensionItems.@count == 1
+  """
 
 let deploymentTargets: DeploymentTargets = .macOS("14.0")
 
@@ -248,7 +266,7 @@ let sourceAnalysisTestSettings = targetSettings(
 // signing + the `EnviousWispr Local` product name. Release carries production
 // identity (signing handled at archive/export time in PR5/PR6, NOT here). (#913)
 let appSettings = targetSettings(
-  baseExtra: stringExtractionSettings,
+  baseExtra: stringExtractionSettings.merging(["EW_SHARED_MEDIA_GROUP": ""]) { _, new in new },
   debugExtra: [
     "PRODUCT_BUNDLE_IDENTIFIER": "com.enviouswispr.app.dev",
     "SU_FEED_URL": "",
@@ -278,6 +296,31 @@ let appSettings = targetSettings(
   releaseExtra: [
     "PRODUCT_BUNDLE_IDENTIFIER": "com.enviouswispr.app",
     "SU_FEED_URL": "https://enviouswispr.com/appcast.xml",
+    "EW_SHARED_MEDIA_GROUP": SettingValue(stringLiteral: shareGroup),
+  ]
+)
+
+// The installed release uses a same-team group. A self-signed Dev build stays
+// usable with its existing identity and does not register a second Share action.
+let inactiveShareSettings: SettingsDictionary = [
+  "PRODUCT_BUNDLE_IDENTIFIER": "com.enviouswispr.app.dev.share",
+  "EW_SHARE_ACTIVATION": "FALSEPREDICATE",
+  "EW_SHARED_MEDIA_GROUP": "",
+  "CODE_SIGN_ENTITLEMENTS": "Sources/EnviousWisprShare/Share-Dev.entitlements",
+]
+let shareExtensionSettings = targetSettings(
+  baseExtra: [
+    "APPLICATION_EXTENSION_API_ONLY": "YES",
+    "ENABLE_DEBUG_DYLIB": "NO",
+    "SKIP_INSTALL": "YES",
+    "SWIFT_EMIT_LOC_STRINGS": "NO",
+  ],
+  debugExtra: inactiveShareSettings,
+  devExtra: devSigningSettings.merging(inactiveShareSettings) { _, new in new },
+  releaseExtra: [
+    "EW_SHARE_ACTIVATION": SettingValue(
+      stringLiteral: shareActivation.split(separator: "\n").joined(separator: " ")),
+    "EW_SHARED_MEDIA_GROUP": SettingValue(stringLiteral: shareGroup),
   ]
 )
 
@@ -694,6 +737,38 @@ let project = Project(
       settings: decodeHelperSettings
     ),
 
+    // ---- Share extension ----
+    .target(
+      name: "EnviousWisprShare",
+      destinations: .macOS,
+      product: .appExtension,
+      bundleId: "\(appBundleId).share",
+      deploymentTargets: deploymentTargets,
+      infoPlist: .extendingDefault(with: [
+        "CFBundleDisplayName": "Transcribe with EnviousWispr",
+        "CFBundleIconFile": "AppIcon",
+        "EWSharedMediaGroup": "$(EW_SHARED_MEDIA_GROUP)",
+        "EWSharedMediaTypes": .array(shareMediaTypes.map { .string($0) }),
+        "NSExtension": [
+          "NSExtensionPointIdentifier": "com.apple.share-services",
+          "NSExtensionPrincipalClass": "$(PRODUCT_MODULE_NAME).ShareViewController",
+          "NSExtensionAttributes": [
+            "NSExtensionActivationRule": "$(EW_SHARE_ACTIVATION)"
+          ],
+        ],
+      ]),
+      sources: [
+        "Sources/EnviousWisprShare/*.swift",
+        "Sources/EnviousWisprAppKit/App/SharedMediaTransfer.swift",
+      ],
+      resources: [
+        "Sources/EnviousWispr/Resources/AppIcon.icns",
+        "Sources/EnviousWisprShare/*.lproj/*.strings",
+      ],
+      entitlements: .file(path: "Sources/EnviousWisprShare/Share.entitlements"),
+      settings: shareExtensionSettings
+    ),
+
     // ---- App ----
     .target(
       name: "EnviousWispr",
@@ -861,6 +936,7 @@ let project = Project(
         // #2455 C1: AppLive, not AppKit. The shell reaches the kit only THROUGH
         // the module that chooses live implementations.
         .target(name: "EnviousWisprAppLive"),
+        .target(name: "EnviousWisprShare"),
         // #4473 P2: build order only, so the copy phase above has a product to embed. The app
         // does not link the helper.
         .target(name: "EnviousDecodeHelper"),
@@ -957,6 +1033,39 @@ let project = Project(
         // pivot (no longer resolving callees, so no folding needed).
       ],
       settings: sourceAnalysisTestSettings
+    ),
+    // #4732: compile the weekly sweep and its keyless fixtures without the app test suite.
+    .target(
+      name: "EnviousWisprCloudModelRoutineTests",
+      destinations: .macOS,
+      product: .unitTests,
+      bundleId: "com.enviouswispr.cloud-model-routine-tests",
+      deploymentTargets: deploymentTargets,
+      infoPlist: .default,
+      sources: [
+        "Tests/EnviousWisprTests/Architecture/RepoRoot.swift",
+        "Tests/EnviousWisprTests/LLM/CloudModelRoutineCallAccounting.swift",
+        "Tests/EnviousWisprTests/LLM/CloudModelRoutineHarness.swift",
+        "Tests/EnviousWisprTests/LLM/CloudModelRoutineHarnessTests.swift",
+        "Tests/EnviousWisprTests/LLM/CloudModelRoutineReceipt.swift",
+        "Tests/EnviousWisprTests/LLM/CloudModelRoutineSearch.swift",
+        "Tests/EnviousWisprTests/LLM/CloudModelRoutineSupport.swift",
+        "Tests/EnviousWisprTests/LLM/CloudModelRoutineSweepTests.swift",
+        "Tests/EnviousWisprTests/LLM/LiveSweepSupport.swift",
+        "Tests/EnviousWisprTests/Support/CloudModelListSeed.swift",
+        "Tests/EnviousWisprTests/Support/TestClassTags.swift",
+      ],
+      dependencies: [
+        .target(name: "EnviousWisprCore"),
+        .target(name: "EnviousWisprLLM"),
+        .target(name: "EnviousWisprPipeline"),
+        // Xcode needs direct declarations for the C modules used below Pipeline.
+        .package(product: "CTranscribe"),
+        .package(product: "CWebRTCAEC"),
+        .package(product: "FluidAudio"),
+        .package(product: "PostHog"),
+      ],
+      settings: testTargetSettings
     ),
     // #4243: the cloud PR gut check compiles only criticalTestSources.
     // Dependencies cover its imports and required static-link dependencies; no parser libraries.
@@ -1070,6 +1179,18 @@ let project = Project(
       // RULE: a-flaky-suite-earns-no-new-cases-until-its-wait-seam-is-fixed).
       testAction: .targets(
         ["EnviousWisprTests", "EnviousWisprDesktopEffectsTests", "EnviousWisprASRTests"],
+        configuration: "Release"
+      )
+    ),
+    .scheme(
+      name: "EnviousWispr-CloudModelRoutine",
+      shared: true,
+      buildAction: .buildAction(
+        targets: ["EnviousWisprCloudModelRoutineTests"],
+        findImplicitDependencies: true
+      ),
+      testAction: .targets(
+        ["EnviousWisprCloudModelRoutineTests"],
         configuration: "Release"
       )
     ),

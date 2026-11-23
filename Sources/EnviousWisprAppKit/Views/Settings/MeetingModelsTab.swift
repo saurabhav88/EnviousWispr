@@ -479,20 +479,6 @@ enum MeetingEngineStatusPresentation {
     }
   }
 
-  static func whisper(_ state: WhisperSetupState) -> ProviderStatus {
-    switch state {
-    case .ready:
-      ProviderStatus(label: EngineSummaryCopy.modelReady, tone: .ready)
-    case .checking:
-      ProviderStatus(label: EngineSummaryCopy.checking, tone: .unavailable)
-    case .notDownloaded, .paused:
-      ProviderStatus(label: LivePreviewSettingsCopy.statusNeedsDownloadLabel, tone: .needsSetup)
-    case .downloading:
-      ProviderStatus(label: LivePreviewSettingsCopy.statusGettingReadyLabel, tone: .needsSetup)
-    case .error:
-      ProviderStatus(label: LivePreviewSettingsCopy.statusDownloadFailedLabel, tone: .error)
-    }
-  }
 
   /// #4355 PR C: Speaker labels, reusing the Live Preview chip labels for the download states.
   static func speakerLabels(_ status: MeetingSpeakerLabelsModel.Status) -> ProviderStatus {
@@ -520,10 +506,6 @@ enum MeetingEngineStatusPresentation {
     }
   }
 
-  /// Parakeet: the Engine tab's mapping over a fresh admission read (nil while checking).
-  static func parakeet(admitted: Bool?) -> ProviderStatus {
-    EngineSummaryPresentation.fastModelStatus(admitted: admitted)
-  }
 }
 
 // MARK: - Speaker labels
@@ -785,15 +767,6 @@ struct MeetingTranscriptEngineCard: View {
   @Environment(\.settingsNavigate) private var navigate
   @Environment(ModelDeliveryHome.self) private var modelDelivery: ModelDeliveryHome?
   @State private var choicesOpen = false
-  /// #4320: this card's own Parakeet readiness check (the Engine tab owns another instance).
-  @State private var parakeetReader = ParakeetAdmissionReader()
-
-  /// Re-read Parakeet readiness when the delivery state or its presentation revision changes,
-  /// as the Engine tab does (#3546).
-  private struct ParakeetReadKey: Equatable {
-    let state: DeliveryState
-    let revision: UInt64
-  }
 
   var body: some View {
     VStack(alignment: .leading, spacing: 8) {
@@ -825,14 +798,12 @@ struct MeetingTranscriptEngineCard: View {
     modelDelivery?.parakeetModelLabel ?? ParakeetModel.v3.displayName
   }
 
+  /// #4578: the selected engine's status line while the choices are closed (each card shows
+  /// its own when they are open), then the mismatch warning.
   @ViewBuilder private var status: some View {
-    let lines = statusLines
     VStack(alignment: .leading, spacing: 4) {
-      chip
-      HStack(alignment: .top, spacing: 8) {
-        VStack(alignment: .leading, spacing: 4) { lines }
-        Spacer(minLength: 8)
-        action
+      if !choicesOpen {
+        SpeechEngineStatusRow(engine: model.selectedEngine.backendType, place: .meetings)
       }
       if let engine = model.engineMismatch {
         meetingStatusText(
@@ -849,96 +820,6 @@ struct MeetingTranscriptEngineCard: View {
     .padding(.leading, 4)
   }
 
-  /// The selected transcript engine's status chip. Parakeet's comes from a fresh read-only
-  /// admission check, re-run when delivery moves and dropped when the card goes away or the
-  /// transcript engine is no longer Parakeet; meetings have no re-check button (plan §3.2).
-  @ViewBuilder private var chip: some View {
-    switch model.selectedEngine {
-    case .whisper:
-      ProviderStatusChip(status: MeetingEngineStatusPresentation.whisper(model.whisperState), isHeadline: true)
-    case .parakeet:
-      ProviderStatusChip(
-        status: MeetingEngineStatusPresentation.parakeet(admitted: parakeetReader.admitted),
-        isHeadline: true
-      )
-      .task(
-        id: modelDelivery.map {
-          ParakeetReadKey(state: $0.parakeetState, revision: $0.parakeetPresentationRevision)
-        }
-      ) { await recheckParakeet() }
-      .onDisappear { parakeetReader.invalidate() }
-    }
-  }
-
-  private func recheckParakeet() async {
-    let modelDelivery = modelDelivery
-    let model = model
-    await parakeetReader.recheck(
-      snapshot: {
-        modelDelivery.map {
-          ParakeetReadKey(state: $0.parakeetState, revision: $0.parakeetPresentationRevision)
-        }
-      },
-      read: { await modelDelivery?.currentParakeetAdmission() ?? false },
-      eligible: { model.selectedEngine == .parakeet })
-  }
-
-  @ViewBuilder private var statusLines: some View {
-    if model.isChosenWhisperGone {
-      meetingStatusText(String(localized: MeetingsCopy.whisperGone))
-    }
-    switch model.whisperState {
-    case .notDownloaded:
-      meetingStatusText(String(localized: MeetingsCopy.whisperNotDownloaded))
-    case .downloading(let progress, _):
-      meetingStatusText(String(localized: MeetingsCopy.whisperDownloading))
-      ProgressView(value: progress).frame(maxWidth: 220)
-    case .paused:
-      meetingStatusText(String(localized: MeetingsCopy.whisperPaused))
-    case .error:
-      meetingStatusText(String(localized: MeetingsCopy.whisperFailed))
-    case .checking, .ready:
-      EmptyView()
-    }
-  }
-
-  /// Download, Resume, Try Again or Cancel of the shared Whisper download. While a meeting is
-  /// active the card says when a download can start instead; the model refuses it too.
-  @ViewBuilder private var action: some View {
-    switch model.whisperState {
-    case .notDownloaded:
-      downloadButton(SettingsItemCopy.LivePreview.universalDownload)
-    case .paused:
-      downloadButton(SettingsItemCopy.Engine.whisperResume)
-    case .error:
-      downloadButton(SettingsItemCopy.Engine.whisperTryAgain)
-    case .downloading:
-      Button {
-        model.cancelDownload()
-      } label: {
-        EnviousButtonLabel(SettingsItemCopy.Engine.whisperCancel, size: .medium)
-      }
-      .settingsButton(.filled, shape: .roundedRect, size: .medium, isEnabled: true)
-      .settingsArrivalWithoutInheritedPlace()
-    case .checking, .ready:
-      EmptyView()
-    }
-  }
-
-  @ViewBuilder private func downloadButton(_ title: LocalizedStringResource) -> some View {
-    if let refusal = model.downloadRefusal {
-      meetingStatusText(refusal)
-    } else {
-      Button {
-        model.download()
-      } label: {
-        EnviousButtonLabel(title, size: .medium)
-      }
-      .settingsButton(.filled, shape: .roundedRect, size: .medium, isEnabled: true)
-      .settingsArrivalWithoutInheritedPlace()
-    }
-  }
-
   private var choiceGrid: some View {
     Grid(horizontalSpacing: 12, verticalSpacing: 12) {
       GridRow(alignment: .top) {
@@ -950,59 +831,32 @@ struct MeetingTranscriptEngineCard: View {
   }
 
   private func card(_ item: MeetingTranscriptEngineCards.Item) -> some View {
-    let selectable = MeetingTranscriptEngineCards.isSelectable(
-      item, whisperReady: model.isWhisperReady)
-    return EngineCard(
+    EngineCard(
       icon: MeetingTranscriptEngineCards.icon(item),
       map: .id(item.mapID),
       tagline: MeetingTranscriptEngineCards.tagline(item),
       specs: MeetingTranscriptEngineCards.specs(item, parakeetModel: parakeetModel),
-      unavailability: MeetingTranscriptEngineCards.unavailability(
-        item, whisperReady: model.isWhisperReady),
-      isSelectable: selectable,
+      unavailability: MeetingTranscriptEngineCards.unavailability(item),
+      isSelectable: MeetingTranscriptEngineCards.isSelectable(item),
       isSelected: item == .engine(model.selectedEngine),
       onSelect: {
         guard case .engine(let engine) = item else { return }
-        Task { await model.select(engine) }
+        model.select(engine)
         choicesOpen = false
       },
       fillsHeight: true,
       footer: {
-        // #4325: the shared Whisper Remove Model, the same as dictation's Engine tab. Parakeet
-        // has none anywhere. Waits for an active meeting; the selected engine stays as it is.
-        // The notice renders whatever state follows a failed removal (dictation's tab does the
-        // same), so a partial delete never hides its explanation.
-        if item == .engine(.whisper),
-          model.isWhisperReady || model.isRemovingWhisper || model.whisperRemoveNotice != nil
-        {
-          VStack(alignment: .leading, spacing: 6) {
-            if model.isRemovingWhisper {
-              meetingStatusText(String(localized: "Removing model..."))
-            } else if model.isWhisperReady {
-              // Drawn exactly as dictation's Whisper Remove Model (`SpeechEngineSettingsView`).
-              Button {
-                model.removeWhisper()
-              } label: {
-                Text(SettingsItemCopy.Engine.whisperRemove).font(.stHelper)
-                  .settingsHoverQuiet(tint: .stError)
-              }
-              .controlSize(.small)
-              .buttonStyle(.borderless)
-              .foregroundStyle(.stError)
-              .disabled(model.removeWaitsForMeeting)
-              if model.removeWaitsForMeeting {
-                meetingStatusText(MeetingDownloadAdmission.refusal)
-              }
-            }
-            if let notice = model.whisperRemoveNotice {
-              meetingStatusText(SpeechEngineSettingsView.removeNoticeText(notice))
-            }
-          }
-          .padding([.horizontal, .bottom], 16)
+        // #4578: the same status line as dictation's Engine tab: any engine can be picked;
+        // Remove on a downloaded one, Set up model on one that is not. Meetings use the other
+        // downloaded engine on their own when the picked one is missing.
+        if case .engine(let engine) = item {
+          SpeechEngineStatusRow(engine: engine.backendType, place: .meetings)
+            .padding([.horizontal, .bottom], 16)
         }
       })
   }
 }
+
 
 /// #4287 PR 2: what the Transcript engine cards say, in the order the grid shows them. The specs
 /// reuse dictation's Engine cards' values (the same Parakeet model this Mac presents, the same
@@ -1023,19 +877,18 @@ enum MeetingTranscriptEngineCards {
 
   static let order: [Item] = MeetingEngineChoice.allCases.map(Item.engine) + [.appleComingSoon]
 
-  static func isSelectable(_ item: Item, whisperReady: Bool) -> Bool {
+  /// #4578: every engine can be picked, downloaded or not (its card says Set up model); only
+  /// Apple's is not ready yet.
+  static func isSelectable(_ item: Item) -> Bool {
     switch item {
-    case .engine(.parakeet): true
-    case .engine(.whisper): whisperReady
+    case .engine: true
     case .appleComingSoon: false
     }
   }
 
-  static func unavailability(_ item: Item, whisperReady: Bool) -> String? {
+  static func unavailability(_ item: Item) -> String? {
     switch item {
-    case .engine(.parakeet): nil
-    case .engine(.whisper):
-      whisperReady ? nil : String(localized: MeetingsCopy.whisperNotDownloaded)
+    case .engine: nil
     case .appleComingSoon: String(localized: MeetingsCopy.engineComingSoon)
     }
   }

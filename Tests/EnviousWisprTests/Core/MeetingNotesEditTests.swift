@@ -27,10 +27,13 @@ struct MeetingNotesEditTests {
       typed.applying(.replaceText(blockID: block.id, rangeUTF16: 1..<1, text: "udget"), atMs: 9_000))
     #expect(more.blocks[0].text == "Budget")
     #expect(more.blocks[0].startedAtMs == 5_000)
-    // Deleting every character keeps the time it was given.
+    // A line cleared of every character shows no time; its next first character sets a new one.
     let cleared = try #require(
       more.applying(.replaceText(blockID: block.id, rangeUTF16: 0..<6, text: ""), atMs: 12_000))
-    #expect(cleared.blocks[0].startedAtMs == 5_000)
+    #expect(cleared.blocks[0].startedAtMs == nil)
+    let retyped = try #require(
+      cleared.applying(.replaceText(blockID: block.id, rangeUTF16: 0..<0, text: "C"), atMs: 20_000))
+    #expect(retyped.blocks[0].startedAtMs == 20_000)
   }
 
   @Test("a migrated block keeps no time when edited")
@@ -41,6 +44,21 @@ struct MeetingNotesEditTests {
       doc.applying(.replaceText(blockID: id, rangeUTF16: 6..<6, text: "!"), atMs: 3_000))
     #expect(edited.blocks[0].text == "Agenda!")
     #expect(edited.blocks[0].startedAtMs == nil)
+  }
+
+  @Test("adding a live quote keeps the draft and records when it was added and spoken")
+  func appendingQuoteKeepsBothTimes() throws {
+    let existing = MeetingNoteBlock(startedAtMs: 1_000, text: "Agenda")
+    let document = MeetingNotesDocument(blocks: [existing])
+    let quote = MeetingNoteBlock(
+      kind: .quote, text: "We agreed.", sourceSpeaker: "Mina", sourceMs: 5_000)
+    let updated = try #require(document.applying(.append(quote), atMs: 8_000))
+    #expect(updated.blocks.first == existing)
+    #expect(updated.blocks.last?.startedAtMs == 8_000)
+    #expect(updated.blocks.last?.sourceMs == 5_000)
+    #expect(updated.blocks.last?.sourceSpeaker == "Mina")
+    #expect(updated.markdown == "Agenda\n> We agreed.")
+    #expect(updated.applying(.append(quote), atMs: 9_000) == nil)
   }
 
   @Test("Return splits: moved text keeps its time, the empty new block gets one when typed")

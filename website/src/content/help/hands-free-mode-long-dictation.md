@@ -6,7 +6,7 @@ section: "Recording"
 order: 2
 keywords: ["hands free", "handsfree", "long dictation", "dont want to hold", "dont want to hold the key", "hold the key", "without holding", "let go", "keep recording", "long recording", "stop holding the key", "double press", "lock recording", "double tap", "record without holding", "press space", "space while holding", "lock while holding", "already holding the key", "switch to hands free"]
 related: ["voice-activity-detection-and-auto-stop", "recording-won-t-stop-or-seems-stuck"]
-updated: 2026-10-12
+updated: 2026-11-22
 deflection: "can_resolve"
 ---
 Hands-free mode locks recording on, so you can talk without holding the key. It suits anything longer than a sentence or two, such as a blog post, a long email, or meeting notes. It works when your recording mode is **Push to Talk**.
@@ -50,4 +50,4 @@ You can have EnviousWispr end a recording after a pause in your speech. The [aut
 1. Click the EnviousWispr icon in your menu bar and choose **Open EnviousWispr**.
 2. Open **Dictation Settings**, then **Engine**.
 3. Under **Applies to both engines**, switch on **Stop recording on silence**. It is off by default.
-4. Use the **Pause duration** slider to choose how long a pause ends the recording, from half a second to three seconds.
+4. Use the **Pause duration** slider to choose how long a pause ends the recording, from half a second to five seconds.

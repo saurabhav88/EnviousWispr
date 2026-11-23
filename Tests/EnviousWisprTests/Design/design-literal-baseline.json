@@ -45,7 +45,7 @@
       "fontSize" : 1
     },
     "Sources\/EnviousWisprAppKit\/App\/Overlay\/Views\/RecordingOverlayView.swift" : {
-      "fontSize" : 7
+      "fontSize" : 6
     },
     "Sources\/EnviousWisprAppKit\/App\/Overlay\/Views\/RecoveryNoticeView.swift" : {
       "fontSize" : 3
@@ -54,15 +54,9 @@
       "fontSize" : 4,
       "radius" : 2
     },
-    "Sources\/EnviousWisprAppKit\/Views\/Components\/AccessibilityWarningBanner.swift" : {
-      "radius" : 2
-    },
     "Sources\/EnviousWisprAppKit\/Views\/Components\/HotkeyRecorderView.swift" : {
       "fontSize" : 1,
       "radius" : 1
-    },
-    "Sources\/EnviousWisprAppKit\/Views\/Components\/PolishSetupBanner.swift" : {
-      "radius" : 2
     },
     "Sources\/EnviousWisprAppKit\/Views\/Components\/UpdateAvailableBanner.swift" : {
       "radius" : 2
@@ -79,28 +73,12 @@
     "Sources\/EnviousWisprAppKit\/Views\/Main\/MeetingSummaryView.swift" : {
       "radius" : 1
     },
-    "Sources\/EnviousWisprAppKit\/Views\/Main\/TranscriptDetailView.swift" : {
-      "fontSize" : 6,
-      "radius" : 2
-    },
     "Sources\/EnviousWisprAppKit\/Views\/Main\/TurnDocumentView.swift" : {
       "radius" : 1
     },
     "Sources\/EnviousWisprAppKit\/Views\/Onboarding\/OnboardingDesignTokens.swift" : {
       "color" : 9,
       "radius" : 1
-    },
-    "Sources\/EnviousWisprAppKit\/Views\/Onboarding\/OnboardingV2View.swift" : {
-      "fontSize" : 18,
-      "radius" : 21
-    },
-    "Sources\/EnviousWisprAppKit\/Views\/Onboarding\/PracticeScreen.swift" : {
-      "fontSize" : 3,
-      "radius" : 3
-    },
-    "Sources\/EnviousWisprAppKit\/Views\/Onboarding\/WarmingScreen.swift" : {
-      "fontSize" : 4,
-      "radius" : 4
     },
     "Sources\/EnviousWisprAppKit\/Views\/QuickAdd\/QuickAddPanelView.swift" : {
       "fontSize" : 5,
@@ -117,7 +95,7 @@
     },
     "Sources\/EnviousWisprAppKit\/Views\/Settings\/CustomTermsSection.swift" : {
       "fontSize" : 3,
-      "radius" : 3
+      "radius" : 2
     },
     "Sources\/EnviousWisprAppKit\/Views\/Settings\/CustomWordEditSheet.swift" : {
       "fontSize" : 2,
@@ -160,7 +138,7 @@
       "radius" : 4
     },
     "Sources\/EnviousWisprAppKit\/Views\/Settings\/MeetingControls.swift" : {
-      "radius" : 6
+      "radius" : 5
     },
     "Sources\/EnviousWisprAppKit\/Views\/Settings\/MeetingOnboardingView.swift" : {
       "fontSize" : 11,
@@ -215,7 +193,7 @@
     },
     "Sources\/EnviousWisprAppKit\/Views\/Settings\/SettingsDropdown.swift" : {
       "fontSize" : 4,
-      "radius" : 5
+      "radius" : 4
     },
     "Sources\/EnviousWisprAppKit\/Views\/Settings\/SettingsSearchViews.swift" : {
       "radius" : 5

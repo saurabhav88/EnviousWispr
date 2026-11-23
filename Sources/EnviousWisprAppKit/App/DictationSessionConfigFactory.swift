@@ -19,6 +19,8 @@ enum DictationSessionConfigFactory {
     settings: SettingsManager,
     polishModel: LocalPolishModelID,
     polishWireModel: String,
+    translationTarget: DictationTranslationTarget? = nil,
+    fixLearnedWords: Bool,
     triggerSource: TriggerSource,
     recoverySessionID: String? = nil,
     recoveryPayload: Data? = nil
@@ -37,7 +39,8 @@ enum DictationSessionConfigFactory {
     // educational `.accessibilityToast` overlay. The legacy gate bypassed
     // the cascade entirely (the wiring's direct copyToClipboard branch),
     // depriving AX-denied users of both the diagnostic and the toast.
-    let autoPaste = activePipelineIdle
+    let copyOnlyByPreference = !settings.automaticDictationPasteEnabled
+    let autoPaste = activePipelineIdle && !copyOnlyByPreference
     // #1173 / #4473: the effective model name the caller captured with `polishModel`
     // (`SettingsManager.effectiveLLMModel`), never a second settings read here.
     let resolvedModel = polishWireModel
@@ -49,6 +52,7 @@ enum DictationSessionConfigFactory {
       inputMode: settings.recordingMode,
       triggerSource: triggerSource,
       autoPasteToActiveApp: autoPaste,
+      copyOnlyByPreference: copyOnlyByPreference,
       restoreClipboardAfterPaste: settings.restoreClipboardAfterPaste,
       keepDictationsOutOfClipboardHistory: settings.keepDictationsOutOfClipboardHistory,
       smartInsertion: settings.smartInsertion,
@@ -56,10 +60,12 @@ enum DictationSessionConfigFactory {
       vadSilenceTimeout: settings.vadSilenceTimeout,
       vadSensitivity: settings.vadSensitivity,
       vadEnergyGate: settings.vadEnergyGate,
+      silentMicWarningsEnabled: settings.silentMicWarnings,
       languageMode: languageMode,
       // #3124: the EFFECTIVE value, decided once here and frozen for the take.
       englishSpelling: EnglishSpelling.effective(
         languageMode: languageMode, stored: settings.englishSpelling),
+      fixLearnedWords: fixLearnedWords,
       useStreamingASR: settings.useStreamingASR,
       modelUnloadPolicy: settings.modelUnloadPolicy,
       // #4473: provider and model from the caller's ONE capture, never a second settings read.
@@ -76,7 +82,8 @@ enum DictationSessionConfigFactory {
       escapeRecoveryEnabled: settings.escapeRecoveryEnabled,
       // #2649: frozen here like provider and model, so a pick changed
       // mid-dictation applies to the next recording.
-      s1Control: settings.s1Control
+      s1Control: settings.s1Control,
+      translationTarget: translationTarget
     )
   }
 }

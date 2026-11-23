@@ -32,6 +32,12 @@ enum PipelineStateChangeDispatch {
     driver: KernelDictationDriver,
     to newState: PipelineState
   ) {
+    let clipboardCopy = driver.intentionalClipboardCopy
+    let clipboardPolishReason = clipboardCopy.flatMap { _ in
+      driver.lastPolishNotice?.text ?? driver.concludedPolishTake.flatMap {
+        PolishSetupSurfaceCopy.shortReason(for: $0)
+      }
+    }
     let schedulesDataLossDisclosure = handler.handle(
       to: newState,
       pipelineOverlayIntent: driver.overlayIntent,
@@ -44,19 +50,18 @@ enum PipelineStateChangeDispatch {
       // completion; `.deviceRemoved` = verified removal (may say "Microphone
       // disconnected"); `.otherInterruption` = salvaged with the mic, as far as
       // we know, still attached (neutral copy). The factory owns the sentences.
-      // #1317: a `becameZeroMidCapture` completion never stamps an
-      // `EngineInterruptionCause` (§3.4 — no synthesized cause), so it is read
-      // directly off the zero-signal side-channel instead of going through
-      // `CompletionInterruptionDisclosure.init(cause:)` (§3.5).
-      interruptionDisclosure: driver.lastZeroSignalFailureMode == .becameZeroMidCapture
-        ? .otherInterruption
-        : CompletionInterruptionDisclosure(cause: driver.lastAudioInterruptionCause),
+      // #4841: a silent tail after speech is a normal completion with no
+      // disclosure; only a real interruption cause produces one.
+      interruptionDisclosure: CompletionInterruptionDisclosure(cause: driver.lastAudioInterruptionCause),
       escapeRecoveryCompletion: driver.takeEscapeRecoveryCompletion(),
       // #3438: the concluded take's own typed outcome, read before planning, so a confirmed
       // setup problem replaces the failure pill with the setup card.
-      polishSetupBlocked: driver.lastPolishSetupBlocked)
+      polishSetupBlocked: driver.lastPolishSetupBlocked,
+      clipboardCopy: clipboardCopy,
+      clipboardPolishReason: clipboardPolishReason)
     // #3438: after the completion is planned, the concluded take's polish outcome goes to the
     // AI polish setup warnings, once per take, from whichever backend ran it.
-    driver.deliverPolishTakeOutcome(mayOfferCard: schedulesDataLossDisclosure == false)
+    driver.deliverPolishTakeOutcome(
+      mayOfferCard: clipboardCopy == nil && !schedulesDataLossDisclosure)
   }
 }

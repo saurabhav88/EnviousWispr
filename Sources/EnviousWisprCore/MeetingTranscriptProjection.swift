@@ -33,14 +33,20 @@ public enum MeetingTranscriptProjection {
     let utf16 = Array(text.utf16)
     return visible(turns: turns, echoTurnIDs: echoTurnIDs, showEcho: showEcho).turns.compactMap {
       turn in
-      let lower = max(0, min(turn.originalTextRange.lowerBound, utf16.count))
-      let upper = max(lower, min(turn.originalTextRange.upperBound, utf16.count))
-      let words = String(decoding: utf16[lower..<upper], as: UTF16.self)
-        .trimmingCharacters(in: .whitespacesAndNewlines)
+      let words = displayWords(in: turn, originalUTF16: utf16)
       guard !words.isEmpty else { return nil }
       let shown = line(words)
       if let name = speakerNames[turn.speakerId], !name.isEmpty { return "\(name): \(shown)" }
       return shown
     }.joined(separator: "\n\n")
+  }
+
+  /// A turn's shown words with the original as the fallback. Shared with summary sources so
+  /// both use the same content after a History polish.
+  package static func displayWords(in turn: Turn, originalUTF16: [UInt16]) -> String {
+    let lower = max(0, min(turn.originalTextRange.lowerBound, originalUTF16.count))
+    let upper = max(lower, min(turn.originalTextRange.upperBound, originalUTF16.count))
+    return (turn.processedText ?? String(decoding: originalUTF16[lower..<upper], as: UTF16.self))
+      .trimmingCharacters(in: .whitespacesAndNewlines)
   }
 }

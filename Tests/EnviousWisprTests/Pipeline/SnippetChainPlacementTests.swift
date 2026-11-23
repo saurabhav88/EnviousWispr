@@ -171,13 +171,17 @@ struct SnippetChainPlacementTests {
 
   private static let fixedInstant = Date(timeIntervalSince1970: 1_789_584_300)
 
+  private static let english = Locale(identifier: "en-US")
+
   @MainActor
   private func step(
-    probe: ClipboardProbe, now: Date = SnippetChainPlacementTests.fixedInstant
+    probe: ClipboardProbe, now: Date = SnippetChainPlacementTests.fixedInstant,
+    locale: Locale = SnippetChainPlacementTests.english
   ) -> SnippetExpansionStep {
     SnippetExpansionStep(
       expander: SnippetExpander(),
       now: { now },
+      locale: { locale },
       clipboardText: { probe.read() })
   }
 
@@ -274,16 +278,42 @@ struct SnippetChainPlacementTests {
     let expected = SnippetPlaceholder.resolve(
       "filed {{date}}",
       using: SnippetDynamicValues(
-        now: Self.fixedInstant, locale: .current, timeZone: .current, clipboard: nil))
+        now: Self.fixedInstant, locale: Self.english, timeZone: .current, clipboard: nil))
     #expect(out.protectedExpansions.first?.expansion == expected)
 
     let aYearLater = SnippetPlaceholder.resolve(
       "filed {{date}}",
       using: SnippetDynamicValues(
-        now: Self.fixedInstant.addingTimeInterval(365 * 24 * 60 * 60), locale: .current,
+        now: Self.fixedInstant.addingTimeInterval(365 * 24 * 60 * 60), locale: Self.english,
         timeZone: .current, clipboard: nil))
     #expect(expected != aYearLater, "the control itself must discriminate")
     #expect(probe.reads == 0)
+  }
+
+  /// #4824: the step writes dates in the locale it is given (the Mac's language in the app),
+  /// never in `Locale.current`, whose language follows the app's interface.
+  @Test("#4824: the injected locale reaches the delivered date")
+  @MainActor
+  func theInjectedLocaleReachesTheText() async throws {
+    func stamp(_ locale: Locale) async throws -> String? {
+      let subject = step(probe: ClipboardProbe(), locale: locale)
+      subject.snippetVocabulary = SnippetVocabulary(
+        snippets: [Snippet(trigger: "my stamp", expansion: "{{date}}")],
+        keyword: SnippetVocabulary.defaultKeyword, generation: 1)
+      let out = try await subject.process(
+        TextProcessingContext(text: "note this backslash my stamp please", language: "en"))
+      return out.protectedExpansions.first?.expansion
+    }
+    let german = Locale(identifier: "de-US")
+    let english = try await stamp(Self.english)
+    let germanStamp = try await stamp(german)
+    #expect(
+      english
+        == SnippetPlaceholder.resolve(
+          "{{date}}",
+          using: SnippetDynamicValues(
+            now: Self.fixedInstant, locale: Self.english, timeZone: .current, clipboard: nil)))
+    #expect(english != germanStamp, "the control: German writes another date text")
   }
 
   // MARK: - Cost, measured rather than assumed (#3018)
@@ -545,6 +575,7 @@ struct SnippetChainPlacementTests {
     let step = SnippetExpansionStep(
       expander: expander,
       now: { Self.fixedInstant },
+      locale: { .current },
       clipboardText: {
         // Counts the reads AND performs the real one, so the count and the cost are the same run.
         _ = probe.read()

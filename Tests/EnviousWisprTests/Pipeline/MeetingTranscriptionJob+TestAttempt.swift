@@ -48,4 +48,21 @@ extension MeetingTranscriptionJob.Result {
         effectiveLanguage: attempt.requestedEffectiveLanguage,
         modelIdentity: resolved.modelIdentity, fallbackReason: nil), naming: naming)
   }
+
+  /// #4578: this result as the real pass stamps it for `resolution` (`MeetingTranscriptionJob`
+  /// builds `resolved` from the resolution it was made with, with the language it decoded).
+  func resolving(
+    _ attempt: MeetingAttemptConfiguration, resolution: MeetingEngineResolution, language: String?
+  ) -> Self {
+    .init(
+      composition: composition, speakerOutcomes: speakerOutcomes, forcedCuts: forcedCuts,
+      failedPieces: failedPieces, failedRanges: failedRanges, resumedPieces: resumedPieces,
+      checkpointSaveFailures: checkpointSaveFailures, yieldCount: yieldCount,
+      processingSeconds: processingSeconds, audioSeconds: audioSeconds,
+      resolved: MeetingResolvedAttempt(
+        attemptID: attempt.attemptID, requestedEngine: attempt.requestedEngine,
+        resolvedEngine: resolution.engine, effectiveLanguage: language,
+        modelIdentity: resolved.modelIdentity, fallbackReason: resolution.fallbackReason),
+      naming: naming)
+  }
 }

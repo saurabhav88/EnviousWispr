@@ -37,6 +37,9 @@ public enum EngineWarmupReason: Sendable {
   /// #3546 row T: Settings' Try again after the Parakeet upgrade policy
   /// stopped loading.
   case explicitRetry
+  /// #4837: the load that follows an admitted Parakeet download (Settings' Set up model and
+  /// Resume, the dev door), while the app keeps running.
+  case afterDownload
 
   var telemetryToken: String {
     switch self {
@@ -45,6 +48,7 @@ public enum EngineWarmupReason: Sendable {
     case .engineSwap: return "engine_swap"
     case .coldPress: return "cold_press"
     case .explicitRetry: return "explicit_retry"
+    case .afterDownload: return "after_download"
     }
   }
 }
@@ -430,6 +434,13 @@ public final class KernelDictationDriver: HeartPathTelemetryTarget {
   @ObservationIgnored
   public var onDictationEndedForRecovery: (@MainActor () -> Void)?
 
+  /// #4537: fired once whenever an `ensureEngineWarm` call returns, whoever started it (launch
+  /// preload, cold press, Setup's warm-up, explicit retry, the engine coordinator's own warm).
+  /// The composition root binds it to the engine coordinator's status refresh: a warm-up the
+  /// coordinator did not start otherwise settles without republishing its status snapshot.
+  @ObservationIgnored
+  public var onEngineWarmSettled: (@MainActor () -> Void)?
+
   /// #1707 Phase 3 (§3.2) / #1741 Chunk 9 — the shared `EngineMutationScope`
   /// constructed once by the composition root, injected exactly like
   /// `onStateChange` above. Guards this driver's own `ensureEngineWarm(_:)`
@@ -542,7 +553,7 @@ public final class KernelDictationDriver: HeartPathTelemetryTarget {
 
   /// Cold-boot warm-up coordinator (#879). The SINGLE shared entry every warm-up
   /// site routes through — launch (`WisprBootstrapper` for Parakeet,
-  /// `SetupCoordinator` for Whisper), onboarding (`OnboardingV2View`), engine
+  /// `SetupCoordinator` for Whisper), Setup, engine
   /// swap (`PipelineSettingsSync`), and the cold press (`RecordingStarter`) — so
   /// the readiness-check + single-flight + telemetry live in one place and can't
   /// drift. Reads the live `adapter.readiness` (the ONLY gate — no persisted
@@ -593,6 +604,7 @@ public final class KernelDictationDriver: HeartPathTelemetryTarget {
   }
 
   public func ensureEngineWarm(reason: EngineWarmupReason) async -> EngineWarmupOutcome {
+    defer { onEngineWarmSettled?() }
     let engine = adapter.engineIdentity.rawValue
     if adapter.readiness == .ready {
       if reason == .launch {
@@ -865,6 +877,11 @@ public final class KernelDictationDriver: HeartPathTelemetryTarget {
   /// consumer is `HotkeyController` in this package.
   package var continuingSessionID: String? { kernel.continuingSessionID }
 
+  /// #4601 §5: whether a recording session exists at all (the kernel left `.idle` the moment it
+  /// accepted the start, synchronously). False during a sessionless pre-warm, which is the start
+  /// a release or cancel must abandon directly because no session will hear its stop.
+  package var hasSession: Bool { kernel.state != .idle }
+
   /// #1393: the pipeline's own single source of truth for monotonic elapsed
   /// recording time. `nil` outside an active/just-finished session.
   public var recordingElapsedSeconds: TimeInterval? { kernel.recordingElapsedSeconds }
@@ -1097,6 +1114,27 @@ public final class KernelDictationDriver: HeartPathTelemetryTarget {
   /// the App layer's `dictation.completed` telemetry. LIVE pass-through from the
   /// kernel; never persisted. Reason strings only, never user content.
   public var lastStopReason: String? { kernel.lastStopReason }
+  /// The kernel's identity is assigned at admission, before its first active phase.
+  package var practiceTakeID: String { kernel.currentSessionID.raw.uuidString }
+
+  /// Read a terminal only when its identity agrees with the active or just-concluded take.
+  package var practiceTakeEvidence: PracticeTakeEvidence? {
+    guard let result = kernel.recordingOutcome, lastTakeID == practiceTakeID else { return nil }
+    switch result {
+    case .completed:
+      guard kernel.deliveredTranscript != nil else { return .failed }
+      let polish = outcome.polishTakeOutcome.flatMap { $0.takeID == lastTakeID ? $0 : nil }
+      return .delivered(
+        verifiedEditor: outcome.practiceVerifiedEditor,
+        copied: outcome.practiceCopiedToClipboard,
+        polished: polish?.result == .polished,
+        waitedForModel: PracticeTakeEvidence.waitedForModel(polish))
+    case .discarded, .noSpeech, .asrEmptyDespiteAudio, .noTransport: return .noSpeech
+    case .cancelled: return .cancelled
+    case .failed, .audioInterrupted, .asrInterrupted: return .failed
+    }
+  }
+
   /// #1846: the id of the take that most recently CONCLUDED, for `dictation.completed`
   /// and its three sibling completion events. LIVE pass-through of a value the kernel
   /// FROZE at the accepted terminal — not a live read of the in-flight take key, which
@@ -1159,11 +1197,17 @@ public final class KernelDictationDriver: HeartPathTelemetryTarget {
 
   /// #3438: whether the CONCLUDED take's polish was skipped by a confirmed unfinished setup.
   /// Read for that take only (its ID must be `lastTakeID`), never another take's outcome.
-  public var lastPolishSetupBlocked: Bool {
-    guard let polish = outcome.polishTakeOutcome, polish.takeID == lastTakeID else {
-      return false
-    }
-    return polish.setupProblem != nil
+  public var lastPolishSetupBlocked: Bool { concludedPolishTake?.setupProblem != nil }
+
+  package var concludedPolishTake: PolishTakeOutcome? {
+    guard let polish = outcome.polishTakeOutcome, polish.takeID == lastTakeID else { return nil }
+    return polish
+  }
+
+  /// Nil for the ordinary paste route, false for a selected clipboard route with no confirmed write.
+  package var intentionalClipboardCopy: Bool? {
+    guard case .intentionalClipboard(let copied) = kernel.deliveryOutcome else { return nil }
+    return copied
   }
 
   /// The rule `deliverPolishTakeOutcome` applies: only the concluded take's own outcome, and
@@ -1199,16 +1243,6 @@ public final class KernelDictationDriver: HeartPathTelemetryTarget {
   /// spool-deletion projection (`recoveryEnding(for:retryOutcome:)`).
   public var asrRetryOutcome: ASRRetryOutcome? {
     kernel.asrRetryOutcome
-  }
-  /// #1317: non-nil when the most recent recording was classified as the
-  /// mic-harness all-zero glitch (`allZeroFromStart` = the `.zeroSignal`
-  /// pill; `becameZeroMidCapture` = a normal completion whose disclosure
-  /// must say "may be missing its tail" instead of the interruption-cause
-  /// derived sentence, since no `EngineInterruptionCause` is ever stamped
-  /// for this path, §3.5). LIVE pass-through from the kernel; never
-  /// persisted.
-  public var lastZeroSignalFailureMode: CaptureStallFailureMode? {
-    kernel.zeroSignalFailureMode
   }
   /// #1376: the resolved-route transports for the most recent recording, for
   /// the App layer's `dictation.completed` telemetry. LIVE pass-through from the
@@ -1313,7 +1347,7 @@ public final class KernelDictationDriver: HeartPathTelemetryTarget {
 
   public func handle(event: PipelineEvent) async throws {
     switch event {
-    case .preWarm:
+    case .preWarm(let microphoneStartDeadline):
       // PR-4.5 #1 + Codex r4: capture pre-warm is awaited end-to-end so the
       // PTT-flow caller (`RecordingStarter.start()` awaits `handle(.preWarm)`
       // and then immediately sends `.toggleRecording`) does not see the
@@ -1321,8 +1355,8 @@ public final class KernelDictationDriver: HeartPathTelemetryTarget {
       //
       // PR-4b.4 of #827: rethrow on `audioCapture.preWarm()` failure so the
       // starter's catch{} branch fires the "Microphone unavailable" overlay.
-      try await kernel.preWarm()
-    case .toggleRecording(let config):
+      try await kernel.preWarm(microphoneStartDeadline: microphoneStartDeadline)
+    case .toggleRecording(let config, let microphoneStartDeadline):
       switch kernel.state {
       case .idle:
         // Start: clear the prior session's surfaces, capture finalization
@@ -1358,6 +1392,8 @@ public final class KernelDictationDriver: HeartPathTelemetryTarget {
         outcome.polishDurationSeconds = 0
         outcome.pasteDurationSeconds = 0
         outcome.pasteResult = nil
+        outcome.practiceVerifiedEditor = nil
+        outcome.practiceCopiedToClipboard = false
         // #1785: these are written only inside the auto-paste branch, so without
         // clearing them here an auto-copy or no-copy recording would file the
         // PREVIOUS recording's insertion facts as its own.
@@ -1413,7 +1449,7 @@ public final class KernelDictationDriver: HeartPathTelemetryTarget {
         // launch + foreground; this is the per-session refresh that
         // covers long-idle paths between recordings.
         steps.llmPolish.preWarm()
-        kernel.start(config: config)
+        kernel.start(config: config, microphoneStartDeadline: microphoneStartDeadline)
       case .live:
         kernel.requestStop()
       case .arming:
@@ -1500,27 +1536,15 @@ public final class KernelDictationDriver: HeartPathTelemetryTarget {
     //      `audio.dead_mic_retire_attempted` and its breadcrumb instead.
     //   2. kernel.externalCaptureStalled — flips the kernel FSM to
     //      `failed(.captureStalled)` so the session actually stops.
-    // **The arms are independent and #1810 changed only arm 1.** Every failure
-    // mode still ends the take, and source retirement still happens on the stop
-    // path; a quieter Sentry channel is not a quieter product.
+    // **The arms are independent and #1810 changed only arm 1.** A `.noBuffers`
+    // stall still ends the take; since #4841 capture never reports the two
+    // zero-sample shapes, which STOP classifies instead.
     // PR-4b.1 dropped the kernel's direct `audioCapture.onCaptureStalled`
     // subscription; PR-4b.2 closes the loop by fanning out from this
     // App-facing entry. Without the kernel call, a real stall would
     // leave the session stuck in `.recording` (Codex review #11 r3).
     observer.handleCaptureStall(ctx)
     kernel.externalCaptureStalled(ctx)
-  }
-
-  /// #1578: ONE arm, deliberately — the observer only.
-  ///
-  /// This is the asymmetry with `handleCaptureStall` directly above, and the
-  /// single easiest mistake in this change. A refusal means the discriminator
-  /// DECLINED to treat the silence as a harness glitch, so the take stays on
-  /// today's silent no-speech path. Calling `kernel.externalCaptureStalled`
-  /// here would latch a recording exit and turn an observability change into a
-  /// behaviour regression.
-  public func handleZeroSignalRefusal(_ context: ZeroSignalRefusalContext) {
-    observer.handleZeroSignalRefusal(context)
   }
 
   // MARK: DEBUG
@@ -1676,7 +1700,8 @@ public final class KernelDictationDriver: HeartPathTelemetryTarget {
           // nothing guarantees still describes this take by the time Undo is pressed.
           takeFacts: InsertionTakeFacts(
             snippetFired: context.snippetExpansionFired,
-            lockedLanguageCode: context.config?.lockedLanguageCode,
+            lockedLanguageCode: outcome.acceptedTranslationTarget?.rawValue
+              ?? context.config?.lockedLanguageCode,
             engineDetectsLanguage: adapter.capabilities.supportsLanguageDetection,
             engineReportedLanguage: transcript.language,
             protectedSpellings: context.protectedSpellings))))
@@ -2039,7 +2064,7 @@ public final class KernelDictationDriver: HeartPathTelemetryTarget {
       case .zeroSignal:
         return .zeroSignal
       case .prepareFailed, .permissionDenied, .modelWedged, .modelLoadFailed,
-        .captureStartFailed, .noMicrophoneFound, .noAudioCaptured, .asrEmpty,
+        .captureStartFailed, .noMicrophoneFound, .micNotResponding, .noAudioCaptured, .asrEmpty,
         .asrFailed, .asrWedged, .emptyAfterProcessing, .captureStalled:
         return nil
       }

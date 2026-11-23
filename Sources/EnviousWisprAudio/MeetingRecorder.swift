@@ -15,12 +15,19 @@ protocol MeetingMicrophoneSource: AnyObject {
   /// The device was opened but delivers no buffers (HAL's capture-stall signal).
   var onStalled: (() -> Void)? { get set }
   /// Opens the device (`targetUID` nil = the system default input). Returns the UID actually
-  /// bound, or nil when it could not be read.
-  func open(targetUID: String?, inputChannelByDeviceUID: [String: Int]) async throws -> String?
+  /// bound, or nil when it could not be read. `startDeadline` is this open's microphone-start
+  /// deadline (#4601 §3a): it fails as not responding rather than wait past it.
+  func open(
+    targetUID: String?, inputChannelByDeviceUID: [String: Int],
+    startDeadline: ContinuousClock.Instant
+  ) async throws -> String?
   /// Starts delivering samples. Audio captured before this call may be handed over inside it.
   func beginDelivery() async throws
   /// Stops and releases the device at once. Repeatable.
   func stopNow()
+  /// #4601 §3.6, quit only: the same stop, waiting for the device's release at most until
+  /// `deadline` (the quit's own deadline). Never waits longer, never waits on the main actor.
+  func stopNow(deadline: DispatchTime)
 }
 
 /// The call sound a meeting records (#3972 C2b). Production is `SystemAudioTap`.
@@ -217,6 +224,9 @@ public final class MeetingRecorder {
   /// value it started with and gives up when it no longer matches.
   private var generation = 0
   private var microphone: MeetingMicrophoneSource?
+  /// #4601: the microphone between `open` starting and its publication, so a quit or stop that
+  /// lands meanwhile cancels its pending open.
+  private var openingMicrophone: MeetingMicrophoneSource?
   private var micWriter: MeetingTrackWriter?
   private var callSound: MeetingCallSoundSource?
   private var callWriter: MeetingTrackWriter?
@@ -389,6 +399,8 @@ public final class MeetingRecorder {
   public func start() async throws -> StartResult {
     guard lifecycle == .idle else { throw RecorderError.alreadyStarted }
     lifecycle = .starting
+    // #4601 §3a: the meeting start's ONE microphone budget, minted before any microphone work.
+    let microphoneStartDeadline = MicrophoneStartBudget.deadline(from: .now)
     let startGeneration = generation
     // #4355 PR B: echo cleanup is eligible whenever the call sound is asked for; it is turned off
     // below if the call sound does not start. The worker is made now so microphone audio from
@@ -403,7 +415,8 @@ public final class MeetingRecorder {
     }
     do {
       try await openMicrophone(
-        targetUID: config.microphoneUID, writer: micWriter, generation: startGeneration)
+        targetUID: config.microphoneUID, writer: micWriter, generation: startGeneration,
+        startDeadline: microphoneStartDeadline)
     } catch {
       closeLiveSamples()
       self.micWriter = nil
@@ -412,6 +425,9 @@ public final class MeetingRecorder {
       _ = await micWriter.finish()
       if lifecycle == .starting { lifecycle = .stopped }
       if let recorderError = error as? RecorderError { throw recorderError }
+      // #4601 §3.7: a microphone that did not answer keeps its own error, so the meeting can
+      // show the "can't reach your microphone" notice instead of the generic one.
+      if MicrophoneStartFailure.isNotResponding(error) { throw error }
       throw RecorderError.microphoneUnavailable(String(describing: error))
     }
     guard lifecycle == .starting, generation == startGeneration else {
@@ -516,7 +532,7 @@ public final class MeetingRecorder {
   /// joined the two stretches and pulled the microphone timeline earlier than the call track.
   private func openMicrophone(
     targetUID: String?, writer: MeetingTrackWriter, generation openGeneration: Int,
-    startsNewRun: Bool = false
+    startDeadline: ContinuousClock.Instant, startsNewRun: Bool = false
   ) async throws {
     lostDuringStart = nil
     let source = sources.makeMicrophone()
@@ -566,9 +582,12 @@ public final class MeetingRecorder {
     }
     admission.withLock { $0 = nil }
     let bound: String?
+    openingMicrophone = source
+    defer { if openingMicrophone === source { openingMicrophone = nil } }
     do {
       bound = try await source.open(
-        targetUID: targetUID, inputChannelByDeviceUID: config.inputChannelByDeviceUID)
+        targetUID: targetUID, inputChannelByDeviceUID: config.inputChannelByDeviceUID,
+        startDeadline: startDeadline)
       guard self.generation == openGeneration, lifecycle == .starting || lifecycle == .running
       else { throw RecorderError.stoppedDuringStart }
       try await source.beginDelivery()
@@ -578,7 +597,8 @@ public final class MeetingRecorder {
       source.onSamples = nil
       source.onInterrupted = nil
       source.onStalled = nil
-      source.stopNow()
+      // A stop or quit that landed during the open already stopped this microphone (#4601).
+      if openingMicrophone === source { source.stopNow() }
       if let reason = lostDuringStart, case RecorderError.stoppedDuringStart = error {
         lostDuringStart = nil
         throw RecorderError.microphoneUnavailable(reason)
@@ -623,8 +643,11 @@ public final class MeetingRecorder {
         self.generation == reopenGeneration
       else { return }
       do {
+        // #4601 §3a: each reopen is its own start with its own budget, minted when it begins;
+        // the meeting start's earlier deadline is never reused.
         try await self.openMicrophone(
-          targetUID: nil, writer: writer, generation: reopenGeneration, startsNewRun: true)
+          targetUID: nil, writer: writer, generation: reopenGeneration,
+          startDeadline: MicrophoneStartBudget.deadline(from: .now), startsNewRun: true)
         self.micHealthBox.withLock { $0.reopens += 1 }
       } catch RecorderError.stoppedDuringStart {
         return
@@ -673,7 +696,8 @@ public final class MeetingRecorder {
   @discardableResult
   public func stopForQuit(deadline: DispatchTime) -> StopReport {
     if let stopReport { return stopReport }
-    stopCapture()
+    // #4601 §3.6: the microphone's release waits within the SAME quit deadline, not a new one.
+    stopCapture(deadline: deadline)
     // #4355 PR B: the echo worker settles within the FIRST HALF of the same shared deadline
     // (raw for whatever it has not finished), so the files still have the rest to close in.
     echo?.settleAndFlush(
@@ -693,8 +717,9 @@ public final class MeetingRecorder {
     return config.captureCallSound ? nil : .noReference
   }
 
-  /// Admission off and both sources stopped, before any file is closed.
-  private func stopCapture() {
+  /// Admission off and both sources stopped, before any file is closed. `deadline` (quit only)
+  /// bounds the wait for the microphone's release; without it the release never blocks.
+  private func stopCapture(deadline: DispatchTime? = nil) {
     lifecycle = .stopping
     generation += 1
     reopenTask?.cancel()
@@ -703,8 +728,13 @@ public final class MeetingRecorder {
     microphone?.onSamples = nil
     microphone?.onInterrupted = nil
     microphone?.onStalled = nil
-    microphone?.stopNow()
+    // #4601 §3.6: a microphone still opening is reached too, so its pending open is cancelled
+    // and can never commit after the stop.
+    for source in [microphone, openingMicrophone].compactMap({ $0 }) {
+      if let deadline { source.stopNow(deadline: deadline) } else { source.stopNow() }
+    }
     microphone = nil
+    openingMicrophone = nil
     callSound?.stop()
     // #4121: frozen once, after the source stopped and before it is released; a stop that
     // re-enters while the first one awaits its files keeps this value.
@@ -802,7 +832,11 @@ final class HALMeetingMicrophone: MeetingMicrophoneSource {
     }
   }
 
-  func open(targetUID: String?, inputChannelByDeviceUID: [String: Int]) async throws -> String? {
+  func open(
+    targetUID: String?, inputChannelByDeviceUID: [String: Int],
+    startDeadline: ContinuousClock.Instant
+  ) async throws -> String? {
+    source.startDeadline = startDeadline
     source.targetDeviceUID = targetUID
     source.inputChannelByDeviceUID = inputChannelByDeviceUID
     source.captureStreamBufferingPolicy = .bufferingNewest(0)
@@ -815,6 +849,13 @@ final class HALMeetingMicrophone: MeetingMicrophoneSource {
   }
 
   func stopNow() { source.stopSynchronously() }
+
+  func stopNow(deadline: DispatchTime) {
+    // One clock bridge, from the time remaining on the quit's own deadline.
+    let nowNs = DispatchTime.now().uptimeNanoseconds
+    let remainingNs = deadline.uptimeNanoseconds > nowNs ? deadline.uptimeNanoseconds - nowNs : 0
+    source.stopSynchronously(deadline: ContinuousClock.now + .nanoseconds(Int64(remainingNs)))
+  }
 }
 
 // MARK: - Echo cleanup bridge (#4355 PR B)

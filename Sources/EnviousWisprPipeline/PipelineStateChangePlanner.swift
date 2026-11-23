@@ -16,6 +16,7 @@ enum PipelineStateSideEffect: Equatable, Sendable {
   /// completion. Emitted ONLY on `.complete` when a polish error was recorded
   /// AND the paste did not fall back to clipboard-only.
   case schedulePolishFailedWarning
+  case scheduleClipboardPolishWarning(copied: Bool, reason: String)
 
   /// Render this intent on the overlay. Always emitted exactly once per call.
   case showOverlay(OverlayIntent)
@@ -165,7 +166,9 @@ enum PipelineStateChangePlanner {
     // #3438: the concluded take's polish was skipped by a CONFIRMED unfinished setup
     // (`PolishTakeOutcome.setupProblem` for that take). Its card replaces the failure pill, so
     // the pill is not scheduled, whether or not the card can show. False keeps today's plan.
-    polishSetupBlocked: Bool = false
+    polishSetupBlocked: Bool = false,
+    clipboardCopy: Bool? = nil,
+    clipboardPolishReason: String? = nil
   ) -> PipelineStateChangePlan {
     var effects: [PipelineStateSideEffect] = []
     let interrupted = interruptionDisclosure != nil
@@ -181,6 +184,13 @@ enum PipelineStateChangePlanner {
     case .complete:
       if isAccessibilityToast {
         resolvedOverlayIntent = .accessibilityToast
+      } else if let copied = clipboardCopy {
+        if let reason = clipboardPolishReason, !historySaveFailed, !interrupted, !salvagedLead {
+          effects.append(.scheduleClipboardPolishWarning(copied: copied, reason: reason))
+          resolvedOverlayIntent = .hidden
+        } else {
+          resolvedOverlayIntent = copied ? .clipboardFallback : pipelineOverlayIntent
+        }
       } else if isClipboardFallback {
         resolvedOverlayIntent = .clipboardFallback
       } else if let polishNotice = lastPolishNotice {

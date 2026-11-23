@@ -80,7 +80,8 @@ struct MeetingSummaryReferencesTests {
         id: "a", speakerId: "mic:you", startMs: 0, endMs: 1,
         originalTextRange: range("  hello there  ")),
       Turn(
-        id: "b", speakerId: "call:1", startMs: 1, endMs: 2, originalTextRange: range("second line")),
+        id: "b", speakerId: "call:1", startMs: 1, endMs: 2, originalTextRange: range("second line"),
+        processedText: "Polished second line."),
       Turn(id: "c", speakerId: "call:1", startMs: 2, endMs: 3, originalTextRange: range("   \n")),
       Turn(
         id: "d", speakerId: "call:2", startMs: 3, endMs: 4, originalTextRange: range("echoed words")
@@ -94,7 +95,7 @@ struct MeetingSummaryReferencesTests {
     #expect(
       built == [
         .init(id: "a", speaker: "You", text: "HELLO THERE"),
-        .init(id: "b", speaker: nil, text: "SECOND LINE"),
+        .init(id: "b", speaker: nil, text: "POLISHED SECOND LINE."),
       ])
     let plain = MeetingTranscriptProjection.plainText(
       text: text, turns: turns, speakerNames: names, echoTurnIDs: ["d"], showEcho: false,

@@ -29,8 +29,6 @@ public struct DeliveryRegistration: Sendable {
 /// mid-attempt never re-read — actor-reentrancy discipline). Operational
 /// support keys in the SHARED suite, not user settings.
 public struct DeliveryFlags: Sendable {
-  public static let suiteName = "com.enviouswispr.app"
-
   public let familyEnabled: Bool
   public let sourceOrder: String?
   public let mirrorDisabled: Bool
@@ -184,7 +182,7 @@ public actor ModelDeliveryController {
     availableDiskBytes: @escaping @Sendable (URL) -> Int64? = ModelDeliveryController
       .volumeAvailableBytes
   ) {
-    self.defaults = defaults ?? UserDefaults(suiteName: DeliveryFlags.suiteName) ?? .standard
+    self.defaults = defaults ?? SettingsDefaults.store
     self.availableDiskBytes = availableDiskBytes
   }
 
@@ -261,6 +259,19 @@ public actor ModelDeliveryController {
   /// no events, no rehash — D7 rows 11/16).
   public func isAdmitted(_ registration: DeliveryRegistration) -> Bool {
     admission(for: registration).isAdmitted()
+  }
+
+  /// #4578: bytes of this identity remain on disk although it is not admitted: a component
+  /// root of the manifest in the install directory, or a staged partial. An interrupted
+  /// removal leaves these; Remove runs again to sweep them.
+  public func hasLeftoverBytes(_ registration: DeliveryRegistration) -> Bool {
+    guard !admission(for: registration).isAdmitted() else { return false }
+    let fm = FileManager.default
+    for root in CacheAdmission.componentRoots(of: registration.manifest)
+    where fm.fileExists(atPath: registration.installDirectory.appendingPathComponent(root).path) {
+      return true
+    }
+    return Self.hasStagedPartialsOnDisk(registration)
   }
 
   /// Whether the install directory is somewhere we may safely create, replace and

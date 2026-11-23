@@ -1,0 +1,937 @@
+import EnviousWisprCore
+import EnviousWisprPipeline
+import Foundation
+import Testing
+
+@testable import EnviousWisprAppKit
+@testable import EnviousWisprServices
+
+/// #4528 C2b: the coordinator runs the new Setup from restore to completion.
+///
+/// **Product Outcome.** When this fails, Setup loses the person's place, shows a step before it
+/// is saved, finishes twice or never, downloads a model the person replaced, fills a full disk,
+/// keeps the Mac awake after Setup, starts polish before speech on a small Mac, or freezes
+/// Cancel and Back while a download is decided.
+@MainActor
+@Suite(.tags(.productOutcome))
+struct OnboardingCoordinatorTests {
+  /// Holds a request until the test opens it; opening first lets the request pass at once.
+  @MainActor
+  final class Gate {
+    private var waiter: CheckedContinuation<Void, Never>?
+    private var opened = false
+    private(set) var enteredCount = 0
+    private var enteredWaiters = CountWaiters("gate entered")
+
+    func pass() async {
+      enteredCount += 1
+      enteredWaiters.notify(reached: enteredCount)
+      if opened { return }
+      await withCheckedContinuation { waiter = $0 }
+    }
+
+    /// Waits for the signal the gate itself fires when a request arrives (the existing
+    /// `CountWaiters` pattern); a request that never arrives records a failure, never hangs.
+    func untilEntered() async {
+      guard enteredCount < 1 else { return }
+      let id = UUID()
+      let net = Task { @MainActor [weak self] in
+        // deadline-fallback: hang guard only; the signal is `pass()`'s notify.
+        try? await Task.sleep(for: .seconds(5))
+        self?.enteredWaiters.resume(id: id)
+      }
+      await withCheckedContinuation { enteredWaiters.install(id: id, target: 1, $0) }
+      net.cancel()
+    }
+
+    func open() {
+      opened = true
+      waiter?.resume()
+      waiter = nil
+    }
+  }
+
+  /// One recorded world: owner calls, settings writes and observer calls, in order.
+  @MainActor
+  final class World {
+    var log: [String] = []
+    var legacy: OnboardingState = .notStarted
+    var checkpoint: Data?
+    var speechPhase: [ASRBackendType: OnboardingDownloadPhase] = [:]
+    var polishPhase: [LocalPolishModelID: OnboardingDownloadPhase] = [:]
+    var speechAccepted = true
+    /// Engines whose request is refused, read when the request returns.
+    var refusedEngines: Set<ASRBackendType> = []
+    var speechGate: Gate?
+    /// One gate per speech request, in order (used before `speechGate`).
+    var speechGateQueue: [Gate] = []
+    /// Engines whose owner answers a request with the attempt's end (Parakeet in production).
+    var reportsEnd: Set<ASRBackendType> = []
+    /// The ends those owners answer with, in answer order (default ok).
+    var speechEnds: [OnboardingTelemetry.DownloadResult] = []
+    var admissionGate: Gate?
+    var parallel = true
+    var free: Int64? = 100_000
+    var bytes: [OnboardingModel: Int64] = [:]
+    var saved = OnboardingChoices()
+    /// The recommendation now (a rules refresh replaces it; a visit keeps the one it captured).
+    var recommended = OnboardingRecommended(
+      speech: .parakeet, polish: "eg1.mini", rulesVersion: "rules-a")
+    /// Per-language advice (M73); nil falls back to `recommended`. Every read is recorded.
+    var advice: (LanguageMode?) -> OnboardingRecommended? = { _ in nil }
+    var adviceReads: [LanguageMode?] = []
+    var engine: (ASRBackendType, ASREngineReadiness) = (.parakeet, .ready)
+    var local: [LocalPolishModelID: OnboardingLocalPolishState] = [:]
+    var permissions = (microphone: true, accessibility: true)
+    var selected: ASRBackendType = .parakeet
+    /// An upgrade-served Parakeet (P1): the base mirror stays `.notReady`, and only the owner's
+    /// installed read settles the installation fact Setup's phase reads (as `SpeechModelLibrary`
+    /// does live, #4578).
+    var upgradeServed = false
+    /// That settled fact; nil while unknown. A delivery change makes it unknown again.
+    var upgradeSnapshot: Bool?
+    /// What the upgrade-served owner answers for "is Parakeet usable" (false: still downloading).
+    var upgradeUsable = true
+    /// One gate per installed read, in order (used before `admissionGate`).
+    var admissionGateQueue: [Gate] = []
+    /// The engine owner's warm-up (P2); nil means the engine is not ready to warm.
+    var warm: ((ASRBackendType) -> OnboardingWarmup?)?
+    /// The coordinator's clock (`deps.now`).
+    var clock = Date(timeIntervalSince1970: 1000)
+    /// The coordinator's monotonic clock (`deps.uptime`, #4845).
+    var uptime: TimeInterval = 0
+    /// Runs when the speech owner receives a request (an owner moving its phase).
+    var onRequest: ((ASRBackendType) -> Void)?
+
+    func coordinator() -> OnboardingCoordinator {
+      let owners = downloadOwners()
+      return makeCoordinator(owners: owners)
+    }
+
+    /// The world's download owners, exactly as `coordinator()` hands them to Setup.
+    func downloadOwners() -> OnboardingDownloadOwners {
+      OnboardingDownloadOwners(
+        speechDeliveryEnabled: { _ in true },
+        speechInstalled: { engine in
+          if !self.admissionGateQueue.isEmpty {
+            await self.admissionGateQueue.removeFirst().pass()
+          } else {
+            await self.admissionGate?.pass()
+          }
+          if engine == .parakeet, self.upgradeServed {
+            self.upgradeSnapshot = self.upgradeUsable
+            return self.upgradeUsable
+          }
+          return self.speechPhase[engine] == .installed
+        },
+        writeSelectedBackend: { engine in
+          self.selected = engine
+          self.log.append("select(\(engine))")
+        },
+        selectedBackend: { self.selected },
+        requestSpeech: { engine in
+          self.log.append("request(\(engine))")
+          self.onRequest?(engine)
+          if !self.speechGateQueue.isEmpty {
+            await self.speechGateQueue.removeFirst().pass()
+          } else {
+            await self.speechGate?.pass()
+          }
+          guard self.speechAccepted, !self.refusedEngines.contains(engine) else { return .refused }
+          guard self.reportsEnd.contains(engine) else { return .accepted }
+          return .ended(self.speechEnds.isEmpty ? .ok : self.speechEnds.removeFirst())
+        },
+        cancelSpeech: { self.log.append("cancel(\($0))") },
+        clearSpeechBlock: { _ in true },
+        speechPhase: { engine in
+          if engine == .parakeet, self.upgradeServed {
+            return OnboardingDownloads.phase(
+              parakeet: .notReady, needsExplicitRetry: false, usable: self.upgradeSnapshot)
+          }
+          return self.speechPhase[engine] ?? .notStarted
+        },
+        writePolishSelection: { self.log.append("selectPolish(\(Self.name($0)))") },
+        polishPhase: { self.polishPhase[$0] ?? .notStarted },
+        requestPolish: { model in
+          self.log.append("requestPolish(\(Self.name(model)))")
+          self.polishPhase[model] = .downloading(fraction: 0)
+          return true
+        },
+        cancelPolish: { self.log.append("cancelPolish(\(Self.name($0)))") },
+        activatePolish: { self.log.append("activate(\(Self.name($0)))") },
+        speechReportsEnd: { self.reportsEnd.contains($0) })
+    }
+
+    func makeCoordinator(owners: OnboardingDownloadOwners) -> OnboardingCoordinator {
+      let sources = OnboardingReadinessSources(
+        speechAdmitted: { engine in
+          if engine == .parakeet, self.upgradeServed {
+            self.upgradeSnapshot = self.upgradeUsable
+            return self.upgradeUsable
+          }
+          return self.speechPhase[engine] == .installed
+        },
+        engine: { self.engine },
+        localPolish: { self.local[$0] },
+        appleIntelligence: { .available },
+        cloudEvidence: { _ in nil },
+        permissions: { self.permissions })
+      return OnboardingCoordinator(
+        dependencies: .init(
+          downloads: OnboardingDownloads(owners: owners), readinessSources: sources,
+          legacyState: { self.legacy }, checkpointData: { self.checkpoint },
+          writeCheckpoint: { data in
+            self.checkpoint = data
+            self.log.append(
+              "checkpoint(\(OnboardingCheckpoint.decode(data)?.step.rawValue ?? "?"))")
+          },
+          writeLegacyState: { state in
+            self.legacy = state
+            self.log.append("legacy(\(state.rawValue))")
+          },
+          markCompleted: {
+            self.legacy = .completed
+            self.checkpoint = nil
+            self.log.append("completed")
+          },
+          restartOnboarding: {
+            self.checkpoint = nil
+            self.legacy = .notStarted
+            self.log.append("restart")
+          },
+          writeLanguage: { self.log.append("language(\($0 == .auto ? "auto" : "locked"))") },
+          writeNonLocalPolish: { self.log.append("writePolish(\($0.polish ?? "nil"))") },
+          savedChoices: { self.saved },
+          recommended: { language in
+            self.adviceReads.append(language)
+            return self.advice(language) ?? self.recommended
+          },
+          downloadsInParallel: { self.parallel },
+          downloadBytes: { self.bytes[$0] }, freeDiskBytes: { self.free },
+          acquireSleepAssertion: { self.log.append("awake") },
+          releaseSleepAssertion: { self.log.append("sleepOK") },
+          now: { self.clock },
+          uptime: { self.uptime },
+          warmEngine: { self.warm?($0) ?? nil },
+          onPracticeOutcome: { self.log.append("practice(\($0.rawValue))") },
+          onCompleted: { self.log.append("onCompleted") }),
+        trackTasksForTests: true)
+    }
+
+    static func name(_ model: LocalPolishModelID) -> String {
+      model.size.map { "\(model.provider.rawValue).\($0.rawValue)" } ?? model.provider.rawValue
+    }
+  }
+
+  /// Walks a fresh flow to the speech pick.
+  private static func atSpeechPick(_ world: World) -> OnboardingCoordinator {
+    let c = world.coordinator()
+    c.begin()
+    c.send(.next)
+    c.send(.next)
+    return c
+  }
+
+  // MARK: Order
+
+  @Test("each move saves the checkpoint before the new step is shown, then the legacy state")
+  func checkpointBeforePublication() {
+    let world = World()
+    let c = world.coordinator()
+    var seenAtPublish: [String] = []
+    c.onChange = { seenAtPublish.append(world.log.last ?? "") }
+    #expect(c.begin())
+    c.send(.next)
+    c.send(.next)
+    #expect(c.state.step == .speechPick)
+    #expect(world.log == ["checkpoint(language)", "checkpoint(speechPick)", "legacy(\(OnboardingState.settingUp.rawValue))"])
+    #expect(seenAtPublish.contains("checkpoint(language)"))
+    // A language choice saves without moving.
+    let saved = world.log.count
+    c.send(.back)
+    c.send(.chooseLanguage(.locked("de")))
+    #expect(world.log[saved...].contains("checkpoint(language)"))
+    #expect(OnboardingCheckpoint.decode(world.checkpoint)?.choices.languageMode == .locked("de"))
+  }
+
+  @Test("finishing records the practice outcome, writes completed, then tells the observer once")
+  func completionOrder() async {
+    let world = World()
+    world.speechPhase[.parakeet] = .installed
+    world.local[.egOne(.mini)] = OnboardingLocalPolishState(
+      installed: true, serverReady: true, healthy: true)
+    world.polishPhase[.egOne(.mini)] = .installed
+    let c = Self.atSpeechPick(world)
+    c.send(.next)  // Parakeet (installed)
+    c.send(.next)  // polish intro
+    c.send(.next)  // EG-1 mini (installed)
+    c.send(.next)  // downloads → permissions
+    c.refreshReadiness()
+    await c.settle()
+    #expect(c.state.step == .key)
+    c.send(.next)
+    #expect(c.state.step == .practice && c.isPracticeUsable)
+    world.log.removeAll()
+    c.send(.practiceSucceeded)
+    c.send(.filmFinished)
+    // The stay-awake hold was already released once the installed models were adopted.
+    let order = world.log.filter { $0 != "awake" && $0 != "sleepOK" }
+    #expect(
+      order == ["checkpoint(film)", "practice(succeeded)", "checkpoint(done)", "completed", "onCompleted"])
+    #expect(world.log.filter { $0 == "onCompleted" }.count == 1)
+    #expect(!c.isActive && world.checkpoint == nil)
+    c.send(.next)
+    #expect(world.log.filter { $0 == "onCompleted" }.count == 1)
+  }
+
+  // MARK: Restore
+
+  @Test("a completed install never opens; an interrupted completion finishes without Setup")
+  func restoreCompletedAndInterrupted() throws {
+    let world = World()
+    world.legacy = .completed
+    #expect(!world.coordinator().begin())
+
+    let interrupted = World()
+    interrupted.legacy = .needsPermissions
+    var done = OnboardingFlowState()
+    done.step = .done
+    done.practiceOutcome = .skipped
+    interrupted.checkpoint = try OnboardingCheckpoint(state: done, startedAt: .now, savedAt: .now)
+      .encoded()
+    let c = interrupted.coordinator()
+    #expect(!c.begin() && !c.isActive)
+    #expect(interrupted.log == ["practice(skipped)", "completed", "onCompleted"])
+  }
+
+  @Test("a resumed Practice waits for current readiness; restored grants never count")
+  func resumedPracticeWaits() async throws {
+    let world = World()
+    world.legacy = .needsPermissions
+    var s = OnboardingFlowState()
+    s.step = .practice
+    s.choices.speech = .parakeet
+    s.choices.polish = OnboardingChoices.polishOff
+    world.checkpoint = try OnboardingCheckpoint(state: s, startedAt: .now, savedAt: .now).encoded()
+    world.permissions = (microphone: false, accessibility: true)
+    world.speechPhase[.parakeet] = .installed
+    let c = world.coordinator()
+    #expect(c.begin() && c.state.step == .practice && !c.isPracticeUsable)
+    c.send(.practiceSucceeded)
+    #expect(c.state.step == .practice && c.lastRefusal == "not ready for practice")
+    c.refreshReadiness()
+    await c.settle()
+    #expect(!c.isPracticeUsable)
+    world.permissions = (microphone: true, accessibility: true)
+    c.refreshReadiness()
+    await c.settle()
+    #expect(c.isPracticeUsable)
+  }
+
+  @Test("closing and reopening keeps the same flow; reset starts at Welcome and keeps models")
+  func closeReopenReset() async {
+    let world = World()
+    world.speechGate = Gate()
+    let c = Self.atSpeechPick(world)
+    c.send(.chooseSpeech(.whisper))
+    #expect(c.begin() && c.state.step == .polishIntro)
+    c.reset()
+    world.speechGate?.open()
+    await c.settle()
+    #expect(c.state.step == .welcome && c.state.choices == OnboardingChoices())
+    // Reset came before the start ever reached the owner: nothing was requested, so nothing
+    // is cancelled (C repair r1: the engine is owned only once its request will be sent).
+    #expect(!world.log.contains("request(whisper)") && !world.log.contains("cancel(whisper)"))
+    #expect(world.log.contains("restart"))
+    #expect(c.block == nil && world.checkpoint == nil)
+
+    // A request already with the owner IS cancelled by reset.
+    let held = World()
+    held.speechGate = Gate()
+    let h = Self.atSpeechPick(held)
+    h.send(.chooseSpeech(.whisper))
+    await held.speechGate?.untilEntered()
+    h.reset()
+    held.speechGate?.open()
+    await h.settle()
+    #expect(held.log.contains("request(whisper)") && held.log.contains("cancel(whisper)"))
+  }
+
+  // MARK: Async safety
+
+  @Test("Back and a new pick work while a download is decided; the old answer is dropped")
+  func responsiveAndStaleDropped() async {
+    let world = World()
+    world.speechGate = Gate()
+    world.refusedEngines = [.whisper]
+    let c = Self.atSpeechPick(world)
+    c.send(.chooseSpeech(.whisper))
+    // The Whisper request is now in flight and held: its answer will arrive late.
+    await world.speechGate?.untilEntered()
+    #expect(world.log.contains("request(whisper)"))
+    c.send(.back)
+    #expect(c.state.step == .speechPick)
+    c.send(.chooseSpeech(.parakeet))
+    #expect(c.state.step == .polishIntro && c.state.choices.speech == .parakeet)
+    world.speechGate?.open()
+    await c.settle()
+    // Whisper's late refusal belongs to a replaced pick: no block for the current one.
+    #expect(c.block == nil && c.state.choices.speech == .parakeet)
+  }
+
+  @Test("quit ends the coordinator's work and the stay-awake hold but not the owners' downloads")
+  func quitReleases() async {
+    let world = World()
+    world.speechGate = Gate()
+    let c = Self.atSpeechPick(world)
+    c.send(.chooseSpeech(.whisper))
+    #expect(world.log.contains("awake"))
+    c.quit()
+    world.speechGate?.open()
+    await c.settle()
+    #expect(world.log.last == "sleepOK")
+    #expect(!world.log.contains("cancel(whisper)"))
+  }
+
+  // MARK: Scheduling and preflight
+
+  @Test(
+    "below the memory threshold polish waits for speech; a changed pick never starts the old one")
+  func sequentialQueue() async {
+    let world = World()
+    world.parallel = false
+    let c = Self.atSpeechPick(world)
+    c.send(.chooseSpeech(.whisper))
+    await c.settle()
+    c.send(.next)
+    c.send(.choosePolish("eg1.full"))
+    #expect(!world.log.contains("requestPolish(egOne.full)"))
+    c.send(.back)
+    c.send(.choosePolish("eg1.micro"))
+    world.speechPhase[.whisper] = .installed
+    c.refreshReadiness()
+    await c.settle()
+    #expect(world.log.contains("requestPolish(egOne.micro)"))
+    #expect(!world.log.contains("requestPolish(egOne.full)"))
+  }
+
+  @Test("at or above the threshold polish starts beside speech")
+  func parallelStart() async {
+    let world = World()
+    world.admissionGate = Gate()
+    let c = Self.atSpeechPick(world)
+    c.send(.chooseSpeech(.whisper))
+    // Pick polish while the speech start is still reading admission.
+    await world.admissionGate?.untilEntered()
+    c.send(.next)
+    c.send(.choosePolish("eg1.mini"))
+    world.admissionGate?.open()
+    await c.settle()
+    #expect(world.log.contains("requestPolish(egOne.mini)"))
+    #expect(world.log.contains("request(whisper)"))
+  }
+
+  @Test("the language pick is written to settings before any speech work")
+  func languageWrittenFirst() async {
+    let world = World()
+    let c = world.coordinator()
+    c.begin()
+    c.send(.next)
+    c.send(.chooseLanguage(.locked("de")))
+    c.send(.next)
+    c.send(.chooseSpeech(.whisper))
+    await c.settle()
+    let language = world.log.firstIndex(of: "language(locked)")
+    let select = world.log.firstIndex(of: "select(whisper)")
+    #expect(language != nil && select != nil && language! < select!)
+  }
+
+  @Test("reset cancels every unfinished transfer the flow started, including a replaced pick")
+  func resetCancelsReplacedPicks() async {
+    let world = World()
+    let c = Self.atSpeechPick(world)
+    c.send(.chooseSpeech(.whisper))
+    await c.settle()
+    world.speechPhase[.whisper] = .downloading(fraction: 0.2)
+    c.send(.back)
+    c.send(.chooseSpeech(.parakeet))
+    await c.settle()
+    world.speechPhase[.parakeet] = .installed
+    c.reset()
+    #expect(world.log.contains("cancel(whisper)"))
+    #expect(world.log.contains("cancel(parakeet)") == false)
+  }
+
+  @Test("a queued polish behind a failed speech download does not keep the Mac awake")
+  func failedQueueReleasesTheHold() async {
+    let world = World()
+    world.parallel = false
+    world.refusedEngines = [.whisper]
+    let c = Self.atSpeechPick(world)
+    c.send(.chooseSpeech(.whisper))
+    await c.settle()
+    world.speechPhase[.whisper] = .failed(.whisper("x"))
+    c.send(.next)
+    c.send(.choosePolish("eg1.mini"))
+    c.refreshReadiness()
+    await c.settle()
+    #expect(world.log.filter { $0 == "awake" }.count == world.log.filter { $0 == "sleepOK" }.count)
+    #expect(world.log.contains("requestPolish(egOne.mini)") == false)
+  }
+
+  @Test(
+    "a pair that does not fit blocks the start; Retry with room starts it; installed adds nothing")
+  func diskPreflight() async {
+    let world = World()
+    world.free = 1000
+    world.bytes = [.speech(.whisper): 900]
+    let c = Self.atSpeechPick(world)
+    c.send(.chooseSpeech(.whisper))
+    #expect(c.block == .insufficientDisk(neededBytes: 1080, freeBytes: 1000))
+    #expect(!world.log.contains("request(whisper)"))
+    world.free = 2000
+    c.retryDownloads()
+    await c.settle()
+    #expect(c.block == nil && world.log.contains("request(whisper)"))
+
+    let installed = World()
+    installed.free = 10
+    installed.bytes = [.speech(.parakeet): 900]
+    installed.speechPhase[.parakeet] = .installed
+    let d = Self.atSpeechPick(installed)
+    d.send(.chooseSpeech(.parakeet))
+    await d.settle()
+    #expect(d.block == nil)
+  }
+
+  @Test("a refused speech start shows a block for that engine")
+  func refusedSpeechBlocks() async {
+    let world = World()
+    world.speechAccepted = false
+    let c = Self.atSpeechPick(world)
+    c.send(.chooseSpeech(.whisper))
+    await c.settle()
+    #expect(c.block == .speechRefused(.whisper))
+  }
+
+  // MARK: Non-download picks
+
+  @Test("Apple Intelligence, cloud and off are written through settings and download nothing")
+  func nonLocalPicks() async {
+    let world = World()
+    let c = Self.atSpeechPick(world)
+    c.send(.next)
+    c.send(.next)
+    c.send(.choosePolish("appleIntelligence"))
+    c.send(.back)
+    c.send(.seeAllPolish)
+    c.send(.chooseCloud(.openAI, model: "gpt-4o-mini"))
+    c.send(.back)
+    c.send(.skipPolish)
+    await c.settle()
+    #expect(
+      world.log.filter { $0.hasPrefix("writePolish") } == [
+        "writePolish(appleIntelligence)", "writePolish(cloud)", "writePolish(off)",
+      ])
+    #expect(!world.log.contains { $0.hasPrefix("requestPolish") })
+  }
+
+  @Test("the settings writer stores the provider, then the cloud model")
+  func settingsWriter() {
+    let name = "ew.onboarding.coordinator.\(UUID().uuidString)"
+    let suite = TestDefaults.suite(name)!
+    suite.removePersistentDomain(forName: name)
+    let settings = SettingsManager(defaults: suite)
+    var cloud = OnboardingChoices()
+    cloud.polish = OnboardingChoices.polishCloud
+    cloud.cloudProvider = .openAI
+    cloud.cloudModel = "gpt-4o-mini"
+    OnboardingCoordinator.writeNonLocalPolish(cloud, to: settings)
+    #expect(settings.llmProvider == .openAI && settings.llmModel == "gpt-4o-mini")
+    var afm = OnboardingChoices()
+    afm.polish = "appleIntelligence"
+    OnboardingCoordinator.writeNonLocalPolish(afm, to: settings)
+    #expect(settings.llmProvider == .appleIntelligence)
+    var off = OnboardingChoices()
+    off.polish = OnboardingChoices.polishOff
+    OnboardingCoordinator.writeNonLocalPolish(off, to: settings)
+    #expect(settings.llmProvider == LLMProvider.none)
+  }
+
+  // MARK: M73 — the visit's advice follows the chosen language
+
+  private static let micro = OnboardingRecommended(
+    speech: .parakeet, polish: "eg1.micro", rulesVersion: "rules-a")
+  private static let germanMini = OnboardingRecommended(
+    speech: .parakeet, polish: "eg1.mini", rulesVersion: "rules-a")
+  private static let japaneseWhisper = OnboardingRecommended(
+    speech: .whisper, polish: "eg1.mini", rulesVersion: "rules-a")
+
+  /// An 8 GB Mac: Micro for Auto/English, Mini for locked German, Whisper for Japanese.
+  private static func eightGigWorld() -> World {
+    let world = World()
+    world.recommended = micro
+    world.advice = { mode in
+      switch mode {
+      case .locked("de")?: germanMini
+      case .locked("ja")?: japaneseWhisper
+      default: nil
+      }
+    }
+    return world
+  }
+
+  @Test("choosing German on 8 GB re-forms the advice to Mini before Next; untouched defaults use it")
+  func germanRefreshesPolishAdvice() {
+    let world = Self.eightGigWorld()
+    let c = world.coordinator()
+    c.begin()
+    #expect(c.state.recommended == Self.micro)
+    c.send(.next)
+    var observed: [OnboardingRecommended] = []
+    c.onObservation = {
+      if case .choicesCommitted(_, _, let recommended) = $0 { observed.append(recommended) }
+    }
+    c.send(.chooseLanguage(.locked("de")))
+    #expect(c.state.recommended == Self.germanMini)
+    #expect(observed == [Self.germanMini], "the observation saw other advice than the flow")
+    c.send(.next)  // language → speech pick
+    c.send(.next)  // speech default: Parakeet
+    c.send(.next)  // polish intro → pick
+    c.send(.next)  // polish default
+    #expect(c.state.choices.speech == .parakeet && c.state.choices.polish == "eg1.mini")
+  }
+
+  @Test("choosing Japanese re-forms the speech advice to Whisper")
+  func japaneseRefreshesSpeechAdvice() {
+    let world = Self.eightGigWorld()
+    let c = world.coordinator()
+    c.begin()
+    c.send(.next)
+    c.send(.chooseLanguage(.locked("ja")))
+    c.send(.next)
+    c.send(.next)  // speech default
+    #expect(c.state.choices.speech == .whisper)
+  }
+
+  @Test("changing the language through Back keeps every committed pick, cloud and off included")
+  func backLanguageChangeKeepsPicks() {
+    for skip in [false, true] {
+      let world = Self.eightGigWorld()
+      let c = world.coordinator()
+      c.begin()
+      c.send(.next)
+      c.send(.chooseLanguage(.auto))
+      c.send(.next)
+      c.send(.chooseSpeech(.parakeet))
+      c.send(.next)
+      if skip {
+        c.send(.skipPolish)
+      } else {
+        c.send(.seeAllPolish)
+        c.send(.chooseCloud(.openAI, model: "gpt-4o-mini"))
+      }
+      let picks = c.state.choices
+      while c.state.step != .language { c.send(.back) }
+      c.send(.chooseLanguage(.locked("de")))
+      #expect(c.state.recommended == Self.germanMini)
+      var expected = picks
+      expected.languageMode = .locked("de")
+      #expect(c.state.choices == expected, "advice replaced a committed pick (skip: \(skip))")
+    }
+  }
+
+  @Test("the same language again, or a refused event, reads no new advice")
+  func noRefreshWithoutALanguageChange() {
+    let world = Self.eightGigWorld()
+    let c = world.coordinator()
+    c.begin()
+    c.send(.next)
+    c.send(.chooseLanguage(.locked("de")))
+    let reads = world.adviceReads.count
+    c.send(.chooseLanguage(.locked("de")))
+    c.send(.choosePolish(OnboardingChoices.polishCloud))  // refused: wrong step and no provider
+    #expect(world.adviceReads.count == reads)
+    #expect(c.state.recommended == Self.germanMini)
+  }
+
+  @Test("restore forms the advice for the saved language and keeps the saved picks")
+  func restoreUsesSavedLanguage() throws {
+    let world = Self.eightGigWorld()
+    var saved = OnboardingFlowState()
+    saved.step = .polishPick
+    saved.choices = OnboardingChoices(languageMode: .locked("de"), speech: .parakeet)
+    world.checkpoint = try OnboardingCheckpoint(
+      state: saved, startedAt: Date(timeIntervalSince1970: 1),
+      savedAt: Date(timeIntervalSince1970: 2)
+    ).encoded()
+    let c = world.coordinator()
+    c.begin()
+    #expect(c.state.step == .polishPick && c.state.choices == saved.choices)
+    #expect(c.state.recommended == Self.germanMini)
+    c.send(.next)
+    #expect(c.state.choices.polish == "eg1.mini")
+
+    let legacy = Self.eightGigWorld()
+    legacy.legacy = .needsPermissions
+    legacy.saved = OnboardingChoices(languageMode: .locked("ja"))
+    let d = legacy.coordinator()
+    d.begin()
+    #expect(d.state.recommended == Self.japaneseWhisper)
+    #expect(d.state.choices.speech == .whisper && d.state.choices.polish == "eg1.mini")
+  }
+
+  // MARK: - #4845 Skip ahead
+
+  /// A coordinator resumed on Getting ready with these picks (speech readiness comes from `world`).
+  static func atGettingReady(_ world: World, polish: String = "eg1.mini") throws
+    -> OnboardingCoordinator
+  {
+    var saved = OnboardingFlowState()
+    saved.step = .gettingReady
+    saved.choices = OnboardingChoices(languageMode: .auto, speech: .parakeet, polish: polish)
+    world.checkpoint = try OnboardingCheckpoint(
+      state: saved, startedAt: Date(timeIntervalSince1970: 1),
+      savedAt: Date(timeIntervalSince1970: 2)
+    ).encoded()
+    let c = world.coordinator()
+    c.begin()
+    return c
+  }
+
+  private static func skipRows(_ c: OnboardingCoordinator) -> () -> [OnboardingTelemetry.SkipAheadAction] {
+    var rows: [OnboardingTelemetry.SkipAheadAction] = []
+    c.onObservation = { if case .skipAhead(let action, _, _, _, _) = $0 { rows.append(action) } }
+    return { rows }
+  }
+
+  @Test("Skip ahead on a current offer opens Practice; a stale or ineligible press changes nothing")
+  func skipAheadAcceptsOnlyACurrentOffer() throws {
+    // When this fails, a late press opens Practice for the wrong pick or while speech cannot work.
+    let world = World()
+    world.speechPhase[.parakeet] = .installed
+    world.polishPhase[.egOne(.mini)] = .downloading(fraction: 0.3)
+    let c = try Self.atGettingReady(world)
+    let rows = Self.skipRows(c)
+    let quiet = world.log.count
+    #expect(!c.acceptSkipAhead(pick: "eg1.full", secondsLeft: 300, waitedSeconds: 70))
+    world.polishPhase[.egOne(.mini)] = .paused
+    #expect(!c.acceptSkipAhead(pick: "eg1.mini", secondsLeft: 300, waitedSeconds: 70))
+    world.polishPhase[.egOne(.mini)] = .downloading(fraction: 0.3)
+    world.engine = (.parakeet, .warming)
+    #expect(!c.acceptSkipAhead(pick: "eg1.mini", secondsLeft: 300, waitedSeconds: 70))
+    world.engine = (.parakeet, .ready)
+    world.permissions = (microphone: true, accessibility: false)
+    #expect(!c.acceptSkipAhead(pick: "eg1.mini", secondsLeft: 300, waitedSeconds: 70))
+    #expect(c.state.step == .gettingReady && c.state.deferredPolish == nil)
+    #expect(world.log.count == quiet && rows().isEmpty)
+
+    world.permissions = (microphone: true, accessibility: true)
+    #expect(c.acceptSkipAhead(pick: "eg1.mini", secondsLeft: 300, waitedSeconds: 70))
+    #expect(c.state.step == .practice && c.state.deferredPolish == "eg1.mini" && c.isPracticeUsable)
+    #expect(OnboardingCheckpoint.decode(world.checkpoint)?.deferredPolish == "eg1.mini")
+    // The poll had not counted the card: the press sends offered first.
+    #expect(rows() == [.offered, .skipped])
+    #expect(!c.acceptSkipAhead(pick: "eg1.mini", secondsLeft: 300, waitedSeconds: 70))
+    #expect(rows() == [.offered, .skipped])
+  }
+
+  @Test("Skip ahead starts the polish waiting behind speech; a disk refusal keeps Practice open")
+  func skipAheadStartsTheQueuedPolish() throws {
+    // When this fails, the polish download never starts after Skip ahead on a small Mac.
+    for diskFull in [false, true] {
+      let world = World()
+      world.parallel = false
+      world.speechPhase[.parakeet] = .downloading(fraction: 0.9)
+      let c = try Self.atGettingReady(world)
+      c.send(.changePolish)
+      c.send(.choosePolish("eg1.mini"))
+      #expect(c.state.step == .gettingReady && c.queuedPolishID == "eg1.mini", "\(diskFull)")
+      world.speechPhase[.parakeet] = .installed
+      if diskFull {
+        world.free = 10
+        world.bytes[.polish(.egOne(.mini))] = 1000
+      }
+      #expect(c.acceptSkipAhead(pick: "eg1.mini", secondsLeft: nil, waitedSeconds: 61))
+      #expect(c.state.step == .practice, "\(diskFull)")
+      #expect(world.log.contains("requestPolish(egOne.mini)") == !diskFull, "\(diskFull)")
+      if diskFull {
+        guard case .insufficientDisk = c.block else {
+          Issue.record("expected the disk block Practice's note reads")
+          continue
+        }
+        // The pick the person kept is still saved as the selection.
+        #expect(world.log.contains("selectPolish(egOne.mini)"), "the kept pick was not saved")
+      }
+    }
+  }
+
+  @Test("each Skip ahead row is sent once per visit, and a download that wins is counted")
+  func skipAheadRowsAreLatched() async throws {
+    // When this fails, the funnel double-counts offers or never sees the download winning.
+    let world = World()
+    world.speechPhase[.parakeet] = .installed
+    world.polishPhase[.egOne(.mini)] = .downloading(fraction: 0.3)
+    let c = try Self.atGettingReady(world)
+    let rows = Self.skipRows(c)
+    c.noteSkipAheadKeptWaiting(polish: "eg1.mini", secondsLeft: 300, waitedSeconds: 5)  // not offered
+    c.noteSkipAheadOffered(polish: "eg1.mini", secondsLeft: 300, waitedSeconds: 61)
+    c.noteSkipAheadOffered(polish: "eg1.mini", secondsLeft: 280, waitedSeconds: 63)
+    c.noteSkipAheadKeptWaiting(polish: "eg1.mini", secondsLeft: 270, waitedSeconds: 65)
+    c.noteSkipAheadKeptWaiting(polish: "eg1.mini", secondsLeft: 260, waitedSeconds: 67)
+    #expect(rows() == [.offered, .keptWaiting])
+    // Verification hides the offer, then the model loads: the download won.
+    world.polishPhase[.egOne(.mini)] = .installed
+    world.local[.egOne(.mini)] = OnboardingLocalPolishState(
+      installed: true, serverReady: true, healthy: true)
+    c.refreshReadiness()
+    await c.settle()
+    #expect(c.state.step == .practice && c.state.deferredPolish == nil)
+    #expect(rows() == [.offered, .keptWaiting, .downloadWon])
+  }
+
+  @Test("a download win is counted only when the offered polish model itself opens Practice")
+  func downloadWonNeedsTheOfferedPick() async throws {
+    // When this fails, Continue without AI polish or a new pick is counted as the download winning.
+    let world = World()
+    world.speechPhase[.parakeet] = .installed
+    world.polishPhase[.egOne(.mini)] = .downloading(fraction: 0.3)
+    let c = try Self.atGettingReady(world)
+    c.refreshReadiness()
+    await c.settle()
+    let rows = Self.skipRows(c)
+    c.noteSkipAheadOffered(polish: "eg1.mini", secondsLeft: 300, waitedSeconds: 61)
+    c.send(.continueWithoutPolish)
+    #expect(c.state.step == .practice)
+    #expect(rows() == [.offered])
+  }
+
+  @Test("completion reports whether the person skipped ahead, also when it finishes on relaunch")
+  func completionCarriesTheSkip() throws {
+    // When this fails, retention cannot be split by who skipped ahead.
+    var practice = OnboardingFlowState()
+    practice.step = .done
+    practice.choices = OnboardingChoices(languageMode: .auto, speech: .parakeet, polish: "eg1.mini")
+    practice.practiceOutcome = .succeeded
+    for (deferred, expected) in [("eg1.mini", true), (nil, false), ("eg1.full", false)] as [(String?, Bool)] {
+      let world = World()
+      practice.deferredPolish = deferred
+      world.checkpoint = try OnboardingCheckpoint(
+        state: practice, startedAt: Date(timeIntervalSince1970: 1),
+        savedAt: Date(timeIntervalSince1970: 2)
+      ).encoded()
+      let c = world.coordinator()
+      var reported: Bool?
+      c.onObservation = {
+        if case .completed(_, true, _, let polishDeferred, _) = $0 { reported = polishDeferred }
+      }
+      #expect(!c.begin())
+      #expect(reported == expected, "\(String(describing: deferred))")
+    }
+
+    let world = World()
+    world.speechPhase[.parakeet] = .installed
+    world.polishPhase[.egOne(.mini)] = .downloading(fraction: 0.3)
+    let c = try Self.atGettingReady(world)
+    var reported: Bool?
+    c.onObservation = {
+      if case .completed(_, false, _, let polishDeferred, _) = $0 { reported = polishDeferred }
+    }
+    #expect(c.acceptSkipAhead(pick: "eg1.mini", secondsLeft: 300, waitedSeconds: 70))
+    c.send(.practiceSucceeded)
+    c.send(.filmFinished)
+    #expect(reported == true)
+  }
+
+  @Test("the first verified practice delivery is timed from this visit's offer, never a past visit's")
+  func skipAheadDeliveryIsVisitScoped() throws {
+    // When this fails, the Skip ahead metric times the wrong take, a reopened window inherits the
+    // last visit's numbers, or a later visit's end row resolves an earlier visit's offer.
+    let world = OnboardingCoordinatorTests.World()
+    world.speechPhase[.parakeet] = .installed
+    world.polishPhase[.egOne(.mini)] = .downloading(fraction: 0.3)
+    let c = try Self.atGettingReady(world)
+    var rowVisits: [String] = []
+    c.onObservation = { if case .skipAhead(_, _, _, _, let visit) = $0 { rowVisits.append(visit) } }
+    func summary() -> (Bool, Double?) {
+      let s = c.skipAheadVisitSummary()
+      return (s.offered, s.offerToFirstDeliverySeconds)
+    }
+    c.beginSkipAheadVisit()
+    c.noteVerifiedPracticeDelivery()  // no offer yet: nothing to time
+    #expect(summary() == (false, nil))
+    world.uptime = 100
+    c.noteSkipAheadOffered(polish: "eg1.mini", secondsLeft: 300, waitedSeconds: 61)
+    #expect(summary() == (true, nil))
+    world.uptime = 130
+    #expect(c.acceptSkipAhead(pick: "eg1.mini", secondsLeft: 300, waitedSeconds: 91))
+    world.uptime = 145  // a failed take sends nothing; this is the first verified one
+    c.noteVerifiedPracticeDelivery()
+    world.uptime = 200
+    c.noteVerifiedPracticeDelivery()  // a later take keeps the first time
+    #expect(summary() == (true, 45))
+    let firstVisit = c.skipAheadVisitSummary().visit
+    #expect(rowVisits.count == 2 && Set(rowVisits) == [firstVisit], "offer rows and end row disagree")
+    c.beginSkipAheadVisit()  // the window closed and reopened
+    #expect(summary() == (false, nil))
+    #expect(c.skipAheadVisitSummary().visit != firstVisit, "a later visit could resolve the old offer")
+    c.noteVerifiedPracticeDelivery()
+    #expect(summary() == (false, nil))
+
+    // The same summary rides on completion.
+    let world2 = OnboardingCoordinatorTests.World()
+    world2.speechPhase[.parakeet] = .installed
+    world2.polishPhase[.egOne(.mini)] = .downloading(fraction: 0.3)
+    let c2 = try Self.atGettingReady(world2)
+    var reported: OnboardingTelemetry.SkipAheadVisitSummary?
+    c2.onObservation = { if case .completed(_, _, _, _, let s) = $0 { reported = s } }
+    world2.uptime = 10
+    c2.noteSkipAheadOffered(polish: "eg1.mini", secondsLeft: nil, waitedSeconds: 60)
+    #expect(c2.acceptSkipAhead(pick: "eg1.mini", secondsLeft: nil, waitedSeconds: 60))
+    world2.uptime = 25
+    c2.noteVerifiedPracticeDelivery()
+    c2.send(.practiceSucceeded)
+    c2.send(.filmFinished)
+    #expect(reported?.offered == true && reported?.offerToFirstDeliverySeconds == 15)
+    #expect(reported?.visit == c2.skipAheadVisitID)
+  }
+
+  @Test("one Skip ahead log per visit: a new pick or Start over sends no extra rows")
+  func skipAheadLogFollowsThePick() async throws {
+    // When this fails, one visit sends more than three Skip ahead rows (a second offered row
+    // after a changed pick or Start over), or the visit's last row names a pick it did not act on.
+    let world = World()
+    world.speechPhase[.parakeet] = .installed
+    world.polishPhase[.egOne(.mini)] = .downloading(fraction: 0.3)
+    world.polishPhase[.egOne(.full)] = .downloading(fraction: 0.1)
+    let c = try Self.atGettingReady(world)
+    var rows: [(OnboardingTelemetry.SkipAheadAction, String)] = []
+    c.onObservation = {
+      if case .skipAhead(let action, let polish, _, _, _) = $0 { rows.append((action, polish)) }
+    }
+    c.noteSkipAheadOffered(polish: "eg1.mini", secondsLeft: 300, waitedSeconds: 61)
+    c.noteSkipAheadOffered(polish: "eg1.full", secondsLeft: 900, waitedSeconds: 70)
+    c.noteSkipAheadKeptWaiting(polish: "eg1.full", secondsLeft: 880, waitedSeconds: 72)
+    c.reset()
+    c.noteSkipAheadOffered(polish: "eg1.full", secondsLeft: 900, waitedSeconds: 65)
+    c.noteSkipAheadKeptWaiting(polish: "eg1.full", secondsLeft: 880, waitedSeconds: 66)
+    #expect(rows.map(\.0) == [.offered, .keptWaiting], "a visit sent extra Skip ahead rows")
+    #expect(rows.map(\.1) == ["eg1.mini", "eg1.full"], "a row named a pick it did not act on")
+  }
+
+  @Test("a press on a card the poll had not counted sends offered first")
+  func pressBeforeThePollCountsTheOffer() async throws {
+    // When this fails, a visit reports Keep waiting or Skip ahead with no offered row, and the
+    // success share loses that visit.
+    let world = World()
+    world.speechPhase[.parakeet] = .installed
+    world.polishPhase[.egOne(.mini)] = .downloading(fraction: 0.3)
+    let c = try Self.atGettingReady(world)
+    var rows: [OnboardingTelemetry.SkipAheadAction] = []
+    c.onObservation = {
+      if case .skipAhead(let action, _, _, _, _) = $0 { rows.append(action) }
+    }
+    c.noteSkipAheadKeptWaiting(polish: "eg1.mini", secondsLeft: 300, waitedSeconds: 61)
+    #expect(rows == [.offered, .keptWaiting])
+  }
+}

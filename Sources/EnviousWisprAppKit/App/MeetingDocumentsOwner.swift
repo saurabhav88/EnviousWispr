@@ -160,6 +160,12 @@ final class MeetingDocumentsOwner {
   /// nobody types into an apparently empty box over notes not yet on screen (Codex C8 r1).
   func canEdit(_ meetingID: UUID) -> Bool { entries[meetingID]?.load == .loaded }
 
+  var historyDrafts: [UUID: String] {
+    entries.compactMapValues { entry in
+      entry.unsavedEdits > 0 ? entry.document.markdown : nil
+    }
+  }
+
   /// Notes typed and not yet saved.
   func hasUnsavedNotes(_ meetingID: UUID) -> Bool { (entries[meetingID]?.unsavedEdits ?? 0) > 0 }
 
@@ -481,6 +487,7 @@ final class MeetingDocumentsOwner {
     case .success(let manifest):
       current.manifest.summary = manifest.summary
       current.manifest.summaryPending = manifest.summaryPending
+      current.manifest.summaryNoticeDismissed = manifest.summaryNoticeDismissed
       current.unsavedSummaryEdits = max(0, current.unsavedSummaryEdits - edits)
       current.summarySaveFailed =
         current.summarySaveFailed && current.unsavedSummaryEdits > 0
@@ -494,13 +501,16 @@ final class MeetingDocumentsOwner {
   /// when the meeting was deleted or the write failed.
   func publishGeneratedSummary(
     _ meetingID: UUID, text: String, inputs: SummaryInputs, writtenInParts: Bool,
-    approvedUserEdit: String?
+    approvedUserEdit: String?, publication: MeetingStore.SummaryPublication = .automatic
   ) async -> MeetingStore.GeneratedSummarySave? {
     guard !forgotten.contains(meetingID) else { return nil }
     // Typing in the summary not yet saved is saved first: it is the user's text, so the
     // checked write below keeps it.
     // If that save fails, nothing is published: the typing stays the newest text.
     if hasUnsavedSummary(meetingID) {
+      if case .replacing = publication, let manifest = manifest(meetingID) {
+        return .baseChanged(manifest)
+      }
       guard await flushSummary(meetingID) else { return nil }
     }
     // The typing this result may follow; anything typed after this is newer than it.
@@ -509,7 +519,7 @@ final class MeetingDocumentsOwner {
     let result = await perform(meetingID) {
       try $0.saveGeneratedSummary(
         text, inputs: inputs, writtenInParts: writtenInParts,
-        approvedUserEdit: approvedUserEdit, meeting: meetingID)
+        approvedUserEdit: approvedUserEdit, meeting: meetingID, publication: publication)
     }
     await deps.afterGeneratedWrite()
     guard generation(meetingID) == gen else { return nil }
@@ -528,10 +538,11 @@ final class MeetingDocumentsOwner {
           // newer edit's save (Codex C13b-1 r3).
           if entry.summaryEditRevision == editRevision {
             entry.manifest.summary = manifest.summary
+            entry.manifest.summaryNoticeDismissed = manifest.summaryNoticeDismissed
             entry.summary = text
           }
           entry.manifest.summaryPending = manifest.summaryPending
-        case .userEditKept(let manifest), .notesChanged(let manifest):
+        case .userEditKept(let manifest), .notesChanged(let manifest), .baseChanged(let manifest):
           entry.manifest.summaryPending = manifest.summaryPending
         }
         entries[meetingID] = entry
@@ -586,6 +597,30 @@ final class MeetingDocumentsOwner {
     case .success(let manifest):
       if var entry = entries[meetingID], entry.load == .loaded {
         entry.manifest.summaryPending = manifest.summaryPending
+        entries[meetingID] = entry
+      }
+      return true
+    }
+  }
+
+  /// #4611: hides the out-of-date notice for the meeting as it is now (`current`, its summary
+  /// inputs now); a newer change shows it again. Saved in the meeting's own `documents.json`,
+  /// so it lasts across relaunch. False when the meeting was deleted or the write failed.
+  @discardableResult
+  func dismissSummaryNotice(_ meetingID: UUID, for current: SummaryInputs) async -> Bool {
+    guard !forgotten.contains(meetingID) else { return false }
+    let gen = generation(meetingID)
+    let result = await perform(meetingID) {
+      try $0.setSummaryNoticeDismissed(current, meeting: meetingID)
+    }
+    guard generation(meetingID) == gen else { return false }
+    switch result {
+    case .failure(let error):
+      deps.log("meeting summary notice dismiss failed error=\(type(of: error))")
+      return false
+    case .success(let manifest):
+      if var entry = entries[meetingID], entry.load == .loaded {
+        entry.manifest.summaryNoticeDismissed = manifest.summaryNoticeDismissed
         entries[meetingID] = entry
       }
       return true

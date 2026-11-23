@@ -14,6 +14,10 @@ struct OverlayCapsuleBackground: View {
   enum CornerStyle {
     case capsule
     case rounded
+    /// #4841: the recording pill's notice bubble. The capsule's dark fill and
+    /// hairline on the rounded shape, in both appearances, because it sits
+    /// beside a dark capsule; it never breathes.
+    case bubble
   }
 
   var cornerStyle: CornerStyle = .capsule
@@ -73,6 +77,8 @@ struct OverlayCapsuleBackground: View {
     switch cornerStyle {
     case .capsule: return AnyShape(Capsule())
     case .rounded: return AnyShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+    case .bubble:
+      return AnyShape(RoundedRectangle(cornerRadius: PillNoticeLayout.radius, style: .continuous))
     }
   }
 
@@ -105,7 +111,9 @@ struct OverlayCapsuleBackground: View {
       .fill(
         isPreview
           ? PreviewPillPalette.surface
-          : Color(red: 0.078, green: 0.078, blue: 0.11).opacity(0.82)
+          // #4841: the notice bubble is SOLID (approved mockup), so its text
+          // keeps the same contrast whatever the window behind it shows.
+          : Color(red: 0.078, green: 0.078, blue: 0.11).opacity(cornerStyle == .bubble ? 1 : 0.82)
       )
       // `strokeBorder` needs an insettable shape, which the type-erased `AnyShape`
       // is not, so the two concrete shapes are named here. Kept as `strokeBorder`
@@ -116,6 +124,9 @@ struct OverlayCapsuleBackground: View {
           switch cornerStyle {
           case .capsule:
             Capsule().strokeBorder(Color.white.opacity(0.1), lineWidth: 0.5)
+          case .bubble:
+            RoundedRectangle(cornerRadius: PillNoticeLayout.radius, style: .continuous)
+              .strokeBorder(Color.white.opacity(0.1), lineWidth: 0.5)
           case .rounded:
             RoundedRectangle(cornerRadius: 16, style: .continuous)
               .strokeBorder(PreviewPillPalette.border, lineWidth: 0.5)

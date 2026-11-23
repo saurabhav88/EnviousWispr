@@ -317,6 +317,9 @@
   "mac-ctl-sound-preview": [
    "recordingChime.preview"
   ],
+  "mac-ctl-automatic-dictation-paste": [
+   "automaticDictationPaste"
+  ],
   "mac-ctl-auto-copy": [
    "autoCopyToClipboard"
   ],
@@ -460,6 +463,16 @@
   "mac-ctl-polish-model": [
    "polishModel"
   ],
+  "mac-ctl-unload-polish-model": [
+   "unloadPolishModel",
+   "unloadPolishModel.never",
+   "unloadPolishModel.immediately",
+   "unloadPolishModel.twoMinutes",
+   "unloadPolishModel.fiveMinutes",
+   "unloadPolishModel.tenMinutes",
+   "unloadPolishModel.fifteenMinutes",
+   "unloadPolishModel.oneHour"
+  ],
   "mac-ctl-polish-model-refresh": [
    "polishModel.refresh"
   ],
@@ -511,6 +524,9 @@
   ],
   "mac-ctl-self-learning": [
    "selfLearningDictionary"
+  ],
+  "mac-ctl-fix-learned-words": [
+   "fixLearnedWords"
   ],
   "mac-ctl-self-learning-learn-more": [
    "selfLearningDictionary.learnMore"
@@ -741,9 +757,22 @@
   ],
   "mac-ctl-delete-all-meeting-audio": [
    "deleteRecordings.meetings"
+  ],
+  "mac-ctl-dictation-output-language": [
+   "dictationOutputLanguage"
   ]
  },
  "newSurfaces": {
+  "mac-ctl-fix-learned-words": {
+   "kind": "control",
+   "parent": "mac-sec-dict-learn-from",
+   "label": "Fix words it learned"
+  },
+  "mac-ctl-automatic-dictation-paste": {
+   "kind": "control",
+   "parent": "mac-sec-clipboard",
+   "label": "Paste dictations automatically"
+  },
   "mac-ctl-self-learning-forget-memory": {
    "kind": "control",
    "parent": "mac-sec-dict-learn-from",
@@ -953,6 +982,16 @@
    "kind": "control",
    "parent": "mac-sec-recording-storage",
    "label": "Delete all meeting audio [Delete recordings row; confirms; meetings, notes and summaries stay]"
+  },
+  "mac-ctl-dictation-output-language": {
+   "kind": "control",
+   "parent": "mac-page-ai-polish",
+   "label": "Dictation output language"
+  },
+  "mac-ctl-unload-polish-model": {
+   "kind": "control",
+   "parent": "mac-sec-polish-setup",
+   "label": "Unload polish model after"
   }
  }
 }

@@ -302,6 +302,146 @@ struct OverlayReduceMotionTests {
     }
   }
 
+  // MARK: - First-run Setup lips and the spectrum wheel (#4528)
+
+  private static func host(_ view: some View, size: CGSize) -> (NSHostingView<AnyView>, NSWindow) {
+    let host = NSHostingView(rootView: AnyView(view.frame(width: size.width, height: size.height)))
+    host.frame = NSRect(origin: .zero, size: size)
+    let window = NSWindow(
+      contentRect: host.frame, styleMask: [.borderless], backing: .buffered, defer: false)
+    window.contentView = host
+    host.layoutSubtreeIfNeeded()
+    window.displayIfNeeded()
+    return (host, window)
+  }
+
+  /// Three renders spread in time of the Setup lips in a looping mood.
+  private static func setupLipSamples(reduceMotion: Bool) throws -> [Data] {
+    var out: [Data] = []
+    for index in 0..<3 {
+      // settle: elapsed time IS this row's independent variable, not a wait for work to finish.
+      if index > 0 { Thread.sleep(forTimeInterval: 0.13) }
+      out.append(
+        try pixels(
+          RainbowLipsView(animationState: .welcome, size: 72), reduceMotion: reduceMotion,
+          size: CGSize(width: 72, height: 72)))
+    }
+    return out
+  }
+
+  @Test("the Setup lips move over time while Reduce Motion is off")
+  func setupLipsMoveWhenTheSettingIsOff() throws {
+    let samples = try Self.setupLipSamples(reduceMotion: false)
+    #expect(Set(samples).count > 1, "three renders across the welcome loop were identical")
+  }
+
+  @Test("the Setup lips hold still once Reduce Motion is on")
+  func setupLipsHoldStillWhenTheSettingIsOn() throws {
+    let samples = try Self.setupLipSamples(reduceMotion: true)
+    #expect(Set(samples).count == 1, "the lips changed across time with Reduce Motion on")
+  }
+
+  @Test("a shape mood still reads under Reduce Motion: the smile is not drawn as the idle mouth")
+  func setupLipsKeepTheirShapeUnderReduceMotion() throws {
+    let box = CGSize(width: 72, height: 72)
+    let smile = try Self.pixels(
+      RainbowLipsView(animationState: .smile, size: 72), reduceMotion: true, size: box)
+    let idle = try Self.pixels(
+      RainbowLipsView(animationState: .idle, size: 72), reduceMotion: true, size: box)
+    #expect(smile != idle, "under Reduce Motion the smile painted like the idle mouth")
+  }
+
+  /// Holds a lips mood and the setting so a mounted view can watch either change.
+  @Observable final class LipsBox {
+    var reduceMotion: Bool
+    var state: LipsAnimationState
+    init(reduceMotion: Bool, state: LipsAnimationState) {
+      self.reduceMotion = reduceMotion
+      self.state = state
+    }
+  }
+
+  /// A CONCRETE wrapper, so the toggle reaches a mounted view instead of remounting it.
+  private struct LipsHarness: View {
+    let box: LipsBox
+    let log: TargetLog
+    var body: some View {
+      RainbowLipsView(animationState: box.state, size: 72, onGlowTarget: { log.record($0) })
+        .environment(\.overlayReduceMotionOverride, box.reduceMotion)
+    }
+  }
+
+  private static func lipsGlowDecisions(
+    startingReduced: Bool, thenReduced: Bool, state: LipsAnimationState = .heart
+  ) -> [Double] {
+    let box = LipsBox(reduceMotion: startingReduced, state: state)
+    let log = TargetLog()
+    let (host, window) = Self.host(
+      LipsHarness(box: box, log: log), size: CGSize(width: 72, height: 72))
+    box.reduceMotion = thenReduced
+    host.layoutSubtreeIfNeeded()
+    window.displayIfNeeded()
+    return log.targets
+  }
+
+  @Test("turning Reduce Motion off re-arms the heart glow without remounting the lips")
+  func setupLipsGlowReArmsWhenTheSettingGoesOff() {
+    let targets = Self.lipsGlowDecisions(startingReduced: true, thenReduced: false)
+    #expect(targets == [0, 0.45], "glow decisions across the toggle: \(targets)")
+  }
+
+  @Test("turning Reduce Motion on parks the heart glow without remounting the lips")
+  func setupLipsGlowParksWhenTheSettingGoesOn() {
+    let targets = Self.lipsGlowDecisions(startingReduced: false, thenReduced: true)
+    #expect(targets == [0.45, 0], "glow decisions across the toggle: \(targets)")
+  }
+
+  @Test("changing the mood away from the heart takes its glow with it")
+  func setupLipsGlowFollowsTheMood() {
+    let box = LipsBox(reduceMotion: false, state: .heart)
+    let log = TargetLog()
+    let (host, window) = Self.host(
+      LipsHarness(box: box, log: log), size: CGSize(width: 72, height: 72))
+    box.state = .idle
+    host.layoutSubtreeIfNeeded()
+    window.displayIfNeeded()
+    #expect(log.targets == [0.45, 0], "glow decisions across the mood change: \(log.targets)")
+  }
+
+  private struct WheelHarness: View {
+    let box: MotionBox
+    let log: TargetLog
+    var body: some View {
+      SpectrumWheelIcon(size: 24, onSpinTarget: { log.record($0) })
+        .environment(\.overlayReduceMotionOverride, box.reduceMotion)
+    }
+  }
+
+  @Test("turning Reduce Motion on stops the wheel, and off starts it again, without remounting")
+  func wheelFollowsTheSettingBothWays() {
+    let box = MotionBox(reduceMotion: false)
+    let log = TargetLog()
+    let (host, window) = Self.host(
+      WheelHarness(box: box, log: log), size: CGSize(width: 24, height: 24))
+    box.reduceMotion = true
+    host.layoutSubtreeIfNeeded()
+    window.displayIfNeeded()
+    box.reduceMotion = false
+    host.layoutSubtreeIfNeeded()
+    window.displayIfNeeded()
+    #expect(log.targets == [360, 0, 360], "spin decisions across the two toggles: \(log.targets)")
+  }
+
+  @Test("the wheel's angle comes from the clock, and is a still 0 under Reduce Motion")
+  func wheelAngleFollowsTheClock() {
+    let start = Date(timeIntervalSinceReferenceDate: 1_000)
+    let quarter = start.addingTimeInterval(SpectrumWheelIcon.turnSeconds / 4)
+    let a = SpectrumWheelIcon.angle(at: start, reduceMotion: false)
+    let b = SpectrumWheelIcon.angle(at: quarter, reduceMotion: false)
+    #expect(abs(((b - a) + 360).truncatingRemainder(dividingBy: 360) - 90) < 0.001)
+    #expect(SpectrumWheelIcon.angle(at: quarter, reduceMotion: true) == 0)
+  }
+
   // MARK: - The policy, and the seam that lets these rows exist
 
   /// `showsAmbientLoop` needs no row of its own: every pixel and target row above reaches it

@@ -81,7 +81,7 @@ from ui_helpers import find_app_pid, find_element, get_attr, get_ax_app  # noqa:
 # sentinel. Writing to the dev domain is writing where the app never looks: the
 # 2026-08-18 run rebound cancel and enabled the feature there, the app read
 # neither, and the "ON" phase ran with Escape Recovery OFF while reporting three
-# passes. Authority: `Sources/EnviousWisprServices/SettingsDefaults.swift`.
+# passes. Authority: `Sources/EnviousWisprCore/SettingsDefaults.swift`.
 #
 # CONSEQUENCE, and it is why `restore` is not housekeeping: this domain is the
 # one the developer's own installed app uses. The run borrows their real cancel

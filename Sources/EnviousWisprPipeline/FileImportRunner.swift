@@ -122,6 +122,8 @@ public final class FileImportRunner {
     frozenSettings.map { LLMProvider(rawValue: $0.llmProvider) ?? .none }
   }
 
+  package var frozenAllowsLearnedFixes: Bool { frozenSettings?.allowsLearnedFixes == true }
+
   public convenience init(
     keychainManager: KeychainManager,
     localPolishers: BundledLocalPolisherFactories,
@@ -198,6 +200,18 @@ public final class FileImportRunner {
   /// - Parameter engineLanguage: the language the ASR engine reported for this
   ///   recording, or nil when the engine does not report one.
   public func process(part: String, engineLanguage: String? = nil) async throws -> PartOutcome {
+    try await process(part: part, engineLanguage: engineLanguage, alreadyPrepared: false)
+  }
+
+  /// A saved dictation already carries its pre-polish processing. Reuse the same language
+  /// resolution and polish validation, starting at the polish limb of the ordered chain.
+  package func polishSavedDictation(_ text: String, language: String?) async throws -> String? {
+    try await process(part: text, engineLanguage: language, alreadyPrepared: true).polishedText
+  }
+
+  private func process(part: String, engineLanguage: String?, alreadyPrepared: Bool) async throws
+    -> PartOutcome
+  {
     guard let settings = frozenSettings else {
       throw FileImportRunnerError.notConfigured
     }
@@ -209,12 +223,23 @@ public final class FileImportRunner {
     // replay reads the same field (`RecoveryTextProcessor.swift:149`), so an
     // import and a replay resolve language the same way rather than two ways.
     var lockedLanguage: String?
-    if case .locked(let code) = settings.languageMode { lockedLanguage = code }
+    if alreadyPrepared {
+      lockedLanguage = engineLanguage
+    } else if case .locked(let code) = settings.languageMode {
+      lockedLanguage = code
+    }
+    let chain: [any TextProcessingStep]
+    if alreadyPrepared {
+      let stages = steps.fileImportStages
+      chain = [stages.polish] + stages.afterPolish
+    } else {
+      chain = steps.orderedChainForFileImport
+    }
     let result = try await runner.run(
       rawText: part,
       evidence: LanguageEvidence(
         lockedLanguage: lockedLanguage,
-        engineDetectsLanguage: settings.backendSupportsLanguageDetection,
+        engineDetectsLanguage: alreadyPrepared || settings.backendSupportsLanguageDetection,
         // **What the ENGINE heard, not nil.** Whisper reports the language it
         // detected and the resolver's ladder prefers that over identifying the
         // language from the text — which is the weaker source, and the only one
@@ -229,8 +254,9 @@ public final class FileImportRunner {
       // adapts to the frontmost app would be adapting to whatever the user
       // happened to have open while the file decoded.
       targetAppName: nil,
-      steps: steps.orderedChainForFileImport,
-      frozenCorrectorVocabulary: steps.wordCorrection.correctorVocabulary)
+      steps: chain,
+      frozenCorrectorVocabulary: steps.wordCorrection.correctorVocabulary,
+      fixLearnedWords: settings.fixLearnedWords ?? true)
 
     // The user pressed Stop while this part was in flight. The runner will have
     // returned the deterministic floor rather than propagating, which is right
@@ -347,7 +373,8 @@ public final class FileImportRunner {
           lockedLanguage: lock, engineDetectsLanguage: settings.backendSupportsLanguageDetection,
           engineReportedLanguage: engineLanguage, englishSpelling: settings.englishSpelling ?? .american),
         targetAppName: nil, steps: steps.orderedChainForFileImport,
-        frozenCorrectorVocabulary: steps.wordCorrection.correctorVocabulary)
+        frozenCorrectorVocabulary: steps.wordCorrection.correctorVocabulary,
+        fixLearnedWords: settings.fixLearnedWords ?? true)
       try checkCurrent()
       let prefix = try await runner.run(context: seed, steps: stages.beforePolish)
       try checkCurrent()

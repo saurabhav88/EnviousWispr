@@ -79,7 +79,8 @@ enum LanguageLockOptions {
   /// macro-language versus a specific written form, and the deprecated ISO codes
   /// Foundation still emits for historical identifiers.
   static func catalogueCode(forPackTag tag: String) -> String? {
-    let subtag = Locale(identifier: tag).language.languageCode?.identifier
+    let subtag =
+      Locale(identifier: tag).language.languageCode?.identifier
       ?? tag.split(separator: "-").first.map(String.init)
       ?? tag
     let lowered = subtag.lowercased()
@@ -246,6 +247,21 @@ enum LanguageLockOptions {
   /// engine's full catalogue. Returning an empty set instead would render an
   /// empty picker, which is why the optional is preserved verbatim from the
   /// property this replaces rather than "cleaned up" into a non-optional.
+  /// The speech engines' languages as the Setup recommender takes them (#4528 B3): the same
+  /// authorities as `lockableCodes(for:)`, handed to Services as data.
+  static var speechCapabilities: SpeechLanguageCapabilities {
+    SpeechLanguageCapabilities(
+      parakeet: (lockableCodes(for: .parakeet) ?? []).subtracting(parakeetAdviceExclusions),
+      whisper: lockableCodes(for: .whisper))
+  }
+
+  /// Languages the Fast engine can be locked to but writes badly, so the engine ADVICE (first-run
+  /// Setup, Transcribe a File's badges) recommends Whisper for them. The lock itself stays offered
+  /// (`lockableCodes(for:)`) and saved settings are never changed.
+  /// #2615 Greek: Parakeet drops the final sigma (0 of 52 written, 48 dropped); Whisper writes 51
+  /// of 52 on the same clips (2026-11-21).
+  static let parakeetAdviceExclusions: Set<String> = ["el"]
+
   static func lockableCodes(for backend: ASRBackendType) -> Set<String>? {
     switch backend {
     case .whisper:
@@ -294,14 +310,15 @@ enum LanguageLockOptions {
   /// the same silent failure the picker restriction exists to prevent, arriving
   /// through the toggle instead of the list (Codex review r1).
   ///
-  /// #4320: shared by dictation's Auto-detect toggle (candidate: the migrated
-  /// `whisperKitLanguage`) and EnviousMeet's Transcript Language switch.
+  /// #4320: shared by dictation's Auto-detect toggle and EnviousMeet's Transcript Language switch.
+  /// #4528 B3: candidates are tried in order; dictation passes the Mac's own language first
+  /// (`SetupAdvice.macLanguageCode`), then the migrated `whisperKitLanguage`.
   ///
   /// - Parameter lockable: nil means "no restriction" (the multilingual
   ///   engine), which preserves the pre-#1678 behaviour exactly.
   static func defaultLockCode(
     current: LanguageMode,
-    candidate: String,
+    candidates: [String],
     lockable: Set<String>?
   ) -> String {
     if case .locked(let code) = current,
@@ -309,9 +326,8 @@ enum LanguageLockOptions {
     {
       return code
     }
-    if LanguageTypes.isSupported(candidate),
-      isLockHonoured(candidate, in: lockable)
-    {
+    for candidate in candidates
+    where LanguageTypes.isSupported(candidate) && isLockHonoured(candidate, in: lockable) {
       return candidate
     }
     // English is in every engine's set, so this fallback is always honourable.

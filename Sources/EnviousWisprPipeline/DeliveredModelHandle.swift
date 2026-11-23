@@ -1,3 +1,4 @@
+import EnviousWisprCore
 import EnviousWisprModelDelivery
 import Foundation
 
@@ -29,7 +30,7 @@ public final class DeliveredModelHandle {
   ) {
     self.controller = controller
     self.registration = registration
-    self.defaults = defaults ?? UserDefaults(suiteName: DeliveryFlags.suiteName) ?? .standard
+    self.defaults = defaults ?? SettingsDefaults.store
   }
 
   /// Register a delivery-state observer scoped to THIS family — the injected

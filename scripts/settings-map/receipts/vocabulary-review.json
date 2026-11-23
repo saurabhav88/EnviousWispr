@@ -251,13 +251,73 @@
    "id": "saveDictationRecordings",
    "review": "additions/saveDictationRecordings.json",
    "reviewSHA256": "629a17a3f7a6274d42dbe56b0c9be706066bcea54b46dc5ee0c6a46040836bc3"
+  },
+  {
+   "id": "fixLearnedWords",
+   "review": "additions/fixLearnedWords.json",
+   "reviewSHA256": "0a0ab81c6e17dd3efbf7794b073a3fc1ba13281b878e9fda74442cfe9b9de2b1"
+  },
+  {
+   "id": "automaticDictationPaste",
+   "review": "additions/automaticDictationPaste.json",
+   "reviewSHA256": "f6024586d111edcbac384983717e07ef5331493b859af6808bd864a298a16708"
+  },
+  {
+   "id": "dictationOutputLanguage",
+   "review": "additions/dictationOutputLanguage.json",
+   "reviewSHA256": "898926a2d29a6ae23d962b3e3e8d826925e89c82cf1579043e39c42618db4d8b"
+  },
+  {
+   "id": "silentMicWarning",
+   "review": "additions/silentMicWarning.json",
+   "reviewSHA256": "dfae26900c3594114ba05ae2b22c59ae7d1706eb31669988400daca84d180c60"
+  },
+  {
+   "id": "unloadPolishModel",
+   "review": "additions/unloadPolishModel.json",
+   "reviewSHA256": "3a3deff424c67fde8ac3d025c552ab451e0be416adee08cdd394c572e8586982"
+  },
+  {
+   "id": "unloadPolishModel.never",
+   "review": "additions/unloadPolishModel.never.json",
+   "reviewSHA256": "187a4714b67c54de1855409aa4a5a8404b4edaa82fe128e20a20800859e3529a"
+  },
+  {
+   "id": "unloadPolishModel.immediately",
+   "review": "additions/unloadPolishModel.immediately.json",
+   "reviewSHA256": "3959f6f19303413b10929e7ef86da5d673915ce252463321a973408d7f2de338"
+  },
+  {
+   "id": "unloadPolishModel.twoMinutes",
+   "review": "additions/unloadPolishModel.twoMinutes.json",
+   "reviewSHA256": "bcf40a026a71f09de5d65d503422d2a7a6469703e6d16755873c8567d0c44497"
+  },
+  {
+   "id": "unloadPolishModel.fiveMinutes",
+   "review": "additions/unloadPolishModel.fiveMinutes.json",
+   "reviewSHA256": "4ebcadffc43e02f897ccd904f55069751be02a3ee1945d65fde6d84a364058a6"
+  },
+  {
+   "id": "unloadPolishModel.tenMinutes",
+   "review": "additions/unloadPolishModel.tenMinutes.json",
+   "reviewSHA256": "0db947399b1650ef984914639fec6bdaf06279bb0cfc32c33b5f087b92e85af4"
+  },
+  {
+   "id": "unloadPolishModel.fifteenMinutes",
+   "review": "additions/unloadPolishModel.fifteenMinutes.json",
+   "reviewSHA256": "1151ab061ab5e56a46c1a9492d26689fe328c61e78307f9be5c2af78d22bb013"
+  },
+  {
+   "id": "unloadPolishModel.oneHour",
+   "review": "additions/unloadPolishModel.oneHour.json",
+   "reviewSHA256": "9559389f18280b4d90d7f41e4261edf7336732904cc80ee77c7d923e95628c16"
   }
  ],
  "retiredIDs": [],
  "resource": {
   "path": "Sources/EnviousWisprAppKit/Resources/SettingsSearchVocabulary.json",
-  "sha256": "33d583304fa73b4547e53f491c69599d47ec82a067b6d6ea657cd0a1e400efd9",
-  "bytes": 1886497
+  "sha256": "be8c74f8bb8765c6c8625fa7f9c2ff2e84ebe08aae4fd1ca66ee38af808ee608",
+  "bytes": 1965347
  },
  "sources": [
   {
@@ -276,7 +336,7 @@
   {
    "name": "reviewed-edits.json",
    "path": "scripts/settings-map/receipts/reviewed-edits.json",
-   "sha256": "4c9eb9cbab073b570549a0d646b9d6b23aaf537a00a18c9cd27369a4138ffa19"
+   "sha256": "9d6a5874823c37f6d5b0859c2223c31d6c7b999ddfeaedf5ce3a1eb228276085"
   }
  ],
  "excludedIDs": [
@@ -541,7 +601,7 @@
  "languages": [
   {
    "language": "ar",
-   "contentSHA256": "371cd1abef06e58a0af76f78bd79204e86e64448ae52387666ea054694361f58",
+   "contentSHA256": "a12f17bd8917b3a4136b28dc62b04641502d196bcbd085f877c522e95888d92b",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -1710,13 +1770,107 @@
       "sha256": "05e7923fa51b7aa9d0d71e972d94e473ddf723b6a44ef3feb45e1e8381c91104"
      },
      "disposition": "adopted in full"
+    },
+    {
+     "kind": "addition-content",
+     "id": "fixLearnedWords",
+     "issue": 3294,
+     "method": "One isolated Codex review for this language, with both Dictionary controls and sibling vocabulary",
+     "date": "2026-11-21",
+     "artifact": "artifact:enviouswispr/20261120-232032-3294-dictionary-switches-137b/vocab-review/ar/accepted.json",
+     "disposition": "Applied to the new fixing place and the existing learning place."
+    },
+    {
+     "kind": "addition-content",
+     "id": "automaticDictationPaste",
+     "date": "2026-11-20",
+     "method": "One fresh isolated Codex session reviewed this language for accuracy, naturalness and overlap with Clipboard settings.",
+     "output": {
+      "path": "artifact:enviouswispr/20261120-203708-4479-clipboard-only-53fa/search-language-reviews/review-ar.txt",
+      "sha256": "e3354e417cc75e42acce56880b6820cb69327798fa1679cf227479e9455669a5"
+     },
+     "disposition": "Adopted as reviewed."
+    },
+    {
+     "kind": "addition-content",
+     "id": "dictationOutputLanguage",
+     "date": "2026-11-21",
+     "method": "One independent Codex review checked all 32 blocks with an explicit verdict per language under the approved one-row exception.",
+     "output": {
+      "path": "artifact:enviouswispr/20261121-093530-3181-translation-proof-r2-db0f/vocabulary-review.txt.last",
+      "sha256": "8bddc88db3c6e3c6a338c425a1032c32317075abdbcbb0d8312bd7d08ff267a7"
+     },
+     "disposition": "ar: The title and queries clearly refer to the written result."
+    },
+    {
+     "kind": "french-interface-applang",
+     "method": "#3142 French slice: one French-mention word and phrase added to appLanguage.shipped, reviewed by the GPT + Gemini council (session fr-review-v-2026-11-21)",
+     "date": "2026-11-21",
+     "output": {
+      "path": "council/fr-interface-applang-2026-11-21.md",
+      "sha256": "7ba8c70c6d758d33efe5acf15445ed30703aee71e956100a0801dcd75e6d6d0c"
+     },
+     "disposition": "adopted as recorded in reviewed-edits.json"
+    },
+    {
+     "kind": "spanish-interface-applang",
+     "method": "#3142 Spanish slice: one Spanish-mention word and phrase added to appLanguage.shipped, reviewed by the GPT + Gemini council (session es-review-v-2026-11-21)",
+     "date": "2026-11-21",
+     "output": {
+      "path": "council/es-interface-applang-2026-11-21.md",
+      "sha256": "f168e2f15b1336cdf5d90095462093ba6f2bf6d039d1dcea9cac83e9836d3d27"
+     },
+     "disposition": "adopted as recorded in reviewed-edits.json"
+    },
+    {
+     "kind": "addition-content",
+     "id": "silentMicWarning",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with Microphone readiness, Stop recording on silence, the Bluetooth guide, Input device and music during dictation); first draft by scripts/settings-map/draft-vocabulary.sh (#4841)",
+     "date": "2026-11-22",
+     "draft": {
+      "path": "additions/silentMicWarning/draft-silentMicWarning.json",
+      "sha256": "c2d32ee006177906348bcd3cde8997a267089229db57b002ea16eeac0fa822d7"
+     },
+     "prompt": {
+      "path": "additions/silentMicWarning/review-driver.py.txt",
+      "sha256": "a5df55a9f929fd6a56387b65538ce4a21839132c2f2dfab6c2d915c2c1a12169"
+     },
+     "output": {
+      "path": "additions/silentMicWarning/review-ar.txt",
+      "sha256": "fb1dc9fe896a8f7af3c20e39137de2950e80d65e6a4ddb9e6e0a6c9af60849e7"
+     },
+     "disposition": "adopted in full"
+    },
+    {
+     "kind": "addition-content",
+     "id": "unloadPolishModel",
+     "issue": 3853,
+     "date": "2026-11-22",
+     "method": "One fresh isolated Codex session reviewed this language for accuracy, naturalness and overlap with the speech model's unload setting (the unload polish model row).",
+     "output": {
+      "path": "additions/unloadPolishModel/review-ar.txt",
+      "sha256": "56d376df0167f9bb16843867f12c99704159e28e58347372a595b29ea2d3e0d5"
+     },
+     "disposition": "Adopted as reviewed."
+    },
+    {
+     "kind": "addition-content",
+     "id": "unloadPolishModel.*",
+     "issue": 3853,
+     "date": "2026-11-22",
+     "method": "One fresh isolated Codex session reviewed this language for accuracy, naturalness and overlap with the speech model's unload setting (its seven choices).",
+     "output": {
+      "path": "additions/unloadPolishModel/choices/review-ar.txt",
+      "sha256": "b8978f40a500960ac3b53cc57f56988588e1903c8e3aea87573bf6550ae56c6e"
+     },
+     "disposition": "Adopted as reviewed."
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "bg",
-   "contentSHA256": "71873ae35a01ba9a79ca5593acc4c3a6b68c5d62c22f6c72e64263a8aa9294f1",
+   "contentSHA256": "063409fbc64d940402e1e5b0e806b372fffae9454f1dd45b14fe7f4b6c178a73",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -2876,13 +3030,107 @@
       "sha256": "028d1642f4606df8efdbb882c08a4b6431a9d48b0dbec28466341d3e17c50f56"
      },
      "disposition": "adopted in full"
+    },
+    {
+     "kind": "addition-content",
+     "id": "fixLearnedWords",
+     "issue": 3294,
+     "method": "One isolated Codex review for this language, with both Dictionary controls and sibling vocabulary",
+     "date": "2026-11-21",
+     "artifact": "artifact:enviouswispr/20261120-232032-3294-dictionary-switches-137b/vocab-review/bg/accepted.json",
+     "disposition": "Applied to the new fixing place and the existing learning place."
+    },
+    {
+     "kind": "addition-content",
+     "id": "automaticDictationPaste",
+     "date": "2026-11-20",
+     "method": "One fresh isolated Codex session reviewed this language for accuracy, naturalness and overlap with Clipboard settings.",
+     "output": {
+      "path": "artifact:enviouswispr/20261120-203708-4479-clipboard-only-53fa/search-language-reviews/review-bg.txt",
+      "sha256": "5187b40caf6aff1d1d4975d92b973ee922d0321fe16c12476d394a18273fadaf"
+     },
+     "disposition": "Adopted as reviewed."
+    },
+    {
+     "kind": "addition-content",
+     "id": "dictationOutputLanguage",
+     "date": "2026-11-21",
+     "method": "One independent Codex review checked all 32 blocks with an explicit verdict per language under the approved one-row exception.",
+     "output": {
+      "path": "artifact:enviouswispr/20261121-093530-3181-translation-proof-r2-db0f/vocabulary-review.txt.last",
+      "sha256": "8bddc88db3c6e3c6a338c425a1032c32317075abdbcbb0d8312bd7d08ff267a7"
+     },
+     "disposition": "bg: „Изходен език“ can mean the source language in translation."
+    },
+    {
+     "kind": "french-interface-applang",
+     "method": "#3142 French slice: one French-mention word and phrase added to appLanguage.shipped, reviewed by the GPT + Gemini council (session fr-review-v-2026-11-21)",
+     "date": "2026-11-21",
+     "output": {
+      "path": "council/fr-interface-applang-2026-11-21.md",
+      "sha256": "7ba8c70c6d758d33efe5acf15445ed30703aee71e956100a0801dcd75e6d6d0c"
+     },
+     "disposition": "adopted as recorded in reviewed-edits.json"
+    },
+    {
+     "kind": "spanish-interface-applang",
+     "method": "#3142 Spanish slice: one Spanish-mention word and phrase added to appLanguage.shipped, reviewed by the GPT + Gemini council (session es-review-v-2026-11-21)",
+     "date": "2026-11-21",
+     "output": {
+      "path": "council/es-interface-applang-2026-11-21.md",
+      "sha256": "f168e2f15b1336cdf5d90095462093ba6f2bf6d039d1dcea9cac83e9836d3d27"
+     },
+     "disposition": "adopted as recorded in reviewed-edits.json"
+    },
+    {
+     "kind": "addition-content",
+     "id": "silentMicWarning",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with Microphone readiness, Stop recording on silence, the Bluetooth guide, Input device and music during dictation); first draft by scripts/settings-map/draft-vocabulary.sh (#4841)",
+     "date": "2026-11-22",
+     "draft": {
+      "path": "additions/silentMicWarning/draft-silentMicWarning.json",
+      "sha256": "c2d32ee006177906348bcd3cde8997a267089229db57b002ea16eeac0fa822d7"
+     },
+     "prompt": {
+      "path": "additions/silentMicWarning/review-driver.py.txt",
+      "sha256": "a5df55a9f929fd6a56387b65538ce4a21839132c2f2dfab6c2d915c2c1a12169"
+     },
+     "output": {
+      "path": "additions/silentMicWarning/review-bg.txt",
+      "sha256": "eb3d92a92385563e4968d575d29140d3c2ac49abe7ed1c4c1cba5e84125b185c"
+     },
+     "disposition": "adopted in full"
+    },
+    {
+     "kind": "addition-content",
+     "id": "unloadPolishModel",
+     "issue": 3853,
+     "date": "2026-11-22",
+     "method": "One fresh isolated Codex session reviewed this language for accuracy, naturalness and overlap with the speech model's unload setting (the unload polish model row).",
+     "output": {
+      "path": "additions/unloadPolishModel/review-bg.txt",
+      "sha256": "1bf83a2276b6f29a744ded48f04453fcb42b3cc02d074a0f2316ee6c2099a363"
+     },
+     "disposition": "Adopted as reviewed."
+    },
+    {
+     "kind": "addition-content",
+     "id": "unloadPolishModel.*",
+     "issue": 3853,
+     "date": "2026-11-22",
+     "method": "One fresh isolated Codex session reviewed this language for accuracy, naturalness and overlap with the speech model's unload setting (its seven choices).",
+     "output": {
+      "path": "additions/unloadPolishModel/choices/review-bg.txt",
+      "sha256": "42c9df221c6c317358163cc613bd0850b6dc1f577edcde783f047ecc6603b994"
+     },
+     "disposition": "Adopted as reviewed."
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "cs",
-   "contentSHA256": "559dd3cb4cdb74bd15163415ece48ee5a507e02941c5045ff8e300d7f069a7f8",
+   "contentSHA256": "1e8d3508b92ae4a43f6fcedb0db4439fcf5d5da7616394662f170d0d721ad7e7",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -4042,13 +4290,107 @@
       "sha256": "f9d8009791eba0236994f47b173d2878d63f13bed5b980b0c90c3fda978b1685"
      },
      "disposition": "adopted in full"
+    },
+    {
+     "kind": "addition-content",
+     "id": "fixLearnedWords",
+     "issue": 3294,
+     "method": "One isolated Codex review for this language, with both Dictionary controls and sibling vocabulary",
+     "date": "2026-11-21",
+     "artifact": "artifact:enviouswispr/20261120-232032-3294-dictionary-switches-137b/vocab-review/cs/accepted.json",
+     "disposition": "Applied to the new fixing place and the existing learning place."
+    },
+    {
+     "kind": "addition-content",
+     "id": "automaticDictationPaste",
+     "date": "2026-11-20",
+     "method": "One fresh isolated Codex session reviewed this language for accuracy, naturalness and overlap with Clipboard settings.",
+     "output": {
+      "path": "artifact:enviouswispr/20261120-203708-4479-clipboard-only-53fa/search-language-reviews/review-cs.txt",
+      "sha256": "0ac8d798b71586570a5d1a44aeaee6cf8f38160e1104159b2329f13b186db17b"
+     },
+     "disposition": "Adopted as reviewed."
+    },
+    {
+     "kind": "addition-content",
+     "id": "dictationOutputLanguage",
+     "date": "2026-11-21",
+     "method": "One independent Codex review checked all 32 blocks with an explicit verdict per language under the approved one-row exception.",
+     "output": {
+      "path": "artifact:enviouswispr/20261121-093530-3181-translation-proof-r2-db0f/vocabulary-review.txt.last",
+      "sha256": "8bddc88db3c6e3c6a338c425a1032c32317075abdbcbb0d8312bd7d08ff267a7"
+     },
+     "disposition": "cs: The output title and both text-focused queries are natural."
+    },
+    {
+     "kind": "french-interface-applang",
+     "method": "#3142 French slice: one French-mention word and phrase added to appLanguage.shipped, reviewed by the GPT + Gemini council (session fr-review-v-2026-11-21)",
+     "date": "2026-11-21",
+     "output": {
+      "path": "council/fr-interface-applang-2026-11-21.md",
+      "sha256": "7ba8c70c6d758d33efe5acf15445ed30703aee71e956100a0801dcd75e6d6d0c"
+     },
+     "disposition": "adopted as recorded in reviewed-edits.json"
+    },
+    {
+     "kind": "spanish-interface-applang",
+     "method": "#3142 Spanish slice: one Spanish-mention word and phrase added to appLanguage.shipped, reviewed by the GPT + Gemini council (session es-review-v-2026-11-21)",
+     "date": "2026-11-21",
+     "output": {
+      "path": "council/es-interface-applang-2026-11-21.md",
+      "sha256": "f168e2f15b1336cdf5d90095462093ba6f2bf6d039d1dcea9cac83e9836d3d27"
+     },
+     "disposition": "adopted as recorded in reviewed-edits.json"
+    },
+    {
+     "kind": "addition-content",
+     "id": "silentMicWarning",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with Microphone readiness, Stop recording on silence, the Bluetooth guide, Input device and music during dictation); first draft by scripts/settings-map/draft-vocabulary.sh (#4841)",
+     "date": "2026-11-22",
+     "draft": {
+      "path": "additions/silentMicWarning/draft-silentMicWarning.json",
+      "sha256": "c2d32ee006177906348bcd3cde8997a267089229db57b002ea16eeac0fa822d7"
+     },
+     "prompt": {
+      "path": "additions/silentMicWarning/review-driver.py.txt",
+      "sha256": "a5df55a9f929fd6a56387b65538ce4a21839132c2f2dfab6c2d915c2c1a12169"
+     },
+     "output": {
+      "path": "additions/silentMicWarning/review-cs.txt",
+      "sha256": "5c7c1b54ac16fdc5d227a5796cff537fe05d9c9b4caf1263a09646b25e78ed75"
+     },
+     "disposition": "adopted in full"
+    },
+    {
+     "kind": "addition-content",
+     "id": "unloadPolishModel",
+     "issue": 3853,
+     "date": "2026-11-22",
+     "method": "One fresh isolated Codex session reviewed this language for accuracy, naturalness and overlap with the speech model's unload setting (the unload polish model row).",
+     "output": {
+      "path": "additions/unloadPolishModel/review-cs.txt",
+      "sha256": "9121d92c51741843a924a20df4660aed68e31e0cf1a8150154f60516ff1914f3"
+     },
+     "disposition": "Adopted as reviewed."
+    },
+    {
+     "kind": "addition-content",
+     "id": "unloadPolishModel.*",
+     "issue": 3853,
+     "date": "2026-11-22",
+     "method": "One fresh isolated Codex session reviewed this language for accuracy, naturalness and overlap with the speech model's unload setting (its seven choices).",
+     "output": {
+      "path": "additions/unloadPolishModel/choices/review-cs.txt",
+      "sha256": "4cbdd8dc7c6339ffc6eabb5089774e3a45d81f1f1e9c32196e42ad88727554dd"
+     },
+     "disposition": "Adopted as reviewed."
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "da",
-   "contentSHA256": "43ffb478f051038c26a5df93f249a70297a6db33078df7edf6646c5f38295848",
+   "contentSHA256": "2646ac894af9d6b7816d1a8aac283429ed1c58802f13af5295540f65a9d5bbc0",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -5208,13 +5550,107 @@
       "sha256": "e7062d563786221ae209a0bfa4f49072742f5d6c1ceeffb86259de47c26872da"
      },
      "disposition": "adopted in full"
+    },
+    {
+     "kind": "addition-content",
+     "id": "fixLearnedWords",
+     "issue": 3294,
+     "method": "One isolated Codex review for this language, with both Dictionary controls and sibling vocabulary",
+     "date": "2026-11-21",
+     "artifact": "artifact:enviouswispr/20261120-232032-3294-dictionary-switches-137b/vocab-review/da/accepted.json",
+     "disposition": "Applied to the new fixing place and the existing learning place."
+    },
+    {
+     "kind": "addition-content",
+     "id": "automaticDictationPaste",
+     "date": "2026-11-20",
+     "method": "One fresh isolated Codex session reviewed this language for accuracy, naturalness and overlap with Clipboard settings.",
+     "output": {
+      "path": "artifact:enviouswispr/20261120-203708-4479-clipboard-only-53fa/search-language-reviews/review-da.txt",
+      "sha256": "3132ef2cab62c2bb71b24fe183424def921a18bbe8c2f36d5fa45f4ce2e777f7"
+     },
+     "disposition": "Adopted as reviewed."
+    },
+    {
+     "kind": "addition-content",
+     "id": "dictationOutputLanguage",
+     "date": "2026-11-21",
+     "method": "One independent Codex review checked all 32 blocks with an explicit verdict per language under the approved one-row exception.",
+     "output": {
+      "path": "artifact:enviouswispr/20261121-093530-3181-translation-proof-r2-db0f/vocabulary-review.txt.last",
+      "sha256": "8bddc88db3c6e3c6a338c425a1032c32317075abdbcbb0d8312bd7d08ff267a7"
+     },
+     "disposition": "da: The wording clearly asks for dictated text in another language."
+    },
+    {
+     "kind": "french-interface-applang",
+     "method": "#3142 French slice: one French-mention word and phrase added to appLanguage.shipped, reviewed by the GPT + Gemini council (session fr-review-v-2026-11-21)",
+     "date": "2026-11-21",
+     "output": {
+      "path": "council/fr-interface-applang-2026-11-21.md",
+      "sha256": "7ba8c70c6d758d33efe5acf15445ed30703aee71e956100a0801dcd75e6d6d0c"
+     },
+     "disposition": "adopted as recorded in reviewed-edits.json"
+    },
+    {
+     "kind": "spanish-interface-applang",
+     "method": "#3142 Spanish slice: one Spanish-mention word and phrase added to appLanguage.shipped, reviewed by the GPT + Gemini council (session es-review-v-2026-11-21)",
+     "date": "2026-11-21",
+     "output": {
+      "path": "council/es-interface-applang-2026-11-21.md",
+      "sha256": "f168e2f15b1336cdf5d90095462093ba6f2bf6d039d1dcea9cac83e9836d3d27"
+     },
+     "disposition": "adopted as recorded in reviewed-edits.json"
+    },
+    {
+     "kind": "addition-content",
+     "id": "silentMicWarning",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with Microphone readiness, Stop recording on silence, the Bluetooth guide, Input device and music during dictation); first draft by scripts/settings-map/draft-vocabulary.sh (#4841)",
+     "date": "2026-11-22",
+     "draft": {
+      "path": "additions/silentMicWarning/draft-silentMicWarning.json",
+      "sha256": "c2d32ee006177906348bcd3cde8997a267089229db57b002ea16eeac0fa822d7"
+     },
+     "prompt": {
+      "path": "additions/silentMicWarning/review-driver.py.txt",
+      "sha256": "a5df55a9f929fd6a56387b65538ce4a21839132c2f2dfab6c2d915c2c1a12169"
+     },
+     "output": {
+      "path": "additions/silentMicWarning/review-da.txt",
+      "sha256": "3468ec216fc5a6af5c365709a35cb8ecd628b4e74a26b7eb63384dd69276cc03"
+     },
+     "disposition": "adopted in full"
+    },
+    {
+     "kind": "addition-content",
+     "id": "unloadPolishModel",
+     "issue": 3853,
+     "date": "2026-11-22",
+     "method": "One fresh isolated Codex session reviewed this language for accuracy, naturalness and overlap with the speech model's unload setting (the unload polish model row).",
+     "output": {
+      "path": "additions/unloadPolishModel/review-da.txt",
+      "sha256": "4e4bb1a20b91c1c829fb0f41226e04c35a7176ede5297024ea255fd464ed409f"
+     },
+     "disposition": "Adopted as reviewed."
+    },
+    {
+     "kind": "addition-content",
+     "id": "unloadPolishModel.*",
+     "issue": 3853,
+     "date": "2026-11-22",
+     "method": "One fresh isolated Codex session reviewed this language for accuracy, naturalness and overlap with the speech model's unload setting (its seven choices).",
+     "output": {
+      "path": "additions/unloadPolishModel/choices/review-da.txt",
+      "sha256": "88e40d4f81ee004402abebe11b616867a23cb62ab38f2932214437442208b797"
+     },
+     "disposition": "Adopted as reviewed."
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "de",
-   "contentSHA256": "2c8a77c5afaa0fa6b99a3545ae575a73a0c94f521b0cfcd64bd2006bcb8b8273",
+   "contentSHA256": "83646444fa3a567c4eeb9d12c8cafe4275eee4d6bcd0fd8e5cc88d419b16e742",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -6596,13 +7032,185 @@
       "path": "additions/dictationRecordingRetention/council-de-digest.md",
       "sha256": "890f0c794d1f24e277829c446402852a249dbe9b0c3dd82197360ea679cb1011"
      }
+    },
+    {
+     "kind": "addition-content",
+     "id": "fixLearnedWords",
+     "issue": 3294,
+     "method": "One isolated Codex review for this language, with both Dictionary controls and sibling vocabulary",
+     "date": "2026-11-21",
+     "artifact": "artifact:enviouswispr/20261120-232032-3294-dictionary-switches-137b/vocab-review/de/accepted.json",
+     "disposition": "Applied to the new fixing place and the existing learning place."
+    },
+    {
+     "kind": "addition-content",
+     "id": "automaticDictationPaste",
+     "date": "2026-11-20",
+     "method": "One fresh isolated Codex session reviewed this language for accuracy, naturalness and overlap with Clipboard settings.",
+     "output": {
+      "path": "artifact:enviouswispr/20261120-203708-4479-clipboard-only-53fa/search-language-reviews/review-de.txt",
+      "sha256": "0a3f634572e3f4ee3babeb3e19265d6aa0383da7200bf5d45f166704d9cd54be"
+     },
+     "disposition": "Adopted after bilingual council review for German."
+    },
+    {
+     "kind": "german-council",
+     "id": "automaticDictationPaste",
+     "date": "2026-11-20",
+     "method": "GPT and Gemini reviewed German search terms.",
+     "output": {
+      "path": "artifact:enviouswispr/20261120-203708-4479-clipboard-only-53fa/german-search-review-digest.md",
+      "sha256": "c9e1e38f0c922bb8e283f616fa6e078df14c7e4c0ce1dd0576efe48e205c5eb9"
+     },
+     "disposition": "Adopted two dictation-specific queries and one term."
+    },
+    {
+     "kind": "addition-content",
+     "id": "dictationOutputLanguage",
+     "date": "2026-11-21",
+     "method": "One independent Codex review checked all 32 blocks with an explicit verdict per language under the approved one-row exception.",
+     "output": {
+      "path": "artifact:enviouswispr/20261121-093530-3181-translation-proof-r2-db0f/vocabulary-review.txt.last",
+      "sha256": "8bddc88db3c6e3c6a338c425a1032c32317075abdbcbb0d8312bd7d08ff267a7"
+     },
+     "disposition": "de: The compiled title is clear and all aliases use reviewed wording."
+    },
+    {
+     "kind": "german-council",
+     "id": "dictationOutputLanguage",
+     "date": "2026-11-21",
+     "method": "Azure GPT and Gemini reviewed German Settings terms and copy.",
+     "output": {
+      "path": "artifact:enviouswispr/20261121-093530-3181-translation-proof-r2-db0f/german-copy-reviewed.md",
+      "sha256": "af0f5041c1b418e493d10121f1777751e8169f07c12ac6d1b71e17bbfc239986"
+     },
+     "disposition": "Reused the reviewed output-language title and target-language wording."
+    },
+    {
+     "kind": "french-interface-applang",
+     "method": "#3142 French slice: one French-mention word and phrase added to appLanguage.shipped, reviewed by the GPT + Gemini council (session fr-review-v-2026-11-21)",
+     "date": "2026-11-21",
+     "output": {
+      "path": "council/fr-interface-applang-2026-11-21.md",
+      "sha256": "7ba8c70c6d758d33efe5acf15445ed30703aee71e956100a0801dcd75e6d6d0c"
+     },
+     "disposition": "adopted as recorded in reviewed-edits.json"
+    },
+    {
+     "kind": "spanish-interface-applang",
+     "method": "#3142 Spanish slice: one Spanish-mention word and phrase added to appLanguage.shipped, reviewed by the GPT + Gemini council (session es-review-v-2026-11-21)",
+     "date": "2026-11-21",
+     "output": {
+      "path": "council/es-interface-applang-2026-11-21.md",
+      "sha256": "f168e2f15b1336cdf5d90095462093ba6f2bf6d039d1dcea9cac83e9836d3d27"
+     },
+     "disposition": "adopted as recorded in reviewed-edits.json"
+    },
+    {
+     "kind": "addition-content",
+     "id": "silentMicWarning",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with Microphone readiness, Stop recording on silence, the Bluetooth guide, Input device and music during dictation); first draft by scripts/settings-map/draft-vocabulary.sh (#4841)",
+     "date": "2026-11-22",
+     "draft": {
+      "path": "additions/silentMicWarning/draft-silentMicWarning.json",
+      "sha256": "c2d32ee006177906348bcd3cde8997a267089229db57b002ea16eeac0fa822d7"
+     },
+     "prompt": {
+      "path": "additions/silentMicWarning/review-driver.py.txt",
+      "sha256": "a5df55a9f929fd6a56387b65538ce4a21839132c2f2dfab6c2d915c2c1a12169"
+     },
+     "output": {
+      "path": "additions/silentMicWarning/review-de.txt",
+      "sha256": "32ac0248d4856160b3d8091f7db429cb34964ff5933afd87cbf7875b0e4a0493"
+     },
+     "disposition": "adopted in full"
+    },
+    {
+     "kind": "addition-council",
+     "id": "silentMicWarning",
+     "method": "GPT + Gemini council (session ew-silent-mic-notice-l10n-2026-11-22)",
+     "date": "2026-11-22",
+     "output": {
+      "path": "additions/silentMicWarning/council-de-digest.md",
+      "sha256": "f113257a218dc8c25c85de63f92c20c52a8426a40d91e8e9902ad544b7a3c28d"
+     },
+     "disposition": "merged with the Codex review as recorded in the digest; „Hinweis bei Stille“ dropped for colliding with „Aufnahme bei Stille stoppen“"
+    },
+    {
+     "kind": "size-search-edit",
+     "scope": [
+      "aiPolishProvider.egOne"
+     ],
+     "date": "2026-11-22",
+     "method": "#4501: Codex, one fresh isolated session for this language (accuracy against the EG-1 size cards and their reviewed translations, naturalness, word collisions)",
+     "prompt": "edits/4501-eg1-sizes/review-prompt-de.md",
+     "promptSHA256": "713768788d1b28cc00a93fbb1843f90b7677d2f46fc86e4f4252375589a3c47b",
+     "output": {
+      "path": "edits/4501-eg1-sizes/review-de.txt",
+      "sha256": "58eb8df5494241103ae9383e56400c328c1f1f5eec3f7886664bfa242c27c367"
+     },
+     "disposition": "the reviewer's FINAL LIST adopted as recorded in reviewed-edits.json (existing words and phrases kept; size words and model-name phrases added); no council run, the wording follows the cards' own reviewed translations"
+    },
+    {
+     "kind": "addition-content",
+     "id": "silentMicWarning",
+     "method": "Codex, one fresh isolated session re-reviewing the block after the merge with #4501, where the meaning pass ranked this switch into the top five for the bare queries 'mic' (pushing out Microphone readiness) and 'Micro'; the new block drops bare 'mic'/'Mikro'/'sound' tokens (#4841)",
+     "date": "2026-11-22",
+     "draft": {
+      "path": "additions/silentMicWarning/draft-retune.json",
+      "sha256": "e45a94f23a2eddf55c2f172845a6fce569b699b75aa1d259dcb159828b16e4bf"
+     },
+     "prompt": {
+      "path": "additions/silentMicWarning/retune-prompt-de.md",
+      "sha256": "4899543be304970c5d230d9f7a6a6ace0f73c4494bac562f8bc3cec9c4efb28c"
+     },
+     "output": {
+      "path": "additions/silentMicWarning/retune-review-de.txt",
+      "sha256": "a617e328b3d90aff30bb53bbfd397a701f13800d1c2ea631b50c715586bed5de"
+     },
+     "disposition": "the reviewer's FINAL LIST adopted in full"
+    },
+    {
+     "kind": "addition-council",
+     "id": "silentMicWarning",
+     "method": "GPT + Gemini council (session ew-4841-silentmic-search-de-2026-11-22) on the same prompt",
+     "date": "2026-11-22",
+     "output": {
+      "path": "additions/silentMicWarning/retune-council-de-digest.md",
+      "sha256": "102c0132e527832a5d00fe67bcc2501934b42f51d6cfb063d7fe5d8a4b5bbbbc"
+     },
+     "disposition": "GPT matched the Codex list; Gemini kept 'Hinweis bei fehlendem Ton' instead of 'Stillewarnung'; the majority list adopted as recorded in the digest"
+    },
+    {
+     "kind": "addition-content",
+     "id": "unloadPolishModel",
+     "issue": 3853,
+     "date": "2026-11-22",
+     "method": "One fresh isolated Codex session reviewed this language for accuracy, naturalness and overlap with the speech model's unload setting (the unload polish model row).",
+     "output": {
+      "path": "additions/unloadPolishModel/review-de.txt",
+      "sha256": "a8824cad6bed73fdfbdf79ac4d91ee2ddb46eb025146c95db6c6bd6ae1377e83"
+     },
+     "disposition": "Adopted as reviewed."
+    },
+    {
+     "kind": "addition-content",
+     "id": "unloadPolishModel.*",
+     "issue": 3853,
+     "date": "2026-11-22",
+     "method": "One fresh isolated Codex session reviewed this language for accuracy, naturalness and overlap with the speech model's unload setting (its seven choices).",
+     "output": {
+      "path": "additions/unloadPolishModel/choices/review-de.txt",
+      "sha256": "34dedc4b971419de2b8e4ec27560e7316371fed631e6da5841fceea74117353d"
+     },
+     "disposition": "Adopted as reviewed."
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "el",
-   "contentSHA256": "b3ca7617cf62494b056fbfc96d1a70aa10058c73cf97b103f5745703d8fbecec",
+   "contentSHA256": "1f34053cc769b9c5fa224e45733921d6ba90227decfb4b878f953e4b3bab109a",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -7771,13 +8379,107 @@
       "sha256": "cd9330fed783cd5bdc75d80d7e50e6042b110fe2deb2eae501999f103f7eeae8"
      },
      "disposition": "adopted in full"
+    },
+    {
+     "kind": "addition-content",
+     "id": "fixLearnedWords",
+     "issue": 3294,
+     "method": "One isolated Codex review for this language, with both Dictionary controls and sibling vocabulary",
+     "date": "2026-11-21",
+     "artifact": "artifact:enviouswispr/20261120-232032-3294-dictionary-switches-137b/vocab-review/el/accepted.json",
+     "disposition": "Applied to the new fixing place and the existing learning place."
+    },
+    {
+     "kind": "addition-content",
+     "id": "automaticDictationPaste",
+     "date": "2026-11-20",
+     "method": "One fresh isolated Codex session reviewed this language for accuracy, naturalness and overlap with Clipboard settings.",
+     "output": {
+      "path": "artifact:enviouswispr/20261120-203708-4479-clipboard-only-53fa/search-language-reviews/review-el.txt",
+      "sha256": "c4979d4b1cd640e50ec983e32dd1efe7c93b1a39393c880cab682bc64a4291bc"
+     },
+     "disposition": "Adopted as reviewed."
+    },
+    {
+     "kind": "addition-content",
+     "id": "dictationOutputLanguage",
+     "date": "2026-11-21",
+     "method": "One independent Codex review checked all 32 blocks with an explicit verdict per language under the approved one-row exception.",
+     "output": {
+      "path": "artifact:enviouswispr/20261121-093530-3181-translation-proof-r2-db0f/vocabulary-review.txt.last",
+      "sha256": "8bddc88db3c6e3c6a338c425a1032c32317075abdbcbb0d8312bd7d08ff267a7"
+     },
+     "disposition": "el: The title’s stacked nouns sound unnatural."
+    },
+    {
+     "kind": "french-interface-applang",
+     "method": "#3142 French slice: one French-mention word and phrase added to appLanguage.shipped, reviewed by the GPT + Gemini council (session fr-review-v-2026-11-21)",
+     "date": "2026-11-21",
+     "output": {
+      "path": "council/fr-interface-applang-2026-11-21.md",
+      "sha256": "7ba8c70c6d758d33efe5acf15445ed30703aee71e956100a0801dcd75e6d6d0c"
+     },
+     "disposition": "adopted as recorded in reviewed-edits.json"
+    },
+    {
+     "kind": "spanish-interface-applang",
+     "method": "#3142 Spanish slice: one Spanish-mention word and phrase added to appLanguage.shipped, reviewed by the GPT + Gemini council (session es-review-v-2026-11-21)",
+     "date": "2026-11-21",
+     "output": {
+      "path": "council/es-interface-applang-2026-11-21.md",
+      "sha256": "f168e2f15b1336cdf5d90095462093ba6f2bf6d039d1dcea9cac83e9836d3d27"
+     },
+     "disposition": "adopted as recorded in reviewed-edits.json"
+    },
+    {
+     "kind": "addition-content",
+     "id": "silentMicWarning",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with Microphone readiness, Stop recording on silence, the Bluetooth guide, Input device and music during dictation); first draft by scripts/settings-map/draft-vocabulary.sh (#4841)",
+     "date": "2026-11-22",
+     "draft": {
+      "path": "additions/silentMicWarning/draft-silentMicWarning.json",
+      "sha256": "c2d32ee006177906348bcd3cde8997a267089229db57b002ea16eeac0fa822d7"
+     },
+     "prompt": {
+      "path": "additions/silentMicWarning/review-driver.py.txt",
+      "sha256": "a5df55a9f929fd6a56387b65538ce4a21839132c2f2dfab6c2d915c2c1a12169"
+     },
+     "output": {
+      "path": "additions/silentMicWarning/review-el.txt",
+      "sha256": "570674158db63d286f5b12b6047c495750d7a66099f2c7c65fa5271e60ce043b"
+     },
+     "disposition": "adopted in full"
+    },
+    {
+     "kind": "addition-content",
+     "id": "unloadPolishModel",
+     "issue": 3853,
+     "date": "2026-11-22",
+     "method": "One fresh isolated Codex session reviewed this language for accuracy, naturalness and overlap with the speech model's unload setting (the unload polish model row).",
+     "output": {
+      "path": "additions/unloadPolishModel/review-el.txt",
+      "sha256": "2c3084cedd3d02004bb8f3e56659fc8f24376b1fa952d6d401fa0b8af71587a8"
+     },
+     "disposition": "Adopted as reviewed."
+    },
+    {
+     "kind": "addition-content",
+     "id": "unloadPolishModel.*",
+     "issue": 3853,
+     "date": "2026-11-22",
+     "method": "One fresh isolated Codex session reviewed this language for accuracy, naturalness and overlap with the speech model's unload setting (its seven choices).",
+     "output": {
+      "path": "additions/unloadPolishModel/choices/review-el.txt",
+      "sha256": "2c760824184ecc3f6d735d0099a58f2671f5a62d06881c1407f2c45b6d0a0305"
+     },
+     "disposition": "Adopted as reviewed."
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "en",
-   "contentSHA256": "bfc02e6f79c580a8e947ab9329a21ed57be6cd0ea224eadcb763d5abb6f21cdd",
+   "contentSHA256": "1f9b644ea1d25d61b9e7628c0c87256c0c4b8d0a6b1a5cbf9c042ad6bce3cffb",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -8918,13 +9620,160 @@
       "sha256": "4648c8c80ad9596aa510a3e6949e6cfb0afa294c8677018c6fcc8829a8fae1da"
      },
      "disposition": "adopted in full"
+    },
+    {
+     "kind": "addition-content",
+     "id": "fixLearnedWords",
+     "issue": 3294,
+     "method": "One isolated Codex review for this language, with both Dictionary controls and sibling vocabulary",
+     "date": "2026-11-21",
+     "artifact": "artifact:enviouswispr/20261120-232032-3294-dictionary-switches-137b/vocab-review/en/accepted.json",
+     "disposition": "Applied to the new fixing place and the existing learning place."
+    },
+    {
+     "kind": "addition-content",
+     "id": "automaticDictationPaste",
+     "date": "2026-11-20",
+     "method": "One fresh isolated Codex session reviewed this language for accuracy, naturalness and overlap with Clipboard settings.",
+     "output": {
+      "path": "artifact:enviouswispr/20261120-203708-4479-clipboard-only-53fa/search-language-reviews/review-en.txt",
+      "sha256": "39c7251bfd62c217bdeb0f4cd176c72b61b759c4bba7762c48f06d7596e95049"
+     },
+     "disposition": "Adopted as reviewed."
+    },
+    {
+     "kind": "addition-content",
+     "id": "dictationOutputLanguage",
+     "date": "2026-11-21",
+     "method": "One independent Codex review checked all 32 blocks with an explicit verdict per language under the approved one-row exception.",
+     "output": {
+      "path": "artifact:enviouswispr/20261121-093530-3181-translation-proof-r2-db0f/vocabulary-review.txt.last",
+      "sha256": "8bddc88db3c6e3c6a338c425a1032c32317075abdbcbb0d8312bd7d08ff267a7"
+     },
+     "disposition": "en: The compiled title and both queries point to the final text."
+    },
+    {
+     "kind": "french-interface-applang",
+     "method": "#3142 French slice: one French-mention word and phrase added to appLanguage.shipped, reviewed by the GPT + Gemini council (session fr-review-v-2026-11-21)",
+     "date": "2026-11-21",
+     "output": {
+      "path": "council/fr-interface-applang-2026-11-21.md",
+      "sha256": "7ba8c70c6d758d33efe5acf15445ed30703aee71e956100a0801dcd75e6d6d0c"
+     },
+     "disposition": "adopted as recorded in reviewed-edits.json"
+    },
+    {
+     "kind": "spanish-interface-applang",
+     "method": "#3142 Spanish slice: one Spanish-mention word and phrase added to appLanguage.shipped, reviewed by the GPT + Gemini council (session es-review-v-2026-11-21)",
+     "date": "2026-11-21",
+     "output": {
+      "path": "council/es-interface-applang-2026-11-21.md",
+      "sha256": "f168e2f15b1336cdf5d90095462093ba6f2bf6d039d1dcea9cac83e9836d3d27"
+     },
+     "disposition": "adopted as recorded in reviewed-edits.json"
+    },
+    {
+     "kind": "addition-content",
+     "id": "silentMicWarning",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with Microphone readiness, Stop recording on silence, the Bluetooth guide, Input device and music during dictation); first draft by scripts/settings-map/draft-vocabulary.sh (#4841)",
+     "date": "2026-11-22",
+     "draft": {
+      "path": "additions/silentMicWarning/draft-silentMicWarning.json",
+      "sha256": "c2d32ee006177906348bcd3cde8997a267089229db57b002ea16eeac0fa822d7"
+     },
+     "prompt": {
+      "path": "additions/silentMicWarning/review-driver.py.txt",
+      "sha256": "a5df55a9f929fd6a56387b65538ce4a21839132c2f2dfab6c2d915c2c1a12169"
+     },
+     "output": {
+      "path": "additions/silentMicWarning/review-en.txt",
+      "sha256": "aaad7ae2863d814856059d63f8b6d1d7330538653b448ecede2834f3a6c4fc8e"
+     },
+     "disposition": "adopted; the review's title omitted because the interface supplies it"
+    },
+    {
+     "kind": "addition-content",
+     "id": "silentMicWarning",
+     "method": "Codex, one fresh isolated session re-reviewing the English block after SettingsSearchMatchingTests found the first block's 'turn off … sound' phrase ranking this switch first for the §18.1b query 'turn off the sound' (#4841)",
+     "date": "2026-11-22",
+     "draft": {
+      "path": "additions/silentMicWarning/draft-en-r2.json",
+      "sha256": "695417cd92871c84bdf7bc307f2581f491ae51d94a1fcef6b1abe4d37e6285b9"
+     },
+     "prompt": {
+      "path": "additions/silentMicWarning/review-driver.py.txt",
+      "sha256": "a5df55a9f929fd6a56387b65538ce4a21839132c2f2dfab6c2d915c2c1a12169"
+     },
+     "output": {
+      "path": "additions/silentMicWarning/review-en-r2.txt",
+      "sha256": "30b1857661f9f869bd515ae4ee35fdd9886ecde36b5c88bf605cc83f49bcf583"
+     },
+     "disposition": "first phrase and 'silent mic warning' adopted; the review's second phrase put 'turn off … sound' back and its word 'no sound alert' carries 'sound', so the author kept 'stop the silent microphone warning on the recording pill' and 'no mic input alert' to keep the §18.1b collision closed"
+    },
+    {
+     "kind": "size-search-edit",
+     "scope": [
+      "aiPolishProvider.egOne"
+     ],
+     "date": "2026-11-22",
+     "method": "#4501: Codex, one fresh isolated session for this language (accuracy against the EG-1 size cards and their reviewed translations, naturalness, word collisions)",
+     "prompt": "edits/4501-eg1-sizes/review-prompt-en.md",
+     "promptSHA256": "78f579e730d002ee941ed52df981e9b2f1cd693c331c7d2454a94dd28c4c1952",
+     "output": {
+      "path": "edits/4501-eg1-sizes/review-en.txt",
+      "sha256": "cfc8172d27e1fbedf213926173eea4c41170ce3c6bb0e7d714309641ca864fe0"
+     },
+     "disposition": "the reviewer's FINAL LIST adopted as recorded in reviewed-edits.json (existing words and phrases kept; size words and model-name phrases added); no council run, the wording follows the cards' own reviewed translations"
+    },
+    {
+     "kind": "addition-content",
+     "id": "silentMicWarning",
+     "method": "Codex, one fresh isolated session re-reviewing the block after the merge with #4501, where the meaning pass ranked this switch into the top five for the bare queries 'mic' (pushing out Microphone readiness) and 'Micro'; the new block drops bare 'mic'/'Mikro'/'sound' tokens (#4841)",
+     "date": "2026-11-22",
+     "draft": {
+      "path": "additions/silentMicWarning/draft-retune.json",
+      "sha256": "e45a94f23a2eddf55c2f172845a6fce569b699b75aa1d259dcb159828b16e4bf"
+     },
+     "prompt": {
+      "path": "additions/silentMicWarning/retune-prompt-en.md",
+      "sha256": "bb3c082b51be3d0c1138ed51ee4d6f3ce8ad55fcb6382183550747f9d1ebdf1f"
+     },
+     "output": {
+      "path": "additions/silentMicWarning/retune-review-en.txt",
+      "sha256": "1da16a3fe0bbc1efe7a027f16d4ed0739aeb52d259b11c39a8389c5eb76b5c06"
+     },
+     "disposition": "the reviewer's FINAL LIST adopted in full ('stop' -> 'turn off' in the second phrase)"
+    },
+    {
+     "kind": "addition-content",
+     "id": "unloadPolishModel",
+     "issue": 3853,
+     "date": "2026-11-22",
+     "method": "One fresh isolated Codex session reviewed this language for accuracy, naturalness and overlap with the speech model's unload setting (the unload polish model row).",
+     "output": {
+      "path": "additions/unloadPolishModel/review-en.txt",
+      "sha256": "f1067c446958ba53243d21f73a991c8060f3e6f586153d278572a14f93820332"
+     },
+     "disposition": "Adopted as reviewed."
+    },
+    {
+     "kind": "addition-content",
+     "id": "unloadPolishModel.*",
+     "issue": 3853,
+     "date": "2026-11-22",
+     "method": "One fresh isolated Codex session reviewed this language for accuracy, naturalness and overlap with the speech model's unload setting (its seven choices).",
+     "output": {
+      "path": "additions/unloadPolishModel/choices/review-en.txt",
+      "sha256": "89dd1f5d70cc4dd2f05b941cc53bc0bfeb3615e46b10cf21dfc98bc7d6bce9f3"
+     },
+     "disposition": "Adopted as reviewed."
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "es",
-   "contentSHA256": "50497cd2244c97557749655f527da6df7287a8112a852b34f828639f9750ac70",
+   "contentSHA256": "381978b115d833ce7a99935d9607d7ee92d36221c879e0013deb11677d6153f3",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -10093,13 +10942,132 @@
       "sha256": "b60f76d6d544a3b62cc1266c294419de41f0e9663618175b116d60fc2fa4a1f3"
      },
      "disposition": "adopted in full"
+    },
+    {
+     "kind": "addition-content",
+     "id": "fixLearnedWords",
+     "issue": 3294,
+     "method": "One isolated Codex review for this language, with both Dictionary controls and sibling vocabulary",
+     "date": "2026-11-21",
+     "artifact": "artifact:enviouswispr/20261120-232032-3294-dictionary-switches-137b/vocab-review/es/accepted.json",
+     "disposition": "Applied to the new fixing place and the existing learning place."
+    },
+    {
+     "kind": "addition-content",
+     "id": "automaticDictationPaste",
+     "date": "2026-11-20",
+     "method": "One fresh isolated Codex session reviewed this language for accuracy, naturalness and overlap with Clipboard settings.",
+     "output": {
+      "path": "artifact:enviouswispr/20261120-203708-4479-clipboard-only-53fa/search-language-reviews/review-es.txt",
+      "sha256": "2b2cb367e9450f9a6b8d7fcb4029bb7e5c847f7dc09b550f1eb813067e5dd803"
+     },
+     "disposition": "Adopted as reviewed."
+    },
+    {
+     "kind": "addition-content",
+     "id": "dictationOutputLanguage",
+     "date": "2026-11-21",
+     "method": "One independent Codex review checked all 32 blocks with an explicit verdict per language under the approved one-row exception.",
+     "output": {
+      "path": "artifact:enviouswispr/20261121-093530-3181-translation-proof-r2-db0f/vocabulary-review.txt.last",
+      "sha256": "8bddc88db3c6e3c6a338c425a1032c32317075abdbcbb0d8312bd7d08ff267a7"
+     },
+     "disposition": "es: «Que el dictado salga» naturally signals the desired result."
+    },
+    {
+     "kind": "french-interface-applang",
+     "method": "#3142 French slice: one French-mention word and phrase added to appLanguage.shipped, reviewed by the GPT + Gemini council (session fr-review-v-2026-11-21)",
+     "date": "2026-11-21",
+     "output": {
+      "path": "council/fr-interface-applang-2026-11-21.md",
+      "sha256": "7ba8c70c6d758d33efe5acf15445ed30703aee71e956100a0801dcd75e6d6d0c"
+     },
+     "disposition": "adopted as recorded in reviewed-edits.json"
+    },
+    {
+     "kind": "spanish-interface-applang",
+     "method": "#3142 Spanish slice: one Spanish-mention word and phrase added to appLanguage.shipped, reviewed by the GPT + Gemini council (session es-review-v-2026-11-21)",
+     "date": "2026-11-21",
+     "output": {
+      "path": "council/es-interface-applang-2026-11-21.md",
+      "sha256": "f168e2f15b1336cdf5d90095462093ba6f2bf6d039d1dcea9cac83e9836d3d27"
+     },
+     "disposition": "adopted as recorded in reviewed-edits.json"
+    },
+    {
+     "kind": "spanish-interface-migration",
+     "method": "#3142 Spanish slice: Spanish titles removed (interface language) and two runtime-named places' label wording added as Spanish words, reviewed by the GPT + Gemini council (session es-vocab-x2-2026-11-21); titles-only search words kept as aliases",
+     "date": "2026-11-21",
+     "output": {
+      "path": "council/es-interface-2026-11-21.md",
+      "sha256": "0900dae9c957222ce6de8ebe4ba7c120052ab040eaddc58c38051965b822589b"
+     },
+     "disposition": "adopted as recorded in reviewed-edits.json"
+    },
+    {
+     "kind": "addition-content",
+     "id": "silentMicWarning",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with Microphone readiness, Stop recording on silence, the Bluetooth guide, Input device and music during dictation); first draft by scripts/settings-map/draft-vocabulary.sh (#4841)",
+     "date": "2026-11-22",
+     "draft": {
+      "path": "additions/silentMicWarning/draft-silentMicWarning.json",
+      "sha256": "c2d32ee006177906348bcd3cde8997a267089229db57b002ea16eeac0fa822d7"
+     },
+     "prompt": {
+      "path": "additions/silentMicWarning/review-driver.py.txt",
+      "sha256": "a5df55a9f929fd6a56387b65538ce4a21839132c2f2dfab6c2d915c2c1a12169"
+     },
+     "output": {
+      "path": "additions/silentMicWarning/review-es.txt",
+      "sha256": "2514a2fd738db32778a8e933f1df3e106ec430b57fe6b94025df76cb8ee954d7"
+     },
+     "disposition": "adopted; the review's title omitted because the interface supplies it"
+    },
+    {
+     "kind": "size-search-edit",
+     "scope": [
+      "aiPolishProvider.egOne"
+     ],
+     "date": "2026-11-22",
+     "method": "#4501: Codex, one fresh isolated session for this language (accuracy against the EG-1 size cards and their reviewed translations, naturalness, word collisions)",
+     "prompt": "edits/4501-eg1-sizes/review-prompt-es.md",
+     "promptSHA256": "bc00b3d39e67cdb114581e7dbad12f0dc79b9662a0bebde78c10f058f36940e1",
+     "output": {
+      "path": "edits/4501-eg1-sizes/review-es.txt",
+      "sha256": "789db319ddde8199dee10cbb4688572a3f6348d0397f011288866fe634a7de1a"
+     },
+     "disposition": "the reviewer's FINAL LIST adopted as recorded in reviewed-edits.json (existing words and phrases kept; size words and model-name phrases added); no council run, the wording follows the cards' own reviewed translations"
+    },
+    {
+     "kind": "addition-content",
+     "id": "unloadPolishModel",
+     "issue": 3853,
+     "date": "2026-11-22",
+     "method": "One fresh isolated Codex session reviewed this language for accuracy, naturalness and overlap with the speech model's unload setting (the unload polish model row).",
+     "output": {
+      "path": "additions/unloadPolishModel/review-es.txt",
+      "sha256": "57240196783f97977e90067b57e9e51911611673ad9d7ea18e4a7c2b4c19795a"
+     },
+     "disposition": "Adopted as reviewed."
+    },
+    {
+     "kind": "addition-content",
+     "id": "unloadPolishModel.*",
+     "issue": 3853,
+     "date": "2026-11-22",
+     "method": "One fresh isolated Codex session reviewed this language for accuracy, naturalness and overlap with the speech model's unload setting (its seven choices).",
+     "output": {
+      "path": "additions/unloadPolishModel/choices/review-es.txt",
+      "sha256": "a9bc3fb81127e08f2ea83b80d47dd9d7a87b417102404f1551a6d52f4c7556d2"
+     },
+     "disposition": "Adopted as reviewed."
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "et",
-   "contentSHA256": "3518b73f2efd9188d0f9e1c21c888ff46642ac525c7b94496dd3d6f691dfd2ac",
+   "contentSHA256": "aae3b3ce6a482207c3394128c97a4af67a46376ac366de661a83d614f5b20582",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -11259,13 +12227,107 @@
       "sha256": "0e89e0af94b032624babc03eebb69ecca67aecaaf21d258b70ccb83b4988a1c7"
      },
      "disposition": "adopted in full"
+    },
+    {
+     "kind": "addition-content",
+     "id": "fixLearnedWords",
+     "issue": 3294,
+     "method": "One isolated Codex review for this language, with both Dictionary controls and sibling vocabulary",
+     "date": "2026-11-21",
+     "artifact": "artifact:enviouswispr/20261120-232032-3294-dictionary-switches-137b/vocab-review/et/accepted.json",
+     "disposition": "Applied to the new fixing place and the existing learning place."
+    },
+    {
+     "kind": "addition-content",
+     "id": "automaticDictationPaste",
+     "date": "2026-11-20",
+     "method": "One fresh isolated Codex session reviewed this language for accuracy, naturalness and overlap with Clipboard settings.",
+     "output": {
+      "path": "artifact:enviouswispr/20261120-203708-4479-clipboard-only-53fa/search-language-reviews/review-et.txt",
+      "sha256": "e1b526570ffd752d33953a362377927fcd14b16a460a07ba78a4373a6137efad"
+     },
+     "disposition": "Adopted as reviewed."
+    },
+    {
+     "kind": "addition-content",
+     "id": "dictationOutputLanguage",
+     "date": "2026-11-21",
+     "method": "One independent Codex review checked all 32 blocks with an explicit verdict per language under the approved one-row exception.",
+     "output": {
+      "path": "artifact:enviouswispr/20261121-093530-3181-translation-proof-r2-db0f/vocabulary-review.txt.last",
+      "sha256": "8bddc88db3c6e3c6a338c425a1032c32317075abdbcbb0d8312bd7d08ff267a7"
+     },
+     "disposition": "et: The output term and both queries clearly refer to the resulting text."
+    },
+    {
+     "kind": "french-interface-applang",
+     "method": "#3142 French slice: one French-mention word and phrase added to appLanguage.shipped, reviewed by the GPT + Gemini council (session fr-review-v-2026-11-21)",
+     "date": "2026-11-21",
+     "output": {
+      "path": "council/fr-interface-applang-2026-11-21.md",
+      "sha256": "7ba8c70c6d758d33efe5acf15445ed30703aee71e956100a0801dcd75e6d6d0c"
+     },
+     "disposition": "adopted as recorded in reviewed-edits.json"
+    },
+    {
+     "kind": "spanish-interface-applang",
+     "method": "#3142 Spanish slice: one Spanish-mention word and phrase added to appLanguage.shipped, reviewed by the GPT + Gemini council (session es-review-v-2026-11-21)",
+     "date": "2026-11-21",
+     "output": {
+      "path": "council/es-interface-applang-2026-11-21.md",
+      "sha256": "f168e2f15b1336cdf5d90095462093ba6f2bf6d039d1dcea9cac83e9836d3d27"
+     },
+     "disposition": "adopted as recorded in reviewed-edits.json"
+    },
+    {
+     "kind": "addition-content",
+     "id": "silentMicWarning",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with Microphone readiness, Stop recording on silence, the Bluetooth guide, Input device and music during dictation); first draft by scripts/settings-map/draft-vocabulary.sh (#4841)",
+     "date": "2026-11-22",
+     "draft": {
+      "path": "additions/silentMicWarning/draft-silentMicWarning.json",
+      "sha256": "c2d32ee006177906348bcd3cde8997a267089229db57b002ea16eeac0fa822d7"
+     },
+     "prompt": {
+      "path": "additions/silentMicWarning/review-driver.py.txt",
+      "sha256": "a5df55a9f929fd6a56387b65538ce4a21839132c2f2dfab6c2d915c2c1a12169"
+     },
+     "output": {
+      "path": "additions/silentMicWarning/review-et.txt",
+      "sha256": "f29fab94402018c9b6dd574eb804a41c14f88907c55cd6a67292943948971f51"
+     },
+     "disposition": "adopted in full"
+    },
+    {
+     "kind": "addition-content",
+     "id": "unloadPolishModel",
+     "issue": 3853,
+     "date": "2026-11-22",
+     "method": "One fresh isolated Codex session reviewed this language for accuracy, naturalness and overlap with the speech model's unload setting (the unload polish model row).",
+     "output": {
+      "path": "additions/unloadPolishModel/review-et.txt",
+      "sha256": "66b0e5edd03772a487df76e68c187f4d4c26684bd092e3b039b5f7549683f189"
+     },
+     "disposition": "Adopted as reviewed."
+    },
+    {
+     "kind": "addition-content",
+     "id": "unloadPolishModel.*",
+     "issue": 3853,
+     "date": "2026-11-22",
+     "method": "One fresh isolated Codex session reviewed this language for accuracy, naturalness and overlap with the speech model's unload setting (its seven choices).",
+     "output": {
+      "path": "additions/unloadPolishModel/choices/review-et.txt",
+      "sha256": "660dafc9e5c0d8e0b3ecea57d8406aae0f78993931bfab1e17df1d6c0593e27b"
+     },
+     "disposition": "Adopted as reviewed."
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "fi",
-   "contentSHA256": "0ab6426bd1dc32ce3b23a053f1ddf3c7dd1474a2f28e15706f570a6598f53556",
+   "contentSHA256": "0e5b859938710aafe55eab82ec28e3424187558b373023089982cdb9565a50c7",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -12425,13 +13487,107 @@
       "sha256": "1acd851a8ef4ebe7fc10e108aa62e74ba253958e55be526791df616843043998"
      },
      "disposition": "adopted in full"
+    },
+    {
+     "kind": "addition-content",
+     "id": "fixLearnedWords",
+     "issue": 3294,
+     "method": "One isolated Codex review for this language, with both Dictionary controls and sibling vocabulary",
+     "date": "2026-11-21",
+     "artifact": "artifact:enviouswispr/20261120-232032-3294-dictionary-switches-137b/vocab-review/fi/accepted.json",
+     "disposition": "Applied to the new fixing place and the existing learning place."
+    },
+    {
+     "kind": "addition-content",
+     "id": "automaticDictationPaste",
+     "date": "2026-11-20",
+     "method": "One fresh isolated Codex session reviewed this language for accuracy, naturalness and overlap with Clipboard settings.",
+     "output": {
+      "path": "artifact:enviouswispr/20261120-203708-4479-clipboard-only-53fa/search-language-reviews/review-fi.txt",
+      "sha256": "416308579145069ff9beb8fd689678009299cbb376892e7d36b3bf653a146238"
+     },
+     "disposition": "Adopted as reviewed."
+    },
+    {
+     "kind": "addition-content",
+     "id": "dictationOutputLanguage",
+     "date": "2026-11-21",
+     "method": "One independent Codex review checked all 32 blocks with an explicit verdict per language under the approved one-row exception.",
+     "output": {
+      "path": "artifact:enviouswispr/20261121-093530-3181-translation-proof-r2-db0f/vocabulary-review.txt.last",
+      "sha256": "8bddc88db3c6e3c6a338c425a1032c32317075abdbcbb0d8312bd7d08ff267a7"
+     },
+     "disposition": "fi: The title names the text and «kohdekieli» identifies the target language."
+    },
+    {
+     "kind": "french-interface-applang",
+     "method": "#3142 French slice: one French-mention word and phrase added to appLanguage.shipped, reviewed by the GPT + Gemini council (session fr-review-v-2026-11-21)",
+     "date": "2026-11-21",
+     "output": {
+      "path": "council/fr-interface-applang-2026-11-21.md",
+      "sha256": "7ba8c70c6d758d33efe5acf15445ed30703aee71e956100a0801dcd75e6d6d0c"
+     },
+     "disposition": "adopted as recorded in reviewed-edits.json"
+    },
+    {
+     "kind": "spanish-interface-applang",
+     "method": "#3142 Spanish slice: one Spanish-mention word and phrase added to appLanguage.shipped, reviewed by the GPT + Gemini council (session es-review-v-2026-11-21)",
+     "date": "2026-11-21",
+     "output": {
+      "path": "council/es-interface-applang-2026-11-21.md",
+      "sha256": "f168e2f15b1336cdf5d90095462093ba6f2bf6d039d1dcea9cac83e9836d3d27"
+     },
+     "disposition": "adopted as recorded in reviewed-edits.json"
+    },
+    {
+     "kind": "addition-content",
+     "id": "silentMicWarning",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with Microphone readiness, Stop recording on silence, the Bluetooth guide, Input device and music during dictation); first draft by scripts/settings-map/draft-vocabulary.sh (#4841)",
+     "date": "2026-11-22",
+     "draft": {
+      "path": "additions/silentMicWarning/draft-silentMicWarning.json",
+      "sha256": "c2d32ee006177906348bcd3cde8997a267089229db57b002ea16eeac0fa822d7"
+     },
+     "prompt": {
+      "path": "additions/silentMicWarning/review-driver.py.txt",
+      "sha256": "a5df55a9f929fd6a56387b65538ce4a21839132c2f2dfab6c2d915c2c1a12169"
+     },
+     "output": {
+      "path": "additions/silentMicWarning/review-fi.txt",
+      "sha256": "f1e952474545bda92341c185ccbd06b0d470faa61c3b794f15e6dc3dbd1d54c5"
+     },
+     "disposition": "adopted in full"
+    },
+    {
+     "kind": "addition-content",
+     "id": "unloadPolishModel",
+     "issue": 3853,
+     "date": "2026-11-22",
+     "method": "One fresh isolated Codex session reviewed this language for accuracy, naturalness and overlap with the speech model's unload setting (the unload polish model row).",
+     "output": {
+      "path": "additions/unloadPolishModel/review-fi.txt",
+      "sha256": "d3da834c54edaa269f18365f38140f57ab16ed9e3638f2b04d90eb8dfbc67cd8"
+     },
+     "disposition": "Adopted as reviewed."
+    },
+    {
+     "kind": "addition-content",
+     "id": "unloadPolishModel.*",
+     "issue": 3853,
+     "date": "2026-11-22",
+     "method": "One fresh isolated Codex session reviewed this language for accuracy, naturalness and overlap with the speech model's unload setting (its seven choices).",
+     "output": {
+      "path": "additions/unloadPolishModel/choices/review-fi.txt",
+      "sha256": "dcf877a19e987dbb246a417ac62a9b04654968402d302870a79f877e02bf4241"
+     },
+     "disposition": "Adopted as reviewed."
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "fr",
-   "contentSHA256": "5298f511f0a473989257c15df8353ec97aad92b882319cbc8ca394027248db73",
+   "contentSHA256": "54bea507cc01d392eeafa3dc8ee1f75e381d8fe55f77c311f66e050d988b946c",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -13591,13 +14747,132 @@
       "sha256": "28b7d21ccfcbddeff0e724902f2cfa907b26a72912ac6f62da2a1a01c74bbe2f"
      },
      "disposition": "adopted in full"
+    },
+    {
+     "kind": "addition-content",
+     "id": "fixLearnedWords",
+     "issue": 3294,
+     "method": "One isolated Codex review for this language, with both Dictionary controls and sibling vocabulary",
+     "date": "2026-11-21",
+     "artifact": "artifact:enviouswispr/20261120-232032-3294-dictionary-switches-137b/vocab-review/fr/accepted.json",
+     "disposition": "Applied to the new fixing place and the existing learning place."
+    },
+    {
+     "kind": "addition-content",
+     "id": "automaticDictationPaste",
+     "date": "2026-11-20",
+     "method": "One fresh isolated Codex session reviewed this language for accuracy, naturalness and overlap with Clipboard settings.",
+     "output": {
+      "path": "artifact:enviouswispr/20261120-203708-4479-clipboard-only-53fa/search-language-reviews/review-fr.txt",
+      "sha256": "9088f3410fa8a13824987eba6aeba28a9ca6a73e5984ca30b6f8ac6e35c12375"
+     },
+     "disposition": "Adopted as reviewed."
+    },
+    {
+     "kind": "addition-content",
+     "id": "dictationOutputLanguage",
+     "date": "2026-11-21",
+     "method": "One independent Codex review checked all 32 blocks with an explicit verdict per language under the approved one-row exception.",
+     "output": {
+      "path": "artifact:enviouswispr/20261121-093530-3181-translation-proof-r2-db0f/vocabulary-review.txt.last",
+      "sha256": "8bddc88db3c6e3c6a338c425a1032c32317075abdbcbb0d8312bd7d08ff267a7"
+     },
+     "disposition": "fr: The queries naturally distinguish the written text from the act of dictating."
+    },
+    {
+     "kind": "french-interface-migration",
+     "method": "#3142 French slice: French titles moved to the String Catalog; three runtime-named places' words reviewed by the GPT + Gemini council (session fr-vocab-x2-2026-11-21)",
+     "date": "2026-11-21",
+     "output": {
+      "path": "council/fr-interface-2026-11-21.md",
+      "sha256": "f646b7d6d32be26e8ec3d54b47978ec950bce11ffcf3cfe4fa7117c40e9e31a7"
+     },
+     "disposition": "French titles removed from shipped blocks; words and phrases kept; three word edits adopted as recorded in reviewed-edits.json"
+    },
+    {
+     "kind": "french-interface-applang",
+     "method": "#3142 French slice: one French-mention word and phrase added to appLanguage.shipped, reviewed by the GPT + Gemini council (session fr-review-v-2026-11-21)",
+     "date": "2026-11-21",
+     "output": {
+      "path": "council/fr-interface-applang-2026-11-21.md",
+      "sha256": "7ba8c70c6d758d33efe5acf15445ed30703aee71e956100a0801dcd75e6d6d0c"
+     },
+     "disposition": "adopted as recorded in reviewed-edits.json"
+    },
+    {
+     "kind": "spanish-interface-applang",
+     "method": "#3142 Spanish slice: one Spanish-mention word and phrase added to appLanguage.shipped, reviewed by the GPT + Gemini council (session es-review-v-2026-11-21)",
+     "date": "2026-11-21",
+     "output": {
+      "path": "council/es-interface-applang-2026-11-21.md",
+      "sha256": "f168e2f15b1336cdf5d90095462093ba6f2bf6d039d1dcea9cac83e9836d3d27"
+     },
+     "disposition": "adopted as recorded in reviewed-edits.json"
+    },
+    {
+     "kind": "addition-content",
+     "id": "silentMicWarning",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with Microphone readiness, Stop recording on silence, the Bluetooth guide, Input device and music during dictation); first draft by scripts/settings-map/draft-vocabulary.sh (#4841)",
+     "date": "2026-11-22",
+     "draft": {
+      "path": "additions/silentMicWarning/draft-silentMicWarning.json",
+      "sha256": "c2d32ee006177906348bcd3cde8997a267089229db57b002ea16eeac0fa822d7"
+     },
+     "prompt": {
+      "path": "additions/silentMicWarning/review-driver.py.txt",
+      "sha256": "a5df55a9f929fd6a56387b65538ce4a21839132c2f2dfab6c2d915c2c1a12169"
+     },
+     "output": {
+      "path": "additions/silentMicWarning/review-fr.txt",
+      "sha256": "151ed5167bba07a1278c234df4fd9245fdfbc9901cdaa9905934fa2970343470"
+     },
+     "disposition": "adopted; the review's title omitted because the interface supplies it"
+    },
+    {
+     "kind": "size-search-edit",
+     "scope": [
+      "aiPolishProvider.egOne"
+     ],
+     "date": "2026-11-22",
+     "method": "#4501: Codex, one fresh isolated session for this language (accuracy against the EG-1 size cards and their reviewed translations, naturalness, word collisions)",
+     "prompt": "edits/4501-eg1-sizes/review-prompt-fr.md",
+     "promptSHA256": "c7ff093c9035fc3aa6e875bb8c86e6a633690dd9f1370b8723f775413f72997d",
+     "output": {
+      "path": "edits/4501-eg1-sizes/review-fr.txt",
+      "sha256": "25c8af6f045d1ae80ad49b153a2076eba2848cb873f97c63af3e90ecf3a21d19"
+     },
+     "disposition": "the reviewer's FINAL LIST adopted as recorded in reviewed-edits.json (existing words and phrases kept; size words and model-name phrases added); no council run, the wording follows the cards' own reviewed translations"
+    },
+    {
+     "kind": "addition-content",
+     "id": "unloadPolishModel",
+     "issue": 3853,
+     "date": "2026-11-22",
+     "method": "One fresh isolated Codex session reviewed this language for accuracy, naturalness and overlap with the speech model's unload setting (the unload polish model row).",
+     "output": {
+      "path": "additions/unloadPolishModel/review-fr.txt",
+      "sha256": "240a2fd9ad25f37ebbdec7bb508391944b527a72f0842d87858b8dc224aa461c"
+     },
+     "disposition": "Adopted as reviewed."
+    },
+    {
+     "kind": "addition-content",
+     "id": "unloadPolishModel.*",
+     "issue": 3853,
+     "date": "2026-11-22",
+     "method": "One fresh isolated Codex session reviewed this language for accuracy, naturalness and overlap with the speech model's unload setting (its seven choices).",
+     "output": {
+      "path": "additions/unloadPolishModel/choices/review-fr.txt",
+      "sha256": "6795dc5b60b9c1ff45bd249164893839e3a7d484c9290917d257041eaeae61b6"
+     },
+     "disposition": "Adopted as reviewed."
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "hi",
-   "contentSHA256": "7d053d8e63f2ea4eeb10a84a08f05031348068ef3f24fe252788255bf4e80ad6",
+   "contentSHA256": "44c53d14db8c0591e9aac84a0a84448e2740b7ab75af2cd7b350f21ba07d551c",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -14757,13 +16032,107 @@
       "sha256": "048bb0db14797c37eba2a39b54c21e0b7be4fa06a480d13fe71a11fd59f14625"
      },
      "disposition": "adopted in full"
+    },
+    {
+     "kind": "addition-content",
+     "id": "fixLearnedWords",
+     "issue": 3294,
+     "method": "One isolated Codex review for this language, with both Dictionary controls and sibling vocabulary",
+     "date": "2026-11-21",
+     "artifact": "artifact:enviouswispr/20261120-232032-3294-dictionary-switches-137b/vocab-review/hi/accepted.json",
+     "disposition": "Applied to the new fixing place and the existing learning place."
+    },
+    {
+     "kind": "addition-content",
+     "id": "automaticDictationPaste",
+     "date": "2026-11-20",
+     "method": "One fresh isolated Codex session reviewed this language for accuracy, naturalness and overlap with Clipboard settings.",
+     "output": {
+      "path": "artifact:enviouswispr/20261120-203708-4479-clipboard-only-53fa/search-language-reviews/review-hi.txt",
+      "sha256": "8b32f2e6a82b36cc3d4784bb22cc61f6397c0e3aa780d4355f17f59a273baeb4"
+     },
+     "disposition": "Adopted as reviewed."
+    },
+    {
+     "kind": "addition-content",
+     "id": "dictationOutputLanguage",
+     "date": "2026-11-21",
+     "method": "One independent Codex review checked all 32 blocks with an explicit verdict per language under the approved one-row exception.",
+     "output": {
+      "path": "artifact:enviouswispr/20261121-093530-3181-translation-proof-r2-db0f/vocabulary-review.txt.last",
+      "sha256": "8bddc88db3c6e3c6a338c425a1032c32317075abdbcbb0d8312bd7d08ff267a7"
+     },
+     "disposition": "hi: The everyday Hindi and familiar loanwords clearly describe the text produced."
+    },
+    {
+     "kind": "french-interface-applang",
+     "method": "#3142 French slice: one French-mention word and phrase added to appLanguage.shipped, reviewed by the GPT + Gemini council (session fr-review-v-2026-11-21)",
+     "date": "2026-11-21",
+     "output": {
+      "path": "council/fr-interface-applang-2026-11-21.md",
+      "sha256": "7ba8c70c6d758d33efe5acf15445ed30703aee71e956100a0801dcd75e6d6d0c"
+     },
+     "disposition": "adopted as recorded in reviewed-edits.json"
+    },
+    {
+     "kind": "spanish-interface-applang",
+     "method": "#3142 Spanish slice: one Spanish-mention word and phrase added to appLanguage.shipped, reviewed by the GPT + Gemini council (session es-review-v-2026-11-21)",
+     "date": "2026-11-21",
+     "output": {
+      "path": "council/es-interface-applang-2026-11-21.md",
+      "sha256": "f168e2f15b1336cdf5d90095462093ba6f2bf6d039d1dcea9cac83e9836d3d27"
+     },
+     "disposition": "adopted as recorded in reviewed-edits.json"
+    },
+    {
+     "kind": "addition-content",
+     "id": "silentMicWarning",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with Microphone readiness, Stop recording on silence, the Bluetooth guide, Input device and music during dictation); first draft by scripts/settings-map/draft-vocabulary.sh (#4841)",
+     "date": "2026-11-22",
+     "draft": {
+      "path": "additions/silentMicWarning/draft-silentMicWarning.json",
+      "sha256": "c2d32ee006177906348bcd3cde8997a267089229db57b002ea16eeac0fa822d7"
+     },
+     "prompt": {
+      "path": "additions/silentMicWarning/review-driver.py.txt",
+      "sha256": "a5df55a9f929fd6a56387b65538ce4a21839132c2f2dfab6c2d915c2c1a12169"
+     },
+     "output": {
+      "path": "additions/silentMicWarning/review-hi.txt",
+      "sha256": "c68b8b6a95f0842a8c374c04b3ccb186dc47ada02d2be5d026dc057335160193"
+     },
+     "disposition": "adopted in full"
+    },
+    {
+     "kind": "addition-content",
+     "id": "unloadPolishModel",
+     "issue": 3853,
+     "date": "2026-11-22",
+     "method": "One fresh isolated Codex session reviewed this language for accuracy, naturalness and overlap with the speech model's unload setting (the unload polish model row).",
+     "output": {
+      "path": "additions/unloadPolishModel/review-hi.txt",
+      "sha256": "73c6ba5d3b07cb4a6d96c686fea74bf7f19915bbd21c20f9404ae108562f0e3f"
+     },
+     "disposition": "Adopted as reviewed."
+    },
+    {
+     "kind": "addition-content",
+     "id": "unloadPolishModel.*",
+     "issue": 3853,
+     "date": "2026-11-22",
+     "method": "One fresh isolated Codex session reviewed this language for accuracy, naturalness and overlap with the speech model's unload setting (its seven choices).",
+     "output": {
+      "path": "additions/unloadPolishModel/choices/review-hi.txt",
+      "sha256": "fe47aaf0db849eee7e38482e5fbf8971e36072c34ce500ff84fb91673fb93546"
+     },
+     "disposition": "Adopted as reviewed."
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "hr",
-   "contentSHA256": "f488dcbb65c9c6e8ca98258d44f22154d47e1bb753ff2ba9982b7b71786d84e5",
+   "contentSHA256": "2a7fc4143dae5dd8d3adbcc8759901dcb3d2759555b52178935c2742907c8f87",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -15923,13 +17292,107 @@
       "sha256": "f3ae21fb5d38f7afb671edaaa6b447b4f1c307f4bb203052ac9e776e4a20147e"
      },
      "disposition": "adopted in full"
+    },
+    {
+     "kind": "addition-content",
+     "id": "fixLearnedWords",
+     "issue": 3294,
+     "method": "One isolated Codex review for this language, with both Dictionary controls and sibling vocabulary",
+     "date": "2026-11-21",
+     "artifact": "artifact:enviouswispr/20261120-232032-3294-dictionary-switches-137b/vocab-review/hr/accepted.json",
+     "disposition": "Applied to the new fixing place and the existing learning place."
+    },
+    {
+     "kind": "addition-content",
+     "id": "automaticDictationPaste",
+     "date": "2026-11-20",
+     "method": "One fresh isolated Codex session reviewed this language for accuracy, naturalness and overlap with Clipboard settings.",
+     "output": {
+      "path": "artifact:enviouswispr/20261120-203708-4479-clipboard-only-53fa/search-language-reviews/review-hr.txt",
+      "sha256": "92835edb20970b43d83e86780a6a77ac0424367adebd59ec751cada55a11fa0b"
+     },
+     "disposition": "Adopted as reviewed."
+    },
+    {
+     "kind": "addition-content",
+     "id": "dictationOutputLanguage",
+     "date": "2026-11-21",
+     "method": "One independent Codex review checked all 32 blocks with an explicit verdict per language under the approved one-row exception.",
+     "output": {
+      "path": "artifact:enviouswispr/20261121-093530-3181-translation-proof-r2-db0f/vocabulary-review.txt.last",
+      "sha256": "8bddc88db3c6e3c6a338c425a1032c32317075abdbcbb0d8312bd7d08ff267a7"
+     },
+     "disposition": "hr: Both queries naturally describe changing the language of the dictated text."
+    },
+    {
+     "kind": "french-interface-applang",
+     "method": "#3142 French slice: one French-mention word and phrase added to appLanguage.shipped, reviewed by the GPT + Gemini council (session fr-review-v-2026-11-21)",
+     "date": "2026-11-21",
+     "output": {
+      "path": "council/fr-interface-applang-2026-11-21.md",
+      "sha256": "7ba8c70c6d758d33efe5acf15445ed30703aee71e956100a0801dcd75e6d6d0c"
+     },
+     "disposition": "adopted as recorded in reviewed-edits.json"
+    },
+    {
+     "kind": "spanish-interface-applang",
+     "method": "#3142 Spanish slice: one Spanish-mention word and phrase added to appLanguage.shipped, reviewed by the GPT + Gemini council (session es-review-v-2026-11-21)",
+     "date": "2026-11-21",
+     "output": {
+      "path": "council/es-interface-applang-2026-11-21.md",
+      "sha256": "f168e2f15b1336cdf5d90095462093ba6f2bf6d039d1dcea9cac83e9836d3d27"
+     },
+     "disposition": "adopted as recorded in reviewed-edits.json"
+    },
+    {
+     "kind": "addition-content",
+     "id": "silentMicWarning",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with Microphone readiness, Stop recording on silence, the Bluetooth guide, Input device and music during dictation); first draft by scripts/settings-map/draft-vocabulary.sh (#4841)",
+     "date": "2026-11-22",
+     "draft": {
+      "path": "additions/silentMicWarning/draft-silentMicWarning.json",
+      "sha256": "c2d32ee006177906348bcd3cde8997a267089229db57b002ea16eeac0fa822d7"
+     },
+     "prompt": {
+      "path": "additions/silentMicWarning/review-driver.py.txt",
+      "sha256": "a5df55a9f929fd6a56387b65538ce4a21839132c2f2dfab6c2d915c2c1a12169"
+     },
+     "output": {
+      "path": "additions/silentMicWarning/review-hr.txt",
+      "sha256": "e7b8392c64267bd0d0aae1e7dbbb100cafd92b5ac23f60ad5b42988bb3374e65"
+     },
+     "disposition": "adopted in full"
+    },
+    {
+     "kind": "addition-content",
+     "id": "unloadPolishModel",
+     "issue": 3853,
+     "date": "2026-11-22",
+     "method": "One fresh isolated Codex session reviewed this language for accuracy, naturalness and overlap with the speech model's unload setting (the unload polish model row).",
+     "output": {
+      "path": "additions/unloadPolishModel/review-hr.txt",
+      "sha256": "a35e921b55049712f7ed11cd242dbc4800dfec04cd5874394efb91bc41905ceb"
+     },
+     "disposition": "Adopted as reviewed."
+    },
+    {
+     "kind": "addition-content",
+     "id": "unloadPolishModel.*",
+     "issue": 3853,
+     "date": "2026-11-22",
+     "method": "One fresh isolated Codex session reviewed this language for accuracy, naturalness and overlap with the speech model's unload setting (its seven choices).",
+     "output": {
+      "path": "additions/unloadPolishModel/choices/review-hr.txt",
+      "sha256": "8e0107c958ffe67560bd5660232a8f398d88d497f63e7cb8bae38126e566b9c8"
+     },
+     "disposition": "Adopted as reviewed."
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "hu",
-   "contentSHA256": "8eb2a03fb9ea2db96794152abb05f80ba159e6883500d99a1442d00c94315961",
+   "contentSHA256": "23113b5061d29a1cd9ecf3ee356d85b6cc6182b35d57f257c44a0f192204dbd1",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -17089,13 +18552,107 @@
       "sha256": "dd2ddc32aa1c9236be3536d6fca2584b4ba9a5ef54487e3cfbff3cd9ad62336c"
      },
      "disposition": "adopted in full"
+    },
+    {
+     "kind": "addition-content",
+     "id": "fixLearnedWords",
+     "issue": 3294,
+     "method": "One isolated Codex review for this language, with both Dictionary controls and sibling vocabulary",
+     "date": "2026-11-21",
+     "artifact": "artifact:enviouswispr/20261120-232032-3294-dictionary-switches-137b/vocab-review/hu/accepted.json",
+     "disposition": "Applied to the new fixing place and the existing learning place."
+    },
+    {
+     "kind": "addition-content",
+     "id": "automaticDictationPaste",
+     "date": "2026-11-20",
+     "method": "One fresh isolated Codex session reviewed this language for accuracy, naturalness and overlap with Clipboard settings.",
+     "output": {
+      "path": "artifact:enviouswispr/20261120-203708-4479-clipboard-only-53fa/search-language-reviews/review-hu.txt",
+      "sha256": "55a2db4432768a66733ffd7c9e69fde98bfe14330f52837ab53c39e5567e8d2b"
+     },
+     "disposition": "Adopted as reviewed."
+    },
+    {
+     "kind": "addition-content",
+     "id": "dictationOutputLanguage",
+     "date": "2026-11-21",
+     "method": "One independent Codex review checked all 32 blocks with an explicit verdict per language under the approved one-row exception.",
+     "output": {
+      "path": "artifact:enviouswispr/20261121-093530-3181-translation-proof-r2-db0f/vocabulary-review.txt.last",
+      "sha256": "8bddc88db3c6e3c6a338c425a1032c32317075abdbcbb0d8312bd7d08ff267a7"
+     },
+     "disposition": "hu: «Nyelvet a diktált szövegnél» sounds awkward."
+    },
+    {
+     "kind": "french-interface-applang",
+     "method": "#3142 French slice: one French-mention word and phrase added to appLanguage.shipped, reviewed by the GPT + Gemini council (session fr-review-v-2026-11-21)",
+     "date": "2026-11-21",
+     "output": {
+      "path": "council/fr-interface-applang-2026-11-21.md",
+      "sha256": "7ba8c70c6d758d33efe5acf15445ed30703aee71e956100a0801dcd75e6d6d0c"
+     },
+     "disposition": "adopted as recorded in reviewed-edits.json"
+    },
+    {
+     "kind": "spanish-interface-applang",
+     "method": "#3142 Spanish slice: one Spanish-mention word and phrase added to appLanguage.shipped, reviewed by the GPT + Gemini council (session es-review-v-2026-11-21)",
+     "date": "2026-11-21",
+     "output": {
+      "path": "council/es-interface-applang-2026-11-21.md",
+      "sha256": "f168e2f15b1336cdf5d90095462093ba6f2bf6d039d1dcea9cac83e9836d3d27"
+     },
+     "disposition": "adopted as recorded in reviewed-edits.json"
+    },
+    {
+     "kind": "addition-content",
+     "id": "silentMicWarning",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with Microphone readiness, Stop recording on silence, the Bluetooth guide, Input device and music during dictation); first draft by scripts/settings-map/draft-vocabulary.sh (#4841)",
+     "date": "2026-11-22",
+     "draft": {
+      "path": "additions/silentMicWarning/draft-silentMicWarning.json",
+      "sha256": "c2d32ee006177906348bcd3cde8997a267089229db57b002ea16eeac0fa822d7"
+     },
+     "prompt": {
+      "path": "additions/silentMicWarning/review-driver.py.txt",
+      "sha256": "a5df55a9f929fd6a56387b65538ce4a21839132c2f2dfab6c2d915c2c1a12169"
+     },
+     "output": {
+      "path": "additions/silentMicWarning/review-hu.txt",
+      "sha256": "2277e17f71a56ccb962e48cc8029a8e5692f11ccaa6e8737143f395c3eb76a9c"
+     },
+     "disposition": "adopted in full"
+    },
+    {
+     "kind": "addition-content",
+     "id": "unloadPolishModel",
+     "issue": 3853,
+     "date": "2026-11-22",
+     "method": "One fresh isolated Codex session reviewed this language for accuracy, naturalness and overlap with the speech model's unload setting (the unload polish model row).",
+     "output": {
+      "path": "additions/unloadPolishModel/review-hu.txt",
+      "sha256": "be9b6db935f091c175c45e047392c677b7beccd4b414faf0b78afe7561280796"
+     },
+     "disposition": "Adopted as reviewed."
+    },
+    {
+     "kind": "addition-content",
+     "id": "unloadPolishModel.*",
+     "issue": 3853,
+     "date": "2026-11-22",
+     "method": "One fresh isolated Codex session reviewed this language for accuracy, naturalness and overlap with the speech model's unload setting (its seven choices).",
+     "output": {
+      "path": "additions/unloadPolishModel/choices/review-hu.txt",
+      "sha256": "9e6c287fe7b70d9d13e849046f462a4796337f4685f690e70dbb50999b5d73bd"
+     },
+     "disposition": "Adopted as reviewed."
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "it",
-   "contentSHA256": "8a6ecf6ed37738377c6a8e79ac35bb3cfafd9cada4163a2d6796e0d59e5f0d2f",
+   "contentSHA256": "f15a3e75de9bc0844f15275846495b1511f5bf5e1a54d31b324a6fa9fcb1cea2",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -18264,13 +19821,107 @@
       "sha256": "b0cfc66bf4b6406808ee7955f14b1571741140c25e100f476f1afe4eeefc1010"
      },
      "disposition": "adopted in full"
+    },
+    {
+     "kind": "addition-content",
+     "id": "fixLearnedWords",
+     "issue": 3294,
+     "method": "One isolated Codex review for this language, with both Dictionary controls and sibling vocabulary",
+     "date": "2026-11-21",
+     "artifact": "artifact:enviouswispr/20261120-232032-3294-dictionary-switches-137b/vocab-review/it/accepted.json",
+     "disposition": "Applied to the new fixing place and the existing learning place."
+    },
+    {
+     "kind": "addition-content",
+     "id": "automaticDictationPaste",
+     "date": "2026-11-20",
+     "method": "One fresh isolated Codex session reviewed this language for accuracy, naturalness and overlap with Clipboard settings.",
+     "output": {
+      "path": "artifact:enviouswispr/20261120-203708-4479-clipboard-only-53fa/search-language-reviews/review-it.txt",
+      "sha256": "56bc09cb52023309e53520423516bb941158f405ec0c759d7f4e728692c18950"
+     },
+     "disposition": "Adopted as reviewed."
+    },
+    {
+     "kind": "addition-content",
+     "id": "dictationOutputLanguage",
+     "date": "2026-11-21",
+     "method": "One independent Codex review checked all 32 blocks with an explicit verdict per language under the approved one-row exception.",
+     "output": {
+      "path": "artifact:enviouswispr/20261121-093530-3181-translation-proof-r2-db0f/vocabulary-review.txt.last",
+      "sha256": "8bddc88db3c6e3c6a338c425a1032c32317075abdbcbb0d8312bd7d08ff267a7"
+     },
+     "disposition": "it: The target-language terms and conversational queries fit the written result."
+    },
+    {
+     "kind": "french-interface-applang",
+     "method": "#3142 French slice: one French-mention word and phrase added to appLanguage.shipped, reviewed by the GPT + Gemini council (session fr-review-v-2026-11-21)",
+     "date": "2026-11-21",
+     "output": {
+      "path": "council/fr-interface-applang-2026-11-21.md",
+      "sha256": "7ba8c70c6d758d33efe5acf15445ed30703aee71e956100a0801dcd75e6d6d0c"
+     },
+     "disposition": "adopted as recorded in reviewed-edits.json"
+    },
+    {
+     "kind": "spanish-interface-applang",
+     "method": "#3142 Spanish slice: one Spanish-mention word and phrase added to appLanguage.shipped, reviewed by the GPT + Gemini council (session es-review-v-2026-11-21)",
+     "date": "2026-11-21",
+     "output": {
+      "path": "council/es-interface-applang-2026-11-21.md",
+      "sha256": "f168e2f15b1336cdf5d90095462093ba6f2bf6d039d1dcea9cac83e9836d3d27"
+     },
+     "disposition": "adopted as recorded in reviewed-edits.json"
+    },
+    {
+     "kind": "addition-content",
+     "id": "silentMicWarning",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with Microphone readiness, Stop recording on silence, the Bluetooth guide, Input device and music during dictation); first draft by scripts/settings-map/draft-vocabulary.sh (#4841)",
+     "date": "2026-11-22",
+     "draft": {
+      "path": "additions/silentMicWarning/draft-silentMicWarning.json",
+      "sha256": "c2d32ee006177906348bcd3cde8997a267089229db57b002ea16eeac0fa822d7"
+     },
+     "prompt": {
+      "path": "additions/silentMicWarning/review-driver.py.txt",
+      "sha256": "a5df55a9f929fd6a56387b65538ce4a21839132c2f2dfab6c2d915c2c1a12169"
+     },
+     "output": {
+      "path": "additions/silentMicWarning/review-it.txt",
+      "sha256": "90aa97e6cc6c1d5cb516d8e27ed906d768139dc80032663e3711ced5164636e0"
+     },
+     "disposition": "adopted in full"
+    },
+    {
+     "kind": "addition-content",
+     "id": "unloadPolishModel",
+     "issue": 3853,
+     "date": "2026-11-22",
+     "method": "One fresh isolated Codex session reviewed this language for accuracy, naturalness and overlap with the speech model's unload setting (the unload polish model row).",
+     "output": {
+      "path": "additions/unloadPolishModel/review-it.txt",
+      "sha256": "4be93544762512b6493cb8397ce3745f7c16ec7c1aa1c90d55fb384b1526e2f7"
+     },
+     "disposition": "Adopted as reviewed."
+    },
+    {
+     "kind": "addition-content",
+     "id": "unloadPolishModel.*",
+     "issue": 3853,
+     "date": "2026-11-22",
+     "method": "One fresh isolated Codex session reviewed this language for accuracy, naturalness and overlap with the speech model's unload setting (its seven choices).",
+     "output": {
+      "path": "additions/unloadPolishModel/choices/review-it.txt",
+      "sha256": "8f88489f581878a6c8e685f5179bd17cfa2397bb241bafea2849820b4e9ac507"
+     },
+     "disposition": "Adopted as reviewed."
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "ja",
-   "contentSHA256": "9201d2df79ad1a65990df2c00740a1f06a06e1aa8176dfa7d2f20ab5c2b8297a",
+   "contentSHA256": "2f06c35e850aa089f629972842416ad69bdcecc4874f3c166a4ac2709993f1d5",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -19430,13 +21081,107 @@
       "sha256": "ce357e0982fd088ca51090005c64b23f1b9f612d24e08e6de5e8b53a0e0c8d08"
      },
      "disposition": "adopted in full"
+    },
+    {
+     "kind": "addition-content",
+     "id": "fixLearnedWords",
+     "issue": 3294,
+     "method": "One isolated Codex review for this language, with both Dictionary controls and sibling vocabulary",
+     "date": "2026-11-21",
+     "artifact": "artifact:enviouswispr/20261120-232032-3294-dictionary-switches-137b/vocab-review/ja/accepted.json",
+     "disposition": "Applied to the new fixing place and the existing learning place."
+    },
+    {
+     "kind": "addition-content",
+     "id": "automaticDictationPaste",
+     "date": "2026-11-20",
+     "method": "One fresh isolated Codex session reviewed this language for accuracy, naturalness and overlap with Clipboard settings.",
+     "output": {
+      "path": "artifact:enviouswispr/20261120-203708-4479-clipboard-only-53fa/search-language-reviews/review-ja.txt",
+      "sha256": "3c39636b39b54bedaec74060d6aa5dc6bee0f117f91542017eade9c5008be0c1"
+     },
+     "disposition": "Adopted as reviewed."
+    },
+    {
+     "kind": "addition-content",
+     "id": "dictationOutputLanguage",
+     "date": "2026-11-21",
+     "method": "One independent Codex review checked all 32 blocks with an explicit verdict per language under the approved one-row exception.",
+     "output": {
+      "path": "artifact:enviouswispr/20261121-093530-3181-translation-proof-r2-db0f/vocabulary-review.txt.last",
+      "sha256": "8bddc88db3c6e3c6a338c425a1032c32317075abdbcbb0d8312bd7d08ff267a7"
+     },
+     "disposition": "ja: 「出力言語」 and the queries clearly point to what gets written."
+    },
+    {
+     "kind": "french-interface-applang",
+     "method": "#3142 French slice: one French-mention word and phrase added to appLanguage.shipped, reviewed by the GPT + Gemini council (session fr-review-v-2026-11-21)",
+     "date": "2026-11-21",
+     "output": {
+      "path": "council/fr-interface-applang-2026-11-21.md",
+      "sha256": "7ba8c70c6d758d33efe5acf15445ed30703aee71e956100a0801dcd75e6d6d0c"
+     },
+     "disposition": "adopted as recorded in reviewed-edits.json"
+    },
+    {
+     "kind": "spanish-interface-applang",
+     "method": "#3142 Spanish slice: one Spanish-mention word and phrase added to appLanguage.shipped, reviewed by the GPT + Gemini council (session es-review-v-2026-11-21)",
+     "date": "2026-11-21",
+     "output": {
+      "path": "council/es-interface-applang-2026-11-21.md",
+      "sha256": "f168e2f15b1336cdf5d90095462093ba6f2bf6d039d1dcea9cac83e9836d3d27"
+     },
+     "disposition": "adopted as recorded in reviewed-edits.json"
+    },
+    {
+     "kind": "addition-content",
+     "id": "silentMicWarning",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with Microphone readiness, Stop recording on silence, the Bluetooth guide, Input device and music during dictation); first draft by scripts/settings-map/draft-vocabulary.sh (#4841)",
+     "date": "2026-11-22",
+     "draft": {
+      "path": "additions/silentMicWarning/draft-silentMicWarning.json",
+      "sha256": "c2d32ee006177906348bcd3cde8997a267089229db57b002ea16eeac0fa822d7"
+     },
+     "prompt": {
+      "path": "additions/silentMicWarning/review-driver.py.txt",
+      "sha256": "a5df55a9f929fd6a56387b65538ce4a21839132c2f2dfab6c2d915c2c1a12169"
+     },
+     "output": {
+      "path": "additions/silentMicWarning/review-ja.txt",
+      "sha256": "86fc3cbec760abef29f74d1f80c9a432a261262d9fe764d774ba3fd3ebe565c0"
+     },
+     "disposition": "adopted in full"
+    },
+    {
+     "kind": "addition-content",
+     "id": "unloadPolishModel",
+     "issue": 3853,
+     "date": "2026-11-22",
+     "method": "One fresh isolated Codex session reviewed this language for accuracy, naturalness and overlap with the speech model's unload setting (the unload polish model row).",
+     "output": {
+      "path": "additions/unloadPolishModel/review-ja.txt",
+      "sha256": "3f0ee4d203798d206ee499cb02bfddcd7f36aab08a7399f643cf21107acabe83"
+     },
+     "disposition": "Adopted as reviewed."
+    },
+    {
+     "kind": "addition-content",
+     "id": "unloadPolishModel.*",
+     "issue": 3853,
+     "date": "2026-11-22",
+     "method": "One fresh isolated Codex session reviewed this language for accuracy, naturalness and overlap with the speech model's unload setting (its seven choices).",
+     "output": {
+      "path": "additions/unloadPolishModel/choices/review-ja.txt",
+      "sha256": "a2d702f31d703b6a8ba8c66949bd3b8b72df812cd5309e1b1e4f5880cf83edb8"
+     },
+     "disposition": "Adopted as reviewed."
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "ko",
-   "contentSHA256": "2daa942896a1945d9488bcf766cd63e103b3076beabc168de86525f6dd9b3ca6",
+   "contentSHA256": "a8e0e175cd673c035ca09b20e20504a6fa234c0f681df545e2e765835bc8462e",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -20596,13 +22341,107 @@
       "sha256": "a7fa7be0baa9253ac0a06d7107396a35634abe1fceb39675d8e7c83e2f1f9531"
      },
      "disposition": "adopted in full"
+    },
+    {
+     "kind": "addition-content",
+     "id": "fixLearnedWords",
+     "issue": 3294,
+     "method": "One isolated Codex review for this language, with both Dictionary controls and sibling vocabulary",
+     "date": "2026-11-21",
+     "artifact": "artifact:enviouswispr/20261120-232032-3294-dictionary-switches-137b/vocab-review/ko/accepted.json",
+     "disposition": "Applied to the new fixing place and the existing learning place."
+    },
+    {
+     "kind": "addition-content",
+     "id": "automaticDictationPaste",
+     "date": "2026-11-20",
+     "method": "One fresh isolated Codex session reviewed this language for accuracy, naturalness and overlap with Clipboard settings.",
+     "output": {
+      "path": "artifact:enviouswispr/20261120-203708-4479-clipboard-only-53fa/search-language-reviews/review-ko.txt",
+      "sha256": "61882f0120b0e74c85814e3e7753b9dc612176f78076e923110f40503cde64a7"
+     },
+     "disposition": "Adopted as reviewed."
+    },
+    {
+     "kind": "addition-content",
+     "id": "dictationOutputLanguage",
+     "date": "2026-11-21",
+     "method": "One independent Codex review checked all 32 blocks with an explicit verdict per language under the approved one-row exception.",
+     "output": {
+      "path": "artifact:enviouswispr/20261121-093530-3181-translation-proof-r2-db0f/vocabulary-review.txt.last",
+      "sha256": "8bddc88db3c6e3c6a338c425a1032c32317075abdbcbb0d8312bd7d08ff267a7"
+     },
+     "disposition": "ko: The output title and both queries clearly describe the resulting text."
+    },
+    {
+     "kind": "french-interface-applang",
+     "method": "#3142 French slice: one French-mention word and phrase added to appLanguage.shipped, reviewed by the GPT + Gemini council (session fr-review-v-2026-11-21)",
+     "date": "2026-11-21",
+     "output": {
+      "path": "council/fr-interface-applang-2026-11-21.md",
+      "sha256": "7ba8c70c6d758d33efe5acf15445ed30703aee71e956100a0801dcd75e6d6d0c"
+     },
+     "disposition": "adopted as recorded in reviewed-edits.json"
+    },
+    {
+     "kind": "spanish-interface-applang",
+     "method": "#3142 Spanish slice: one Spanish-mention word and phrase added to appLanguage.shipped, reviewed by the GPT + Gemini council (session es-review-v-2026-11-21)",
+     "date": "2026-11-21",
+     "output": {
+      "path": "council/es-interface-applang-2026-11-21.md",
+      "sha256": "f168e2f15b1336cdf5d90095462093ba6f2bf6d039d1dcea9cac83e9836d3d27"
+     },
+     "disposition": "adopted as recorded in reviewed-edits.json"
+    },
+    {
+     "kind": "addition-content",
+     "id": "silentMicWarning",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with Microphone readiness, Stop recording on silence, the Bluetooth guide, Input device and music during dictation); first draft by scripts/settings-map/draft-vocabulary.sh (#4841)",
+     "date": "2026-11-22",
+     "draft": {
+      "path": "additions/silentMicWarning/draft-silentMicWarning.json",
+      "sha256": "c2d32ee006177906348bcd3cde8997a267089229db57b002ea16eeac0fa822d7"
+     },
+     "prompt": {
+      "path": "additions/silentMicWarning/review-driver.py.txt",
+      "sha256": "a5df55a9f929fd6a56387b65538ce4a21839132c2f2dfab6c2d915c2c1a12169"
+     },
+     "output": {
+      "path": "additions/silentMicWarning/review-ko.txt",
+      "sha256": "2f4d85f23b077e484096ea13120025f13667b439814d85d94dda2d4d1a8b3f25"
+     },
+     "disposition": "adopted in full"
+    },
+    {
+     "kind": "addition-content",
+     "id": "unloadPolishModel",
+     "issue": 3853,
+     "date": "2026-11-22",
+     "method": "One fresh isolated Codex session reviewed this language for accuracy, naturalness and overlap with the speech model's unload setting (the unload polish model row).",
+     "output": {
+      "path": "additions/unloadPolishModel/review-ko.txt",
+      "sha256": "7d3fbf546865f422eb502a63504054af75d090dc9af5f7ccf325f27320ddca9c"
+     },
+     "disposition": "Adopted as reviewed."
+    },
+    {
+     "kind": "addition-content",
+     "id": "unloadPolishModel.*",
+     "issue": 3853,
+     "date": "2026-11-22",
+     "method": "One fresh isolated Codex session reviewed this language for accuracy, naturalness and overlap with the speech model's unload setting (its seven choices).",
+     "output": {
+      "path": "additions/unloadPolishModel/choices/review-ko.txt",
+      "sha256": "e52d4534fe2fe6c964a33fdb267d463ad8a76727b2014a36c107acb1f462159f"
+     },
+     "disposition": "Adopted as reviewed."
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "lt",
-   "contentSHA256": "351ff485245c965e80ce7eb036105895b867575ecc84feec5558813c921cca4e",
+   "contentSHA256": "37327aa1716b044eba4cd88cba640da857b529de4f05b659b0a0702ed798e49c",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -21771,13 +23610,107 @@
       "sha256": "825e4042846d46ce06310c2383a8cef91876ceaf84e7d818c109833e5338640f"
      },
      "disposition": "adopted in full"
+    },
+    {
+     "kind": "addition-content",
+     "id": "fixLearnedWords",
+     "issue": 3294,
+     "method": "One isolated Codex review for this language, with both Dictionary controls and sibling vocabulary",
+     "date": "2026-11-21",
+     "artifact": "artifact:enviouswispr/20261120-232032-3294-dictionary-switches-137b/vocab-review/lt/accepted.json",
+     "disposition": "Applied to the new fixing place and the existing learning place."
+    },
+    {
+     "kind": "addition-content",
+     "id": "automaticDictationPaste",
+     "date": "2026-11-20",
+     "method": "One fresh isolated Codex session reviewed this language for accuracy, naturalness and overlap with Clipboard settings.",
+     "output": {
+      "path": "artifact:enviouswispr/20261120-203708-4479-clipboard-only-53fa/search-language-reviews/review-lt.txt",
+      "sha256": "922f2a7456914d1326311a1255b6fd492334130592491f876c597d5fd39bf6c0"
+     },
+     "disposition": "Adopted as reviewed."
+    },
+    {
+     "kind": "addition-content",
+     "id": "dictationOutputLanguage",
+     "date": "2026-11-21",
+     "method": "One independent Codex review checked all 32 blocks with an explicit verdict per language under the approved one-row exception.",
+     "output": {
+      "path": "artifact:enviouswispr/20261121-093530-3181-translation-proof-r2-db0f/vocabulary-review.txt.last",
+      "sha256": "8bddc88db3c6e3c6a338c425a1032c32317075abdbcbb0d8312bd7d08ff267a7"
+     },
+     "disposition": "lt: The title and queries naturally refer to the text after dictation."
+    },
+    {
+     "kind": "french-interface-applang",
+     "method": "#3142 French slice: one French-mention word and phrase added to appLanguage.shipped, reviewed by the GPT + Gemini council (session fr-review-v-2026-11-21)",
+     "date": "2026-11-21",
+     "output": {
+      "path": "council/fr-interface-applang-2026-11-21.md",
+      "sha256": "7ba8c70c6d758d33efe5acf15445ed30703aee71e956100a0801dcd75e6d6d0c"
+     },
+     "disposition": "adopted as recorded in reviewed-edits.json"
+    },
+    {
+     "kind": "spanish-interface-applang",
+     "method": "#3142 Spanish slice: one Spanish-mention word and phrase added to appLanguage.shipped, reviewed by the GPT + Gemini council (session es-review-v-2026-11-21)",
+     "date": "2026-11-21",
+     "output": {
+      "path": "council/es-interface-applang-2026-11-21.md",
+      "sha256": "f168e2f15b1336cdf5d90095462093ba6f2bf6d039d1dcea9cac83e9836d3d27"
+     },
+     "disposition": "adopted as recorded in reviewed-edits.json"
+    },
+    {
+     "kind": "addition-content",
+     "id": "silentMicWarning",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with Microphone readiness, Stop recording on silence, the Bluetooth guide, Input device and music during dictation); first draft by scripts/settings-map/draft-vocabulary.sh (#4841)",
+     "date": "2026-11-22",
+     "draft": {
+      "path": "additions/silentMicWarning/draft-silentMicWarning.json",
+      "sha256": "c2d32ee006177906348bcd3cde8997a267089229db57b002ea16eeac0fa822d7"
+     },
+     "prompt": {
+      "path": "additions/silentMicWarning/review-driver.py.txt",
+      "sha256": "a5df55a9f929fd6a56387b65538ce4a21839132c2f2dfab6c2d915c2c1a12169"
+     },
+     "output": {
+      "path": "additions/silentMicWarning/review-lt.txt",
+      "sha256": "5546da93ad4ab5485e2bbd3982c5e67f8ee70d59fdbc358a7f34eb5e8a28dd83"
+     },
+     "disposition": "adopted in full"
+    },
+    {
+     "kind": "addition-content",
+     "id": "unloadPolishModel",
+     "issue": 3853,
+     "date": "2026-11-22",
+     "method": "One fresh isolated Codex session reviewed this language for accuracy, naturalness and overlap with the speech model's unload setting (the unload polish model row).",
+     "output": {
+      "path": "additions/unloadPolishModel/review-lt.txt",
+      "sha256": "e1b7a4f6820d7b78885231ec6fce10c2851499709ae60f6b4c78fa3e0242d08f"
+     },
+     "disposition": "Adopted as reviewed."
+    },
+    {
+     "kind": "addition-content",
+     "id": "unloadPolishModel.*",
+     "issue": 3853,
+     "date": "2026-11-22",
+     "method": "One fresh isolated Codex session reviewed this language for accuracy, naturalness and overlap with the speech model's unload setting (its seven choices).",
+     "output": {
+      "path": "additions/unloadPolishModel/choices/review-lt.txt",
+      "sha256": "73a18f6a5d963c74033f99e5f145fdfaa660733a6146a0c91ea41b1345635c82"
+     },
+     "disposition": "Adopted as reviewed."
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "lv",
-   "contentSHA256": "5923bd6c06721ead4d1847368aa1aa52e42cbde27e2331c4990023cf85042af3",
+   "contentSHA256": "a037e289efd8534a3cc121eadfc8e95d2e06d0762be61ae50b9f1851022be167",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -22937,13 +24870,107 @@
       "sha256": "ed756ea1c8e9e11c938ae8b294440fea81c07c1f505d7ca61ec59d466420b558"
      },
      "disposition": "adopted in full"
+    },
+    {
+     "kind": "addition-content",
+     "id": "fixLearnedWords",
+     "issue": 3294,
+     "method": "One isolated Codex review for this language, with both Dictionary controls and sibling vocabulary",
+     "date": "2026-11-21",
+     "artifact": "artifact:enviouswispr/20261120-232032-3294-dictionary-switches-137b/vocab-review/lv/accepted.json",
+     "disposition": "Applied to the new fixing place and the existing learning place."
+    },
+    {
+     "kind": "addition-content",
+     "id": "automaticDictationPaste",
+     "date": "2026-11-20",
+     "method": "One fresh isolated Codex session reviewed this language for accuracy, naturalness and overlap with Clipboard settings.",
+     "output": {
+      "path": "artifact:enviouswispr/20261120-203708-4479-clipboard-only-53fa/search-language-reviews/review-lv.txt",
+      "sha256": "69dbaa1b24ab3ad02360babf03e41f70b120182084cfde37d7715c909b0d808e"
+     },
+     "disposition": "Adopted as reviewed."
+    },
+    {
+     "kind": "addition-content",
+     "id": "dictationOutputLanguage",
+     "date": "2026-11-21",
+     "method": "One independent Codex review checked all 32 blocks with an explicit verdict per language under the approved one-row exception.",
+     "output": {
+      "path": "artifact:enviouswispr/20261121-093530-3181-translation-proof-r2-db0f/vocabulary-review.txt.last",
+      "sha256": "8bddc88db3c6e3c6a338c425a1032c32317075abdbcbb0d8312bd7d08ff267a7"
+     },
+     "disposition": "lv: «Izvades valoda» and the queries clearly point to written output."
+    },
+    {
+     "kind": "french-interface-applang",
+     "method": "#3142 French slice: one French-mention word and phrase added to appLanguage.shipped, reviewed by the GPT + Gemini council (session fr-review-v-2026-11-21)",
+     "date": "2026-11-21",
+     "output": {
+      "path": "council/fr-interface-applang-2026-11-21.md",
+      "sha256": "7ba8c70c6d758d33efe5acf15445ed30703aee71e956100a0801dcd75e6d6d0c"
+     },
+     "disposition": "adopted as recorded in reviewed-edits.json"
+    },
+    {
+     "kind": "spanish-interface-applang",
+     "method": "#3142 Spanish slice: one Spanish-mention word and phrase added to appLanguage.shipped, reviewed by the GPT + Gemini council (session es-review-v-2026-11-21)",
+     "date": "2026-11-21",
+     "output": {
+      "path": "council/es-interface-applang-2026-11-21.md",
+      "sha256": "f168e2f15b1336cdf5d90095462093ba6f2bf6d039d1dcea9cac83e9836d3d27"
+     },
+     "disposition": "adopted as recorded in reviewed-edits.json"
+    },
+    {
+     "kind": "addition-content",
+     "id": "silentMicWarning",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with Microphone readiness, Stop recording on silence, the Bluetooth guide, Input device and music during dictation); first draft by scripts/settings-map/draft-vocabulary.sh (#4841)",
+     "date": "2026-11-22",
+     "draft": {
+      "path": "additions/silentMicWarning/draft-silentMicWarning.json",
+      "sha256": "c2d32ee006177906348bcd3cde8997a267089229db57b002ea16eeac0fa822d7"
+     },
+     "prompt": {
+      "path": "additions/silentMicWarning/review-driver.py.txt",
+      "sha256": "a5df55a9f929fd6a56387b65538ce4a21839132c2f2dfab6c2d915c2c1a12169"
+     },
+     "output": {
+      "path": "additions/silentMicWarning/review-lv.txt",
+      "sha256": "4f6d8e0cfb9d19c8622522916655ebddcfd8adee7e093284803a1cecfab6ae37"
+     },
+     "disposition": "adopted in full"
+    },
+    {
+     "kind": "addition-content",
+     "id": "unloadPolishModel",
+     "issue": 3853,
+     "date": "2026-11-22",
+     "method": "One fresh isolated Codex session reviewed this language for accuracy, naturalness and overlap with the speech model's unload setting (the unload polish model row).",
+     "output": {
+      "path": "additions/unloadPolishModel/review-lv.txt",
+      "sha256": "53de128fc9ab7aba33664ec1172d8841fba70a957af9c48e380365359d0b6252"
+     },
+     "disposition": "Adopted as reviewed."
+    },
+    {
+     "kind": "addition-content",
+     "id": "unloadPolishModel.*",
+     "issue": 3853,
+     "date": "2026-11-22",
+     "method": "One fresh isolated Codex session reviewed this language for accuracy, naturalness and overlap with the speech model's unload setting (its seven choices).",
+     "output": {
+      "path": "additions/unloadPolishModel/choices/review-lv.txt",
+      "sha256": "f06af6f1a3dd10a71d7ca69365745dbefb4eb788e546eb42a7746e1e473dc586"
+     },
+     "disposition": "Adopted as reviewed."
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "mt",
-   "contentSHA256": "7e0b9439eb13d9dbb915a0d13e513d6becbfbbac24f47a5b95a02287ed1046bf",
+   "contentSHA256": "be893b0694c751d8600d8682e7989c064b81d04a0ff4ee2fd05659fab50e2cc5",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -24112,13 +26139,107 @@
       "sha256": "ba4786aebaa3376ed09f9d0a724cbda934d43bf85d7d71f27256bf6927590691"
      },
      "disposition": "adopted in full"
+    },
+    {
+     "kind": "addition-content",
+     "id": "fixLearnedWords",
+     "issue": 3294,
+     "method": "One isolated Codex review for this language, with both Dictionary controls and sibling vocabulary",
+     "date": "2026-11-21",
+     "artifact": "artifact:enviouswispr/20261120-232032-3294-dictionary-switches-137b/vocab-review/mt/accepted.json",
+     "disposition": "Applied to the new fixing place and the existing learning place."
+    },
+    {
+     "kind": "addition-content",
+     "id": "automaticDictationPaste",
+     "date": "2026-11-20",
+     "method": "One fresh isolated Codex session reviewed this language for accuracy, naturalness and overlap with Clipboard settings.",
+     "output": {
+      "path": "artifact:enviouswispr/20261120-203708-4479-clipboard-only-53fa/search-language-reviews/review-mt.txt",
+      "sha256": "443af1f4995d750d6f0699a57324242ab728614af02e59fb47ae0d8cd0443616"
+     },
+     "disposition": "Adopted as reviewed."
+    },
+    {
+     "kind": "addition-content",
+     "id": "dictationOutputLanguage",
+     "date": "2026-11-21",
+     "method": "One independent Codex review checked all 32 blocks with an explicit verdict per language under the approved one-row exception.",
+     "output": {
+      "path": "artifact:enviouswispr/20261121-093530-3181-translation-proof-r2-db0f/vocabulary-review.txt.last",
+      "sha256": "8bddc88db3c6e3c6a338c425a1032c32317075abdbcbb0d8312bd7d08ff267a7"
+     },
+     "disposition": "mt: The familiar output loanword and both queries fit the dictated text."
+    },
+    {
+     "kind": "french-interface-applang",
+     "method": "#3142 French slice: one French-mention word and phrase added to appLanguage.shipped, reviewed by the GPT + Gemini council (session fr-review-v-2026-11-21)",
+     "date": "2026-11-21",
+     "output": {
+      "path": "council/fr-interface-applang-2026-11-21.md",
+      "sha256": "7ba8c70c6d758d33efe5acf15445ed30703aee71e956100a0801dcd75e6d6d0c"
+     },
+     "disposition": "adopted as recorded in reviewed-edits.json"
+    },
+    {
+     "kind": "spanish-interface-applang",
+     "method": "#3142 Spanish slice: one Spanish-mention word and phrase added to appLanguage.shipped, reviewed by the GPT + Gemini council (session es-review-v-2026-11-21)",
+     "date": "2026-11-21",
+     "output": {
+      "path": "council/es-interface-applang-2026-11-21.md",
+      "sha256": "f168e2f15b1336cdf5d90095462093ba6f2bf6d039d1dcea9cac83e9836d3d27"
+     },
+     "disposition": "adopted as recorded in reviewed-edits.json"
+    },
+    {
+     "kind": "addition-content",
+     "id": "silentMicWarning",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with Microphone readiness, Stop recording on silence, the Bluetooth guide, Input device and music during dictation); first draft by scripts/settings-map/draft-vocabulary.sh (#4841)",
+     "date": "2026-11-22",
+     "draft": {
+      "path": "additions/silentMicWarning/draft-silentMicWarning.json",
+      "sha256": "c2d32ee006177906348bcd3cde8997a267089229db57b002ea16eeac0fa822d7"
+     },
+     "prompt": {
+      "path": "additions/silentMicWarning/review-driver.py.txt",
+      "sha256": "a5df55a9f929fd6a56387b65538ce4a21839132c2f2dfab6c2d915c2c1a12169"
+     },
+     "output": {
+      "path": "additions/silentMicWarning/review-mt.txt",
+      "sha256": "f1a8ad61b96c853b513b0326df9183ffa0853bd2c61749573bf476925b2339a6"
+     },
+     "disposition": "adopted in full"
+    },
+    {
+     "kind": "addition-content",
+     "id": "unloadPolishModel",
+     "issue": 3853,
+     "date": "2026-11-22",
+     "method": "One fresh isolated Codex session reviewed this language for accuracy, naturalness and overlap with the speech model's unload setting (the unload polish model row).",
+     "output": {
+      "path": "additions/unloadPolishModel/review-mt.txt",
+      "sha256": "8166d063e9558164283784eaf88a2bb676142704ee05818018e05e157a51fdef"
+     },
+     "disposition": "Adopted as reviewed."
+    },
+    {
+     "kind": "addition-content",
+     "id": "unloadPolishModel.*",
+     "issue": 3853,
+     "date": "2026-11-22",
+     "method": "One fresh isolated Codex session reviewed this language for accuracy, naturalness and overlap with the speech model's unload setting (its seven choices).",
+     "output": {
+      "path": "additions/unloadPolishModel/choices/review-mt.txt",
+      "sha256": "9df3b2a87cb60968a5d96834dbe6ca2e4bfea5963d9da392e2d6f3436e868c83"
+     },
+     "disposition": "Adopted as reviewed."
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "nl",
-   "contentSHA256": "c8ccb00799ed7c6351f214355d1cdb65e222addf36b1da37ed47f7cf730341d9",
+   "contentSHA256": "a2357afae667b69d16a6cbbde081d5a31811bf1dd626caad92e92c4731ed3718",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -25278,13 +27399,107 @@
       "sha256": "f8a85f6ae4d7df29345b452f76ac76bbea04c93d4335e15d375e05945af9fb0d"
      },
      "disposition": "adopted in full"
+    },
+    {
+     "kind": "addition-content",
+     "id": "fixLearnedWords",
+     "issue": 3294,
+     "method": "One isolated Codex review for this language, with both Dictionary controls and sibling vocabulary",
+     "date": "2026-11-21",
+     "artifact": "artifact:enviouswispr/20261120-232032-3294-dictionary-switches-137b/vocab-review/nl/accepted.json",
+     "disposition": "Applied to the new fixing place and the existing learning place."
+    },
+    {
+     "kind": "addition-content",
+     "id": "automaticDictationPaste",
+     "date": "2026-11-20",
+     "method": "One fresh isolated Codex session reviewed this language for accuracy, naturalness and overlap with Clipboard settings.",
+     "output": {
+      "path": "artifact:enviouswispr/20261120-203708-4479-clipboard-only-53fa/search-language-reviews/review-nl.txt",
+      "sha256": "126c22f1b3759371a08e5af439f3045d0f96e1355730f82003b6cb6f00e2c35a"
+     },
+     "disposition": "Adopted as reviewed."
+    },
+    {
+     "kind": "addition-content",
+     "id": "dictationOutputLanguage",
+     "date": "2026-11-21",
+     "method": "One independent Codex review checked all 32 blocks with an explicit verdict per language under the approved one-row exception.",
+     "output": {
+      "path": "artifact:enviouswispr/20261121-093530-3181-translation-proof-r2-db0f/vocabulary-review.txt.last",
+      "sha256": "8bddc88db3c6e3c6a338c425a1032c32317075abdbcbb0d8312bd7d08ff267a7"
+     },
+     "disposition": "nl: «Uitvoertaal» and «doeltaal» reinforce the text-focused queries."
+    },
+    {
+     "kind": "french-interface-applang",
+     "method": "#3142 French slice: one French-mention word and phrase added to appLanguage.shipped, reviewed by the GPT + Gemini council (session fr-review-v-2026-11-21)",
+     "date": "2026-11-21",
+     "output": {
+      "path": "council/fr-interface-applang-2026-11-21.md",
+      "sha256": "7ba8c70c6d758d33efe5acf15445ed30703aee71e956100a0801dcd75e6d6d0c"
+     },
+     "disposition": "adopted as recorded in reviewed-edits.json"
+    },
+    {
+     "kind": "spanish-interface-applang",
+     "method": "#3142 Spanish slice: one Spanish-mention word and phrase added to appLanguage.shipped, reviewed by the GPT + Gemini council (session es-review-v-2026-11-21)",
+     "date": "2026-11-21",
+     "output": {
+      "path": "council/es-interface-applang-2026-11-21.md",
+      "sha256": "f168e2f15b1336cdf5d90095462093ba6f2bf6d039d1dcea9cac83e9836d3d27"
+     },
+     "disposition": "adopted as recorded in reviewed-edits.json"
+    },
+    {
+     "kind": "addition-content",
+     "id": "silentMicWarning",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with Microphone readiness, Stop recording on silence, the Bluetooth guide, Input device and music during dictation); first draft by scripts/settings-map/draft-vocabulary.sh (#4841)",
+     "date": "2026-11-22",
+     "draft": {
+      "path": "additions/silentMicWarning/draft-silentMicWarning.json",
+      "sha256": "c2d32ee006177906348bcd3cde8997a267089229db57b002ea16eeac0fa822d7"
+     },
+     "prompt": {
+      "path": "additions/silentMicWarning/review-driver.py.txt",
+      "sha256": "a5df55a9f929fd6a56387b65538ce4a21839132c2f2dfab6c2d915c2c1a12169"
+     },
+     "output": {
+      "path": "additions/silentMicWarning/review-nl.txt",
+      "sha256": "78ffc1ccc16449811cb3643cba7d93f2c57c447c532f43b2dd8f02f7903913e1"
+     },
+     "disposition": "adopted in full"
+    },
+    {
+     "kind": "addition-content",
+     "id": "unloadPolishModel",
+     "issue": 3853,
+     "date": "2026-11-22",
+     "method": "One fresh isolated Codex session reviewed this language for accuracy, naturalness and overlap with the speech model's unload setting (the unload polish model row).",
+     "output": {
+      "path": "additions/unloadPolishModel/review-nl.txt",
+      "sha256": "482d87957d337c8dc343097f49ae2788315d1ad9f60389e6d65be98746c94e2d"
+     },
+     "disposition": "Adopted as reviewed."
+    },
+    {
+     "kind": "addition-content",
+     "id": "unloadPolishModel.*",
+     "issue": 3853,
+     "date": "2026-11-22",
+     "method": "One fresh isolated Codex session reviewed this language for accuracy, naturalness and overlap with the speech model's unload setting (its seven choices).",
+     "output": {
+      "path": "additions/unloadPolishModel/choices/review-nl.txt",
+      "sha256": "2fa01565ee2b6fb2baa4fd9c9d67ec381a18ea6d80cb9ebb08a28e3b529e8651"
+     },
+     "disposition": "Adopted as reviewed."
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "pl",
-   "contentSHA256": "bed86fa7557116f153329f228192e81b5857a123497d32950cff414dbc72364e",
+   "contentSHA256": "4f015d3d8d71e87d818d26e349abae64fc186c0699f9b5417dd54f11c81eacf1",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -26444,13 +28659,107 @@
       "sha256": "a650194969538ef896439652602b07b4532eb21ac7c57c1027b3e735d52a4938"
      },
      "disposition": "adopted in full"
+    },
+    {
+     "kind": "addition-content",
+     "id": "fixLearnedWords",
+     "issue": 3294,
+     "method": "One isolated Codex review for this language, with both Dictionary controls and sibling vocabulary",
+     "date": "2026-11-21",
+     "artifact": "artifact:enviouswispr/20261120-232032-3294-dictionary-switches-137b/vocab-review/pl/accepted.json",
+     "disposition": "Applied to the new fixing place and the existing learning place."
+    },
+    {
+     "kind": "addition-content",
+     "id": "automaticDictationPaste",
+     "date": "2026-11-20",
+     "method": "One fresh isolated Codex session reviewed this language for accuracy, naturalness and overlap with Clipboard settings.",
+     "output": {
+      "path": "artifact:enviouswispr/20261120-203708-4479-clipboard-only-53fa/search-language-reviews/review-pl.txt",
+      "sha256": "88e8a6d2f7e455019b7eb1962bffba9577a3c9ea7a8964c2be9cab260ae14f6f"
+     },
+     "disposition": "Adopted as reviewed."
+    },
+    {
+     "kind": "addition-content",
+     "id": "dictationOutputLanguage",
+     "date": "2026-11-21",
+     "method": "One independent Codex review checked all 32 blocks with an explicit verdict per language under the approved one-row exception.",
+     "output": {
+      "path": "artifact:enviouswispr/20261121-093530-3181-translation-proof-r2-db0f/vocabulary-review.txt.last",
+      "sha256": "8bddc88db3c6e3c6a338c425a1032c32317075abdbcbb0d8312bd7d08ff267a7"
+     },
+     "disposition": "pl: «Język wyjściowy» can mean the source language in translation."
+    },
+    {
+     "kind": "french-interface-applang",
+     "method": "#3142 French slice: one French-mention word and phrase added to appLanguage.shipped, reviewed by the GPT + Gemini council (session fr-review-v-2026-11-21)",
+     "date": "2026-11-21",
+     "output": {
+      "path": "council/fr-interface-applang-2026-11-21.md",
+      "sha256": "7ba8c70c6d758d33efe5acf15445ed30703aee71e956100a0801dcd75e6d6d0c"
+     },
+     "disposition": "adopted as recorded in reviewed-edits.json"
+    },
+    {
+     "kind": "spanish-interface-applang",
+     "method": "#3142 Spanish slice: one Spanish-mention word and phrase added to appLanguage.shipped, reviewed by the GPT + Gemini council (session es-review-v-2026-11-21)",
+     "date": "2026-11-21",
+     "output": {
+      "path": "council/es-interface-applang-2026-11-21.md",
+      "sha256": "f168e2f15b1336cdf5d90095462093ba6f2bf6d039d1dcea9cac83e9836d3d27"
+     },
+     "disposition": "adopted as recorded in reviewed-edits.json"
+    },
+    {
+     "kind": "addition-content",
+     "id": "silentMicWarning",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with Microphone readiness, Stop recording on silence, the Bluetooth guide, Input device and music during dictation); first draft by scripts/settings-map/draft-vocabulary.sh (#4841)",
+     "date": "2026-11-22",
+     "draft": {
+      "path": "additions/silentMicWarning/draft-silentMicWarning.json",
+      "sha256": "c2d32ee006177906348bcd3cde8997a267089229db57b002ea16eeac0fa822d7"
+     },
+     "prompt": {
+      "path": "additions/silentMicWarning/review-driver.py.txt",
+      "sha256": "a5df55a9f929fd6a56387b65538ce4a21839132c2f2dfab6c2d915c2c1a12169"
+     },
+     "output": {
+      "path": "additions/silentMicWarning/review-pl.txt",
+      "sha256": "8dfc442a4cca100b2c9b7e20a085bd9eb984103666ed205be7dbd0864e4dabd0"
+     },
+     "disposition": "adopted in full"
+    },
+    {
+     "kind": "addition-content",
+     "id": "unloadPolishModel",
+     "issue": 3853,
+     "date": "2026-11-22",
+     "method": "One fresh isolated Codex session reviewed this language for accuracy, naturalness and overlap with the speech model's unload setting (the unload polish model row).",
+     "output": {
+      "path": "additions/unloadPolishModel/review-pl.txt",
+      "sha256": "4c6feeee13fca054447f3c80fdd924565be1399e134e51832c8bfb60b9df16dd"
+     },
+     "disposition": "Adopted as reviewed."
+    },
+    {
+     "kind": "addition-content",
+     "id": "unloadPolishModel.*",
+     "issue": 3853,
+     "date": "2026-11-22",
+     "method": "One fresh isolated Codex session reviewed this language for accuracy, naturalness and overlap with the speech model's unload setting (its seven choices).",
+     "output": {
+      "path": "additions/unloadPolishModel/choices/review-pl.txt",
+      "sha256": "b4015455fcc44dca6a956ff98d9f3cc1186d8cf52e09ce6035fcc4ca34653179"
+     },
+     "disposition": "Adopted as reviewed."
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "pt",
-   "contentSHA256": "ebfd4312bcba886794af104da20b5787991f7a32028b834316764d3ffcf8dce1",
+   "contentSHA256": "8db5e0178f32c5d142a2e3fe88d9257714a8cf7fb7cf7442123cfbc889363bad",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -27618,13 +29927,107 @@
       "sha256": "f2b6e714d6f3b24da2f6e0e24f432a72823da05ee90ef572e3a6ebed909a3008"
      },
      "disposition": "adopted in full"
+    },
+    {
+     "kind": "addition-content",
+     "id": "fixLearnedWords",
+     "issue": 3294,
+     "method": "One isolated Codex review for this language, with both Dictionary controls and sibling vocabulary",
+     "date": "2026-11-21",
+     "artifact": "artifact:enviouswispr/20261120-232032-3294-dictionary-switches-137b/vocab-review/pt/accepted.json",
+     "disposition": "Applied to the new fixing place and the existing learning place."
+    },
+    {
+     "kind": "addition-content",
+     "id": "automaticDictationPaste",
+     "date": "2026-11-20",
+     "method": "One fresh isolated Codex session reviewed this language for accuracy, naturalness and overlap with Clipboard settings.",
+     "output": {
+      "path": "artifact:enviouswispr/20261120-203708-4479-clipboard-only-53fa/search-language-reviews/review-pt.txt",
+      "sha256": "79f3b0c4f57509b2ae98c172684251786a088102f3f48e1d981e3dc1b285cde6"
+     },
+     "disposition": "Adopted as reviewed."
+    },
+    {
+     "kind": "addition-content",
+     "id": "dictationOutputLanguage",
+     "date": "2026-11-21",
+     "method": "One independent Codex review checked all 32 blocks with an explicit verdict per language under the approved one-row exception.",
+     "output": {
+      "path": "artifact:enviouswispr/20261121-093530-3181-translation-proof-r2-db0f/vocabulary-review.txt.last",
+      "sha256": "8bddc88db3c6e3c6a338c425a1032c32317075abdbcbb0d8312bd7d08ff267a7"
+     },
+     "disposition": "pt: The queries read naturally in Brazilian Portuguese and describe the written result."
+    },
+    {
+     "kind": "french-interface-applang",
+     "method": "#3142 French slice: one French-mention word and phrase added to appLanguage.shipped, reviewed by the GPT + Gemini council (session fr-review-v-2026-11-21)",
+     "date": "2026-11-21",
+     "output": {
+      "path": "council/fr-interface-applang-2026-11-21.md",
+      "sha256": "7ba8c70c6d758d33efe5acf15445ed30703aee71e956100a0801dcd75e6d6d0c"
+     },
+     "disposition": "adopted as recorded in reviewed-edits.json"
+    },
+    {
+     "kind": "spanish-interface-applang",
+     "method": "#3142 Spanish slice: one Spanish-mention word and phrase added to appLanguage.shipped, reviewed by the GPT + Gemini council (session es-review-v-2026-11-21)",
+     "date": "2026-11-21",
+     "output": {
+      "path": "council/es-interface-applang-2026-11-21.md",
+      "sha256": "f168e2f15b1336cdf5d90095462093ba6f2bf6d039d1dcea9cac83e9836d3d27"
+     },
+     "disposition": "adopted as recorded in reviewed-edits.json"
+    },
+    {
+     "kind": "addition-content",
+     "id": "silentMicWarning",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with Microphone readiness, Stop recording on silence, the Bluetooth guide, Input device and music during dictation); first draft by scripts/settings-map/draft-vocabulary.sh (#4841)",
+     "date": "2026-11-22",
+     "draft": {
+      "path": "additions/silentMicWarning/draft-silentMicWarning.json",
+      "sha256": "c2d32ee006177906348bcd3cde8997a267089229db57b002ea16eeac0fa822d7"
+     },
+     "prompt": {
+      "path": "additions/silentMicWarning/review-driver.py.txt",
+      "sha256": "a5df55a9f929fd6a56387b65538ce4a21839132c2f2dfab6c2d915c2c1a12169"
+     },
+     "output": {
+      "path": "additions/silentMicWarning/review-pt.txt",
+      "sha256": "ae1bbef65459dcef7caad6e0ddae78b82bd838b7ddfa136014a2e27752b7276a"
+     },
+     "disposition": "adopted in full"
+    },
+    {
+     "kind": "addition-content",
+     "id": "unloadPolishModel",
+     "issue": 3853,
+     "date": "2026-11-22",
+     "method": "One fresh isolated Codex session reviewed this language for accuracy, naturalness and overlap with the speech model's unload setting (the unload polish model row).",
+     "output": {
+      "path": "additions/unloadPolishModel/review-pt.txt",
+      "sha256": "abf9aef2265c8b41554932638e2e5b00968d017e19d0a538933023d79a4d580c"
+     },
+     "disposition": "Adopted as reviewed."
+    },
+    {
+     "kind": "addition-content",
+     "id": "unloadPolishModel.*",
+     "issue": 3853,
+     "date": "2026-11-22",
+     "method": "One fresh isolated Codex session reviewed this language for accuracy, naturalness and overlap with the speech model's unload setting (its seven choices).",
+     "output": {
+      "path": "additions/unloadPolishModel/choices/review-pt.txt",
+      "sha256": "50dcb213a75db1409974e1ce89d0dcdfd1656e4d76b224b7d064380e924eaa5c"
+     },
+     "disposition": "Adopted as reviewed."
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "ro",
-   "contentSHA256": "aac4312e15e99569ccb244977d85045773ecec4630203d9820ecc62748555997",
+   "contentSHA256": "d9a943753f7f6f06bbf671f3537e20a4c2c30e7087322de699af367850fdc168",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -28784,13 +31187,107 @@
       "sha256": "027f8bfddf136f53cc4bd08c76209f30225905aed3e44e347a555681dab8d975"
      },
      "disposition": "adopted in full"
+    },
+    {
+     "kind": "addition-content",
+     "id": "fixLearnedWords",
+     "issue": 3294,
+     "method": "One isolated Codex review for this language, with both Dictionary controls and sibling vocabulary",
+     "date": "2026-11-21",
+     "artifact": "artifact:enviouswispr/20261120-232032-3294-dictionary-switches-137b/vocab-review/ro/accepted.json",
+     "disposition": "Applied to the new fixing place and the existing learning place."
+    },
+    {
+     "kind": "addition-content",
+     "id": "automaticDictationPaste",
+     "date": "2026-11-20",
+     "method": "One fresh isolated Codex session reviewed this language for accuracy, naturalness and overlap with Clipboard settings.",
+     "output": {
+      "path": "artifact:enviouswispr/20261120-203708-4479-clipboard-only-53fa/search-language-reviews/review-ro.txt",
+      "sha256": "4fcc600aefdcce38b2d8c86a6e48fdbc015d73f2b94a7c65bb384abeb5190fa1"
+     },
+     "disposition": "Adopted as reviewed."
+    },
+    {
+     "kind": "addition-content",
+     "id": "dictationOutputLanguage",
+     "date": "2026-11-21",
+     "method": "One independent Codex review checked all 32 blocks with an explicit verdict per language under the approved one-row exception.",
+     "output": {
+      "path": "artifact:enviouswispr/20261121-093530-3181-translation-proof-r2-db0f/vocabulary-review.txt.last",
+      "sha256": "8bddc88db3c6e3c6a338c425a1032c32317075abdbcbb0d8312bd7d08ff267a7"
+     },
+     "disposition": "ro: The target-language term and both queries clearly describe the resulting text."
+    },
+    {
+     "kind": "french-interface-applang",
+     "method": "#3142 French slice: one French-mention word and phrase added to appLanguage.shipped, reviewed by the GPT + Gemini council (session fr-review-v-2026-11-21)",
+     "date": "2026-11-21",
+     "output": {
+      "path": "council/fr-interface-applang-2026-11-21.md",
+      "sha256": "7ba8c70c6d758d33efe5acf15445ed30703aee71e956100a0801dcd75e6d6d0c"
+     },
+     "disposition": "adopted as recorded in reviewed-edits.json"
+    },
+    {
+     "kind": "spanish-interface-applang",
+     "method": "#3142 Spanish slice: one Spanish-mention word and phrase added to appLanguage.shipped, reviewed by the GPT + Gemini council (session es-review-v-2026-11-21)",
+     "date": "2026-11-21",
+     "output": {
+      "path": "council/es-interface-applang-2026-11-21.md",
+      "sha256": "f168e2f15b1336cdf5d90095462093ba6f2bf6d039d1dcea9cac83e9836d3d27"
+     },
+     "disposition": "adopted as recorded in reviewed-edits.json"
+    },
+    {
+     "kind": "addition-content",
+     "id": "silentMicWarning",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with Microphone readiness, Stop recording on silence, the Bluetooth guide, Input device and music during dictation); first draft by scripts/settings-map/draft-vocabulary.sh (#4841)",
+     "date": "2026-11-22",
+     "draft": {
+      "path": "additions/silentMicWarning/draft-silentMicWarning.json",
+      "sha256": "c2d32ee006177906348bcd3cde8997a267089229db57b002ea16eeac0fa822d7"
+     },
+     "prompt": {
+      "path": "additions/silentMicWarning/review-driver.py.txt",
+      "sha256": "a5df55a9f929fd6a56387b65538ce4a21839132c2f2dfab6c2d915c2c1a12169"
+     },
+     "output": {
+      "path": "additions/silentMicWarning/review-ro.txt",
+      "sha256": "6224878b8c7d86e3af09c605c1997f0280c07cf33397a2a27203ea8af00ea6d9"
+     },
+     "disposition": "adopted in full"
+    },
+    {
+     "kind": "addition-content",
+     "id": "unloadPolishModel",
+     "issue": 3853,
+     "date": "2026-11-22",
+     "method": "One fresh isolated Codex session reviewed this language for accuracy, naturalness and overlap with the speech model's unload setting (the unload polish model row).",
+     "output": {
+      "path": "additions/unloadPolishModel/review-ro.txt",
+      "sha256": "e1c14a893de75a4b1a2474ae937275b56c802f6b912bd1560dbb855f95ee99d1"
+     },
+     "disposition": "Adopted as reviewed."
+    },
+    {
+     "kind": "addition-content",
+     "id": "unloadPolishModel.*",
+     "issue": 3853,
+     "date": "2026-11-22",
+     "method": "One fresh isolated Codex session reviewed this language for accuracy, naturalness and overlap with the speech model's unload setting (its seven choices).",
+     "output": {
+      "path": "additions/unloadPolishModel/choices/review-ro.txt",
+      "sha256": "1d4624af7ef6fcd09ad76df9ab421d76442b8c48a08f68db97b81a8091b09786"
+     },
+     "disposition": "Adopted as reviewed."
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "ru",
-   "contentSHA256": "d507114545167f1dc9d8baf24554706a9ebabcca31acd2a92a22db0ed17ca23f",
+   "contentSHA256": "4da0891e826c11a9127d90abdd5d1205a766312381be60e06f288a476152b951",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -29950,13 +32447,107 @@
       "sha256": "d43ef675cf606053c3702543c6b04b13d104072197e2b9fd34b2617df5fdd646"
      },
      "disposition": "adopted in full"
+    },
+    {
+     "kind": "addition-content",
+     "id": "fixLearnedWords",
+     "issue": 3294,
+     "method": "One isolated Codex review for this language, with both Dictionary controls and sibling vocabulary",
+     "date": "2026-11-21",
+     "artifact": "artifact:enviouswispr/20261120-232032-3294-dictionary-switches-137b/vocab-review/ru/accepted.json",
+     "disposition": "Applied to the new fixing place and the existing learning place."
+    },
+    {
+     "kind": "addition-content",
+     "id": "automaticDictationPaste",
+     "date": "2026-11-20",
+     "method": "One fresh isolated Codex session reviewed this language for accuracy, naturalness and overlap with Clipboard settings.",
+     "output": {
+      "path": "artifact:enviouswispr/20261120-203708-4479-clipboard-only-53fa/search-language-reviews/review-ru.txt",
+      "sha256": "676e60304c1028f8ce147d1340573990c0cdbf3ed268dd4fee100e577dadb5da"
+     },
+     "disposition": "Adopted as reviewed."
+    },
+    {
+     "kind": "addition-content",
+     "id": "dictationOutputLanguage",
+     "date": "2026-11-21",
+     "method": "One independent Codex review checked all 32 blocks with an explicit verdict per language under the approved one-row exception.",
+     "output": {
+      "path": "artifact:enviouswispr/20261121-093530-3181-translation-proof-r2-db0f/vocabulary-review.txt.last",
+      "sha256": "8bddc88db3c6e3c6a338c425a1032c32317075abdbcbb0d8312bd7d08ff267a7"
+     },
+     "disposition": "ru: The output terms and both queries clearly ask for written text in another language."
+    },
+    {
+     "kind": "french-interface-applang",
+     "method": "#3142 French slice: one French-mention word and phrase added to appLanguage.shipped, reviewed by the GPT + Gemini council (session fr-review-v-2026-11-21)",
+     "date": "2026-11-21",
+     "output": {
+      "path": "council/fr-interface-applang-2026-11-21.md",
+      "sha256": "7ba8c70c6d758d33efe5acf15445ed30703aee71e956100a0801dcd75e6d6d0c"
+     },
+     "disposition": "adopted as recorded in reviewed-edits.json"
+    },
+    {
+     "kind": "spanish-interface-applang",
+     "method": "#3142 Spanish slice: one Spanish-mention word and phrase added to appLanguage.shipped, reviewed by the GPT + Gemini council (session es-review-v-2026-11-21)",
+     "date": "2026-11-21",
+     "output": {
+      "path": "council/es-interface-applang-2026-11-21.md",
+      "sha256": "f168e2f15b1336cdf5d90095462093ba6f2bf6d039d1dcea9cac83e9836d3d27"
+     },
+     "disposition": "adopted as recorded in reviewed-edits.json"
+    },
+    {
+     "kind": "addition-content",
+     "id": "silentMicWarning",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with Microphone readiness, Stop recording on silence, the Bluetooth guide, Input device and music during dictation); first draft by scripts/settings-map/draft-vocabulary.sh (#4841)",
+     "date": "2026-11-22",
+     "draft": {
+      "path": "additions/silentMicWarning/draft-silentMicWarning.json",
+      "sha256": "c2d32ee006177906348bcd3cde8997a267089229db57b002ea16eeac0fa822d7"
+     },
+     "prompt": {
+      "path": "additions/silentMicWarning/review-driver.py.txt",
+      "sha256": "a5df55a9f929fd6a56387b65538ce4a21839132c2f2dfab6c2d915c2c1a12169"
+     },
+     "output": {
+      "path": "additions/silentMicWarning/review-ru.txt",
+      "sha256": "b8aa4dfcffbd92413fdde7261b7356d05eb2c4310403df3bc062f6c5c8f54e28"
+     },
+     "disposition": "adopted in full"
+    },
+    {
+     "kind": "addition-content",
+     "id": "unloadPolishModel",
+     "issue": 3853,
+     "date": "2026-11-22",
+     "method": "One fresh isolated Codex session reviewed this language for accuracy, naturalness and overlap with the speech model's unload setting (the unload polish model row).",
+     "output": {
+      "path": "additions/unloadPolishModel/review-ru.txt",
+      "sha256": "577fa42b20e2c78949e0b3e1de7f4629973fc508f0a4f5e68258f63e66e339dc"
+     },
+     "disposition": "Adopted as reviewed."
+    },
+    {
+     "kind": "addition-content",
+     "id": "unloadPolishModel.*",
+     "issue": 3853,
+     "date": "2026-11-22",
+     "method": "One fresh isolated Codex session reviewed this language for accuracy, naturalness and overlap with the speech model's unload setting (its seven choices).",
+     "output": {
+      "path": "additions/unloadPolishModel/choices/review-ru.txt",
+      "sha256": "4f8c6a71fb63c481fcf794aabf5c4894fbecd256cf4a4fe691bcf3ff091fba3b"
+     },
+     "disposition": "Adopted as reviewed."
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "sk",
-   "contentSHA256": "ece831f2ed7f81cf4b27f735b468f9982d18be1d36ac60370101f9bc1be54f36",
+   "contentSHA256": "19191f369723efe51fbe9bade8a220bcb9b709d86c4249a9bc66c8c49c7d8fd3",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -31116,13 +33707,107 @@
       "sha256": "4c587deb05ad09195e5f2391f6c0b45d9484176a89a045b83adf2c53751d40ce"
      },
      "disposition": "adopted in full"
+    },
+    {
+     "kind": "addition-content",
+     "id": "fixLearnedWords",
+     "issue": 3294,
+     "method": "One isolated Codex review for this language, with both Dictionary controls and sibling vocabulary",
+     "date": "2026-11-21",
+     "artifact": "artifact:enviouswispr/20261120-232032-3294-dictionary-switches-137b/vocab-review/sk/accepted.json",
+     "disposition": "Applied to the new fixing place and the existing learning place."
+    },
+    {
+     "kind": "addition-content",
+     "id": "automaticDictationPaste",
+     "date": "2026-11-20",
+     "method": "One fresh isolated Codex session reviewed this language for accuracy, naturalness and overlap with Clipboard settings.",
+     "output": {
+      "path": "artifact:enviouswispr/20261120-203708-4479-clipboard-only-53fa/search-language-reviews/review-sk.txt",
+      "sha256": "40af10a76acb810b2261dbec57ef64aacea421a784a5f56436a673358744ea96"
+     },
+     "disposition": "Adopted as reviewed."
+    },
+    {
+     "kind": "addition-content",
+     "id": "dictationOutputLanguage",
+     "date": "2026-11-21",
+     "method": "One independent Codex review checked all 32 blocks with an explicit verdict per language under the approved one-row exception.",
+     "output": {
+      "path": "artifact:enviouswispr/20261121-093530-3181-translation-proof-r2-db0f/vocabulary-review.txt.last",
+      "sha256": "8bddc88db3c6e3c6a338c425a1032c32317075abdbcbb0d8312bd7d08ff267a7"
+     },
+     "disposition": "sk: The title and queries naturally distinguish the written result from speech."
+    },
+    {
+     "kind": "french-interface-applang",
+     "method": "#3142 French slice: one French-mention word and phrase added to appLanguage.shipped, reviewed by the GPT + Gemini council (session fr-review-v-2026-11-21)",
+     "date": "2026-11-21",
+     "output": {
+      "path": "council/fr-interface-applang-2026-11-21.md",
+      "sha256": "7ba8c70c6d758d33efe5acf15445ed30703aee71e956100a0801dcd75e6d6d0c"
+     },
+     "disposition": "adopted as recorded in reviewed-edits.json"
+    },
+    {
+     "kind": "spanish-interface-applang",
+     "method": "#3142 Spanish slice: one Spanish-mention word and phrase added to appLanguage.shipped, reviewed by the GPT + Gemini council (session es-review-v-2026-11-21)",
+     "date": "2026-11-21",
+     "output": {
+      "path": "council/es-interface-applang-2026-11-21.md",
+      "sha256": "f168e2f15b1336cdf5d90095462093ba6f2bf6d039d1dcea9cac83e9836d3d27"
+     },
+     "disposition": "adopted as recorded in reviewed-edits.json"
+    },
+    {
+     "kind": "addition-content",
+     "id": "silentMicWarning",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with Microphone readiness, Stop recording on silence, the Bluetooth guide, Input device and music during dictation); first draft by scripts/settings-map/draft-vocabulary.sh (#4841)",
+     "date": "2026-11-22",
+     "draft": {
+      "path": "additions/silentMicWarning/draft-silentMicWarning.json",
+      "sha256": "c2d32ee006177906348bcd3cde8997a267089229db57b002ea16eeac0fa822d7"
+     },
+     "prompt": {
+      "path": "additions/silentMicWarning/review-driver.py.txt",
+      "sha256": "a5df55a9f929fd6a56387b65538ce4a21839132c2f2dfab6c2d915c2c1a12169"
+     },
+     "output": {
+      "path": "additions/silentMicWarning/review-sk.txt",
+      "sha256": "ae6c1a07838fd2c361bd22e96225fde7614bb6c531c6079da0009a9203b5fde3"
+     },
+     "disposition": "adopted in full"
+    },
+    {
+     "kind": "addition-content",
+     "id": "unloadPolishModel",
+     "issue": 3853,
+     "date": "2026-11-22",
+     "method": "One fresh isolated Codex session reviewed this language for accuracy, naturalness and overlap with the speech model's unload setting (the unload polish model row).",
+     "output": {
+      "path": "additions/unloadPolishModel/review-sk.txt",
+      "sha256": "8a5b6bddfb8afbadb693db6e01ca585fcf3bbd3829f6cabefe1ac1d0cc327743"
+     },
+     "disposition": "Adopted as reviewed."
+    },
+    {
+     "kind": "addition-content",
+     "id": "unloadPolishModel.*",
+     "issue": 3853,
+     "date": "2026-11-22",
+     "method": "One fresh isolated Codex session reviewed this language for accuracy, naturalness and overlap with the speech model's unload setting (its seven choices).",
+     "output": {
+      "path": "additions/unloadPolishModel/choices/review-sk.txt",
+      "sha256": "8d398501419f860aaebdc1d6d0cb3acd71be621876656b7116dd1dcf88ef155d"
+     },
+     "disposition": "Adopted as reviewed."
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "sl",
-   "contentSHA256": "908f0598e633a6e3c2d5e549f09f68eacb01c4d6ef32d157ca2aa7a39d562a99",
+   "contentSHA256": "418124b559d8e0083259212d88726051879061a2d42a0678a03b807648f4d1d2",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -32291,13 +34976,107 @@
       "sha256": "b693cc76c4424601a2ec09157ae037ec9158708e6c3508ab207d4657f39473e1"
      },
      "disposition": "adopted in full"
+    },
+    {
+     "kind": "addition-content",
+     "id": "fixLearnedWords",
+     "issue": 3294,
+     "method": "One isolated Codex review for this language, with both Dictionary controls and sibling vocabulary",
+     "date": "2026-11-21",
+     "artifact": "artifact:enviouswispr/20261120-232032-3294-dictionary-switches-137b/vocab-review/sl/accepted.json",
+     "disposition": "Applied to the new fixing place and the existing learning place."
+    },
+    {
+     "kind": "addition-content",
+     "id": "automaticDictationPaste",
+     "date": "2026-11-20",
+     "method": "One fresh isolated Codex session reviewed this language for accuracy, naturalness and overlap with Clipboard settings.",
+     "output": {
+      "path": "artifact:enviouswispr/20261120-203708-4479-clipboard-only-53fa/search-language-reviews/review-sl.txt",
+      "sha256": "31fc3fefeefb35bc1d4c7201142e31b6e76682c410fbb1c266fb8d132227de0a"
+     },
+     "disposition": "Adopted as reviewed."
+    },
+    {
+     "kind": "addition-content",
+     "id": "dictationOutputLanguage",
+     "date": "2026-11-21",
+     "method": "One independent Codex review checked all 32 blocks with an explicit verdict per language under the approved one-row exception.",
+     "output": {
+      "path": "artifact:enviouswispr/20261121-093530-3181-translation-proof-r2-db0f/vocabulary-review.txt.last",
+      "sha256": "8bddc88db3c6e3c6a338c425a1032c32317075abdbcbb0d8312bd7d08ff267a7"
+     },
+     "disposition": "sl: «Izhodni jezik» and both queries point to the resulting text."
+    },
+    {
+     "kind": "french-interface-applang",
+     "method": "#3142 French slice: one French-mention word and phrase added to appLanguage.shipped, reviewed by the GPT + Gemini council (session fr-review-v-2026-11-21)",
+     "date": "2026-11-21",
+     "output": {
+      "path": "council/fr-interface-applang-2026-11-21.md",
+      "sha256": "7ba8c70c6d758d33efe5acf15445ed30703aee71e956100a0801dcd75e6d6d0c"
+     },
+     "disposition": "adopted as recorded in reviewed-edits.json"
+    },
+    {
+     "kind": "spanish-interface-applang",
+     "method": "#3142 Spanish slice: one Spanish-mention word and phrase added to appLanguage.shipped, reviewed by the GPT + Gemini council (session es-review-v-2026-11-21)",
+     "date": "2026-11-21",
+     "output": {
+      "path": "council/es-interface-applang-2026-11-21.md",
+      "sha256": "f168e2f15b1336cdf5d90095462093ba6f2bf6d039d1dcea9cac83e9836d3d27"
+     },
+     "disposition": "adopted as recorded in reviewed-edits.json"
+    },
+    {
+     "kind": "addition-content",
+     "id": "silentMicWarning",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with Microphone readiness, Stop recording on silence, the Bluetooth guide, Input device and music during dictation); first draft by scripts/settings-map/draft-vocabulary.sh (#4841)",
+     "date": "2026-11-22",
+     "draft": {
+      "path": "additions/silentMicWarning/draft-silentMicWarning.json",
+      "sha256": "c2d32ee006177906348bcd3cde8997a267089229db57b002ea16eeac0fa822d7"
+     },
+     "prompt": {
+      "path": "additions/silentMicWarning/review-driver.py.txt",
+      "sha256": "a5df55a9f929fd6a56387b65538ce4a21839132c2f2dfab6c2d915c2c1a12169"
+     },
+     "output": {
+      "path": "additions/silentMicWarning/review-sl.txt",
+      "sha256": "bea17d89f51cbec735496bee8b5001829bb9d0abe1fe66c55d48a7565c7ee14e"
+     },
+     "disposition": "adopted in full"
+    },
+    {
+     "kind": "addition-content",
+     "id": "unloadPolishModel",
+     "issue": 3853,
+     "date": "2026-11-22",
+     "method": "One fresh isolated Codex session reviewed this language for accuracy, naturalness and overlap with the speech model's unload setting (the unload polish model row).",
+     "output": {
+      "path": "additions/unloadPolishModel/review-sl.txt",
+      "sha256": "9bc13773a286141e4128821b7cef7eb7149a701b017d5606b2e840118fa5a9e2"
+     },
+     "disposition": "Adopted as reviewed."
+    },
+    {
+     "kind": "addition-content",
+     "id": "unloadPolishModel.*",
+     "issue": 3853,
+     "date": "2026-11-22",
+     "method": "One fresh isolated Codex session reviewed this language for accuracy, naturalness and overlap with the speech model's unload setting (its seven choices).",
+     "output": {
+      "path": "additions/unloadPolishModel/choices/review-sl.txt",
+      "sha256": "1d50c284e658668ae4bac23450ff35df06f4e4c598b2f878cfd74b31596bf38e"
+     },
+     "disposition": "Adopted as reviewed."
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "sv",
-   "contentSHA256": "3dbe7112f47249c9f982b125d7ece0222211523ebfa15c2ec3e3ab418aa7f0d0",
+   "contentSHA256": "b7be12d75f25c629d5e65d54cec38f0bbe20a1341dd500b54fb40d6ef42aea35",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -33457,13 +36236,107 @@
       "sha256": "1872d0c9ff235ca4b201ee78e2dfa9d61b1971b128bdc6700264bc8a527a4403"
      },
      "disposition": "adopted in full"
+    },
+    {
+     "kind": "addition-content",
+     "id": "fixLearnedWords",
+     "issue": 3294,
+     "method": "One isolated Codex review for this language, with both Dictionary controls and sibling vocabulary",
+     "date": "2026-11-21",
+     "artifact": "artifact:enviouswispr/20261120-232032-3294-dictionary-switches-137b/vocab-review/sv/accepted.json",
+     "disposition": "Applied to the new fixing place and the existing learning place."
+    },
+    {
+     "kind": "addition-content",
+     "id": "automaticDictationPaste",
+     "date": "2026-11-20",
+     "method": "One fresh isolated Codex session reviewed this language for accuracy, naturalness and overlap with Clipboard settings.",
+     "output": {
+      "path": "artifact:enviouswispr/20261120-203708-4479-clipboard-only-53fa/search-language-reviews/review-sv.txt",
+      "sha256": "293fe0ecf5cfb92b4cddf4e64c37beec0602dbc81c82d20cdf81077095678b5c"
+     },
+     "disposition": "Adopted as reviewed."
+    },
+    {
+     "kind": "addition-content",
+     "id": "dictationOutputLanguage",
+     "date": "2026-11-21",
+     "method": "One independent Codex review checked all 32 blocks with an explicit verdict per language under the approved one-row exception.",
+     "output": {
+      "path": "artifact:enviouswispr/20261121-093530-3181-translation-proof-r2-db0f/vocabulary-review.txt.last",
+      "sha256": "8bddc88db3c6e3c6a338c425a1032c32317075abdbcbb0d8312bd7d08ff267a7"
+     },
+     "disposition": "sv: «Målspråk» and the everyday queries clearly describe the desired text language."
+    },
+    {
+     "kind": "french-interface-applang",
+     "method": "#3142 French slice: one French-mention word and phrase added to appLanguage.shipped, reviewed by the GPT + Gemini council (session fr-review-v-2026-11-21)",
+     "date": "2026-11-21",
+     "output": {
+      "path": "council/fr-interface-applang-2026-11-21.md",
+      "sha256": "7ba8c70c6d758d33efe5acf15445ed30703aee71e956100a0801dcd75e6d6d0c"
+     },
+     "disposition": "adopted as recorded in reviewed-edits.json"
+    },
+    {
+     "kind": "spanish-interface-applang",
+     "method": "#3142 Spanish slice: one Spanish-mention word and phrase added to appLanguage.shipped, reviewed by the GPT + Gemini council (session es-review-v-2026-11-21)",
+     "date": "2026-11-21",
+     "output": {
+      "path": "council/es-interface-applang-2026-11-21.md",
+      "sha256": "f168e2f15b1336cdf5d90095462093ba6f2bf6d039d1dcea9cac83e9836d3d27"
+     },
+     "disposition": "adopted as recorded in reviewed-edits.json"
+    },
+    {
+     "kind": "addition-content",
+     "id": "silentMicWarning",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with Microphone readiness, Stop recording on silence, the Bluetooth guide, Input device and music during dictation); first draft by scripts/settings-map/draft-vocabulary.sh (#4841)",
+     "date": "2026-11-22",
+     "draft": {
+      "path": "additions/silentMicWarning/draft-silentMicWarning.json",
+      "sha256": "c2d32ee006177906348bcd3cde8997a267089229db57b002ea16eeac0fa822d7"
+     },
+     "prompt": {
+      "path": "additions/silentMicWarning/review-driver.py.txt",
+      "sha256": "a5df55a9f929fd6a56387b65538ce4a21839132c2f2dfab6c2d915c2c1a12169"
+     },
+     "output": {
+      "path": "additions/silentMicWarning/review-sv.txt",
+      "sha256": "9f7dbf711eaaa5f2dce7a4115f0b3427d876dc09267ce34c4d30a025fbbed0fc"
+     },
+     "disposition": "adopted in full"
+    },
+    {
+     "kind": "addition-content",
+     "id": "unloadPolishModel",
+     "issue": 3853,
+     "date": "2026-11-22",
+     "method": "One fresh isolated Codex session reviewed this language for accuracy, naturalness and overlap with the speech model's unload setting (the unload polish model row).",
+     "output": {
+      "path": "additions/unloadPolishModel/review-sv.txt",
+      "sha256": "9b93385a1ed3181683b03a57d78f90421fdc5fcbfd1a4b72239cf8b75f68a1a1"
+     },
+     "disposition": "Adopted as reviewed."
+    },
+    {
+     "kind": "addition-content",
+     "id": "unloadPolishModel.*",
+     "issue": 3853,
+     "date": "2026-11-22",
+     "method": "One fresh isolated Codex session reviewed this language for accuracy, naturalness and overlap with the speech model's unload setting (its seven choices).",
+     "output": {
+      "path": "additions/unloadPolishModel/choices/review-sv.txt",
+      "sha256": "7971001a4714cc9905068f7fd42ba700e7ef430433dc8444646ee86cd178ae26"
+     },
+     "disposition": "Adopted as reviewed."
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "tr",
-   "contentSHA256": "df3324e9e2aca7cef3a35e6532b515f60e67fd506ad960a96a628f4db142c59f",
+   "contentSHA256": "b8e0e25af22469ae06f880e53adfaf5016d494478c8f37e948812a0c9de61063",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -34623,13 +37496,107 @@
       "sha256": "540819dabd813d6953b40e7afba5211076b8f0f8daa1e5c43bee771b562981d2"
      },
      "disposition": "adopted in full"
+    },
+    {
+     "kind": "addition-content",
+     "id": "fixLearnedWords",
+     "issue": 3294,
+     "method": "One isolated Codex review for this language, with both Dictionary controls and sibling vocabulary",
+     "date": "2026-11-21",
+     "artifact": "artifact:enviouswispr/20261120-232032-3294-dictionary-switches-137b/vocab-review/tr/accepted.json",
+     "disposition": "Applied to the new fixing place and the existing learning place."
+    },
+    {
+     "kind": "addition-content",
+     "id": "automaticDictationPaste",
+     "date": "2026-11-20",
+     "method": "One fresh isolated Codex session reviewed this language for accuracy, naturalness and overlap with Clipboard settings.",
+     "output": {
+      "path": "artifact:enviouswispr/20261120-203708-4479-clipboard-only-53fa/search-language-reviews/review-tr.txt",
+      "sha256": "04b477f1129728ee5ee49d96a1d937f1ad972eda79e698921065b0f4144e562b"
+     },
+     "disposition": "Adopted as reviewed."
+    },
+    {
+     "kind": "addition-content",
+     "id": "dictationOutputLanguage",
+     "date": "2026-11-21",
+     "method": "One independent Codex review checked all 32 blocks with an explicit verdict per language under the approved one-row exception.",
+     "output": {
+      "path": "artifact:enviouswispr/20261121-093530-3181-translation-proof-r2-db0f/vocabulary-review.txt.last",
+      "sha256": "8bddc88db3c6e3c6a338c425a1032c32317075abdbcbb0d8312bd7d08ff267a7"
+     },
+     "disposition": "tr: «Dikte çıktı dili» and «sonuç dili» sound unnatural."
+    },
+    {
+     "kind": "french-interface-applang",
+     "method": "#3142 French slice: one French-mention word and phrase added to appLanguage.shipped, reviewed by the GPT + Gemini council (session fr-review-v-2026-11-21)",
+     "date": "2026-11-21",
+     "output": {
+      "path": "council/fr-interface-applang-2026-11-21.md",
+      "sha256": "7ba8c70c6d758d33efe5acf15445ed30703aee71e956100a0801dcd75e6d6d0c"
+     },
+     "disposition": "adopted as recorded in reviewed-edits.json"
+    },
+    {
+     "kind": "spanish-interface-applang",
+     "method": "#3142 Spanish slice: one Spanish-mention word and phrase added to appLanguage.shipped, reviewed by the GPT + Gemini council (session es-review-v-2026-11-21)",
+     "date": "2026-11-21",
+     "output": {
+      "path": "council/es-interface-applang-2026-11-21.md",
+      "sha256": "f168e2f15b1336cdf5d90095462093ba6f2bf6d039d1dcea9cac83e9836d3d27"
+     },
+     "disposition": "adopted as recorded in reviewed-edits.json"
+    },
+    {
+     "kind": "addition-content",
+     "id": "silentMicWarning",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with Microphone readiness, Stop recording on silence, the Bluetooth guide, Input device and music during dictation); first draft by scripts/settings-map/draft-vocabulary.sh (#4841)",
+     "date": "2026-11-22",
+     "draft": {
+      "path": "additions/silentMicWarning/draft-silentMicWarning.json",
+      "sha256": "c2d32ee006177906348bcd3cde8997a267089229db57b002ea16eeac0fa822d7"
+     },
+     "prompt": {
+      "path": "additions/silentMicWarning/review-driver.py.txt",
+      "sha256": "a5df55a9f929fd6a56387b65538ce4a21839132c2f2dfab6c2d915c2c1a12169"
+     },
+     "output": {
+      "path": "additions/silentMicWarning/review-tr.txt",
+      "sha256": "574e76a72e9e609ef457f9e4fc837a6d2f2fc8bb68769dcf57cd4125aaf247c3"
+     },
+     "disposition": "adopted in full"
+    },
+    {
+     "kind": "addition-content",
+     "id": "unloadPolishModel",
+     "issue": 3853,
+     "date": "2026-11-22",
+     "method": "One fresh isolated Codex session reviewed this language for accuracy, naturalness and overlap with the speech model's unload setting (the unload polish model row).",
+     "output": {
+      "path": "additions/unloadPolishModel/review-tr.txt",
+      "sha256": "d2d4c3f046627207d2581abd87e19fa7b58d11ae431e391e6c3585b2c75a505c"
+     },
+     "disposition": "Adopted as reviewed."
+    },
+    {
+     "kind": "addition-content",
+     "id": "unloadPolishModel.*",
+     "issue": 3853,
+     "date": "2026-11-22",
+     "method": "One fresh isolated Codex session reviewed this language for accuracy, naturalness and overlap with the speech model's unload setting (its seven choices).",
+     "output": {
+      "path": "additions/unloadPolishModel/choices/review-tr.txt",
+      "sha256": "d5552a31b04d35fa024ed4e1871ec52ff0f3fd23577d0726ef95b5c753a0f508"
+     },
+     "disposition": "Adopted as reviewed."
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "uk",
-   "contentSHA256": "b4add5d8eec3d6670bea39c0ce4f0b454e7cee0dcf8acdaa692e0c2263567b9c",
+   "contentSHA256": "c7c9ca61fe81329fb2c40130d8a5ff31e0e8b020cc11bd94764bcce3e99f8c5c",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -35798,13 +38765,107 @@
       "sha256": "5570ece0cae746f84a18f4b18572287a75676bd4aaaeadebefaec6568e45bc5e"
      },
      "disposition": "adopted in full"
+    },
+    {
+     "kind": "addition-content",
+     "id": "fixLearnedWords",
+     "issue": 3294,
+     "method": "One isolated Codex review for this language, with both Dictionary controls and sibling vocabulary",
+     "date": "2026-11-21",
+     "artifact": "artifact:enviouswispr/20261120-232032-3294-dictionary-switches-137b/vocab-review/uk/accepted.json",
+     "disposition": "Applied to the new fixing place and the existing learning place."
+    },
+    {
+     "kind": "addition-content",
+     "id": "automaticDictationPaste",
+     "date": "2026-11-20",
+     "method": "One fresh isolated Codex session reviewed this language for accuracy, naturalness and overlap with Clipboard settings.",
+     "output": {
+      "path": "artifact:enviouswispr/20261120-203708-4479-clipboard-only-53fa/search-language-reviews/review-uk.txt",
+      "sha256": "6a53329248c8a3055c2973f2820b0c628cf348a71858d8580d86e75c9820a376"
+     },
+     "disposition": "Adopted as reviewed."
+    },
+    {
+     "kind": "addition-content",
+     "id": "dictationOutputLanguage",
+     "date": "2026-11-21",
+     "method": "One independent Codex review checked all 32 blocks with an explicit verdict per language under the approved one-row exception.",
+     "output": {
+      "path": "artifact:enviouswispr/20261121-093530-3181-translation-proof-r2-db0f/vocabulary-review.txt.last",
+      "sha256": "8bddc88db3c6e3c6a338c425a1032c32317075abdbcbb0d8312bd7d08ff267a7"
+     },
+     "disposition": "uk: The target-language term and natural queries clearly describe the written result."
+    },
+    {
+     "kind": "french-interface-applang",
+     "method": "#3142 French slice: one French-mention word and phrase added to appLanguage.shipped, reviewed by the GPT + Gemini council (session fr-review-v-2026-11-21)",
+     "date": "2026-11-21",
+     "output": {
+      "path": "council/fr-interface-applang-2026-11-21.md",
+      "sha256": "7ba8c70c6d758d33efe5acf15445ed30703aee71e956100a0801dcd75e6d6d0c"
+     },
+     "disposition": "adopted as recorded in reviewed-edits.json"
+    },
+    {
+     "kind": "spanish-interface-applang",
+     "method": "#3142 Spanish slice: one Spanish-mention word and phrase added to appLanguage.shipped, reviewed by the GPT + Gemini council (session es-review-v-2026-11-21)",
+     "date": "2026-11-21",
+     "output": {
+      "path": "council/es-interface-applang-2026-11-21.md",
+      "sha256": "f168e2f15b1336cdf5d90095462093ba6f2bf6d039d1dcea9cac83e9836d3d27"
+     },
+     "disposition": "adopted as recorded in reviewed-edits.json"
+    },
+    {
+     "kind": "addition-content",
+     "id": "silentMicWarning",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with Microphone readiness, Stop recording on silence, the Bluetooth guide, Input device and music during dictation); first draft by scripts/settings-map/draft-vocabulary.sh (#4841)",
+     "date": "2026-11-22",
+     "draft": {
+      "path": "additions/silentMicWarning/draft-silentMicWarning.json",
+      "sha256": "c2d32ee006177906348bcd3cde8997a267089229db57b002ea16eeac0fa822d7"
+     },
+     "prompt": {
+      "path": "additions/silentMicWarning/review-driver.py.txt",
+      "sha256": "a5df55a9f929fd6a56387b65538ce4a21839132c2f2dfab6c2d915c2c1a12169"
+     },
+     "output": {
+      "path": "additions/silentMicWarning/review-uk.txt",
+      "sha256": "741279f8f789f73a07cc773131adb2931e6b14bf7d2789bfa989f8c1a42c9957"
+     },
+     "disposition": "adopted in full"
+    },
+    {
+     "kind": "addition-content",
+     "id": "unloadPolishModel",
+     "issue": 3853,
+     "date": "2026-11-22",
+     "method": "One fresh isolated Codex session reviewed this language for accuracy, naturalness and overlap with the speech model's unload setting (the unload polish model row).",
+     "output": {
+      "path": "additions/unloadPolishModel/review-uk.txt",
+      "sha256": "0998060fa12ad2179be7c943d0499487bf27012f50bce8b6fa2c00198369a831"
+     },
+     "disposition": "Adopted as reviewed."
+    },
+    {
+     "kind": "addition-content",
+     "id": "unloadPolishModel.*",
+     "issue": 3853,
+     "date": "2026-11-22",
+     "method": "One fresh isolated Codex session reviewed this language for accuracy, naturalness and overlap with the speech model's unload setting (its seven choices).",
+     "output": {
+      "path": "additions/unloadPolishModel/choices/review-uk.txt",
+      "sha256": "e8f38bc062393559913a0baca71ad8893f557351fb5000387f83f503ada3d347"
+     },
+     "disposition": "Adopted as reviewed."
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "vi",
-   "contentSHA256": "ddfc601b6b9baa9077906c2b5250d799e1ce7138929e663e13105420febf9726",
+   "contentSHA256": "87a252a0e8231eff51abdc0bcb72a312f4dafcf32923ac04a1102960485a0a9b",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -36964,13 +40025,107 @@
       "sha256": "2d28255a14401f56be7fd91ec0ef6f41ec071670020a45faac05e18db4100919"
      },
      "disposition": "adopted in full"
+    },
+    {
+     "kind": "addition-content",
+     "id": "fixLearnedWords",
+     "issue": 3294,
+     "method": "One isolated Codex review for this language, with both Dictionary controls and sibling vocabulary",
+     "date": "2026-11-21",
+     "artifact": "artifact:enviouswispr/20261120-232032-3294-dictionary-switches-137b/vocab-review/vi/accepted.json",
+     "disposition": "Applied to the new fixing place and the existing learning place."
+    },
+    {
+     "kind": "addition-content",
+     "id": "automaticDictationPaste",
+     "date": "2026-11-20",
+     "method": "One fresh isolated Codex session reviewed this language for accuracy, naturalness and overlap with Clipboard settings.",
+     "output": {
+      "path": "artifact:enviouswispr/20261120-203708-4479-clipboard-only-53fa/search-language-reviews/review-vi.txt",
+      "sha256": "bb98470e32bc775f36d9913692b15fd4a65add61dc0bee1964ea500e0f705d33"
+     },
+     "disposition": "Adopted as reviewed."
+    },
+    {
+     "kind": "addition-content",
+     "id": "dictationOutputLanguage",
+     "date": "2026-11-21",
+     "method": "One independent Codex review checked all 32 blocks with an explicit verdict per language under the approved one-row exception.",
+     "output": {
+      "path": "artifact:enviouswispr/20261121-093530-3181-translation-proof-r2-db0f/vocabulary-review.txt.last",
+      "sha256": "8bddc88db3c6e3c6a338c425a1032c32317075abdbcbb0d8312bd7d08ff267a7"
+     },
+     "disposition": "vi: «Đọc chính tả» suggests a spelling exercise."
+    },
+    {
+     "kind": "french-interface-applang",
+     "method": "#3142 French slice: one French-mention word and phrase added to appLanguage.shipped, reviewed by the GPT + Gemini council (session fr-review-v-2026-11-21)",
+     "date": "2026-11-21",
+     "output": {
+      "path": "council/fr-interface-applang-2026-11-21.md",
+      "sha256": "7ba8c70c6d758d33efe5acf15445ed30703aee71e956100a0801dcd75e6d6d0c"
+     },
+     "disposition": "adopted as recorded in reviewed-edits.json"
+    },
+    {
+     "kind": "spanish-interface-applang",
+     "method": "#3142 Spanish slice: one Spanish-mention word and phrase added to appLanguage.shipped, reviewed by the GPT + Gemini council (session es-review-v-2026-11-21)",
+     "date": "2026-11-21",
+     "output": {
+      "path": "council/es-interface-applang-2026-11-21.md",
+      "sha256": "f168e2f15b1336cdf5d90095462093ba6f2bf6d039d1dcea9cac83e9836d3d27"
+     },
+     "disposition": "adopted as recorded in reviewed-edits.json"
+    },
+    {
+     "kind": "addition-content",
+     "id": "silentMicWarning",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with Microphone readiness, Stop recording on silence, the Bluetooth guide, Input device and music during dictation); first draft by scripts/settings-map/draft-vocabulary.sh (#4841)",
+     "date": "2026-11-22",
+     "draft": {
+      "path": "additions/silentMicWarning/draft-silentMicWarning.json",
+      "sha256": "c2d32ee006177906348bcd3cde8997a267089229db57b002ea16eeac0fa822d7"
+     },
+     "prompt": {
+      "path": "additions/silentMicWarning/review-driver.py.txt",
+      "sha256": "a5df55a9f929fd6a56387b65538ce4a21839132c2f2dfab6c2d915c2c1a12169"
+     },
+     "output": {
+      "path": "additions/silentMicWarning/review-vi.txt",
+      "sha256": "0915c9d4251101e080daf0517c76682740c691a7aa5e29542a1f92a3b9482bf3"
+     },
+     "disposition": "adopted in full"
+    },
+    {
+     "kind": "addition-content",
+     "id": "unloadPolishModel",
+     "issue": 3853,
+     "date": "2026-11-22",
+     "method": "One fresh isolated Codex session reviewed this language for accuracy, naturalness and overlap with the speech model's unload setting (the unload polish model row).",
+     "output": {
+      "path": "additions/unloadPolishModel/review-vi.txt",
+      "sha256": "942477664adedc4f7273a1d1b3492d9a9737eaa634ef4cd4ffa3163491e0be72"
+     },
+     "disposition": "Adopted as reviewed."
+    },
+    {
+     "kind": "addition-content",
+     "id": "unloadPolishModel.*",
+     "issue": 3853,
+     "date": "2026-11-22",
+     "method": "One fresh isolated Codex session reviewed this language for accuracy, naturalness and overlap with the speech model's unload setting (its seven choices).",
+     "output": {
+      "path": "additions/unloadPolishModel/choices/review-vi.txt",
+      "sha256": "6c0ad497085f4de84cb738b08c28f5e8150d963a79eaba8e4cfcd7f34921c8d1"
+     },
+     "disposition": "Adopted as reviewed."
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "zh",
-   "contentSHA256": "f701974154224ed5980015a9fa096063cc4e0adc0f7c62e1c144bd0032f18eb7",
+   "contentSHA256": "bb9cb0b030a8587c7c4cea2c14c86043c8378671dad424e7a593b4c804391895",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -38130,6 +41285,100 @@
       "sha256": "71501943595f837c95335e8ac364616bfb536f3727cf91560c5eab64dfc85046"
      },
      "disposition": "adopted in full"
+    },
+    {
+     "kind": "addition-content",
+     "id": "fixLearnedWords",
+     "issue": 3294,
+     "method": "One isolated Codex review for this language, with both Dictionary controls and sibling vocabulary",
+     "date": "2026-11-21",
+     "artifact": "artifact:enviouswispr/20261120-232032-3294-dictionary-switches-137b/vocab-review/zh/accepted.json",
+     "disposition": "Applied to the new fixing place and the existing learning place."
+    },
+    {
+     "kind": "addition-content",
+     "id": "automaticDictationPaste",
+     "date": "2026-11-20",
+     "method": "One fresh isolated Codex session reviewed this language for accuracy, naturalness and overlap with Clipboard settings.",
+     "output": {
+      "path": "artifact:enviouswispr/20261120-203708-4479-clipboard-only-53fa/search-language-reviews/review-zh.txt",
+      "sha256": "9ebdedda0357b784e4686203e0361022580b6a72e0d47919361c102edfb4bd3f"
+     },
+     "disposition": "Adopted as reviewed."
+    },
+    {
+     "kind": "addition-content",
+     "id": "dictationOutputLanguage",
+     "date": "2026-11-21",
+     "method": "One independent Codex review checked all 32 blocks with an explicit verdict per language under the approved one-row exception.",
+     "output": {
+      "path": "artifact:enviouswispr/20261121-093530-3181-translation-proof-r2-db0f/vocabulary-review.txt.last",
+      "sha256": "8bddc88db3c6e3c6a338c425a1032c32317075abdbcbb0d8312bd7d08ff267a7"
+     },
+     "disposition": "zh: 「文字语言」 reads awkwardly as an alias and in the first query."
+    },
+    {
+     "kind": "french-interface-applang",
+     "method": "#3142 French slice: one French-mention word and phrase added to appLanguage.shipped, reviewed by the GPT + Gemini council (session fr-review-v-2026-11-21)",
+     "date": "2026-11-21",
+     "output": {
+      "path": "council/fr-interface-applang-2026-11-21.md",
+      "sha256": "7ba8c70c6d758d33efe5acf15445ed30703aee71e956100a0801dcd75e6d6d0c"
+     },
+     "disposition": "adopted as recorded in reviewed-edits.json"
+    },
+    {
+     "kind": "spanish-interface-applang",
+     "method": "#3142 Spanish slice: one Spanish-mention word and phrase added to appLanguage.shipped, reviewed by the GPT + Gemini council (session es-review-v-2026-11-21)",
+     "date": "2026-11-21",
+     "output": {
+      "path": "council/es-interface-applang-2026-11-21.md",
+      "sha256": "f168e2f15b1336cdf5d90095462093ba6f2bf6d039d1dcea9cac83e9836d3d27"
+     },
+     "disposition": "adopted as recorded in reviewed-edits.json"
+    },
+    {
+     "kind": "addition-content",
+     "id": "silentMicWarning",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with Microphone readiness, Stop recording on silence, the Bluetooth guide, Input device and music during dictation); first draft by scripts/settings-map/draft-vocabulary.sh (#4841)",
+     "date": "2026-11-22",
+     "draft": {
+      "path": "additions/silentMicWarning/draft-silentMicWarning.json",
+      "sha256": "c2d32ee006177906348bcd3cde8997a267089229db57b002ea16eeac0fa822d7"
+     },
+     "prompt": {
+      "path": "additions/silentMicWarning/review-driver.py.txt",
+      "sha256": "a5df55a9f929fd6a56387b65538ce4a21839132c2f2dfab6c2d915c2c1a12169"
+     },
+     "output": {
+      "path": "additions/silentMicWarning/review-zh.txt",
+      "sha256": "c0bb9b73889be317f66c48aa1fd9a20b437a14141e3c44a53b4303af78c0f111"
+     },
+     "disposition": "adopted in full"
+    },
+    {
+     "kind": "addition-content",
+     "id": "unloadPolishModel",
+     "issue": 3853,
+     "date": "2026-11-22",
+     "method": "One fresh isolated Codex session reviewed this language for accuracy, naturalness and overlap with the speech model's unload setting (the unload polish model row).",
+     "output": {
+      "path": "additions/unloadPolishModel/review-zh.txt",
+      "sha256": "443dc33cb38f11a2714bf83cddb2a12d39b2f7ffa580d60929946581257e9e74"
+     },
+     "disposition": "Adopted as reviewed."
+    },
+    {
+     "kind": "addition-content",
+     "id": "unloadPolishModel.*",
+     "issue": 3853,
+     "date": "2026-11-22",
+     "method": "One fresh isolated Codex session reviewed this language for accuracy, naturalness and overlap with the speech model's unload setting (its seven choices).",
+     "output": {
+      "path": "additions/unloadPolishModel/choices/review-zh.txt",
+      "sha256": "e99322a46769d287da1d75732f3d0fa94415fa1321113519292f7c476ba37afb"
+     },
+     "disposition": "Adopted as reviewed."
     }
    ],
    "phraseExemptions": []
@@ -38350,7 +41599,7 @@
   "s1Tone.formal": "8b1761ddec33a303628a3535d90a6cfeefe275beddcf73326375e03ca75ac731",
   "s1Tone.semiCasual": "062153676d7f17313d101d61ab2d6b69134b61f1f28d224e85655a10c41f32f4",
   "s1Tone.semiFormal": "1502974d8ccf74f594f04a3000e8a3166aaadb5daac96b6e37153d5541318fe2",
-  "selfLearningDictionary": "d54352d0295d20d0cb9d405b8b9c23ebdda33d3eeecdea50180d9fbd0969a784",
+  "selfLearningDictionary": "c34c3d5e98acbd760c647bc2f105ca4f9bf902440a1aa08defbddef8c4a5ebaf",
   "selfLearningDictionary.forgetMemory": "df6f4cc0a6d055a0e8f95ed369832bb56bb7f738c3aad4f3a30c81e0bb909e1b",
   "selfLearningDictionary.learnMore": "4d312e93ce5f0565e9506db62ecc1c6a42894567ec5476e1abbce81f4b47cd16",
   "sendCrashReports": "c0168c94a0fd2fe7a8ad8ea4a9eab87da62cb17aff262fc0b1eeb01fb71a3210",
@@ -38430,7 +41679,19 @@
   "recordingStorageUsage": "40f22ae273a32f95b6228e03dc72dc5036062c0cab82597035792fa98494ca65",
   "recordingStorageWarningThreshold": "e2876cc89fcd3a19a4e00d19487f4e52686af550015b92a4b6f2f89fe0a562a7",
   "recordingThresholdBehavior": "bac4c37e3af597722bd55e5ba70d1becf7e718a9e97d8f3e3a9ffdcd9e6afc9b",
-  "saveDictationRecordings": "fb9f5d70b2b05c69625cab3cb03ef8bdf678aa90f6b6e6e2f813390fe8ea0b3d"
+  "saveDictationRecordings": "fb9f5d70b2b05c69625cab3cb03ef8bdf678aa90f6b6e6e2f813390fe8ea0b3d",
+  "fixLearnedWords": "974b844c17efb198324180a5e5fd890282108fbeaa0512d9077fa73694a9c0e3",
+  "automaticDictationPaste": "b672f5f91a9715f212c55a07f5770fe119fcda154813dd9746e2abc04389e1c6",
+  "dictationOutputLanguage": "9e149372fb352030a5d520bdd80b2f92c7f26d88bbcf87f385b6b9baf57de396",
+  "silentMicWarning": "1ca0df570a1b90116e23622263e988143f6c051d712e87662265ac1c5f4ee6db",
+  "unloadPolishModel": "46834ff70c40d0e3476f9ce29c35b4c3b363412845730b1310fc3b5b2294bfcb",
+  "unloadPolishModel.fifteenMinutes": "2cb52811de2c70c38a9f0f9c8d6f2c1dd3ae81af44e105b57587777276d8cb17",
+  "unloadPolishModel.fiveMinutes": "b121e837b5608cf69ce624794373389f93664cde3bc81daa6c5bedc374014022",
+  "unloadPolishModel.immediately": "6e212d5e64693304c1a229ca47318dda098a9101729acec4dd51f5ff0abf234d",
+  "unloadPolishModel.never": "85a20521cb8350d88c3f74cf6b8ce0463dc31bc12974376bd7307427f0b56fac",
+  "unloadPolishModel.oneHour": "c11199edb99d5c1e76481169a9aa231aedcfda664f08deaa68a4b1fb88596afe",
+  "unloadPolishModel.tenMinutes": "b7a0941e864bff62da072c0a8af80ca8d5b418cc5ba5fb7922ed4693628ade2a",
+  "unloadPolishModel.twoMinutes": "290e7be3f9c1fc6b19c8f30f05019c078524be8bd23e09e65893812e89b0218a"
  },
  "reviewedSourceNote": "Per searchable id, the SHA-256 of the English title and description its translations were reviewed against (reference/settings-map.json; SettingsSearchVocabularyTests.sourceFingerprint). First recorded 2026-10-07 at be0086b6 from the export the Phase 0 and council reviews covered. When a test names an id here, re-review that id's translated blocks, then record the hash the test prints. Limit: dynamic titles are bound by resolver name, not template wording."
 }

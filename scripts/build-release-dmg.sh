@@ -436,6 +436,15 @@ else
         echo "::error::CWebRTCAEC.framework missing from the bundle (#4355)"
         exit 1
     fi
+    SHARE_EXTENSION="$BUNDLE/Contents/PlugIns/EnviousWisprShare.appex"
+    if [[ ! -d "$SHARE_EXTENSION" ]]; then
+        echo "::error::EnviousWispr Share extension missing from the bundle"
+        exit 1
+    fi
+    echo "    [5.9/6] sign EnviousWispr Share extension"
+    codesign "${SIGN_FLAGS[@]}" --entitlements \
+      "$PROJ_ROOT/Sources/EnviousWisprShare/Share.entitlements" "$SHARE_EXTENSION"
+
     # 6. Embed the Developer ID provisioning profile, THEN the main app bundle.
     # keychain-access-groups is a RESTRICTED entitlement; AMFI requires the embedded
     # profile to authorize it at launch (TN3125). The profile is sealed by the

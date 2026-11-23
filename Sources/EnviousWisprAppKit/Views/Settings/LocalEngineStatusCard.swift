@@ -20,10 +20,6 @@ struct LocalEngineDescriptor: Equatable {
   /// shared literal: EG-1's 6 GB would be an absurd demand for a 484 MB model
   /// and would refuse installs that fit perfectly well.
   let installHeadroom: String
-  /// Whether to warn on an 8 GB Mac. EG-1 is 2.9 GB resident and genuinely
-  /// strains one; S1-mini is a sixth of that and does not, so the warning would
-  /// be noise that teaches users to ignore the real one.
-  let showsLowMemoryNote: Bool
   /// The engine's context window, bound to its manifest by
   /// `LocalEngineDescriptorTests`. Here so the dictation-length promise in the
   /// explainer is DERIVED from the guard that enforces it, never typed.
@@ -52,7 +48,7 @@ struct LocalEngineDescriptor: Equatable {
     // The publisher's card says "462 MiB" for the same file; quoting that here
     // would have the app disagree with the user's own disk.
     name: LLMProvider.s1Mini.displayName, downloadSize: "484 MB", installHeadroom: "1 GB",
-    showsLowMemoryNote: false, contextTokens: 8192)
+    contextTokens: 8192)
 }
 
 /// The actionable status/download/remove card for a bundled local engine.
@@ -94,10 +90,6 @@ struct LocalEngineStatusCard<Middle: View>: View {
   /// #4328: the Remove row shows wherever the install state offers it, on every page.
   static func showsRemoveRow(_ presentation: EGOneRowPresentation) -> Bool {
     presentation.showsRemove
-  }
-
-  private var isLowMemoryMac: Bool {
-    ProcessInfo.processInfo.physicalMemory <= (8 << 30)
   }
 
   /// The rows of a bundled local engine in the AI Polish card (#3385, founder's Claude
@@ -282,20 +274,6 @@ struct LocalEngineStatusCard<Middle: View>: View {
     middle()
     if Self.showsRemoveRow(presentation) {
       removeRow
-    }
-    if engine.showsLowMemoryNote, isLowMemoryMac {
-      PolishRowDivider()
-      PolishRow(
-        notInSettingsMap: .statusLine,
-        icon: "exclamationmark.triangle", iconTint: .stWarning,
-        title: String(
-          localized:
-            "This Mac has 8 GB of memory. \(engine.name) may run slower here. Dictation always works, even when polish is unavailable.",
-          comment:
-            "AI Polish, local model card: low-memory note. %@ is the model name, such as EG-1.")
-      ) {
-        EmptyView()
-      }
     }
   }
 

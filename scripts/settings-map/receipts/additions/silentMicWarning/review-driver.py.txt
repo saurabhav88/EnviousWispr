@@ -1,0 +1,110 @@
+#!/usr/bin/env python3
+"""#4841 (driver copied from #3147's): one fresh isolated Codex session per language reviews the drafted search
+block for the new Dictation > Microphone switch "Warn when the microphone is silent" (accuracy, naturalness,
+collisions with sibling places). Mirrors scripts/settings-map/draft-vocabulary.sh isolation.
+Usage: review-driver.py <worktree> <drafts-dir> <outdir>"""
+import concurrent.futures
+import glob
+import json
+import os
+import pathlib
+import subprocess
+import sys
+import tempfile
+
+wt = pathlib.Path(sys.argv[1])
+drafts = pathlib.Path(sys.argv[2])
+out = pathlib.Path(sys.argv[3])
+vocab = json.load(open(wt / "Sources/EnviousWisprAppKit/Resources/SettingsSearchVocabulary.json", encoding="utf-8"))
+by_id = {e["id"]: {b["language"]: b for b in e["blocks"]} for e in vocab["entries"]}
+
+PAGE = ("Dictation > Microphone is a tab of the app's Dictation settings page. It holds the microphone choice "
+        "(Input device), what happens to music and videos while you dictate, Microphone readiness (how long the mic stays "
+        "warm after a dictation), this switch, and a Bluetooth guide. While you dictate, a small floating recording pill "
+        "shows on screen.")
+SIB_COMMON = ["micReadiness", "stopOnSilence", "bluetoothGuide", "inputDevice", "mediaDuringDictation"]
+PLACES = {
+    "silentMicWarning": dict(
+        en_title="Warn when the microphone is silent", de_title="Bei Mikrofonstille warnen",
+        desc="Shows a notice on the pill when no sound arrives.",
+        does=("a switch, ON by default. On: while you dictate, if the microphone sends only exact digital silence (for "
+              "example a Bluetooth headset that dropped its audio, or a muted or broken mic), the recording pill shows a "
+              "notice after about 5 seconds and a stronger one after 15 seconds; the notice goes away when sound returns. "
+              "Off: no such notice. Dictation keeps recording either way: it does NOT stop or end dictation on silence "
+              "(that is the separate Stop recording on silence setting), does NOT choose or test the microphone, and does "
+              "NOT change microphone volume or permissions."),
+        siblings=SIB_COMMON),
+}
+
+BRIEF = """You are reviewing a draft search vocabulary block for ONE place in the Settings search box of EnviousWispr, a macOS dictation app (press a key and speak, it types your words into any app). The language you review is "{lang}".
+
+Use ONLY this brief and the data below. Do not open, search or read any file, folder, repository or website. Do not run commands.
+
+{page}
+
+The place (English title and description are the source of truth; the page is Dictation > Microphone):
+- English title: {en_title}
+- German title: {de_title}
+- English description: {desc}
+- What it really is: {does}
+
+Review the draft block for language "{lang}" below:
+1. Accuracy: remove or rewrite anything the place does not do or hold.
+2. Collisions: the block must not fit the sibling places equally well. The siblings' current blocks in this language are listed below (a sibling may be missing when it is new).
+3. Naturalness: wording a native speaker of "{lang}" would really type or see in an app's settings. For the title: how an app in that language would label this. Keep product names unchanged. Lowercase except nouns the language capitalises. "words" 0 to 6 short terms; "phrases" 1 to 3 everyday searches, at least one. For en and de there is no title (the interface supplies it); for de use du-form.
+
+Draft block:
+{draft}
+
+Sibling blocks in "{lang}" (id -> block):
+{siblings}
+
+Output: one JSON object only, no commentary, no code fence, with the corrected block in exactly the draft's shape: {{"language": "{lang}", "title": "...", "words": [...], "phrases": [...]}} (omit "title" for en and de). If the draft is already right, return it unchanged. After the JSON add nothing.
+"""
+
+
+def draft_for(pid):
+    paths = sorted(glob.glob(str(drafts / f"{pid}-*" / "draft.json")))
+    assert len(paths) == 1, (pid, paths)
+    return json.load(open(paths[0], encoding="utf-8"))
+
+
+def run(job):
+    pid, lang, block = job
+    p = PLACES[pid]
+    prompt = BRIEF.format(
+        lang=lang, page=PAGE, en_title=p["en_title"], de_title=p["de_title"], desc=p["desc"], does=p["does"],
+        draft=json.dumps(block, ensure_ascii=False, indent=1),
+        siblings=json.dumps({i: by_id[i][lang] for i in p["siblings"] if lang in by_id.get(i, {})},
+                            ensure_ascii=False, indent=1))
+    dest = out / pid
+    dest.mkdir(parents=True, exist_ok=True)
+    if (dest / f"review-{lang}.txt").exists():
+        return pid, lang, 0
+    iso = pathlib.Path(tempfile.mkdtemp(prefix="ew-vocab-review."))
+    (iso / "work").mkdir()
+    (iso / "codex-home").mkdir()
+    os.symlink(os.path.expanduser("~/.codex/auth.json"), iso / "codex-home" / "auth.json")
+    answer = iso / "out.txt"
+    env = dict(os.environ, CODEX_HOME=str(iso / "codex-home"))
+    proc = subprocess.run(
+        [os.path.expanduser("~/.claude/bin/codex-run"), str(answer), "-c", "tools.web_search=false", "exec",
+         "--sandbox", "read-only", "--skip-git-repo-check", "--ignore-rules", "--ephemeral", "-C", str(iso / "work")],
+        input=prompt, text=True, env=env, cwd=str(iso / "work"), capture_output=True)
+    last = pathlib.Path(str(answer) + ".last")
+    if proc.returncode == 0 and last.exists():
+        (dest / f"review-{lang}.txt").write_text(last.read_text(encoding="utf-8"), encoding="utf-8")
+    else:
+        (dest / f"review-{lang}.FAILED").write_text(f"exit {proc.returncode}\n{proc.stderr[-2000:]}", encoding="utf-8")
+    return pid, lang, proc.returncode
+
+
+jobs = []
+for pid in PLACES:
+    d = draft_for(pid)
+    for b in d["blocks"]:
+        jobs.append((pid, b["language"], b))
+with concurrent.futures.ThreadPoolExecutor(max_workers=6) as pool:
+    for pid, lang, rc in pool.map(run, jobs):
+        print(f"{pid} {lang}: exit {rc}", flush=True)
+print("DONE", flush=True)

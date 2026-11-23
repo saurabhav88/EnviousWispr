@@ -95,15 +95,16 @@ struct RecordingPollingLifetimeTests {
       },
       onContentHeightChange: { _ in },
       chrome: RecordingPillDesign.classic.chrome,
+      position: .top,
       isLocked: false,
-      noticeText: nil,
+      notice: nil,
       cadence: .still)
 
     let hosted = NSHostingView(rootView: AnyView(view))
     try #require(
       host.present(
         hosted, width: .fixed(RecordingPillDesign.classic.width),
-        fixedHeight: RecordingPillDesign.classic.reservedHeight,
+        fixedHeight: nil,
         isFresh: true, position: .top),
       "the still pill never reached the host")
 

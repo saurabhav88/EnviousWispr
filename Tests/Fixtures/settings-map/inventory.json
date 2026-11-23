@@ -1308,6 +1308,24 @@
    }
   },
   {
+   "id": "silentMicWarning",
+   "kind": "setting",
+   "destination": {
+    "page": "dictation",
+    "tab": "microphone"
+   },
+   "disposition": "mapped",
+   "parent": "section.microphone",
+   "target": "silentMicWarning",
+   "fallbacks": [],
+   "dynamicTitle": false,
+   "seedParent": null,
+   "description": {
+    "kind": "static",
+    "english": "Shows a notice on the pill when no sound arrives."
+   }
+  },
+  {
    "id": "bluetoothGuide",
    "kind": "feature",
    "destination": {
@@ -2015,6 +2033,24 @@
    }
   },
   {
+   "id": "automaticDictationPaste",
+   "kind": "setting",
+   "destination": {
+    "page": "dictation",
+    "tab": "clipboard"
+   },
+   "disposition": "mapped",
+   "parent": "section.clipboard",
+   "target": "automaticDictationPaste",
+   "fallbacks": [],
+   "dynamicTitle": false,
+   "seedParent": null,
+   "description": {
+    "kind": "static",
+    "english": "Turn this off to keep your latest dictation on the clipboard for manual paste."
+   }
+  },
+  {
    "id": "autoCopyToClipboard",
    "kind": "setting",
    "destination": {
@@ -2346,8 +2382,8 @@
    },
    "disposition": "mapped",
    "parent": "meetingSummaryEngine",
-   "target": "meetingSummaryEngine",
-   "fallbacks": [],
+   "target": "meetingSummaryEngine.change",
+   "fallbacks": ["meetingSummaryEngine"],
    "dynamicTitle": false,
    "seedParent": "meetingSummaryEngine"
   },
@@ -3091,6 +3127,22 @@
    }
   },
   {
+   "id": "dictationOutputLanguage",
+   "kind": "setting",
+   "destination": {
+    "page": "aiPolish"
+   },
+   "disposition": "mapped",
+   "parent": "page.aiPolish",
+   "target": "dictationOutputLanguage",
+   "fallbacks": [],
+   "dynamicTitle": false,
+   "seedParent": null,
+   "description": {
+    "kind": "runtime"
+   }
+  },
+  {
    "id": "aiPolishProvider",
    "kind": "setting",
    "destination": {
@@ -3775,6 +3827,142 @@
    ],
    "dynamicTitle": false,
    "seedParent": "s1Context"
+  },
+  {
+   "id": "unloadPolishModel",
+   "kind": "setting",
+   "destination": {
+    "page": "aiPolish"
+   },
+   "disposition": "mapped",
+   "parent": "aiPolish.providerSection",
+   "target": "unloadPolishModel",
+   "fallbacks": [
+    "aiPolishProvider",
+    "enableAIPolish"
+   ],
+   "dynamicTitle": false,
+   "seedParent": null,
+   "description": {
+    "kind": "static",
+    "english": "Frees the polish model's memory when you are not dictating."
+   }
+  },
+  {
+   "id": "unloadPolishModel.never",
+   "kind": "choice",
+   "destination": {
+    "page": "aiPolish"
+   },
+   "disposition": "mapped",
+   "parent": "unloadPolishModel",
+   "target": "unloadPolishModel",
+   "fallbacks": [
+    "aiPolishProvider",
+    "enableAIPolish"
+   ],
+   "dynamicTitle": false,
+   "seedParent": "unloadPolishModel"
+  },
+  {
+   "id": "unloadPolishModel.immediately",
+   "kind": "choice",
+   "destination": {
+    "page": "aiPolish"
+   },
+   "disposition": "mapped",
+   "parent": "unloadPolishModel",
+   "target": "unloadPolishModel",
+   "fallbacks": [
+    "aiPolishProvider",
+    "enableAIPolish"
+   ],
+   "dynamicTitle": false,
+   "seedParent": "unloadPolishModel",
+   "description": {
+    "kind": "none",
+    "why": "notice shown only while that option is chosen"
+   }
+  },
+  {
+   "id": "unloadPolishModel.twoMinutes",
+   "kind": "choice",
+   "destination": {
+    "page": "aiPolish"
+   },
+   "disposition": "mapped",
+   "parent": "unloadPolishModel",
+   "target": "unloadPolishModel",
+   "fallbacks": [
+    "aiPolishProvider",
+    "enableAIPolish"
+   ],
+   "dynamicTitle": false,
+   "seedParent": "unloadPolishModel"
+  },
+  {
+   "id": "unloadPolishModel.fiveMinutes",
+   "kind": "choice",
+   "destination": {
+    "page": "aiPolish"
+   },
+   "disposition": "mapped",
+   "parent": "unloadPolishModel",
+   "target": "unloadPolishModel",
+   "fallbacks": [
+    "aiPolishProvider",
+    "enableAIPolish"
+   ],
+   "dynamicTitle": false,
+   "seedParent": "unloadPolishModel"
+  },
+  {
+   "id": "unloadPolishModel.tenMinutes",
+   "kind": "choice",
+   "destination": {
+    "page": "aiPolish"
+   },
+   "disposition": "mapped",
+   "parent": "unloadPolishModel",
+   "target": "unloadPolishModel",
+   "fallbacks": [
+    "aiPolishProvider",
+    "enableAIPolish"
+   ],
+   "dynamicTitle": false,
+   "seedParent": "unloadPolishModel"
+  },
+  {
+   "id": "unloadPolishModel.fifteenMinutes",
+   "kind": "choice",
+   "destination": {
+    "page": "aiPolish"
+   },
+   "disposition": "mapped",
+   "parent": "unloadPolishModel",
+   "target": "unloadPolishModel",
+   "fallbacks": [
+    "aiPolishProvider",
+    "enableAIPolish"
+   ],
+   "dynamicTitle": false,
+   "seedParent": "unloadPolishModel"
+  },
+  {
+   "id": "unloadPolishModel.oneHour",
+   "kind": "choice",
+   "destination": {
+    "page": "aiPolish"
+   },
+   "disposition": "mapped",
+   "parent": "unloadPolishModel",
+   "target": "unloadPolishModel",
+   "fallbacks": [
+    "aiPolishProvider",
+    "enableAIPolish"
+   ],
+   "dynamicTitle": false,
+   "seedParent": "unloadPolishModel"
   },
   {
    "id": "appleIntelligence.status",
@@ -4665,6 +4853,26 @@
    "description": {
     "kind": "static",
     "english": "Automatically detects when you correct a dictation and adds the corrected word to your dictionary. Undo it from the notification, or remove it later in Your Words."
+   }
+  },
+  {
+   "id": "fixLearnedWords",
+   "kind": "setting",
+   "destination": {
+    "page": "dictionary",
+    "dictionaryTab": "learnFrom"
+   },
+   "disposition": "mapped",
+   "parent": "dictionary.tab.learnFrom",
+   "target": "fixLearnedWords",
+   "fallbacks": [
+    "selfLearningDictionary"
+   ],
+   "dynamicTitle": false,
+   "seedParent": null,
+   "description": {
+    "kind": "static",
+    "english": "Use learned words in new recordings and imports. Turn this off to keep using words you added yourself without applying learned corrections."
    }
   },
   {

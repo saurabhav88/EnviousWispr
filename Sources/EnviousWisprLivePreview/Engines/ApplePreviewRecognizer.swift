@@ -970,8 +970,8 @@ package enum ApplePreviewEngineResolver {
   ///
   /// So a bare code accepts ANY installed variant of that language and USES it. That also pins
   /// `commitment`, so the cached engine stops being rebuilt with a different regional model on
-  /// random recordings. A code that carries a REGION (Auto sends the full system locale) still
-  /// requires that exact tag: the region is the whole point there — measured, a `zh-TW` Mac
+  /// random recordings. A code that carries a REGION (Auto sends the Mac's language with its
+  /// region) still requires that exact tag: the region is the whole point there — measured, a `zh-TW` Mac
   /// reduced to a bare code gets Simplified characters for a Traditional reader.
   ///
   /// This does NOT fix the underlying product gap: a locked language still gets an arbitrary
@@ -1009,7 +1009,7 @@ package enum ApplePreviewEngineResolver {
   }
 
   /// The language tag to ask Apple for: a bare ISO 639-1 code when the user locked
-  /// one, the FULL system locale under Auto.
+  /// one, the Mac's own language with the Mac's region under Auto.
   ///
   /// **Apple's recognizer must commit to one language before it hears anything, so
   /// Auto has no answer to give it.** The system language is the honest guess: it
@@ -1036,11 +1036,64 @@ package enum ApplePreviewEngineResolver {
   /// ISO 639-1 codes, so a user who explicitly picks Chinese gets `zh-CN`. Giving
   /// locked mode regional variants means adding them to that catalogue, which is a
   /// product decision about a user-visible list, not this function.
+  ///
+  /// **Auto reads the Mac's language list, not `Locale.current` (#4813).** In the app,
+  /// `Locale.current` takes its LANGUAGE from the best match among the interface languages
+  /// the app ships: with the interface set to German on an English Mac it is `de-US`, and on
+  /// a Mac whose language the app does not ship (measured with a probe bundle: Italian,
+  /// Spanish) it is `en-<region>`. So the language (and a script the region does not already
+  /// imply) comes from the Mac's first preferred language, and only the REGION from
+  /// `Locale.current`, which a per-app language leaves alone (unless that region would change
+  /// the spoken Chinese language, #4828).
   package static func languageCode(for mode: LanguageMode) -> String {
+    languageCode(for: mode, macLanguages: MacProfile.systemLanguages, current: .current)
+  }
+
+  /// `languageCode(for:)` with its inputs explicit: `macLanguages` is the Mac's preferred
+  /// languages, most preferred first; `current` supplies the region and the fallback when
+  /// the list gives no language.
+  package static func languageCode(
+    for mode: LanguageMode, macLanguages: [String], current: Locale
+  ) -> String {
     switch mode {
     case .locked(let code): return code
-    case .auto: return Locale.current.identifier(.bcp47)
+    case .auto:
+      // Components, not `Locale.Language`: the latter infers a script ("en-Latn-US").
+      guard let first = macLanguages.first, !first.isEmpty,
+        let code = Locale.Language.Components(identifier: first).languageCode
+      else { return current.identifier(.bcp47) }
+      // The Mac's Region, unless swapping it in would change the spoken Chinese language
+      // (#4828): Apple's Hong Kong Chinese is Cantonese, so a Taiwan Mandarin preference with
+      // Region Hong Kong keeps TW (zh-TW, not zh-HK), and a Hong Kong Cantonese preference with
+      // Region Taiwan keeps HK. Only when both regions exist; every other case is unchanged.
+      var region = current.region
+      if let own = Locale.Language.Components(identifier: first).region, let mac = region,
+        isCantonese(first) != isCantonese("\(code.identifier)-\(mac.identifier)")
+      {
+        region = own
+      }
+      // The language and script for that region: `MacProfile.preferredLanguage`, the #4813
+      // rule shared with snippet dates since #4824 (a written or region-implied script is kept,
+      // one the region already implies is dropped, so the tag is the spelling Apple's dictation
+      // and meeting lists carry: zh-TW, zh-CN, zh-HK).
+      guard let preferred = MacProfile.preferredLanguage(macLanguages: macLanguages, region: region)
+      else { return current.identifier(.bcp47) }
+      return Locale(languageCode: preferred.code, script: preferred.script, languageRegion: region)
+        .identifier(.bcp47)
     }
+  }
+
+  /// Whether a tag names Cantonese in Apple's speech lists, which carry one Chinese tag per
+  /// spoken language: `zh-HK` and `yue-*` are Cantonese, `zh-TW` and `zh-CN` Mandarin (#4828;
+  /// inferred from Apple naming its languages Cantonese (Hong Kong) and Mandarin (Taiwan, China
+  /// mainland), not verified by listening). Exact for those list spellings; for any other tag
+  /// it reads only the region (`zh-Hans-HK` reads as Cantonese though Apple maps it to
+  /// Mandarin), so a caller with Apple's own match classifies that match instead. False for a
+  /// bare `zh` means only that the tag carries no Cantonese marker.
+  package static func isCantonese(_ tag: String) -> Bool {
+    let parts = Locale.Language.Components(identifier: tag)
+    guard let code = parts.languageCode?.identifier else { return false }
+    return code == "yue" || (code == "zh" && parts.region?.identifier == "HK")
   }
 
   private static func log(_ message: String) async {

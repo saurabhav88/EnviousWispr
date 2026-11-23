@@ -404,10 +404,10 @@ jobs:
         working-directory: website
         run: npm run build
 
-      - name: Help centre checks (routes, sitemap, search)
+      - name: Website checks (routes, sitemap, search, reachability)
         if: steps.changes.outputs.needs_website == 'true'
         working-directory: website
-        run: npm run check:help
+        run: npm run check:site
 
       # #2778: the Ollama library feed is published by a routine, so a bad or non-append-only
       # change must fail BEFORE merge. Offline only (no network, no registry): the validator's own

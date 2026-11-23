@@ -524,6 +524,156 @@ struct CallEvidenceReaderTests {
       == .call(family: .googleMeet, room: "abc-defg-hij"))
   }
 
+  @Test("A Brave Teams guest preview only offers Ask until the page shows the joined control",
+    .bug("https://github.com/saurabhav88/EnviousWispr/issues/4094"))
+  func teamsGuestPreviewNeedsJoinedControl() {
+    let fixture = Fixture()
+    let room = "teams.live.com/light-meetings/launch?p=fixture-room"
+    fixture.pageURL = "https://" + room
+    fixture.ownerBundle = "com.brave.Browser"
+    fixture.leaveTitle = "Join now"
+    var control = "prejoin-join-button"
+    fixture.response = { f, node, attribute in
+      guard CFEqual(node, f.leave), attribute == "AXDOMIdentifier" else { return nil }
+      return .value(control as CFString)
+    }
+
+    let preview = Reader.snapshot(for: .browser(.brave), holderPID: fixture.pid, access: fixture.access)
+    #expect(preview.startEvidence == .microphoneOnly(family: .teams, room: room))
+
+    control = "hangup-button"
+    let joined = Reader.snapshot(for: .browser(.brave), holderPID: fixture.pid, access: fixture.access)
+    #expect(joined.startEvidence == .call(family: .teams, room: room))
+    #expect(joined.owner?.pid == fixture.pid)
+  }
+
+  @Test("A readable focused Teams preview can offer Ask while another window is inconclusive",
+    .bug("https://github.com/saurabhav88/EnviousWispr/issues/4094"))
+  func teamsPreviewCanAskDespiteInconclusiveSibling() {
+    let fixture = Fixture()
+    let unreadable = AXUIElementCreateApplication(71_121)
+    fixture.ownerBundle = "com.brave.Browser"
+    fixture.pageURL = "https://teams.live.com/light-meetings/launch?p=fixture-room"
+    fixture.windows = [fixture.window, unreadable]
+    fixture.response = { _, node, attribute in
+      CFEqual(node, unreadable) && attribute == "AXRole" ? .failed : nil
+    }
+
+    let preview = Reader.snapshot(for: .browser(.brave), holderPID: fixture.pid, access: fixture.access)
+    #expect(preview.startEvidence == .inconclusiveTeamsPreview(
+      room: "teams.live.com/light-meetings/launch?p=fixture-room"))
+  }
+
+  @Test("A Chrome Teams guest read loses start proof when the browser run changes",
+    .bug("https://github.com/saurabhav88/EnviousWispr/issues/4094"))
+  func teamsGuestJoinedEvidenceRejectsReplacedOwner() {
+    let fixture = Fixture()
+    fixture.pageURL = "https://teams.live.com/light-meetings/launch?p=fixture-room"
+    fixture.leaveTitle = "Leave"
+    let access = fixture.access
+    var changingAccess = access
+    var runs = 0
+    changingAccess.appRun = { pid in
+      runs += 1
+      if runs == 2 { fixture.ownerBirth += 1 }
+      return access.appRun(pid)
+    }
+    fixture.response = { f, node, attribute in
+      guard CFEqual(node, f.leave), attribute == "AXDOMIdentifier" else { return nil }
+      return .value("hangup-button" as CFString)
+    }
+
+    let snapshot = Reader.snapshot(for: .browser(.chrome), holderPID: fixture.pid, access: changingAccess)
+    #expect(snapshot.startEvidence == .unknown)
+    #expect(snapshot.owner == nil)
+  }
+
+  @Test("A single joined Teams guest room can be found behind a different Brave window",
+    .bug("https://github.com/saurabhav88/EnviousWispr/issues/4094"))
+  func teamsGuestFindsOnlyJoinedSiblingWindow() {
+    let fixture = Fixture()
+    let blank = AXUIElementCreateApplication(71_101)
+    let otherWindow = AXUIElementCreateApplication(71_102)
+    let otherPage = AXUIElementCreateApplication(71_103)
+    let otherLeave = AXUIElementCreateApplication(71_104)
+    let room = "teams.live.com/light-meetings/launch?p=first"
+    fixture.ownerBundle = "com.brave.Browser"
+    fixture.pageURL = "https://" + room
+    fixture.leaveTitle = "Leave"
+    fixture.windows = [blank, fixture.window]
+    var focusedCall = false
+    fixture.response = { f, node, attribute in
+      if attribute == "AXFocusedWindow" { return .value(focusedCall ? f.window : blank) }
+      if attribute == "AXDOMIdentifier",
+        CFEqual(node, f.leave) || CFEqual(node, otherLeave)
+      { return .value("hangup-button" as CFString) }
+      if CFEqual(node, otherWindow), attribute == "AXChildren" {
+        return .value([otherPage] as CFArray)
+      }
+      if CFEqual(node, otherPage) {
+        switch attribute {
+        case "AXRole": return .value("AXWebArea" as CFString)
+        case "AXURL": return .value("https://teams.live.com/light-meetings/launch?p=other" as CFString)
+        case "AXChildren": return .value([otherLeave] as CFArray)
+        default: return nil
+        }
+      }
+      if CFEqual(node, otherLeave), attribute == "AXRole" { return .value("AXButton" as CFString) }
+      return nil
+    }
+
+    let single = Reader.snapshot(for: .browser(.brave), holderPID: fixture.pid, access: fixture.access)
+    #expect(single.startEvidence == .call(family: .teams, room: room))
+    #expect(single.owner?.pid == fixture.pid)
+
+    fixture.windows.append(otherWindow)
+    let ambiguous = Reader.snapshot(for: .browser(.brave), holderPID: fixture.pid, access: fixture.access)
+    #expect(ambiguous.startEvidence == .unknown)
+
+    focusedCall = true
+    let focusedButAmbiguous = Reader.snapshot(for: .browser(.brave), holderPID: fixture.pid, access: fixture.access)
+    #expect(focusedButAmbiguous.startEvidence == .unknown)
+  }
+
+  @Test("Teams guest proof follows the selected tab when an old page still reads as joined",
+    .bug("https://github.com/saurabhav88/EnviousWispr/issues/4094"), arguments: [false, true])
+  func teamsGuestRecoveryRechecksSelectedDocument(focused: Bool) {
+    let fixture = Fixture()
+    let blank = AXUIElementCreateApplication(71_111)
+    let laterPage = AXUIElementCreateApplication(71_112)
+    fixture.ownerBundle = "com.brave.Browser"
+    fixture.pageURL = "https://teams.live.com/light-meetings/launch?p=first"
+    fixture.leaveTitle = "Leave"
+    fixture.windows = [blank, fixture.window]
+    var windowsReads = 0
+    var readLeaveControl = false
+    fixture.response = { f, node, attribute in
+      if attribute == "AXFocusedWindow" { return .value(focused ? f.window : blank) }
+      if attribute == "AXWindows" { windowsReads += 1 }
+      if windowsReads > 1 || (focused && readLeaveControl),
+        CFEqual(node, f.window), attribute == "AXChildren"
+      {
+        return .value([laterPage] as CFArray)
+      }
+      if CFEqual(node, laterPage) {
+        switch attribute {
+        case "AXRole": return .value("AXWebArea" as CFString)
+        case "AXURL": return .value("https://example.test/" as CFString)
+        default: return .missing
+        }
+      }
+      if CFEqual(node, f.leave), attribute == "AXDOMIdentifier" {
+        readLeaveControl = true
+        return .value("hangup-button" as CFString)
+      }
+      return nil
+    }
+
+    let snapshot = Reader.snapshot(for: .browser(.brave), holderPID: fixture.pid, access: fixture.access)
+    #expect(readLeaveControl, "the old page exposed a joined control before the tab change")
+    #expect(snapshot.startEvidence == .unknown)
+  }
+
   @Test("A proved Meet post-call page is not eligible to start another recording",
     .bug("https://github.com/saurabhav88/EnviousWispr/issues/4142"))
   func endedMeetPageIsNotStartEvidence() {

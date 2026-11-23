@@ -4,9 +4,9 @@ import EnviousWisprServices
 import Foundation
 
 /// #3973 C3 (decision 19): EnviousMeet > Models' Transcript engine row. Parakeet or Whisper
-/// Large v3 Turbo; Whisper is selectable only while its model is ready, and its Download,
-/// Resume and Cancel are the shared Whisper delivery's (one model for dictation and meetings,
-/// never a second download). Owns the transcript language list too, which follows the engine.
+/// Large v3 Turbo, either selectable downloaded or not (#4578); each card's status line is the
+/// shared `SpeechEngineStatusRow` (one model per engine for dictation and meetings, never a
+/// second download). Owns the transcript language list too, which follows the engine.
 @MainActor
 @Observable
 final class MeetingTranscriptEngineRowModel {
@@ -14,8 +14,6 @@ final class MeetingTranscriptEngineRowModel {
     let settings: SettingsManager
     /// The shared Whisper setup (`WhisperSetupService`): its state, Download and Cancel.
     let whisperSetup: WhisperSetupService
-    /// A meeting records or processes (`MeetingCoordinator.isMeetingActive`).
-    let isMeetingActive: @MainActor () -> Bool
   }
 
   @ObservationIgnored private let environment: Environment
@@ -26,58 +24,16 @@ final class MeetingTranscriptEngineRowModel {
 
   var selectedEngine: MeetingEngineChoice { environment.settings.meetingTranscriptEngine }
 
-  var whisperState: WhisperSetupState { environment.whisperSetup.setupState }
-
-  var isWhisperReady: Bool { whisperState == .ready }
-
-  /// #4325: the shared Whisper Remove, the same as dictation's Engine tab (one model for both).
-  /// Refused while a meeting is active by `WhisperSetupService` itself.
-  func removeWhisper() { environment.whisperSetup.removeModel() }
-  var isRemovingWhisper: Bool { environment.whisperSetup.isRemoving }
-  var whisperRemoveNotice: WhisperRemoveNotice? { environment.whisperSetup.removeNotice }
-  /// #4325: the page shows "Available after the meeting." instead of an enabled Remove.
-  var removeWaitsForMeeting: Bool { environment.isMeetingActive() }
-
-  /// Refreshes the Whisper state when the row appears.
+  /// Refreshes the Whisper state when the row appears (the shared status line reads it).
   func appear() async {
     await environment.whisperSetup.detectState()
   }
 
-  /// Saves `engine`. Whisper is saved only when its model is ready now (checked again, not the
-  /// row's cached state); Parakeet always.
-  func select(_ engine: MeetingEngineChoice) async {
-    if engine == .whisper {
-      await environment.whisperSetup.forceDetectState()
-      guard isWhisperReady else { return }
-    }
+  /// #4578: saves `engine`, downloaded or not (the uniform rule of both Settings tabs). A
+  /// missing engine's card says Set up model, and a meeting uses the other downloaded engine
+  /// until it is back.
+  func select(_ engine: MeetingEngineChoice) {
     environment.settings.meetingTranscriptEngine = engine
-  }
-
-  /// Why Download cannot start now, or nil (`MeetingDownloadAdmission`).
-  var downloadRefusal: String? {
-    MeetingDownloadAdmission.canStart(meetingActive: environment.isMeetingActive())
-      ? nil : MeetingDownloadAdmission.refusal
-  }
-
-  /// Download or Resume. Refused while a meeting records or processes, in the same step.
-  func download() {
-    guard MeetingDownloadAdmission.canStart(meetingActive: environment.isMeetingActive()) else {
-      return
-    }
-    environment.whisperSetup.downloadModel()
-  }
-
-  func cancelDownload() {
-    environment.whisperSetup.cancelDownload()
-  }
-
-  /// Whisper is chosen but its model is no longer ready: meetings fall back to Parakeet.
-  var isChosenWhisperGone: Bool {
-    guard selectedEngine == .whisper else { return false }
-    switch whisperState {
-    case .notDownloaded, .paused, .error: return true
-    case .checking, .downloading, .ready: return false
-    }
   }
 
   /// The warning when meetings and dictation use different engines (decisions 8 and 10), unless

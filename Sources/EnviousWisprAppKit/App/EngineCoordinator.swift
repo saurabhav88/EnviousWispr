@@ -92,6 +92,12 @@ final class EngineCoordinator {
     var isMeetingOwnModelResident: @MainActor (_ backend: ASRBackendType) -> Bool = { _ in false }
     /// Whether the given engine's model is on disk (gates a load attempt).
     let isInstalled: @MainActor (ASRBackendType) -> Bool
+    /// #4578: whether `isInstalled` is a settled fact yet. While it is not, the coordinator
+    /// neither switches to nor warms that engine (a warm of a missing Parakeet downloads it);
+    /// the installation owner pokes when the fact settles. Defaults settled for tests.
+    var isInstallationKnown: @MainActor (ASRBackendType) -> Bool = { _ in true }
+    var automaticLoadStopPoint: @MainActor (ASRBackendType) -> UInt64? = { _ in nil }
+    var awaitInstallation: @MainActor (ASRBackendType) async -> Void = { _ in }
     /// A telemetry label for the given engine's pipeline state.
     let stateLabel: @MainActor (ASRBackendType) -> String
     /// The mechanical, nonthrowing backend switch (`asrManager.switchBackend`).
@@ -280,6 +286,29 @@ final class EngineCoordinator {
     case notReady
   }
 
+  private func selectedLoadStopPoint(for backend: ASRBackendType) -> UInt64? {
+    // A selection not yet switched to Parakeet can still find a usable fallback.
+    guard deps.selectedBackend() == backend, deps.activeBackend() == backend,
+      deps.readiness(backend) != .ready
+    else { return nil }
+    return deps.automaticLoadStopPoint(backend)
+  }
+
+  func selectedEngineRequiresRetry(_ backend: ASRBackendType) -> Bool {
+    selectedLoadStopPoint(for: backend) != nil
+      && deps.isInstallationKnown(backend) && deps.isInstalled(backend)
+  }
+
+  func confirmSelectedEngineRequiresRetry(_ backend: ASRBackendType) async -> Bool {
+    guard let point = selectedLoadStopPoint(for: backend) else { return false }
+    // Publishing the stop can invalidate the cached install read in the same turn.
+    if !deps.isInstallationKnown(backend) {
+      await deps.awaitInstallation(backend)
+    }
+    return !Task.isCancelled && selectedLoadStopPoint(for: backend) == point
+      && deps.isInstallationKnown(backend) && deps.isInstalled(backend)
+  }
+
   /// Awaitable record-start path: ensure the SELECTED engine is switched-to and
   /// warm before a recording is minted, returning the outcome so the caller
   /// surfaces an honest pill and mints no session. Drives the work THROUGH the
@@ -303,7 +332,7 @@ final class EngineCoordinator {
     // `isSelectedReadyOrTerminal`, which reads live deps rather than the cached block).
     let s = status
     if s.selected == s.active && s.selectedReadiness == .ready { return .ready }
-    if !deps.isInstalled(s.selected) { return .notInstalled }
+    if deps.isInstallationKnown(s.selected), !deps.isInstalled(s.selected) { return .notInstalled }
     return .notReady
   }
 
@@ -367,7 +396,12 @@ final class EngineCoordinator {
       return
     }
 
-    // 4. Selected model not on disk — never attempt to load a missing model.
+    // 4. #4578: the installation fact is not settled yet — wait for it (its owner pokes).
+    if !deps.isInstallationKnown(want) {
+      markBlocked(.loading)
+      return
+    }
+    // Selected model not on disk — never attempt to load a missing model.
     if !deps.isInstalled(want) {
       markBlocked(.notInstalled)
       return
@@ -513,7 +547,7 @@ final class EngineCoordinator {
   private func startWarm(for backend: ASRBackendType) {
     // Never load a model that isn't on disk; never warm one already ready;
     // never warm during an active recording (the record path warms its own).
-    guard deps.isInstalled(backend) else { return }
+    guard deps.isInstallationKnown(backend), deps.isInstalled(backend) else { return }
     guard deps.readiness(backend) != .ready else { return }
     guard !deps.isEngineActive(.parakeet), !deps.isEngineActive(.whisper) else { return }
     if warmingBackend == backend, warmTask != nil { return }
@@ -699,7 +733,9 @@ final class EngineCoordinator {
     if isSwitching || joiningBackend != nil || warmingBackend != nil { return false }
     let s = status
     if s.selected == s.active && s.selectedReadiness == .ready { return true }
-    if !deps.isInstalled(s.selected) { return true }  // model absent (on-disk fact)
+    // Model absent (on-disk fact). #4578: an unknown fact is not absence; keep waiting for it
+    // (the installation owner pokes when it settles) unless a busy/recovery exit below applies.
+    if deps.isInstallationKnown(s.selected), !deps.isInstalled(s.selected) { return true }
     if case .failed = s.switchPhase { return true }  // warm genuinely failed
     // Genuinely busy/recovering RIGHT NOW (live, not a stale cached reason): the
     // press cannot proceed, so give up rather than hang.

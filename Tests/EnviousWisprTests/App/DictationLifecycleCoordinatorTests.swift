@@ -32,8 +32,21 @@ import Testing
     recordingLocked: TestRecordingLockedBox,
     engineLease: EngineLease
   ) {
-    let audio = RouterTestAudioCapture()
-    let asr = RouterTestASRManager()
+    makeCoordinator(audio: RouterTestAudioCapture())
+  }
+
+  /// The same coordinator over chosen doubles; #4841 rows pass `FakeAudioCapture` and a
+  /// loadable Parakeet stub, so a real Parakeet take reaches live.
+  private static func makeCoordinator<Audio: AudioCaptureInterface>(
+    audio: Audio, asr: any ASRManagerInterface = RouterTestASRManager()
+  ) -> (
+    coordinator: DictationLifecycleCoordinator,
+    audio: Audio,
+    kernelDriver: KernelDictationDriver,
+    whisperKernelDriver: KernelDictationDriver,
+    recordingLocked: TestRecordingLockedBox,
+    engineLease: EngineLease
+  ) {
     let store = DictationRuntimeFixtures.tempStore()
     let pipeline = DictationRuntimeFixtures.makeParakeetDriver(
       audioCapture: audio, asrManager: asr, store: store)
@@ -280,6 +293,129 @@ import Testing
       #expect(calls[1].0 == nil && calls[1].1 == .failed)
     }
   }
+
+  // MARK: - #4841 the silent-mic tracker follows actual recording, per engine
+
+  /// Starts a real take on `driver` and returns once the coordinator has handled its
+  /// published `.recording` state. The coordinator's installed handler keeps running first;
+  /// this only listens after it.
+  /// Reaching `.recording` needs the first captured buffer (the arming-to-live gate), so one
+  /// is delivered after the start and again after every other state, as in
+  /// `AudioEventRouterTests`.
+  private static func startTake(
+    _ driver: KernelDictationDriver, audio: FakeAudioCapture, warnings: Bool
+  ) async throws {
+    let coordinatorHandler = driver.onStateChange
+    let (states, continuation) = AsyncStream.makeStream(of: PipelineState.self)
+    driver.onStateChange = { state in
+      coordinatorHandler?(state)
+      continuation.yield(state)
+    }
+    defer { driver.onStateChange = coordinatorHandler }
+    try await driver.handle(
+      event: .toggleRecording(
+        .testDefault(useStreamingASR: false, silentMicWarningsEnabled: warnings)))
+    if driver.state == .recording { return }
+    audio.deliverBuffer()
+    for await state in states {
+      if state == .recording { return }
+      audio.deliverBuffer()
+    }
+  }
+
+  private static func liveParakeetFixture() -> (
+    coordinator: DictationLifecycleCoordinator, audio: FakeAudioCapture,
+    kernelDriver: KernelDictationDriver, whisperKernelDriver: KernelDictationDriver,
+    recordingLocked: TestRecordingLockedBox, engineLease: EngineLease
+  ) {
+    let asr = StubParakeetASRManager()
+    asr.supportsStreaming = false
+    let fx = makeCoordinator(audio: FakeAudioCapture(), asr: asr)
+    fx.coordinator.install()
+    return fx
+  }
+
+  /// A real Parakeet take: the caching pill and `.loadingModel` of a cold start never start the
+  /// poll; the live `.recording` state does, bound to the take and to the recording pill the
+  /// coordinator draws for that state. Cancel ends it.
+  @Test(.timeLimit(.minutes(1)))
+  func silentMicTrackerStartsAtRealRecordingAndCancelEndsIt() async throws {
+    let fx = Self.liveParakeetFixture()
+    let driver = fx.kernelDriver
+    let overlay = fx.coordinator.recordingOverlay
+
+    overlay.present(.cachingModel(engineLabel: "Test"))
+    driver.onStateChange?(.loadingModel)
+    #expect(fx.coordinator.silentMicTracker.binding == nil, "prewarm never binds")
+
+    try await Self.startTake(driver, audio: fx.audio, warnings: true)
+    let binding = fx.coordinator.silentMicTracker.binding
+    #expect(binding?.takeID == driver.practiceTakeID)
+    #expect(binding?.presentation != nil)
+    #expect(binding?.presentation == overlay.currentRecordingPresentationID)
+
+    await driver.cancelRecording()
+    #expect(fx.coordinator.silentMicTracker.binding == nil, "cancel ends tracking")
+  }
+
+  @Test(.timeLimit(.minutes(1)))
+  func silentMicTrackerStaysOffForATakeFrozenWithWarningsOff() async throws {
+    let fx = Self.liveParakeetFixture()
+    try await Self.startTake(fx.kernelDriver, audio: fx.audio, warnings: false)
+    #expect(fx.kernelDriver.state == .recording)
+    #expect(fx.coordinator.silentMicTracker.binding == nil, "frozen off shows nothing")
+    await fx.kernelDriver.cancelRecording()
+  }
+
+  /// The Whisper engine's idle or complete never stops a running Parakeet take; Parakeet
+  /// leaving `.recording` does.
+  @Test(.timeLimit(.minutes(1)))
+  func silentMicTrackerStopsOnlyForItsOwnEngineLeavingRecording() async throws {
+    let fx = Self.liveParakeetFixture()
+    try await Self.startTake(fx.kernelDriver, audio: fx.audio, warnings: true)
+    let takeID = fx.kernelDriver.practiceTakeID
+    #expect(takeID != fx.whisperKernelDriver.practiceTakeID)
+    #expect(fx.coordinator.silentMicTracker.binding?.takeID == takeID)
+
+    fx.whisperKernelDriver.onStateChange?(.idle)
+    fx.whisperKernelDriver.onStateChange?(.complete)
+    #expect(
+      fx.coordinator.silentMicTracker.binding?.takeID == takeID,
+      "the Whisper engine's terminal leaves the Parakeet take bound")
+
+    await fx.kernelDriver.cancelRecording()
+    #expect(fx.coordinator.silentMicTracker.binding == nil, "leaving recording ends tracking")
+  }
+
+  #if DEBUG
+    /// Whisper's INSTALLED state callback drives the same tracker, keyed by Whisper's own take:
+    /// with the kernel live (so the dispatch draws the recording pill) its published `.recording`
+    /// starts tracking, Parakeet's idle leaves it bound, and Whisper leaving recording stops it.
+    /// No loadable Whisper engine exists in unit tests, so the kernel's live state comes from its
+    /// test seam; a real Whisper take is covered by Live UAT.
+    @Test func whisperInstalledCallbackStartsAndStopsTheSameTracker() {
+      let fx = Self.makeCoordinator()
+      fx.coordinator.install()
+      let whisper = fx.whisperKernelDriver
+      whisper.contextForTesting.config = .testDefault()
+      whisper.kernelForTesting.testForceState(.live)
+
+      whisper.onStateChange?(.recording)
+      #expect(fx.coordinator.recordingOverlay.currentRecordingPresentationID != nil)
+      #expect(fx.coordinator.silentMicTracker.binding?.takeID == whisper.practiceTakeID)
+      #expect(
+        fx.coordinator.silentMicTracker.binding?.presentation
+          == fx.coordinator.recordingOverlay.currentRecordingPresentationID)
+
+      fx.kernelDriver.onStateChange?(.idle)
+      #expect(
+        fx.coordinator.silentMicTracker.binding?.takeID == whisper.practiceTakeID,
+        "Parakeet's idle leaves the Whisper take bound")
+
+      whisper.onStateChange?(.transcribing)
+      #expect(fx.coordinator.silentMicTracker.binding == nil, "Whisper leaving recording stops it")
+    }
+  #endif
 
   #if DEBUG
     /// #3765: the dev control door's receipt hooks hear both callbacks for both engines,

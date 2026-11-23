@@ -984,11 +984,11 @@ struct RecordingPillPreviewWiringTests {
       locked.literal.tokenKind == .keyword(.false),
       "the tile draws the hands free variant, which is a mode rather than an appearance")
 
-    let notice = Self.argument("noticeText", of: call)
+    let notice = Self.argument("notice", of: call)
     #expect(
       notice?.is(NilLiteralExprSyntax.self) == true,
       """
-      noticeText is \(notice?.trimmedDescription ?? "absent"). The #1060 banner is a runtime \
+      notice is \(notice?.trimmedDescription ?? "absent"). The #1060 banner is a runtime \
       event, so a picker drawing one is showing a state the design does not have.
       """)
   }

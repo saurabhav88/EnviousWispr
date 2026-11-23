@@ -30,10 +30,11 @@ enum ColdPressGuard {
   static func reconcileSelectedBackend(
     overlay: OverlayDirector,
     selectedDriver: KernelDictationDriver,
-    ensureSelectedReady: @escaping @MainActor () async -> EngineCoordinator.PressReadiness
+    ensureSelectedReady: @escaping @MainActor () async -> EngineCoordinator.PressReadiness,
+    confirmExplicitRetry: @escaping @MainActor () async -> Bool
   ) {
     let label = selectedDriver.engineDisplayName
-    overlay.present(.cachingModel(engineLabel: label))
+    let receipt = overlay.present(.cachingModel(engineLabel: label))
     Task { [overlay] in
       // The coordinator switches to the selection AND warms it (single-flight,
       // latest-wins), returning the outcome so we show the right pill for EVERY
@@ -45,9 +46,13 @@ enum ColdPressGuard {
       case .notInstalled:
         overlay.present(.warning(reason: .modelNotDownloaded(engineLabel: label)))
       case .notReady:
-        // Switched but not ready (failed warm / transient block): clear the
-        // caching pill; the next press retries via the cold-press path.
-        overlay.dismissCurrent(.announced)
+        guard let receipt, overlay.canFollowUp(receipt) else { return }
+        let needsRetry = await confirmExplicitRetry()
+        if needsRetry, overlay.canFollowUp(receipt) {
+          presentExplicitRetry(overlay: overlay, engineLabel: label)
+        } else if overlay.isCurrent(receipt) {
+          overlay.dismissCurrent(.announced)
+        }
       }
     }
   }
@@ -82,20 +87,24 @@ enum ColdPressGuard {
     overlay: OverlayDirector,
     active: KernelDictationDriver,
     backendTag: String,
-    readiness: ASREngineReadiness
+    readiness: ASREngineReadiness,
+    confirmExplicitRetry: @escaping @MainActor () async -> Bool
   ) {
-    overlay.present(.cachingModel(engineLabel: active.engineDisplayName))
-    TelemetryService.shared.coldStartPressBlocked(
-      asrBackend: backendTag, warmupInFlight: readiness == .warming,
-      model: active.requestedModelAttribution)
+    let receipt = overlay.present(.cachingModel(engineLabel: active.engineDisplayName))
+    recordBlockedPress(active: active, backendTag: backendTag, readiness: readiness)
     Task { [overlay, active] in
       await active.ensureEngineWarm(reason: .coldPress)
       // Announce READY only if the warm-up actually reached ready. A failed
       // warm-up leaves the engine not-ready; the next press re-shows the
       // caching pill. The user saw a `.cachingModel` pill on this path, so the
       // READY pill is expected — never a launch-time surprise toast.
-      guard active.engineReadiness == .ready else { return }
-      overlay.present(.engineReady)
+      if active.engineReadiness == .ready {
+        overlay.present(.engineReady)
+      } else if let receipt, overlay.canFollowUp(receipt), await confirmExplicitRetry(),
+        overlay.canFollowUp(receipt)
+      {
+        presentExplicitRetry(overlay: overlay, engineLabel: active.engineDisplayName)
+      }
     }
     Task {
       await AppLogger.shared.log(
@@ -104,5 +113,17 @@ enum ColdPressGuard {
         level: .info, category: "Pipeline"
       )
     }
+  }
+
+  static func presentExplicitRetry(overlay: OverlayDirector, engineLabel: String) {
+    overlay.present(.warning(reason: .modelRequiresExplicitRetry(engineLabel: engineLabel)))
+  }
+
+  static func recordBlockedPress(
+    active: KernelDictationDriver, backendTag: String, readiness: ASREngineReadiness
+  ) {
+    TelemetryService.shared.coldStartPressBlocked(
+      asrBackend: backendTag, warmupInFlight: readiness == .warming,
+      model: active.requestedModelAttribution)
   }
 }

@@ -24,6 +24,28 @@ struct MeetingSummaryNavigationTests {
     #expect(navigation.pendingDestination == .meetings(.summaries))
   }
 
+  @Test("a summary limit uses the existing Change summary engine arrival")
+  func limitHighlightsEngineChoice() throws {
+    let navigation = NavigationCoordinator()
+    MeetingSummarySettingsLink.highlightChoice(navigation)
+    let id = try #require(navigation.pendingReveal)
+    #expect(id == .meetingSummaryEngineChange)
+    #expect(navigation.pendingModelMenu == nil)
+    let request = try #require(SettingsSearchRequest(entryID: id.rawValue))
+    #expect(request.target == .meetingSummaryEngineChange)
+    #expect(request.fallbacks == [.meetingSummaryEngine])
+    let intent = SettingsNavigationIntent.externalReveal(request)
+    #expect(intent.requiresOpenWindow)
+    var state = SettingsNavigationState()
+    state.perform(intent)
+    state.noteTabChange()
+    #expect(state.selectedPage == .meetings)
+    #expect(state.meetingsTab == .summaries)
+    #expect(state.reveal?.entryID == id.rawValue)
+    state.endWindowSession()
+    #expect(state.reveal == nil)
+  }
+
   @Test("the engine problems name the summary engine and its settings, never AI Polish")
   func messagesNameSummaryEngine() {
     for problem in [MeetingSummaryOwner.Problem.noProvider, .notForSummaries, .notReady] {

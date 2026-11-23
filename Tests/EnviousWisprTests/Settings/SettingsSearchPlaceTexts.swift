@@ -28,7 +28,7 @@ struct SettingsSearchPlaceTexts: Equatable {
 
   /// Bump when the text recipe changes; it is hashed into `textsSHA256`.
   static let recipeVersion = 1
-  static let interfaceLanguages = ["en", "de"]
+  static let interfaceLanguages = ["en", "de", "es", "fr"]
 
   let rows: [String]
   let entryOrder: [String]

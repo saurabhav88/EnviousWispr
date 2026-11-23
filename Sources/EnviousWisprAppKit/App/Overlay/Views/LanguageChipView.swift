@@ -10,7 +10,7 @@ import SwiftUI
 ///
 /// **It owns no clock and no hover state** (#2377 Phase 5, C3). Dismissal at six
 /// seconds, and the pause while the cursor is over it, are the director's:
-/// `PillCatalog` gives this chip `.after(seconds: 6, pausesOnHover: true)`,
+/// `PillCatalog` gives this chip `.after(seconds: 6, hover: .restartFull)`,
 /// `OverlayRootView` forwards hover as an event, and `PillExpiryClock` is the one
 /// thing that arms, cancels and re-arms. This view renders and reports presses.
 struct LanguageChipView: View {

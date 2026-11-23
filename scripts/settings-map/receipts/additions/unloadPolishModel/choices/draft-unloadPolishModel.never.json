@@ -1,0 +1,363 @@
+{
+ "id": "unloadPolishModel.never",
+ "blocks": [
+  {
+   "language": "ar",
+   "title": "أبدًا",
+   "words": [
+    "إبقاء النموذج في الذاكرة",
+    "تحميل دائم"
+   ],
+   "phrases": [
+    "خلي نموذج تحسين النص في الذاكرة حتى لما أوقف الإملاء"
+   ]
+  },
+  {
+   "language": "bg",
+   "title": "никога",
+   "words": [
+    "постоянно зареден",
+    "задържане в паметта"
+   ],
+   "phrases": [
+    "моделът за редакция на текста да остава в паметта, когато не диктувам"
+   ]
+  },
+  {
+   "language": "cs",
+   "title": "nikdy",
+   "words": [
+    "pořád načtený",
+    "ponechat v paměti"
+   ],
+   "phrases": [
+    "nechat model na úpravu textu v paměti i po skončení diktování"
+   ]
+  },
+  {
+   "language": "da",
+   "title": "aldrig",
+   "words": [
+    "altid indlæst",
+    "behold i hukommelsen"
+   ],
+   "phrases": [
+    "behold modellen til tekstforbedring i hukommelsen, når jeg ikke dikterer"
+   ]
+  },
+  {
+   "language": "de",
+   "words": [
+    "dauerhaft geladen",
+    "im Arbeitsspeicher behalten",
+    "RAM belegt lassen"
+   ],
+   "phrases": [
+    "Polish-Modell im Speicher lassen, wenn du gerade nicht diktierst",
+    "wie lässt du das Modell für die KI-Nachbearbeitung dauerhaft geladen?"
+   ]
+  },
+  {
+   "language": "el",
+   "title": "ποτέ",
+   "words": [
+    "πάντα φορτωμένο",
+    "παραμονή στη μνήμη"
+   ],
+   "phrases": [
+    "να μένει το μοντέλο βελτίωσης κειμένου στη μνήμη κι όταν δεν υπαγορεύω"
+   ]
+  },
+  {
+   "language": "en",
+   "words": [
+    "always loaded",
+    "keep in memory",
+    "stay in ram"
+   ],
+   "phrases": [
+    "keep the polish model loaded when i'm not dictating",
+    "don't unload the polish model after dictation"
+   ]
+  },
+  {
+   "language": "es",
+   "words": [
+    "siempre cargado",
+    "mantener en memoria"
+   ],
+   "phrases": [
+    "dejar el modelo de pulido en la memoria aunque no estés dictando",
+    "cómo haces para que el modelo de pulido siga cargado"
+   ]
+  },
+  {
+   "language": "et",
+   "title": "mitte kunagi",
+   "words": [
+    "alati laaditud",
+    "mälus hoidmine"
+   ],
+   "phrases": [
+    "hoia teksti viimistlemise mudel mälus ka siis, kui ma ei dikteeri"
+   ]
+  },
+  {
+   "language": "fi",
+   "title": "ei koskaan",
+   "words": [
+    "aina ladattuna",
+    "pidä muistissa"
+   ],
+   "phrases": [
+    "pidä tekstin viimeistelymalli muistissa sanelun jälkeenkin"
+   ]
+  },
+  {
+   "language": "fr",
+   "words": [
+    "toujours chargé",
+    "garder en mémoire"
+   ],
+   "phrases": [
+    "garder le modèle de retouche chargé même quand vous ne dictez pas",
+    "comment laissez-vous le modèle de retouche en mémoire après la dictée ?"
+   ]
+  },
+  {
+   "language": "hi",
+   "title": "कभी नहीं",
+   "words": [
+    "हमेशा लोड रहे",
+    "मेमोरी में रखें"
+   ],
+   "phrases": [
+    "बोलना बंद करने के बाद भी टेक्स्ट सुधारने वाला मॉडल मेमोरी में रहे"
+   ]
+  },
+  {
+   "language": "hr",
+   "title": "nikad",
+   "words": [
+    "stalno učitan",
+    "zadrži u memoriji"
+   ],
+   "phrases": [
+    "neka model za doradu teksta ostane u memoriji i kad ne diktiram"
+   ]
+  },
+  {
+   "language": "hu",
+   "title": "soha",
+   "words": [
+    "mindig betöltve",
+    "memóriában tartás"
+   ],
+   "phrases": [
+    "maradjon a szövegjavító modell a memóriában akkor is, ha nem diktálok"
+   ]
+  },
+  {
+   "language": "it",
+   "title": "mai",
+   "words": [
+    "sempre caricato",
+    "tieni in memoria"
+   ],
+   "phrases": [
+    "lascia in memoria il modello che rifinisce il testo anche quando non detto"
+   ]
+  },
+  {
+   "language": "ja",
+   "title": "解放しない",
+   "words": [
+    "常時ロード",
+    "メモリに常駐"
+   ],
+   "phrases": [
+    "音声入力が終わっても文章を整えるモデルをメモリに残したい"
+   ]
+  },
+  {
+   "language": "ko",
+   "title": "언로드 안 함",
+   "words": [
+    "항상 로드",
+    "메모리에 유지"
+   ],
+   "phrases": [
+    "음성 입력을 안 할 때도 문장 다듬기 모델을 메모리에 남겨 두기"
+   ]
+  },
+  {
+   "language": "lt",
+   "title": "niekada",
+   "words": [
+    "visada įkeltas",
+    "laikyti atmintyje"
+   ],
+   "phrases": [
+    "palikti teksto tobulinimo modelį atmintyje ir baigus diktuoti"
+   ]
+  },
+  {
+   "language": "lv",
+   "title": "nekad",
+   "words": [
+    "vienmēr ielādēts",
+    "paturēt atmiņā"
+   ],
+   "phrases": [
+    "paturēt teksta uzlabošanas modeli atmiņā arī tad, kad nediktēju"
+   ]
+  },
+  {
+   "language": "mt",
+   "title": "qatt",
+   "words": [
+    "dejjem mgħobbi",
+    "żomm fil-memorja"
+   ],
+   "phrases": [
+    "żomm il-mudell li jtejjeb it-test fil-memorja anki meta ma nkunx qed niddetta"
+   ]
+  },
+  {
+   "language": "nl",
+   "title": "nooit",
+   "words": [
+    "altijd geladen",
+    "in het geheugen houden"
+   ],
+   "phrases": [
+    "het model voor tekstverbetering geladen houden als ik niet dicteer"
+   ]
+  },
+  {
+   "language": "pl",
+   "title": "nigdy",
+   "words": [
+    "zawsze załadowany",
+    "pozostaw w pamięci"
+   ],
+   "phrases": [
+    "zostaw model do poprawiania tekstu w pamięci po zakończeniu dyktowania"
+   ]
+  },
+  {
+   "language": "pt",
+   "title": "nunca",
+   "words": [
+    "sempre carregado",
+    "manter na memória"
+   ],
+   "phrases": [
+    "deixar o modelo de revisão de texto na memória mesmo depois de ditar"
+   ]
+  },
+  {
+   "language": "ro",
+   "title": "niciodată",
+   "words": [
+    "mereu încărcat",
+    "păstrează în memorie"
+   ],
+   "phrases": [
+    "modelul de îmbunătățire a textului să rămână în memorie și când nu dictez"
+   ]
+  },
+  {
+   "language": "ru",
+   "title": "никогда",
+   "words": [
+    "всегда загружен",
+    "оставлять в памяти",
+    "не выгружать"
+   ],
+   "phrases": [
+    "оставлять модель правки текста в памяти после диктовки"
+   ]
+  },
+  {
+   "language": "sk",
+   "title": "nikdy",
+   "words": [
+    "stále načítaný",
+    "ponechať v pamäti"
+   ],
+   "phrases": [
+    "nechať model na úpravu textu v pamäti aj po skončení diktovania"
+   ]
+  },
+  {
+   "language": "sl",
+   "title": "nikoli",
+   "words": [
+    "vedno naložen",
+    "obdrži v pomnilniku"
+   ],
+   "phrases": [
+    "naj model za izboljšavo besedila ostane v pomnilniku tudi, ko ne narekujem"
+   ]
+  },
+  {
+   "language": "sv",
+   "title": "aldrig",
+   "words": [
+    "alltid inläst",
+    "behåll i minnet"
+   ],
+   "phrases": [
+    "låt modellen för textförbättring ligga kvar i minnet när jag inte dikterar"
+   ]
+  },
+  {
+   "language": "tr",
+   "title": "hiçbir zaman",
+   "words": [
+    "hep yüklü",
+    "bellekte tut",
+    "ram'de kalsın"
+   ],
+   "phrases": [
+    "dikteyi bitirince metin düzenleme modeli bellekte kalsın"
+   ]
+  },
+  {
+   "language": "uk",
+   "title": "ніколи",
+   "words": [
+    "завжди завантажена",
+    "залишати в пам’яті",
+    "не вивантажувати"
+   ],
+   "phrases": [
+    "залишати модель редагування тексту в пам’яті після диктування"
+   ]
+  },
+  {
+   "language": "vi",
+   "title": "không bao giờ",
+   "words": [
+    "luôn nạp sẵn",
+    "giữ trong ram"
+   ],
+   "phrases": [
+    "giữ mô hình chỉnh văn bản trong bộ nhớ kể cả khi không đọc chính tả"
+   ]
+  },
+  {
+   "language": "zh",
+   "title": "从不卸载",
+   "words": [
+    "始终加载",
+    "常驻内存",
+    "不释放内存"
+   ],
+   "phrases": [
+    "停止听写后也把润色模型留在内存里"
+   ]
+  }
+ ]
+}

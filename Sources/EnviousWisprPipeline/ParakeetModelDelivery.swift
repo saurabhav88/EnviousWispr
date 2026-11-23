@@ -93,7 +93,7 @@ public final class ParakeetDeliveryHandle {
   ) {
     self.controller = controller
     self.registration = registration
-    self.defaults = defaults ?? UserDefaults(suiteName: DeliveryFlags.suiteName) ?? .standard
+    self.defaults = defaults ?? SettingsDefaults.store
     self.progress = progress
     self.progressOwnership = progressOwnership
     let owners = ForegroundProgressOwners(always: progressOwnership == .always)

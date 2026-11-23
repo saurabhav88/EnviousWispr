@@ -4,7 +4,7 @@ import EnviousWisprAudio
 import EnviousWisprCore
 import EnviousWisprLLM
 import EnviousWisprPipeline
-import EnviousWisprServices
+@testable import EnviousWisprServices
 import EnviousWisprStorage
 import Foundation
 import Testing
@@ -40,6 +40,7 @@ struct DictationSessionConfigFactoryTests {
         settings: harness.settings,
         polishModel: harness.settings.polishModelID(for: harness.settings.llmProvider),
         polishWireModel: harness.settings.effectiveLLMModel,
+        fixLearnedWords: harness.settings.fixLearnedWords,
         triggerSource: source
       )
       #expect(config.triggerSource == source, "triggerSource=\(source) must pass through")
@@ -61,6 +62,7 @@ struct DictationSessionConfigFactoryTests {
       settings: harness.settings,
       polishModel: harness.settings.polishModelID(for: harness.settings.llmProvider),
       polishWireModel: harness.settings.effectiveLLMModel,
+      fixLearnedWords: harness.settings.fixLearnedWords,
       triggerSource: .pttHotkey
     )
 
@@ -73,11 +75,50 @@ struct DictationSessionConfigFactoryTests {
       settings: harness.settings,
       polishModel: harness.settings.polishModelID(for: harness.settings.llmProvider),
       polishWireModel: harness.settings.effectiveLLMModel,
+      fixLearnedWords: harness.settings.fixLearnedWords,
       triggerSource: .pttHotkey
     )
 
     #expect(captured.smartInsertion == true, "the in-flight config must not follow the setting")
     #expect(next.smartInsertion == false, "the next recording observes the new value")
+  }
+
+  @Test("#4841: the silent-mic warning switch is frozen at recording start by the production factory")
+  func silentMicWarningsFrozenAtRecordingStart() async throws {
+    let harness = try Harness.make(backend: .parakeet)
+    // The harness store outlives this test, and this test turns the switch off below; it sets its
+    // own starting value and puts it back, so neither run order nor a rerun decides the outcome.
+    #expect(SettingsDefaultValues.silentMicWarnings == true, "the switch ships on (founder decision)")
+    let original = harness.settings.silentMicWarnings
+    harness.settings.silentMicWarnings = true
+    defer { harness.settings.silentMicWarnings = original }
+
+    let captured = DictationSessionConfigFactory.make(
+      asrManager: harness.asrManager,
+      kernelDriver: harness.kernelDriver,
+      whisperKernelDriver: harness.whisperKernelDriver,
+      settings: harness.settings,
+      polishModel: harness.settings.polishModelID(for: harness.settings.llmProvider),
+      polishWireModel: harness.settings.effectiveLLMModel,
+      fixLearnedWords: harness.settings.fixLearnedWords,
+      triggerSource: .pttHotkey
+    )
+
+    // The user turns the warning off mid-dictation.
+    harness.settings.silentMicWarnings = false
+    let next = DictationSessionConfigFactory.make(
+      asrManager: harness.asrManager,
+      kernelDriver: harness.kernelDriver,
+      whisperKernelDriver: harness.whisperKernelDriver,
+      settings: harness.settings,
+      polishModel: harness.settings.polishModelID(for: harness.settings.llmProvider),
+      polishWireModel: harness.settings.effectiveLLMModel,
+      fixLearnedWords: harness.settings.fixLearnedWords,
+      triggerSource: .pttHotkey
+    )
+
+    #expect(captured.silentMicWarningsEnabled == true, "the in-flight config must not follow the setting")
+    #expect(next.silentMicWarningsEnabled == false, "the next recording observes the new value")
   }
 
   /// #3124: the factory freezes the EFFECTIVE spelling. British needs an English lock; the same
@@ -96,6 +137,7 @@ struct DictationSessionConfigFactoryTests {
         settings: harness.settings,
         polishModel: harness.settings.polishModelID(for: harness.settings.llmProvider),
         polishWireModel: harness.settings.effectiveLLMModel,
+        fixLearnedWords: harness.settings.fixLearnedWords,
         triggerSource: .pttHotkey)
     }
     let british = make()
@@ -109,6 +151,25 @@ struct DictationSessionConfigFactoryTests {
 
     harness.settings.languageMode = .auto
     #expect(make().englishSpelling == .american, "Auto never applies British spelling")
+  }
+
+  @Test("The dictation config uses the captured translation choice after Settings changes")
+  func keepsCapturedTranslationTarget() async throws {
+    let harness = try Harness.make(backend: .parakeet)
+    harness.settings.languageMode = .locked("en")
+    harness.settings.llmProvider = .claude
+    harness.settings.dictationTranslationTarget = .german
+    let captured = harness.settings.dictationTranslationTarget
+    harness.settings.dictationTranslationTarget = .hindi
+
+    let config = DictationSessionConfigFactory.make(
+      asrManager: harness.asrManager, kernelDriver: harness.kernelDriver,
+      whisperKernelDriver: harness.whisperKernelDriver, settings: harness.settings,
+      polishModel: .singleModel(for: .claude), polishWireModel: "claude-haiku-4-5",
+      translationTarget: captured, fixLearnedWords: true, triggerSource: .pttHotkey)
+
+    #expect(config.translationTarget == .german)
+    #expect(config.lockedLanguageCode == "en")
   }
 
   /// #3905: the fast engine cannot honour a Japanese lock, so the take runs as
@@ -125,6 +186,7 @@ struct DictationSessionConfigFactoryTests {
       settings: harness.settings,
       polishModel: harness.settings.polishModelID(for: harness.settings.llmProvider),
       polishWireModel: harness.settings.effectiveLLMModel,
+      fixLearnedWords: harness.settings.fixLearnedWords,
       triggerSource: .pttHotkey)
     #expect(config.languageMode == .auto)
     #expect(config.lockedLanguageCode == nil)
@@ -169,6 +231,7 @@ struct DictationSessionConfigFactoryTests {
       settings: harness.settings,
       polishModel: harness.settings.polishModelID(for: harness.settings.llmProvider),
       polishWireModel: harness.settings.effectiveLLMModel,
+      fixLearnedWords: harness.settings.fixLearnedWords,
       triggerSource: .pttHotkey
     )
 
@@ -181,6 +244,7 @@ struct DictationSessionConfigFactoryTests {
       settings: harness.settings,
       polishModel: harness.settings.polishModelID(for: harness.settings.llmProvider),
       polishWireModel: harness.settings.effectiveLLMModel,
+      fixLearnedWords: harness.settings.fixLearnedWords,
       triggerSource: .pttHotkey
     )
 
@@ -250,6 +314,24 @@ struct DictationSessionConfigFactoryTests {
     let harness = try Harness.make(backend: .whisper)
     let config = harness.makeConfig()
     #expect(config.autoPasteToActiveApp == true)
+  }
+
+  @Test("automatic paste off is frozen separately from the saved auto-copy choice")
+  func clipboardOnlyPreferenceIsFrozenAtStart() throws {
+    let harness = try Harness.make(backend: .parakeet)
+    harness.settings.autoCopyToClipboard = false
+    harness.settings.automaticDictationPasteEnabled = false
+    let clipboardOnly = harness.makeConfig()
+
+    harness.settings.automaticDictationPasteEnabled = true
+    let automatic = harness.makeConfig()
+
+    #expect(clipboardOnly.copyOnlyByPreference == true)
+    #expect(clipboardOnly.autoPasteToActiveApp == false)
+    #expect(clipboardOnly.autoCopyToClipboard == false)
+    #expect(automatic.copyOnlyByPreference == false)
+    #expect(automatic.autoPasteToActiveApp == true)
+    #expect(harness.settings.autoCopyToClipboard == false)
   }
 
   // MARK: - Settings field passthrough
@@ -322,6 +404,7 @@ private struct Harness {
       settings: settings,
       polishModel: settings.polishModelID(for: settings.llmProvider),
       polishWireModel: settings.effectiveLLMModel,
+      fixLearnedWords: settings.fixLearnedWords,
       triggerSource: triggerSource
     )
   }
@@ -341,9 +424,6 @@ private final class FactoryFakeASRManager: ASRManagerInterface {
   var onVendorDecodeChunkScheduled: (@MainActor @Sendable () -> Void)?
   var onTranscriptionProgress: (@MainActor @Sendable (Double) -> Void)?
   var isStreaming: Bool { false }
-  var downloadProgress: Double { 1 }
-  var downloadPhase: String { "ready" }
-  var downloadDetail: String { "" }
   var activeBackendSupportsStreaming: Bool { false }
   var onServiceInterrupted: (() -> Void)?
   var loadProgressTickReporter: (@MainActor @Sendable (Date?, String) -> Void)?

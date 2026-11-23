@@ -26,17 +26,20 @@ struct MeetingTranscriptLanguageSection: View {
   }
 
   /// The switch's write: on is Auto; off locks to `LanguageLockOptions.defaultLockCode`: the saved
-  /// lock if the engine can write it, else `systemLanguage` if it can, else English.
+  /// lock if the engine can write it, else `systemLanguage` (`SetupAdvice.macLanguageCode`) if it
+  /// can, else `localeLanguage` if given, else English (#4529).
   static func setAuto(
     _ on: Bool, model: MeetingLiveWordsRowModel, engine: MeetingEngineChoice,
-    systemLanguage: String
+    systemLanguage: String? = SetupAdvice.macLanguageCode,
+    localeLanguage: String? = nil
   ) {
     model.transcriptLanguage =
       on
       ? .auto
       : .locked(
         LanguageLockOptions.defaultLockCode(
-          current: model.transcriptLanguage, candidate: systemLanguage,
+          current: model.transcriptLanguage,
+          candidates: [systemLanguage, localeLanguage].compactMap { $0 },
           lockable: LanguageLockOptions.lockableCodes(for: engine.backendType)))
   }
 
@@ -60,7 +63,8 @@ struct MeetingTranscriptLanguageSection: View {
               set: {
                 Self.setAuto(
                   $0, model: model, engine: engine.selectedEngine,
-                  systemLanguage: Locale.current.language.languageCode?.identifier ?? "en")
+                  systemLanguage: SetupAdvice.macLanguageCode,
+                  localeLanguage: Locale.current.language.languageCode?.identifier)
               })
           )
           .labelsHidden()
@@ -84,6 +88,9 @@ struct MeetingTranscriptLanguageSection: View {
             } label: {
               EnviousButtonLabel(SettingsItemCopy.Engine.lockedLanguageChange)
             }
+            // #3142 Spanish walkthrough: while Auto disables it, the button was squeezed to
+            // "Camb…"; it keeps its own width like the Live Preview language row's button.
+            .fixedSize()
             .settingsButton(isEnabled: !isAuto)
             .accessibilityLabel(String(localized: MeetingsCopy.transcriptLanguageTitle))
           }

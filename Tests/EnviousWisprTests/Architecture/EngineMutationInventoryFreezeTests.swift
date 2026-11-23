@@ -528,7 +528,16 @@ import EnviousWisprAppKitTestSupport
       classification: .unrelatedDomain),
     CallSite(
       file: "Sources/EnviousWisprAppKit/App/MeetingSummaryOwner.swift", matcher: "prepare",
-      text: "let preparation = await deps.prepare(selection.provider, selection.model, cloudModelList)",
+      text: "preparation = await deps.prepare(selection.provider, selection.model, cloudModelList)",
+      classification: .unrelatedDomain),
+    // #3147 PR6: request-scoped EG-1 summary preparation uses the same cold attempt.
+    CallSite(
+      file: "Sources/EnviousWisprAppKit/App/MeetingSummaryOwner.swift", matcher: "prepare",
+      text: "preparation = prepare(size)",
+      classification: .unrelatedDomain),
+    CallSite(
+      file: "Sources/EnviousWisprAppKit/App/MeetingWiring.swift", matcher: "prepare",
+      text: "egOne?.prepare(",
       classification: .unrelatedDomain),
     // #3147 PR2: the History dictation card's text comparison (word alignment and marked-up runs)
     // prepared off the main actor. Pure text work; no engine, adapter or audio. Matched only by
@@ -868,11 +877,15 @@ import EnviousWisprAppKitTestSupport
       text: "self.unload(reason: \"idle\")", classification: .unrelatedDomain),
     CallSite(
       file: "Sources/EnviousWisprAppKit/App/WordCheckRuntime.swift", matcher: "unload",
-      text: "if activeSelections == 0 { unload(reason: \"not_wanted\") }",
+      text: "if !wanted, activeSelections == 0 { unload(reason: \"not_wanted\") }",
       classification: .unrelatedDomain),
     CallSite(
       file: "Sources/EnviousWisprAppKit/App/WordCheckRuntime.swift", matcher: "unload",
       text: "unload(reason: \"delivery_\\(state)\")", classification: .unrelatedDomain),
+
+    CallSite(
+      file: "Sources/EnviousWisprAppKit/App/WordCheckRuntime.swift", matcher: "unload",
+      text: "unload(reason: \"mlx_scoring_failed\")", classification: .unrelatedDomain),
 
     // MARK: TranscribeCppPreviewRuntime (#3735 chunk 9) — the Universal Live Preview's own
     // whisper-small model on the executor's PREVIEW lane, never the dictation engine: it holds
@@ -953,7 +966,13 @@ import EnviousWisprAppKitTestSupport
     CallSite(
       file: "Sources/EnviousWisprAppKit/App/Overlay/OverlayDirector.swift",
       matcher: "prepare",
-      text: "let armExpiry = expiryClock.prepare(plan.expiryCommand) { [weak self] id, target in",
+      text: "armExpiry = expiryClock.prepare(plan.expiryCommand, onExpiry: onExpiry)",
+      classification: .unrelatedDomain),
+    // #4675: the Pending entry, applied only after the host accepted the Undo morph.
+    CallSite(
+      file: "Sources/EnviousWisprAppKit/App/Overlay/OverlayDirector.swift",
+      matcher: "prepare",
+      text: "self.expiryClock.prepare(",
       classification: .unrelatedDomain),
 
     // MARK: ObservedCorrectionWatcher (#996 chunk 5e) — learn-from-edits
@@ -1125,61 +1144,6 @@ import EnviousWisprAppKitTestSupport
       file: "Sources/EnviousWisprPipeline/RecordingSessionKernel.swift", matcher: "warmUp",
       text: "try await adapter.warmUp(modelReceipt: nil)", classification: .gated),
 
-    // MARK: OnboardingV2View — `startSetup(warmUp:settings:)`'s bare
-    // `await warmUp()` invokes a LOCAL PARAMETER (`warmUp: @MainActor ()
-    // async -> EngineWarmupOutcome`), not `ASRBackend.warmUp() async throws`
-    // directly — the visitor cannot distinguish a bare call to a local
-    // closure parameter from a bare call to a same-type instance method,
-    // both being `DeclReferenceExprSyntax`. Codex round 2 correction: its one
-    // real caller (`OnboardingV2View.swift:546`) supplies
-    // `DictationRuntime.ensureActiveEngineWarmForOnboarding()`, which routes
-    // through `KernelDictationDriver.ensureEngineWarm(reason:)` to the
-    // already-counted, `gated` `adapter.warmUp()` call above — so this DOES
-    // touch the ASR subsystem, via the callee re-acquiring (transitively)
-    // the same claim regardless of how the closure got here.
-    // `structurallySafe` category (c): reached only through a chain whose
-    // real engine touch re-acquires its own claim internally.
-    CallSite(
-      file: "Sources/EnviousWisprAppKit/Views/Onboarding/OnboardingV2View.swift",
-      matcher: "warmUp", text: "let outcome = await warmUp()",
-      classification: .structurallySafe),
-    // The one newly measured reference under the council-approved contract
-    // pivot (Codex plan-review r1 predicted this exact site): one step
-    // EARLIER in the same forwarding chain as the entry directly above —
-    // `kickSetupIfNeeded`'s own `warmUp` parameter (same local-parameter
-    // coincidental-name reasoning) is passed along to `startSetup`, whose
-    // body is the sibling entry immediately above. Same sole real wiring,
-    // same classification.
-    CallSite(
-      file: "Sources/EnviousWisprAppKit/Views/Onboarding/OnboardingV2View.swift",
-      matcher: "warmUp", text: "await self.startSetup(warmUp: warmUp, settings: settings)",
-      classification: .structurallySafe),
-
-    // #2196 — the onboarding engine warm GATE, which is a second caller of the
-    // same seam the checklist above already uses, so these two entries are the
-    // gate's copies of the two directly above and carry the same reasoning.
-    // Verified rather than assumed: the gate's sole production caller supplies
-    // the same closure literal the checklist's does
-    // (`{ await dictationRuntime.ensureActiveEngineWarmForOnboarding() }`, in
-    // `OnboardingV2View`'s `.task`), which routes through
-    // `KernelDictationDriver.ensureEngineWarm(reason:)` to the already-counted
-    // `gated` `adapter.warmUp()`. `structurallySafe` category (c): the real
-    // engine touch re-acquires its own claim internally on every invocation,
-    // whatever chain the closure travelled to get here.
-    //
-    // The first entry duplicates the text of `startSetup`'s bare call, which is
-    // why it is a SECOND array entry rather than an edit — multiplicity is the
-    // signal, so a future removal of either one has to be accounted for here.
-    CallSite(
-      file: "Sources/EnviousWisprAppKit/Views/Onboarding/OnboardingV2View.swift",
-      matcher: "warmUp", text: "let outcome = await warmUp()",
-      classification: .structurallySafe),
-    CallSite(
-      file: "Sources/EnviousWisprAppKit/Views/Onboarding/OnboardingV2View.swift",
-      matcher: "warmUp",
-      text: "await self.runWarmingGate(warmUp: warmUp, displayFloor: displayFloor)",
-      classification: .structurallySafe),
-
     // MARK: WhisperEngineAdapter
     // `recoverFromWedge()`'s deadline-bounded unload — this file's own doc
     // comment marks it "§3.2, structurally-safe row": called only by the
@@ -1189,7 +1153,7 @@ import EnviousWisprAppKitTestSupport
       text: "await captured.unload()", classification: .structurallySafe),
     // `unloadModel()`'s unload — reached ONLY via the user-facing Remove
     // command (`WhisperSetupService.removeModel()` -> `removeModelAction`
-    // -> #3735 `WhisperDeliveryWiring`'s Remove action -> `WhisperRemovalHook.unloadForRemoval`
+    // -> #4578 `SpeechModelLibrary.removeWhisperModel()` -> `WhisperRemovalHook.unloadForRemoval`
     // closure -> `KernelDictationDriver.unloadEngine()` -> here; #3849 renamed both functions),
     // which is entirely inside `removeModel()`'s own "whisperKitRemove"
     // claim closure (verified end-to-end; this is NOT the same as the two
@@ -1469,15 +1433,13 @@ import EnviousWisprAppKitTestSupport
       file: "Sources/EnviousWisprAppKit/App/BenchmarkSuite.swift", matcher: "cancelStreaming",
       text: "await asrManager.cancelStreaming()", classification: .gated),
 
-    // MARK: DictationRuntime / KernelDictationDriver — the onboarding
-    // install Cancel button's seam (#1388 step 3). Race-safe by
-    // construction, not by claim: "the adapter's in-flight gate and the
-    // delivery controller's completion-wins-the-race handling both make it a
-    // no-op" against a just-completed load — `structurallySafe` category (c).
+    // #4528 P2 (plan M70): the new Setup's cancel for the warm-up it requested, bound to the
+    // driver captured when that warm-up was requested (`DictationRuntime.onboardingWarmup()`),
+    // so it can never reach a newer engine's load; a just-completed load makes it a no-op.
     CallSite(
       file: "Sources/EnviousWisprAppKit/App/DictationRuntime/DictationRuntime.swift",
       matcher: "cancelSessionlessWarmup",
-      text: "await starter.activeDriver.cancelSessionlessWarmup()",
+      text: "cancel: { await driver.cancelSessionlessWarmup() })",
       classification: .structurallySafe),
     CallSite(
       file: "Sources/EnviousWisprPipeline/KernelDictationDriver.swift",
@@ -1488,7 +1450,7 @@ import EnviousWisprAppKitTestSupport
     // the remaining links in the ALREADY-verified "whisperKitRemove" claim chain
     // this file's existing `WhisperEngineAdapter.swift` `unloadModel` entry
     // documents end-to-end (`WhisperSetupService.removeModel()` -> #3735
-    // `WhisperDeliveryWiring`'s Remove action -> `WhisperRemovalHook.unloadForRemoval`
+    // `SpeechModelLibrary.removeWhisperModel()` (#4578) -> `WhisperRemovalHook.unloadForRemoval`
     // closure -> `KernelDictationDriver.unloadEngine()` -> the
     // already-counted adapter entry). Each is one more layer of that same
     // verified chain, not a new one. (#3735 deleted the retired WhisperKit legacy
@@ -1514,14 +1476,34 @@ import EnviousWisprAppKitTestSupport
       classification: .transitivelyCoveredByCaller),
     // The closure WIRING itself — a property assignment, not a call; safety
     // inherited from wherever it is actually invoked (the same chain above).
+    // #4578: the Remove action moved from `WhisperDeliveryWiring` to
+    // `SpeechModelLibrary.removeWhisperModel()`, still the `removeModelAction` the
+    // "whisperKitRemove" claim closure awaits.
     CallSite(
-      file: "Sources/EnviousWisprAppKit/App/WhisperDeliveryWiring.swift",
-      matcher: "unloadForRemoval", text: "await removal.unloadForRemoval()",
+      file: "Sources/EnviousWisprAppKit/App/SpeechModelLibrary.swift",
+      matcher: "unloadForRemoval", text: "await whisper.removal.unloadForRemoval()",
       classification: .transitivelyCoveredByCaller),
     CallSite(
       file: "Sources/EnviousWisprAppKit/App/WisprBootstrapper.swift", matcher: "unloadForRemoval",
       text: "whisper.removal.unloadForRemoval = {",
       classification: .transitivelyCoveredByCaller),
+    // #4578 C4, Parakeet Remove: `SpeechModelLibrary.removeParakeet()` runs
+    // `runParakeetRemoval()` inside `engineMutationScope.withClaim(site: "parakeetRemove")`, after
+    // the synchronous refusal (any dictation, inference-slot job, recovery, switch, benchmark or
+    // meeting). The library's call, the bootstrapper's closure wiring and that closure's unload of
+    // dictation's backend (`asrManager.unloadModel()`, which re-acquires "asrManagerUnload"
+    // itself; the Ultra activation's order) all inherit that claim.
+    CallSite(
+      file: "Sources/EnviousWisprAppKit/App/SpeechModelLibrary.swift",
+      matcher: "unloadForRemoval", text: "guard await parakeetRemoval.unloadForRemoval() else {",
+      classification: .transitivelyCoveredByCaller),
+    CallSite(
+      file: "Sources/EnviousWisprAppKit/App/WisprBootstrapper.swift", matcher: "unloadForRemoval",
+      text: "speechModels.parakeetRemoval.unloadForRemoval = { [weak kernelDriver, asrManager] in",
+      classification: .transitivelyCoveredByCaller),
+    CallSite(
+      file: "Sources/EnviousWisprAppKit/App/WisprBootstrapper.swift", matcher: "unloadModel",
+      text: "await asrManager.unloadModel()", classification: .transitivelyCoveredByCaller),
     // #3147 PR3, Transcribe again with: the chosen model runs on a copy only this job owns
     // (`ImportedEngineCopies`: its own `MeetingParakeetEngine` backend and its own
     // `LiveMeetingWhisperEngine`), never dictation's backend or recovery's engine

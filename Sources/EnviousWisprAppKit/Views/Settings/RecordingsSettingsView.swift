@@ -47,22 +47,19 @@ struct RecordingsSettingsView: View {
               map: .id(.dictationRecordingRetention), icon: "clock.arrow.circlepath",
               resolvedHelp: RecordingsSettingsCopy.keepHelp
             ) {
-              Picker(
-                RecordingsSettingsCopy.keepDictationsTitle,
+              SettingsMenuPicker(
+                title: String(localized: RecordingsSettingsCopy.keepDictationsTitle),
                 selection: Binding(
                   get: { settings.dictationRecordingRetention },
-                  set: { choose(.dictations($0)) })
+                  set: { choose(.dictations($0)) }),
+                valueLabel: RecordingsSettingsCopy.label(settings.dictationRecordingRetention)
               ) {
                 ForEach(DictationRecordingRetention.allCases, id: \.self) { value in
                   Text(RecordingsSettingsCopy.label(value)).tag(value)
                 }
               }
-              .labelsHidden()
               .settingsArrivalFocusControl()
               .accessibilityLabel(Text(RecordingsSettingsCopy.keepDictationsTitle))
-              .tint(.stAccent)
-              .controlSize(.large)
-              .fixedSize()
             }
             .rowStatus { stagedStatus(for: .dictations) }
           }
@@ -71,22 +68,19 @@ struct RecordingsSettingsView: View {
               map: .id(.meetingRecordingRetention), icon: "person.2.wave.2",
               resolvedHelp: RecordingsSettingsCopy.keepMeetingsHelp
             ) {
-              Picker(
-                RecordingsSettingsCopy.keepMeetingsTitle,
+              SettingsMenuPicker(
+                title: String(localized: RecordingsSettingsCopy.keepMeetingsTitle),
                 selection: Binding(
                   get: { settings.meetingRecordingRetention },
-                  set: { choose(.meetings($0)) })
+                  set: { choose(.meetings($0)) }),
+                valueLabel: RecordingsSettingsCopy.label(settings.meetingRecordingRetention)
               ) {
                 ForEach(MeetingRecordingRetention.allCases, id: \.self) { value in
                   Text(RecordingsSettingsCopy.label(value)).tag(value)
                 }
               }
-              .labelsHidden()
               .settingsArrivalFocusControl()
               .accessibilityLabel(Text(RecordingsSettingsCopy.keepMeetingsTitle))
-              .tint(.stAccent)
-              .controlSize(.large)
-              .fixedSize()
             }
             .rowStatus { stagedStatus(for: .meetings) }
           }
@@ -103,12 +97,16 @@ struct RecordingsSettingsView: View {
               EmptyView()
             }
             .rowStatus {
-              VStack(alignment: .leading, spacing: DesignSpacing.sm) {
-                ForEach(RecordingsSettingsCopy.usageLines(usage?.latest), id: \.self) { line in
-                  Text(verbatim: line)
-                    .font(.stRowHelper)
-                    .foregroundStyle(.stTextSecondary)
-                    .fixedSize(horizontal: false, vertical: true)
+              VStack(alignment: .leading, spacing: DesignSpacing.md) {
+                // The breakdown continues the grey line above it, so it keeps the
+                // label's own line spacing; the warning stands apart.
+                VStack(alignment: .leading, spacing: DesignSpacing.xxs) {
+                  ForEach(RecordingsSettingsCopy.usageLines(usage?.latest), id: \.self) { line in
+                    Text(verbatim: line)
+                      .font(.stRowHelper)
+                      .foregroundStyle(.stTextSecondary)
+                      .fixedSize(horizontal: false, vertical: true)
+                  }
                 }
                 if let warning = retention?.warning {
                   InsetNotice(
@@ -123,20 +121,17 @@ struct RecordingsSettingsView: View {
               map: .id(.recordingStorageWarningThreshold), icon: "gauge.with.dots.needle.50percent",
               resolvedHelp: RecordingsSettingsCopy.thresholdHelp
             ) {
-              Picker(
-                RecordingsSettingsCopy.thresholdTitle,
-                selection: $settings.recordingStorageWarningThreshold
+              SettingsMenuPicker(
+                title: String(localized: RecordingsSettingsCopy.thresholdTitle),
+                selection: $settings.recordingStorageWarningThreshold,
+                valueLabel: RecordingsSettingsCopy.label(settings.recordingStorageWarningThreshold)
               ) {
                 ForEach(RecordingStorageWarningThreshold.allCases, id: \.self) { value in
                   Text(RecordingsSettingsCopy.label(value)).tag(value)
                 }
               }
-              .labelsHidden()
               .settingsArrivalFocusControl()
               .accessibilityLabel(Text(RecordingsSettingsCopy.thresholdTitle))
-              .tint(.stAccent)
-              .controlSize(.large)
-              .fixedSize()
             }
           }
           BrandedRow {
@@ -144,21 +139,18 @@ struct RecordingsSettingsView: View {
               map: .id(.recordingThresholdBehavior), icon: "arrow.uturn.down.circle",
               resolvedHelp: RecordingsSettingsCopy.behaviorHelp
             ) {
-              Picker(
-                RecordingsSettingsCopy.behaviorTitle,
-                selection: $settings.recordingThresholdBehavior
+              SettingsMenuPicker(
+                title: String(localized: RecordingsSettingsCopy.behaviorTitle),
+                selection: $settings.recordingThresholdBehavior,
+                valueLabel: RecordingsSettingsCopy.label(settings.recordingThresholdBehavior),
+                isEnabled: settings.recordingStorageWarningThreshold != .none
               ) {
                 ForEach(RecordingThresholdBehavior.allCases, id: \.self) { value in
                   Text(RecordingsSettingsCopy.label(value)).tag(value)
                 }
               }
-              .labelsHidden()
               .settingsArrivalFocusControl()
               .accessibilityLabel(Text(RecordingsSettingsCopy.behaviorTitle))
-              .tint(.stAccent)
-              .controlSize(.large)
-              .fixedSize()
-              .disabled(settings.recordingStorageWarningThreshold == .none)
             }
           }
           BrandedRow(showDivider: false) {
@@ -166,20 +158,20 @@ struct RecordingsSettingsView: View {
               map: .id(.deleteRecordings), icon: "trash",
               resolvedHelp: RecordingsSettingsCopy.deleteHelp
             ) {
-              EmptyView()
+              // The buttons are the row's control, on the title's line like every
+              // other row's control (founder 2026-11-16). A narrow window drops
+              // them under the title, and they stack when one line cannot hold both.
+              ViewThatFits(in: .horizontal) {
+                HStack(spacing: DesignSpacing.md) { deleteButtons }
+                VStack(alignment: .leading, spacing: DesignSpacing.md) { deleteButtons }
+              }
             }
             .rowStatus {
-              VStack(alignment: .leading, spacing: DesignSpacing.md) {
-                ViewThatFits(in: .horizontal) {
-                  HStack(spacing: DesignSpacing.md) { deleteButtons }
-                  VStack(alignment: .leading, spacing: DesignSpacing.md) { deleteButtons }
-                }
-                if let deletionResult {
-                  Text(verbatim: deletionResult)
-                    .font(.stRowHelper)
-                    .foregroundStyle(.stTextSecondary)
-                    .fixedSize(horizontal: false, vertical: true)
-                }
+              if let deletionResult {
+                Text(verbatim: deletionResult)
+                  .font(.stRowHelper)
+                  .foregroundStyle(.stTextSecondary)
+                  .fixedSize(horizontal: false, vertical: true)
               }
             }
           }
@@ -697,38 +689,50 @@ enum RecordingStorageWarningCopy {
     comment: "History: button on the storage warning that opens App Settings > Recordings.")
 }
 
-/// History's compact storage warning, outside the transcript split (#3147 chunk 6). Shown while
-/// `RecordingRetention.warning` is set; its button opens App Settings > Recordings.
+/// History's compact storage warning, above the diary. Its button opens App Settings > Recordings.
 struct RecordingStorageBanner: View {
   @Environment(RecordingRetention.self) private var retention: RecordingRetention?
   @Environment(NavigationCoordinator.self) private var navigation
+  @State private var firstShownWarning: RecordingRetention.StorageWarning?
 
   var body: some View {
-    if let warning = retention?.warning {
-      HStack(alignment: .firstTextBaseline, spacing: DesignSpacing.lg) {
-        Image(systemName: "externaldrive.badge.exclamationmark")
-          .foregroundStyle(.stWarning)
-          .accessibilityHidden(true)
-        Text(verbatim: RecordingStorageWarningCopy.text(warning))
-          .font(.stBody)
-          .foregroundStyle(.stTextPrimary)
-          .fixedSize(horizontal: false, vertical: true)
-        Spacer(minLength: 0)
-        Button {
-          navigation.request(.appSettings(.recordings))
-        } label: {
-          EnviousButtonLabel(RecordingStorageWarningCopy.openSettings, size: .medium)
-        }
-        .settingsButton(.quiet, size: .medium, isEnabled: true)
-        .accessibilityIdentifier("history.recordingStorage.openSettings")
-      }
-      .padding(DesignSpacing.xl)
-      .background(
-        Color.stWarning.opacity(0.12), in: RoundedRectangle(cornerRadius: DesignRadius.lg)
-      )
-      .accessibilityElement(children: .contain)
-      .padding(.horizontal, DesignSpacing.xl)
-      .padding(.top, DesignSpacing.md)
+    let candidate = retention?.historyWarning
+    let display = candidate.map { current in
+      guard let firstShownWarning,
+        RecordingRetention.canKeepHistoryWarningText(firstShownWarning, for: current)
+      else { return current }
+      return firstShownWarning
     }
+    Group {
+      if let warning = display {
+        HStack(alignment: .firstTextBaseline, spacing: DesignSpacing.lg) {
+          Image(systemName: "externaldrive.badge.exclamationmark")
+            .foregroundStyle(.stWarning)
+            .accessibilityHidden(true)
+          Text(verbatim: RecordingStorageWarningCopy.text(warning))
+            .font(.stBody)
+            .foregroundStyle(.stTextPrimary)
+            .fixedSize(horizontal: false, vertical: true)
+          Spacer(minLength: 0)
+          Button {
+            navigation.request(.appSettings(.recordings))
+          } label: {
+            EnviousButtonLabel(RecordingStorageWarningCopy.openSettings, size: .medium)
+          }
+          .settingsButton(.quiet, size: .medium, isEnabled: true)
+          .accessibilityIdentifier("history.recordingStorage.openSettings")
+        }
+        .padding(DesignSpacing.xl)
+        .background(
+          Color.stWarning.opacity(0.12), in: RoundedRectangle(cornerRadius: DesignRadius.lg)
+        )
+        .accessibilityElement(children: .contain)
+        .padding(.horizontal, DesignSpacing.xl)
+        .padding(.top, DesignSpacing.md)
+      }
+    }
+    // Keep the same text from rewrapping when the live size changes during this visit.
+    .onChange(of: candidate, initial: true) { firstShownWarning = display }
+    .onDisappear { firstShownWarning = nil }
   }
 }

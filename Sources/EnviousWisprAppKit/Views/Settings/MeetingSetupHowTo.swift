@@ -360,8 +360,8 @@ enum MeetingSetupHowToCopy {
         "Watch the live transcript in History",
         comment: "EnviousMeet setup: how-it-works card 5 title."),
       line: LocalizedStringResource(
-        "First turn on Live Preview in EnviousMeet settings under Models. Then open History and click M: the meeting you are recording shows its words as people talk.",
-        comment: "EnviousMeet setup: how-it-works card 5 line. M is History's Meetings tab letter."),
+        "First turn on Live Preview in EnviousMeet settings under Models. Then open History and choose Meetings: the meeting you are recording shows its words as people talk.",
+        comment: "EnviousMeet setup: how-it-works card 5 line. Meetings is the name of History's meetings tab."),
       illustration: LocalizedStringResource(
         "Example: History's Meetings tab with a recording in progress and its words appearing.",
         comment: "EnviousMeet setup, VoiceOver: what card 5's picture shows.")),

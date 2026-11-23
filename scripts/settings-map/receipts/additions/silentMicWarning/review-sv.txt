@@ -1,0 +1,10 @@
+{
+  "language": "sv",
+  "title": "varna när mikrofonen är tyst",
+  "words": [
+    "mikrofonvarning"
+  ],
+  "phrases": [
+    "varna mig om det inte kommer något ljud från mikrofonen när jag dikterar"
+  ]
+}

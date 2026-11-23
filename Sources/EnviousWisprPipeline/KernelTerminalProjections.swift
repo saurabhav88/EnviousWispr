@@ -72,6 +72,7 @@ extension RecordingFailureReason {
     case .modelLoadFailed: .modelLoadFailed
     case .captureStartFailed: .captureStartFailed
     case .noMicrophoneFound: .noMicrophoneFound
+    case .micNotResponding: .micNotResponding
     case .noAudioCaptured: .noAudioCaptured
     case .asrEmpty: .asrEmptyWithSpeech
     case .asrFailed: .asrFailed

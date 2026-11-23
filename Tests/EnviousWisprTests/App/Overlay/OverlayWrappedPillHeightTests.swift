@@ -34,7 +34,7 @@ struct OverlayWrappedPillHeightTests {
     defer { host.hide() }
     let director = OverlayDirector(
       host: host, announce: { _ in }, livePreview: .disabled, grantAccessibility: {},
-      openMicrophoneSettings: {}, advisoryHint: { _ in hint },
+      openMicrophoneSettings: {}, openMicrophoneHelp: {}, advisoryHint: { _ in hint },
       selections: { .shipped }, firstRenderSchedule: { $0() })
 
     let receipt = director.present(.advisory(reason: .zeroSignal))

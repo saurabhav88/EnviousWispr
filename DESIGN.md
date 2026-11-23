@@ -103,6 +103,50 @@ Edit values only here, then run `python3 scripts/design/generate-tokens.py`. Col
       "light": [0.753, 0.224, 0.169, 1], "dark": [0.937, 0.486, 0.537, 1],
       "group": "Settings status", "usage": "Error and destructive actions (#c0392b / #ef7c89)."
     },
+    "Color.stSpeaker1": {
+      "light": [0.184, 0.435, 0.816, 1], "dark": [0.435, 0.659, 0.969, 1],
+      "group": "Speakers", "usage": "Speaker 1 (blue): turn name and bar (#2f6fd0 / #6fa8f7).", "note": "Six speaker colors (founder, #4611, 2026-11-16): a turn's name and the thin bar beside its words. Speakers take them in order of first appearance; a seventh reuses the first. Not status colors: never use them for success, warning or error."
+    },
+    "Color.stSpeaker2": {
+      "light": [0.69, 0.471, 0.0, 1], "dark": [0.914, 0.71, 0.306, 1],
+      "group": "Speakers", "usage": "Speaker 2 (amber): turn name and bar (#b07800 / #e9b54e)."
+    },
+    "Color.stSpeaker3": {
+      "light": [0.055, 0.561, 0.502, 1], "dark": [0.271, 0.804, 0.733, 1],
+      "group": "Speakers", "usage": "Speaker 3 (teal): turn name and bar (#0e8f80 / #45cdbb)."
+    },
+    "Color.stSpeaker4": {
+      "light": [0.761, 0.235, 0.51, 1], "dark": [0.949, 0.49, 0.718, 1],
+      "group": "Speakers", "usage": "Speaker 4 (pink): turn name and bar (#c23c82 / #f27db7)."
+    },
+    "Color.stSpeaker5": {
+      "light": [0.784, 0.353, 0.118, 1], "dark": [0.949, 0.604, 0.392, 1],
+      "group": "Speakers", "usage": "Speaker 5 (coral): turn name and bar (#c85a1e / #f29a64)."
+    },
+    "Color.stSpeaker6": {
+      "light": [0.357, 0.294, 0.839, 1], "dark": [0.663, 0.608, 0.98, 1],
+      "group": "Speakers", "usage": "Speaker 6 (indigo): turn name and bar (#5b4bd6 / #a99bfa)."
+    },
+    "Color.pillAccent": {
+      "light": [0.420, 0.169, 0.800, 1], "dark": [0.769, 0.659, 1.0, 1],
+      "group": "Overlay pills", "usage": "The learned-word pill's icon glyph and Undo word (#6b2bcc / #c4a8ff).",
+      "note": "Brand purple for TEXT and GLYPHS on a floating pill, tuned to read on the opaque `PillPalette` fills in both appearances (founder #4675: layout from the approved mock, colors from this book). Not the settings accent: the pill sits on its own opaque ground, and the dark value is lighter so the small Undo word keeps its contrast."
+    },
+    "Color.pillAccentWash": {
+      "light": [0.486, 0.227, 0.929, 0.10], "dark": [0.545, 0.361, 0.929, 0.30],
+      "group": "Overlay pills", "usage": "The wash behind the learned-word pill's icon disc and Undo button.",
+      "note": "A translucent wash over the pill's own opaque fill, so the composited color is the same wherever the pill floats."
+    },
+    "Color.pillSecondaryText": {
+      "light": [0, 0, 0, 0.55], "dark": [1, 1, 1, 0.62],
+      "group": "Overlay pills", "usage": "The quieter second line of a pill and its icon-less buttons, such as the learned-word pill's subtitle and ×.",
+      "note": "Black or white at a fixed opacity over the pill's own opaque fill (`PillPalette`), so it reads as the pill's text one step quieter in either appearance."
+    },
+    "Color.pillQuietHover": {
+      "light": [0, 0, 0, 0.08], "dark": [1, 1, 1, 0.14],
+      "group": "Overlay pills", "usage": "The hover fill of a quiet round pill button such as the learned-word pill's ×.",
+      "note": "A translucent fill over the pill's own opaque ground, so the composited color is the same wherever the pill floats."
+    },
     "Color.stInputBg": {
       "light": [0.965, 0.957, 0.984, 1], "dark": [0.165, 0.145, 0.212, 1],
       "group": "Settings controls", "usage": "Every field, picker box and segmented track (#f6f4fb / #2a2536).",
@@ -181,7 +225,30 @@ Edit values only here, then run `python3 scripts/design/generate-tokens.py`. Col
     "Color.obBorder": {
       "light": [0.541, 0.169, 0.886, 0.06], "dark": [0.722, 0.667, 0.839, 0.14],
       "group": "Onboarding borders", "usage": "Onboarding card borders."
-    }
+    },
+    "Color.firstRunTextTertiary": {"light": [0.4, 0.345, 0.502, 1], "dark": [0.627, 0.596, 0.714, 1], "group": "First-run Setup", "usage": "Setup quiet text (eyebrows, hints). Mockup t3, raised from obTextTertiary to pass 4.5:1 on obSurface and obCardBg in both modes."},
+    "Color.firstRunSuccessText": {"light": [0.0, 0.459, 0.29, 1], "dark": [0.361, 0.788, 0.604, 1], "group": "First-run Setup", "usage": "Setup success text (key valid, checks). Mockup success-text, 4.5:1 on light cards."},
+    "Color.firstRunErrorText": {"light": [0.784, 0.118, 0.192, 1], "dark": [0.937, 0.486, 0.537, 1], "group": "First-run Setup", "usage": "Setup error text (failed key check, download stopped). Mockup error-text, 4.5:1."},
+    "Color.firstRunButtonHover": {"light": [0.169, 0.133, 0.251, 1], "dark": [0.486, 0.38, 0.871, 1], "group": "First-run Setup", "usage": "Setup primary button fill while hovered."},
+    "Color.firstRunSmallButtonHover": {"light": [0.169, 0.133, 0.251, 1], "dark": [0.745, 0.659, 1.0, 1], "group": "First-run Setup", "usage": "Setup small accent button fill while hovered (permission and recovery buttons). Dark is lighter than obAccent so firstRunOnAccent text keeps 9.0:1; firstRunButtonHover gave 4.07:1 there (#4590)."},
+    "Color.firstRunButtonDisabled": {"light": [0.89, 0.871, 0.925, 1], "dark": [0.212, 0.188, 0.278, 1], "group": "First-run Setup", "usage": "Setup primary button fill while it cannot be pressed."},
+    "Color.firstRunButtonDisabledText": {"light": [0.435, 0.38, 0.537, 1], "dark": [0.604, 0.573, 0.69, 1], "group": "First-run Setup", "usage": "Text on firstRunButtonDisabled (4.26:1 in both modes; disabled controls are exempt from WCAG 1.4.3, kept readable)."},
+    "Color.firstRunOnAccent": {"light": [1.0, 1.0, 1.0, 1], "dark": [0.082, 0.071, 0.11, 1], "group": "First-run Setup", "usage": "Text or icon on an obAccent fill (selected tab, step dot)."},
+    "Color.firstRunAccentSoft": {"light": [0.486, 0.227, 0.929, 0.1], "dark": [0.655, 0.545, 0.98, 0.12], "group": "First-run Setup", "usage": "Setup accent wash (selected card, greeting bubble). Dark alpha 0.12 instead of obAccentSoft 0.16 so text on it keeps 4.5:1."},
+    "Color.firstRunRule": {"light": [0.0, 0.0, 0.0, 0.1], "dark": [1.0, 1.0, 1.0, 0.12], "group": "First-run Setup", "usage": "Setup hairline (mockup --rule): unreached step-strip segments, dividers and keycap edges. obBorder (accent at 6%) is too faint for these."},
+    "Color.firstRunFilmWallTop": {"light": [0.796, 0.725, 0.965, 1.0], "dark": [0.173, 0.137, 0.337, 1.0], "group": "First-run film (film scenes only)", "usage": "Closing film Mac desktop (#4528 chunk E): wallpaper gradient, top-left stop (mockup --wall, 160deg)."},
+    "Color.firstRunFilmWallMid": {"light": [0.604, 0.722, 0.949, 1.0], "dark": [0.114, 0.169, 0.341, 1.0], "group": "First-run film (film scenes only)", "usage": "Film wallpaper gradient, middle stop at 55% (mockup --wall)."},
+    "Color.firstRunFilmWallBottom": {"light": [0.953, 0.761, 0.855, 1.0], "dark": [0.231, 0.129, 0.251, 1.0], "group": "First-run film (film scenes only)", "usage": "Film wallpaper gradient, bottom-right stop (mockup --wall)."},
+    "Color.firstRunFilmMenuBar": {"light": [1, 1, 1, 0.55], "dark": [0.118, 0.102, 0.157, 0.6], "group": "First-run film (film scenes only)", "usage": "Film menu bar fill over the wallpaper (mockup --menubar)."},
+    "Color.firstRunFilmMenuInk": {"light": [0.114, 0.106, 0.133, 1.0], "dark": [0.933, 0.918, 0.957, 1.0], "group": "First-run film (film scenes only)", "usage": "Film menu bar text and the held-key label (mockup --menuink)."},
+    "Color.firstRunFilmDock": {"light": [1, 1, 1, 0.45], "dark": [0.157, 0.141, 0.204, 0.55], "group": "First-run film (film scenes only)", "usage": "Film Dock shelf fill (mockup --dockbg)."},
+    "Color.firstRunFilmLightRed": {"light": [1.0, 0.373, 0.341, 1.0], "dark": [1.0, 0.373, 0.341, 1.0], "group": "First-run film (film scenes only)", "usage": "Film active window close light (gen_film.py lights nth-child(1) #FF5F57)."},
+    "Color.firstRunFilmLightYellow": {"light": [0.996, 0.737, 0.18, 1.0], "dark": [0.996, 0.737, 0.18, 1.0], "group": "First-run film (film scenes only)", "usage": "Film active window minimize light (gen_film.py lights nth-child(2) #FEBC2E)."},
+    "Color.firstRunFilmLightGreen": {"light": [0.157, 0.784, 0.251, 1.0], "dark": [0.157, 0.784, 0.251, 1.0], "group": "First-run film (film scenes only)", "usage": "Film active window zoom light (gen_film.py lights nth-child(3) #28C840)."},
+    "Color.firstRunFilmSlack": {"light": [0.29, 0.082, 0.294, 1.0], "dark": [0.29, 0.082, 0.294, 1.0], "group": "First-run film (film scenes only)", "usage": "Film Slack window sidebar (gen_film.py slack mwin #4A154B)."},
+    "Color.firstRunFilmMistakeWash": {"light": [0.988, 0.337, 0.522, 0.11], "dark": [0.988, 0.337, 0.522, 0.11], "group": "First-run film (film scenes only)", "usage": "Film wash behind the misheard word (mockup #fc56851c)."},
+    "Color.firstRunFilmMistakeText": {"light": [0.694, 0.153, 0.333, 1.0], "dark": [0.694, 0.153, 0.333, 1.0], "group": "First-run film (film scenes only)", "usage": "Film misheard word text (mockup #b12755)."},
+    "Color.firstRunFilmMistakeStrike": {"light": [0.831, 0.263, 0.42, 1.0], "dark": [0.831, 0.263, 0.42, 1.0], "group": "First-run film (film scenes only)", "usage": "Film line through the misheard word (mockup #d4436b)."}
   },
   "fonts": {
     "Font.stSectionHeader": {
@@ -204,6 +271,14 @@ Edit values only here, then run `python3 scripts/design/generate-tokens.py`. Col
       "size": 14,
       "usage": "Caption / hint / status microcopy: footnotes, link hints, status lines. Same 14pt floor as body; it reads quieter through colour, not size."
     },
+    "Font.stDayTitle": {
+      "size": 26, "weight": "bold",
+      "usage": "History day heading (\"Sunday, November 15\"), as the approved diary mock draws it (founder 2026-11-15, #4611). History only."
+    },
+    "Font.stCardText": {
+      "size": 16, "weight": "regular",
+      "usage": "The dictated words on a History dictation card, larger than settings body copy because they are the card's content (founder 2026-11-15, #4611). History only."
+    },
     "Font.stRowHelper": {
       "size": 14,
       "usage": "A settings row's short grey line under its name (#3385). Held at the 14pt floor by founder decision (2026-10-02) rather than the mockup's 13px; kept as its own token so the row line has one owner."
@@ -213,7 +288,17 @@ Edit values only here, then run `python3 scripts/design/generate-tokens.py`. Col
     "Font.obBody": {"size": 14, "weight": "regular", "usage": "Onboarding body copy."},
     "Font.obCaption": {"size": 12, "weight": "regular", "usage": "Onboarding caption."},
     "Font.obCaptionSmall": {"size": 11, "weight": "regular", "usage": "Onboarding small caption."},
-    "Font.obLabel": {"size": 13, "weight": "medium", "usage": "Onboarding label."}
+    "Font.obLabel": {"size": 13, "weight": "medium", "usage": "Onboarding label."},
+    "Font.firstRunHero": {"size": 64, "weight": "heavy", "design": "rounded", "usage": "Setup big number (the speed card)."},
+    "Font.firstRunDisplay": {"size": 28, "weight": "heavy", "design": "rounded", "usage": "Setup screen title."},
+    "Font.firstRunTitle": {"size": 20, "weight": "heavy", "design": "rounded", "usage": "Setup card title and film caption title."},
+    "Font.firstRunSay": {"size": 17, "weight": "semibold", "usage": "Setup practice sentence the person reads aloud."},
+    "Font.firstRunBody": {"size": 15, "weight": "regular", "usage": "Setup reading copy under a title."},
+    "Font.firstRunButton": {"size": 19, "weight": "bold", "design": "rounded", "usage": "Setup primary button text (founder 2026-11-13)."},
+    "Font.firstRunLabel": {"size": 15, "weight": "semibold", "usage": "Setup card name and option name."},
+    "Font.firstRunCaption": {"size": 13, "weight": "regular", "usage": "Setup card detail lines, hints and film caption subtitle."},
+    "Font.firstRunEyebrow": {"size": 11, "weight": "semibold", "usage": "Setup uppercase eyebrow and badge (RECOMMENDED)."},
+    "Font.pillNotice": {"size": 11, "weight": "semibold", "usage": "Text of a recording pill notice (bubble or strip).", "note": "#4841, approved mockup 2026-11-22 (Option 2): the notice bubble beside the Capsule and Level Rail and the strip inside the Reading Well."}
   },
   "layout": {
     "SettingsLayout.sectionRadius": {"value": 14, "usage": "Corner radius of a settings card."},
@@ -231,11 +316,19 @@ Edit values only here, then run `python3 scripts/design/generate-tokens.py`. Col
       "note": "Two-card window frame (#1296): the sidebar card and content card are each inset from the window edge by `windowFrameInset` and separated from one another by the same value, so the spacing reads uniform on all sides. Their corner radius is a touch larger than the inner setting cards so the frame cards clearly contain the content cards rather than competing with them."
     },
     "SettingsLayout.windowFrameInset": {"value": 14, "usage": "Inset of the frame cards from the window edge and from each other."},
+    "SettingsLayout.minimumHitTarget": {"value": 20, "usage": "Smallest click region of a control, in each direction.", "note": "Apple's macOS minimum control size (Human Interface Guidelines, Accessibility: default 28 x 28 pt, minimum 20 x 20 pt), #4545. `minimumHitRegion()` widens a smaller icon button's click and accessibility region to it without changing layout or look."},
     "SettingsPR1Layout.rowPaddingV": {
       "value": 10, "usage": "Dictation Settings dense row padding.",
       "note": "#3385: density belongs to Dictation Settings, not every shared consumer."
     },
     "SettingsPR1Layout.headingGap": {"value": 8, "usage": "Dictation Settings dense heading gap."},
+    "PillNoticeLayout.gap": {"value": 4, "usage": "Gap between the recording pill and its notice bubble.", "note": "#4841 Option 2: a separate bubble 4 pt from the pill, below it at Top and above it at Bottom."},
+    "PillNoticeLayout.paddingV": {"value": 8, "usage": "Top and bottom padding inside a pill notice bubble."},
+    "PillNoticeLayout.paddingH": {"value": 12, "usage": "Side padding inside a pill notice bubble."},
+    "PillNoticeLayout.iconGap": {"value": 6, "usage": "Gap between the notice mark and its text."},
+    "PillNoticeLayout.railMaxWidth": {"value": 210, "usage": "Widest a Level Rail notice bubble may be, inside the rail's 288 pt panel.", "note": "#4841 §14 Q2: the Capsule bubble takes the Capsule's own 185 pt width so the window never widens; the rail bubble is capped narrower than its panel so it reads as a bubble, not a second pill."},
+    "PillNoticeLayout.radius": {"value": 13, "usage": "Corner radius of a recording pill notice bubble.", "note": "#4841 approved mockup (Option 2, founder 2026-11-22): a 13 pt rounded bubble in the pill's solid dark fill. Scoped to this one part; it is not a general radius."},
+    "PillNoticeLayout.strongEdge": {"value": 1, "usage": "Width of the amber edge on a strong (15 s) silent-mic notice."},
     "DesignRadius.xs": {"value": 4, "usage": "Smallest radius."},
     "DesignRadius.sm": {"value": 6, "usage": "Small radius."},
     "DesignRadius.md": {"value": 8, "usage": "Default small surface (the most-used radius)."},
@@ -255,7 +348,9 @@ Edit values only here, then run `python3 scripts/design/generate-tokens.py`. Col
     "DesignMotion.quick": {"curve": "easeInOut", "duration": 0.15, "usage": "Small state changes."},
     "DesignMotion.brisk": {"curve": "easeInOut", "duration": 0.25, "usage": "Short transitions."},
     "DesignMotion.standard": {"curve": "easeInOut", "duration": 0.3, "usage": "Default transition (the most-used duration)."},
-    "DesignMotion.gentle": {"curve": "easeInOut", "duration": 0.35, "usage": "Larger panels appearing or moving."}
+    "DesignMotion.gentle": {"curve": "easeInOut", "duration": 0.35, "usage": "Larger panels appearing or moving."},
+    "DesignMotion.firstRunScreenIn": {"curve": "timingCurve", "points": [0.22, 1, 0.36, 1], "duration": 0.32, "usage": "Setup screen entering (slide and fade).", "note": "The approved mockup's --ease-out, cubic-bezier(.22,1,.36,1): fast start, long settle."},
+    "DesignMotion.firstRunRise": {"curve": "timingCurve", "points": [0.22, 1, 0.36, 1], "duration": 0.4, "usage": "Setup card, caption or check rising into place.", "note": "The approved mockup (the founder's source of truth, 2026-11-12) rises rows and cards with obRise 0.4s on cubic-bezier(.22,1,.36,1)."}
   }
 }
 ```
@@ -264,10 +359,13 @@ Edit values only here, then run `python3 scripts/design/generate-tokens.py`. Col
 
 - **Light is light and airy; dark is night-comfort.** Dark is not a straight invert: low-chroma violet-neutral surfaces, off-white text capped below pure white, a desaturated lavender accent and muted status colors (#1047).
 - **Two accent tokens (founder, 2026-07-03).** `stAccent` (lavender in dark) is for text and outlines only. A filled selected surface that carries white text uses `stAccentSolid`.
+- **Speaker colors tell speakers apart.** A transcript or meeting turn shows its speaker's name in `stSpeaker1`...`stSpeaker6` with a thin bar of the same color beside the words (`speakerColor(forIndex:)`). They mean "who", never "how it went".
 - **Status colors are semantic.** Use `stSuccess`, `stWarning`, `stError`, never raw `.red`, `.green` or `.orange`.
 - **One control fill.** Every field, picker box and segmented track uses `stInputBg` with the `stInputBorder` hairline, so a typable field never looks like a label.
 - **No default blue.** macOS settings use the brand accent purple, never the system blue.
 - Onboarding uses the `ob*` family, which mirrors the Settings values.
+- The first-run Setup window (#4528) uses the `firstRun*` family on top of `ob*` surfaces and accent: its type scale (11, 13, 15, 17, 20, 28, 64) and its contrast-raised quiet, success and error text come from the founder-approved Setup mockup. Meetings setup and other `ob*` screens keep their values.
+- The closing film's picture of a Mac desktop (wallpaper, menu bar, Dock, traffic lights, a Slack sidebar, a misheard word) uses the `firstRunFilm*` group, copied from the approved Setup mockup. Film scenes only: no other screen uses these colors.
 
 The founder reasons recorded with the palette and the type scale live in the values block under `reasons`, so the generator can repeat them in the Swift file.
 
@@ -284,6 +382,7 @@ The founder reasons recorded with the palette and the type scale live in the val
 - A Settings page is `SettingsContentView` with `contentH` (24) side margins, `contentTop` (18) and `contentBottom` (32).
 - Cards are separated by `sectionSpacing` (18). Rows pad `rowPaddingH` (14) by `rowPaddingV` (12), or 10 in the denser Dictation Settings.
 - The minimum window width is 750pt. A settings row drops its control below its title when the row is too narrow (#3007).
+- Every control's click region is at least `SettingsLayout.minimumHitTarget` (20) in each direction (Apple's macOS minimum). Give a smaller icon button `.minimumHitRegion()`: it widens the click and accessibility region without moving anything (#4545).
 
 ## Corner sizes
 
@@ -295,9 +394,9 @@ Approved radii today, with their one owner each:
 | 14 | `SettingsLayout.sectionRadius` | Settings cards |
 | 10 | `BrandedSegmentedPicker` track | Choice bars |
 | 9 | `SettingsHover.rowRadius` | Hover and selection pill on rows |
-| 9 | `EnviousButtonFace` rounded rectangle | Wizard buttons |
+| 9 | `EnviousButtonFace.roundedRectangle` | Settings and History buttons, wizard buttons, App Settings Allowed badges |
 | 7 | `BrandedSegmentedPicker` segment | Selected choice segment |
-| capsule | `EnviousButtonFace`, status chips | Buttons and badges |
+| capsule | `EnviousButtonFace`, status chips | Button faces outside the Settings and History page contexts, status chips |
 
 For any other surface use the `DesignRadius` scale (4, 6, 8, 10, 12, 16) in the values block. Other radii in the code are hand-typed and are being moved onto these owners (#4506 Phase 2). Do not add a new radius.
 
@@ -316,6 +415,7 @@ For any other surface use the `DesignRadius` scale (4, 6, 8, 10, 12, 16) in the 
 ## Icons
 
 - **SF Symbols only.** No custom icon files and no emoji as icons.
+  One exception (founder 2026-11-13, #4528): the Setup closing film's app wall and Dock show real apps with their brands' own logos, fetched from SVGL at a pinned commit by `scripts/design/fetch-app-logos.py` into `Resources/app-logo-*.png` (`FilmAppLogo`). Real brands only, never a stand-in drawing. Nothing else shows a third-party logo.
 - **One symbol per meaning.** Use the symbol the app already uses for that meaning (the most-used meanings today):
 
 | Meaning | Symbol |
@@ -355,13 +455,22 @@ Each drawing has one owner file. Never redraw it elsewhere.
 ## Motion
 
 - **One hover curve:** `SettingsHover.animation` (ease out, 0.12 s). Everything in the window fades at that speed.
-- Other transitions use the `DesignMotion` scale (ease in-out 0.15, 0.25, 0.3, 0.35 s; 0.3 s is the default). Springs are used for physical movement, such as the switch knob.
+- Other transitions use the `DesignMotion` scale (ease in-out 0.15, 0.25, 0.3, 0.35 s; 0.3 s is the default). The Setup window adds two entries on the approved mockup's curve, cubic-bezier(0.22, 1, 0.36, 1) (a `timingCurve` token with its points in the values block): `firstRunScreenIn` (0.32 s) and `firstRunRise` (0.4 s). Springs are used for physical movement, such as the switch knob.
 - **Respect Reduce Motion.** Gate every animation on `accessibilityReduceMotion`; the state still changes, without the movement.
 
 ## Sound
 
 - Recording chimes come in start and stop pairs, one pair per sound style (for example `softHush_start.wav` and `softHush_stop.wav`). A new sound style adds both files.
 - Sound is optional feedback; nothing important is conveyed by sound alone.
+
+## Menus and drop-downs
+
+Founder, 2026-11-16: every drop-down opens a menu that looks like the History More menu, and every drop-down button is square like the Snippets Import button, never the system capsule.
+
+- **The open menu looks like the Mac's own menu.** One row per choice: an optional SF Symbol, then the name in regular weight and the reading colour. Hairline dividers separate groups. A delete-type action is red (`Button(role: .destructive)`) and comes last. A choice list marks the current choice with a check only, never a tinted row or an accent name.
+- **A short choice list uses `SettingsMenuPicker`.** Its button is the outlined rounded-rectangle face at medium size (the Import button) with the current choice and an up-down chevron. It opens the real Mac menu. Never use a bare `Picker` in menu style: it draws the system capsule.
+- **An action menu is a SwiftUI `Menu`** with `Label` rows, `Divider()` groups and a destructive role for delete, as in `HistoryDictationCard`'s More menu.
+- **A choice that needs a grey line or a badge under its name** (microphone, AI Polish provider and model, spoken punctuation language) keeps its line and uses `settingsDropdown` with `SettingsDropdownRow`, drawn to read like the Mac menu above (founder decision 2026-11-16).
 
 ## Approved parts
 
@@ -380,6 +489,8 @@ Use these. All live in `Sources/EnviousWisprAppKit/Views/Settings/SettingsCompon
 | `SettingsHelpText`, `SettingsHelpArticleLink` | Help copy and a link to a help article | Custom links |
 | `SettingsTabStrip` | Tabs across the top of a page | `TabView`, `Picker(.segmented)` |
 | `BrandedSegmentedPicker` | A choice between 2-4 options | `Picker(.segmented)` |
+| `SettingsMenuPicker` (`SettingsMenuPicker.swift`) | A choice from a short list: square outlined button, Mac menu | A bare `Picker` (system capsule) |
+| `settingsDropdown`, `SettingsDropdownRow` (`SettingsDropdown.swift`) | A choice list whose rows need a grey line or a badge, drawn like the Mac menu | Your own popover list |
 | `BrandedToggleStyle` | Every on/off switch | `.toggleStyle(.switch)` |
 | `BrandedSlider` | A slider with value badge and Low/High labels | A bare `Slider` |
 | `.settingsButton(...)` with `EnviousButtonLabel` (`Views/Design/EnviousButtonStyle.swift`) | Every Settings button: `Button { action } label: { EnviousButtonLabel(...) }.settingsButton(emphasis, isEnabled:, shortcut:)`, filled, outlined or quiet; Delete-type actions use `Button(role: .destructive)`, which paints the destructive look | `.bordered`, `.borderedProminent`, `.plain` buttons, a red `foregroundStyle` |
@@ -393,6 +504,8 @@ Use these. All live in `Sources/EnviousWisprAppKit/Views/Settings/SettingsCompon
 | `WrappingHStack` | Chips or tags that wrap | Your own flow layout |
 | `.settingsHoverRow(...)` (`SettingsHover.swift`) | Hover on a row or card | Your own `onHover` tint |
 | `OnboardingButtonStyle` (`OnboardingDesignTokens.swift`) | The onboarding primary button | A new onboarding button |
+| Pill notice bubble and strip (`RecordingOverlayView` `noticeBubble`/`noticeStrip`, `OverlayCapsuleBackground` `.bubble`) | Any notice on the live recording pill: a solid dark 13 pt bubble 4 pt from the Capsule or Level Rail (below at Top, above at Bottom), or a strip inside the Reading Well. Sizes from `PillNoticeLayout`, text `Font.pillNotice`, strong level in `stWarning` (approved mockup #4841) | Text inside the capsule, a second floating panel, a new notice view |
+| `CorrectionLearnedPillFace` (`App/Overlay/Views/CorrectionLearnedPillView.swift`) | The "word learned" pill and its Undone, removed and Pending states: round icon, word, subtitle, filled Undo, quiet ×, brand countdown line. Colors from `PillPalette` and `Color.pillAccent` / `Color.pillAccentWash`, sizes from `LearnedPillMetrics` | A second learned-word card, a hand-drawn Undo pill in a mockup |
 
 A control must answer on the whole area it paints (`code-conventions.md` FACT: view-patterns).
 
@@ -401,6 +514,6 @@ A control must answer on the whole area it paints (`code-conventions.md` FACT: v
 - **Do** reuse the parts above and the tokens in the values block.
 - **Do** check every screen in light and dark, at the 750pt minimum window width.
 - **Don't** hand-type a color, corner size or font size.
-- **Don't** use Apple's default control looks (grey bordered buttons, blue segmented pickers, rounded-border fields). The founder reviewed them side by side on 2026-11-11 and kept ours.
+- **Don't** use Apple's default control looks (grey bordered buttons, blue segmented pickers, rounded-border fields, capsule pop-up buttons). The founder reviewed them side by side on 2026-11-11 and kept ours.
 - **Don't** add the generic "AI look": gradient text, purple-to-blue hero washes, emoji as icons, identical cards with one shadow everywhere.
 - **Don't** change how an approved part looks while building a feature. Ask first.

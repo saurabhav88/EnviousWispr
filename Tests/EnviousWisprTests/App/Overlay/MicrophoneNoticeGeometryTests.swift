@@ -44,6 +44,30 @@ struct MicrophoneNoticeGeometryTests {
     #expect(model.action?.label == "Open Settings")
   }
 
+  /// #4601: the stuck-microphone notice shows the narrator's whole sentence (no title of its
+  /// own) and a "How to fix" button that opens help, never the permission settings.
+  @Test("micNotResponding shows the narrator sentence and a How to fix help button")
+  func micNotRespondingGeometry() throws {
+    let entry = PillCatalog.entry(for: .error(reason: .micNotResponding), id: PresentationID())
+    let definition = try #require(entry.definition)
+
+    #expect(definition.requestedWidth == .fixed(400))
+    #expect(definition.reservesFixedHeight == nil, "a fixed height cuts off the German sentence")
+    #expect(definition.expiry == .after(seconds: 8))
+    guard case .notice(let model) = definition.content else {
+      Issue.record("expected a notice, got \(definition.content)")
+      return
+    }
+    #expect(model.isMultiline == true)
+    #expect(
+      model.text
+        == "EnviousWispr can't reach your microphone. Another app's audio driver may be stuck. Restarting your Mac usually fixes this."
+    )
+    #expect(model.action?.action == .openMicrophoneHelp)
+    #expect(model.action?.label == "How to fix")
+    #expect(model.action?.accessibilityLabel == "Open microphone troubleshooting help")
+  }
+
   @Test("every other error reason wraps at the message width, no action")
   func otherReasonsUnchanged() throws {
     // A representative sample, not exhaustive — TerminalNoticeReason's full

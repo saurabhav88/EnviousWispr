@@ -2,18 +2,20 @@ import EnviousWisprCore
 import EnviousWisprServices
 import SwiftUI
 
-/// A meeting's Summary tab (#3972 R39, R46, R60). The summary is written by the user's AI Polish
-/// provider when the meeting is ready (`MeetingSummaryOwner`); the user may edit it, and an
-/// edited summary is the user's own text, which Write again replaces only after the user
-/// confirms. A summary written from inputs that differ from the meeting now is always shown as
-/// out of date, never as current. The text lives in `MeetingDocumentsOwner`, never in this
-/// view, and is saved one second after the last change and when the view closes.
+/// The editable summary and its status. Manual generation opens the meeting's comparison,
+/// and the text here stays the saved summary until the person chooses Keep new.
 struct MeetingSummaryView: View {
   let meetingID: UUID
+  let writePreview: (HistoryPolishChoice) -> Void
+  /// #4611: the More menu's "Write summary again with" items, for the out-of-date notice.
+  let refreshItems: () -> [HistoryMenuItem]
   @Environment(MeetingCoordinator.self) private var meetings
   @Environment(SettingsManager.self) private var settings
-  /// The SHA-256 of the user's own summary awaiting the replace confirmation.
-  @State private var confirmingReplace: String?
+  @Environment(HistoryRepolishRunner.self) private var historyRepolish
+
+  private var isProcessingTranscript: Bool {
+    meetings.processing?.meetingID == meetingID
+  }
 
   var body: some View {
     if let record = meetings.record(id: meetingID) {
@@ -56,6 +58,8 @@ struct MeetingSummaryView: View {
     // From the current setting, whatever any attempt did (R39): no provider, or one that
     // cannot summarize, is explained with the way to fix it.
     let configurationProblem = summaries?.configurationProblem()
+    let previewChoice = summaries?.defaultPreviewChoice(
+      in: historyRepolish.choices(.summary), egOneSize: settings.preferredEGOneSize)
     // #4148: a ready meeting with no summary and no visible transcript text has nothing a
     // model could summarize; say so instead of any attempt's progress or problem. Only once its
     // documents are read: before that (or after a failed read) the summary is unknown, and
@@ -63,15 +67,23 @@ struct MeetingSummaryView: View {
     let nothingToSummarize =
       documents.loadState(meetingID) == .loaded && documents.summary(meetingID) == nil
       && summaries?.hasNothingToSummarize(meetingID) == true
+    // #4724: while a new summary is written for this tab, its own notice (with Cancel) is the
+    // one progress line; the attempt's activity line would repeat it.
+    let previewing: Bool = {
+      if summaries?.savingFirst.contains(meetingID) == true { return true }
+      switch summaries?.previews[meetingID] {
+      case .generating?, .comparing?: return true
+      case .failed?, .modelLimit?, nil: return false
+      }
+    }()
     VStack(alignment: .leading, spacing: 10) {
-      if !nothingToSummarize {
+      if !nothingToSummarize, !previewing {
         switch activity {
-        case .waiting:
-          busy(
-            String(
-              localized: "Waiting for your dictation and other meeting work to finish.",
-              comment: "History, a meeting: the summary waits before a model on this Mac is used."))
-        case .writing:
+        // #4724: the dictation wait is said only when the summary really waits its turn for a
+        // model on this Mac; a hosted model preparing reads as writing.
+        case .waiting where summaries?.waitsForLocalTurn(meetingID) == true:
+          busy(MeetingAfterPresentation.summaryWaitsForTurnLine)
+        case .waiting, .writing:
           busy(
             String(
               localized: "Writing the summary.",
@@ -80,23 +92,13 @@ struct MeetingSummaryView: View {
           if let shown = Self.shownProblem(
             activity: activity, configuration: configurationProblem)
           {
-            problemView(shown)
+            Self.problemView(shown)
           }
         }
       }
 
       if let text = documents.summary(meetingID) {
-        if summaries?.isOutOfDate(meetingID) == true {
-          Text(
-            "The meeting changed after this summary was written. It may be out of date.",
-            comment:
-              "History, a meeting: the summary was written from an older transcript, names or notes."
-          )
-          .font(.stHelper)
-          .foregroundStyle(.stTextSecondary)
-          .fixedSize(horizontal: false, vertical: true)
-          .accessibilityIdentifier("history.meeting.summaryOutOfDate")
-        }
+        MeetingSummaryStaleNotice(meetingID: meetingID, refreshItems: refreshItems)
         if MeetingSummaryLongMeetingHint.shows(
           writtenInParts: documents.manifest(meetingID)?.summary?.writtenInParts,
           summaryProviderID: documents.manifest(meetingID)?.summary?.inputs?.providerID,
@@ -130,9 +132,12 @@ struct MeetingSummaryView: View {
             Button {
               Task { await documents.flushSummary(meetingID) }
             } label: {
-              Text("Try again", comment: "History, a meeting: saves the summary changes again.")
+              EnviousButtonLabel(
+                LocalizedStringResource(
+                  "Try again", comment: "History, a meeting: saves the summary changes again."),
+                size: .medium)
             }
-            .buttonStyle(.link)
+            .settingsButton(.quiet, size: .medium, isEnabled: true)
           }
           .accessibilityIdentifier("history.meeting.summarySaveFailed")
         }
@@ -159,29 +164,40 @@ struct MeetingSummaryView: View {
         .foregroundStyle(.stTextSecondary)
       }
 
-      HStack(spacing: 10) {
+      // #4611 (founder 2026-11-16): with a summary, writing it again lives in the More menu
+      // ("Write summary again with") and in the out-of-date notice, and copying in the page
+      // header; edit mode has no buttons under the text.
+      if documents.summary(meetingID) == nil {
+        // The model that will write it is on the button, so it is known before the first summary
+        // (founder 2026-11-19). A long model name is shortened in the middle; hover shows it whole.
         Button {
-          write()
+          if !isProcessingTranscript, let previewChoice { writePreview(previewChoice) }
         } label: {
-          Text(
-            documents.summary(meetingID) == nil
-              ? String(
-                localized: "Write summary", comment: "History, a meeting: writes its summary.")
-              : String(
-                localized: "Write again", comment: "History, a meeting: writes its summary again."))
-        }
-        .disabled(writing || requesting || configurationProblem != nil || nothingToSummarize)
-        .accessibilityIdentifier("history.meeting.writeSummary")
-        if let text = documents.summary(meetingID), !text.isEmpty {
-          Button {
-            PasteService.copyToClipboard(text, kind: .kept)
-          } label: {
-            Label(
-              String(localized: "Copy", comment: "EnviousMeet: copies the visible transcript."),
-              systemImage: "doc.on.doc")
+          if let previewChoice {
+            EnviousButtonLabel(
+              verbatim: String(
+                localized: "Write summary with \(previewChoice.title)",
+                comment:
+                  "History, a meeting with no summary: writes it with the named AI model, e.g. \"Write summary with claude-sonnet-5-5\"."
+              ),
+              size: .large)
+          } else {
+            EnviousButtonLabel(
+              LocalizedStringResource(
+                "Write summary", comment: "History, a meeting: writes its summary."),
+              size: .large)
           }
-          .accessibilityIdentifier("history.meeting.copySummary")
         }
+        .lineLimit(1)
+        .truncationMode(.middle)
+        .help(previewChoice?.title ?? "")
+        .settingsButton(
+          .filled, size: .large,
+          isEnabled:
+            !(isProcessingTranscript || writing || requesting || configurationProblem != nil || nothingToSummarize
+            || previewChoice == nil)
+        )
+        .accessibilityIdentifier("history.meeting.writeSummary")
       }
     }
     .task(id: meetingID) { await documents.load(meetingID) }
@@ -190,53 +206,18 @@ struct MeetingSummaryView: View {
       let meetingID = meetingID
       Task { await documents.flushSummary(meetingID) }
     }
-    .alert(
-      Text(
-        "Replace your edited summary?",
-        comment: "History, a meeting: confirms writing the summary again over the user's edits."),
-      isPresented: Binding(
-        get: { confirmingReplace != nil }, set: { if !$0 { confirmingReplace = nil } })
-    ) {
-      Button(
-        String(localized: "Replace", comment: "History, a meeting: replaces the edited summary."),
-        role: .destructive
-      ) {
-        // Exactly the text the user confirmed: an edit made after this is kept.
-        if let approved = confirmingReplace {
-          meetings.summaries?.writeAgain(meetingID, replacing: approved)
-        }
-        confirmingReplace = nil
-      }
-      Button(
-        String(localized: "Cancel", comment: "History, a meeting: keeps the edited summary."),
-        role: .cancel
-      ) {}
-    } message: {
-      Text(
-        "You changed this summary. Writing it again replaces your changes.",
-        comment: "History, a meeting: explains what Replace does to the edited summary.")
-    }
   }
 
-  /// One press: the owner reads and saves the documents first, then starts the attempt or asks
-  /// before replacing the user's own text (`MeetingSummaryOwner.requestWrite`).
-  private func write() {
-    guard let summaries = meetings.summaries else { return }
-    Task {
-      if case .needsConfirmation(let approved) = await summaries.requestWrite(meetingID) {
-        confirmingReplace = approved
-      }
-    }
-  }
-
-  @ViewBuilder private func problemView(_ problem: MeetingSummaryOwner.Problem) -> some View {
+  @ViewBuilder static func problemView(_ problem: MeetingSummaryOwner.Problem) -> some View {
     VStack(alignment: .leading, spacing: 6) {
       Text(Self.message(problem))
         .font(.stHelper)
         .foregroundStyle(.stError)
         .fixedSize(horizontal: false, vertical: true)
         .accessibilityIdentifier("history.meeting.summaryProblem")
-      if Self.opensSummaryModelMenu(problem) {
+      if case .modelLimit = problem {
+        MeetingSummarySettingsLink(highlightEngineChoice: true)
+      } else if Self.opensSummaryModelMenu(problem) {
         MeetingSummaryModelMenuLink()
       } else if Self.opensSummarySettings(problem) {
         MeetingSummarySettingsLink()
@@ -262,7 +243,7 @@ struct MeetingSummaryView: View {
   static func opensSummaryModelMenu(_ problem: MeetingSummaryOwner.Problem) -> Bool {
     switch problem {
     case .cloudNoModel, .cloudModelUnavailable: return true
-    case .noProvider, .notForSummaries, .notReady, .ollamaTooOld, .tooLong, .providerFailed,
+    case .noProvider, .notForSummaries, .notReady, .ollamaTooOld, .modelLimit, .providerFailed,
       .notesUnreadable, .storageFailed:
       return false
     }
@@ -273,7 +254,7 @@ struct MeetingSummaryView: View {
   static func opensSummarySettings(_ problem: MeetingSummaryOwner.Problem) -> Bool {
     switch problem {
     case .noProvider, .notForSummaries, .notReady, .ollamaTooOld: return true
-    case .tooLong, .providerFailed, .notesUnreadable, .storageFailed: return false
+    case .modelLimit, .providerFailed, .notesUnreadable, .storageFailed: return false
     // The model menu action replaces the plain link for these (`opensSummaryModelMenu`).
     case .cloudNoModel, .cloudModelUnavailable: return false
     }
@@ -285,25 +266,28 @@ struct MeetingSummaryView: View {
     case .noProvider:
       return String(
         localized: "Choose a summary engine to write summaries.",
-        comment: "History, a meeting: no summary engine is chosen on EnviousMeet's Summaries tab, so no summary.")
+        comment:
+          "History, a meeting: no summary engine is chosen on EnviousMeet's Summaries tab, so no summary."
+      )
     case .notForSummaries:
       return String(
         localized: "This engine can't write summaries. Choose another one.",
-        comment: "History, a meeting: the chosen summary engine or model (an EG-1 or S1-mini Ollama model) cannot summarize.")
+        comment:
+          "History, a meeting: the chosen summary engine or model (an EG-1 or S1-mini Ollama model) cannot summarize."
+      )
     case .notReady:
       return String(
         localized:
           "The summary engine isn't ready. Check it in Summaries settings, then try again.",
-        comment: "History, a meeting: the summary engine (Ollama not running, Apple Intelligence not available, no key) is not ready."
+        comment:
+          "History, a meeting: the summary engine (Ollama not running, Apple Intelligence not available, no key) is not ready."
       )
     case .ollamaTooOld:
       return String(
         localized: "Update Ollama to version 0.12.6 or later to write summaries with it.",
         comment: "History, a meeting: the Ollama app is too old for meeting summaries.")
-    case .tooLong:
-      return String(
-        localized: "This meeting is too long for the selected model to summarize.",
-        comment: "History, a meeting: the meeting needs more calls than a summary may make.")
+    case .modelLimit(let failure):
+      return MeetingSummaryLimitCopy.message(failure.provider)
     case .providerFailed:
       return String(
         localized: "The summary could not be written. Try again.",

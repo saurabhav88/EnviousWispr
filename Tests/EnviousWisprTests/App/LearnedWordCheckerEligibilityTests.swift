@@ -43,7 +43,6 @@ struct LearnedWordCheckerEligibilityTests {
           .egOne(.full): .init(
             base: nil, promptTemplateID: nil, runtime: runtime, debugThreshold: 0.99)
         ],
-        currentModel: { .singleModel(for: $0) },
         debugScriptedChecker: checker)
       for provider in [LLMProvider.egOne, .s1Mini, .appleIntelligence] {
         let selection = await eligibility.selection(
@@ -65,7 +64,6 @@ struct LearnedWordCheckerEligibilityTests {
           .egOne(.full): .init(
             base: nil, promptTemplateID: nil, runtime: runtime, debugThreshold: nil)
         ],
-        currentModel: { .singleModel(for: $0) },
         debugScriptedChecker: emptyChecker)
       #expect(
         (await emptyEligibility.selection(

@@ -401,7 +401,6 @@
     },
     {
      "language": "es",
-     "title": "title 1 es",
      "words": [
       "word1es"
      ],
@@ -431,7 +430,6 @@
     },
     {
      "language": "fr",
-     "title": "title 1 fr",
      "words": [
       "word1fr"
      ],
@@ -710,7 +708,6 @@
     },
     {
      "language": "es",
-     "title": "title 2 es",
      "words": [],
      "phrases": [
       "phrase 2 es"
@@ -734,7 +731,6 @@
     },
     {
      "language": "fr",
-     "title": "title 2 fr",
      "words": [],
      "phrases": [
       "phrase 2 fr"

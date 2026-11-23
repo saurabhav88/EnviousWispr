@@ -8,6 +8,7 @@
    "aiPolishProvider",
    "appleIntelligence.recheck",
    "appleIntelligence.status",
+   "dictationOutputLanguage",
    "enableAIPolish",
    "section.aiPolishModel"
   ]
@@ -22,6 +23,7 @@
    "apiKey.claude",
    "apiKey.getKeyLink",
    "apiKey.save",
+   "dictationOutputLanguage",
    "enableAIPolish",
    "polishModel",
    "polishModel.refresh",
@@ -36,9 +38,11 @@
    "aiPolish.providerSection",
    "aiPolish.whyUse.egOne",
    "aiPolishProvider",
+   "dictationOutputLanguage",
    "enableAIPolish",
    "localModel.download",
-   "section.aiPolishModel"
+   "section.aiPolishModel",
+   "unloadPolishModel"
   ]
  },
  "aiPolish.egOne.downloading": {
@@ -49,9 +53,11 @@
    "aiPolish.providerSection",
    "aiPolish.whyUse.egOne",
    "aiPolishProvider",
+   "dictationOutputLanguage",
    "enableAIPolish",
    "localModel.cancel",
-   "section.aiPolishModel"
+   "section.aiPolishModel",
+   "unloadPolishModel"
   ]
  },
  "aiPolish.egOne.failed": {
@@ -62,9 +68,11 @@
    "aiPolish.providerSection",
    "aiPolish.whyUse.egOne",
    "aiPolishProvider",
+   "dictationOutputLanguage",
    "enableAIPolish",
    "localModel.tryAgain",
-   "section.aiPolishModel"
+   "section.aiPolishModel",
+   "unloadPolishModel"
   ]
  },
  "aiPolish.egOne.installed": {
@@ -76,9 +84,11 @@
    "aiPolish.providerSection",
    "aiPolish.whyUse.egOne",
    "aiPolishProvider",
+   "dictationOutputLanguage",
    "enableAIPolish",
    "localModel.testLive",
-   "section.aiPolishModel"
+   "section.aiPolishModel",
+   "unloadPolishModel"
   ]
  },
  "aiPolish.egOne.paused": {
@@ -89,9 +99,11 @@
    "aiPolish.providerSection",
    "aiPolish.whyUse.egOne",
    "aiPolishProvider",
+   "dictationOutputLanguage",
    "enableAIPolish",
    "localModel.resume",
-   "section.aiPolishModel"
+   "section.aiPolishModel",
+   "unloadPolishModel"
   ]
  },
  "aiPolish.gemini": {
@@ -104,6 +116,7 @@
    "apiKey.gemini",
    "apiKey.getKeyLink",
    "apiKey.save",
+   "dictationOutputLanguage",
    "enableAIPolish",
    "polishModel",
    "polishModel.refresh",
@@ -113,6 +126,7 @@
  "aiPolish.off": {
   "exempt": {},
   "mapped": [
+   "dictationOutputLanguage",
    "enableAIPolish"
   ]
  },
@@ -125,6 +139,7 @@
    "aiPolish.providerSection",
    "aiPolish.whyUse.ollama",
    "aiPolishProvider",
+   "dictationOutputLanguage",
    "enableAIPolish",
    "ollama.tryAgain",
    "section.aiPolishModel"
@@ -139,6 +154,7 @@
    "aiPolish.providerSection",
    "aiPolish.whyUse.ollama",
    "aiPolishProvider",
+   "dictationOutputLanguage",
    "enableAIPolish",
    "ollama.browseModels",
    "ollama.downloadModel",
@@ -155,6 +171,7 @@
    "aiPolish.providerSection",
    "aiPolish.whyUse.ollama",
    "aiPolishProvider",
+   "dictationOutputLanguage",
    "enableAIPolish",
    "ollama.downloadOllama",
    "ollama.recheck",
@@ -170,6 +187,7 @@
    "aiPolish.providerSection",
    "aiPolish.whyUse.ollama",
    "aiPolishProvider",
+   "dictationOutputLanguage",
    "enableAIPolish",
    "ollama.recheck",
    "ollama.start",
@@ -185,6 +203,7 @@
    "aiPolish.providerSection",
    "aiPolish.whyUse.ollama",
    "aiPolishProvider",
+   "dictationOutputLanguage",
    "enableAIPolish",
    "ollama.browseModels",
    "ollama.cancelPull",
@@ -198,6 +217,7 @@
    "aiPolish.providerSection",
    "aiPolish.whyUse.ollama",
    "aiPolishProvider",
+   "dictationOutputLanguage",
    "enableAIPolish",
    "ollama.browseModels",
    "ollama.prepareModel",
@@ -217,6 +237,7 @@
    "apiKey.getKeyLink",
    "apiKey.openAI",
    "apiKey.save",
+   "dictationOutputLanguage",
    "enableAIPolish",
    "polishModel",
    "polishModel.refresh",
@@ -234,6 +255,7 @@
    "apiKey.openAI",
    "apiKey.reveal",
    "apiKey.save",
+   "dictationOutputLanguage",
    "enableAIPolish",
    "polishModel",
    "polishModel.refresh",
@@ -252,6 +274,7 @@
    "apiKey.openAI",
    "apiKey.reveal",
    "apiKey.save",
+   "dictationOutputLanguage",
    "enableAIPolish",
    "polishModel",
    "polishModel.refresh",
@@ -266,12 +289,14 @@
    "aiPolish.providerSection",
    "aiPolish.whyUse.s1Mini",
    "aiPolishProvider",
+   "dictationOutputLanguage",
    "enableAIPolish",
    "localModel.download",
    "s1Context",
    "s1Structure",
    "s1Tone",
-   "section.aiPolishModel"
+   "section.aiPolishModel",
+   "unloadPolishModel"
   ]
  },
  "appSettings.appearance": {
@@ -420,6 +445,7 @@
   "exempt": {},
   "mapped": [
    "autoCopyToClipboard",
+   "automaticDictationPaste",
    "dictation.tab.chimes",
    "dictation.tab.clipboard",
    "dictation.tab.engine",
@@ -463,9 +489,7 @@
   ]
  },
  "dictation.engine.allLanguagesAuto": {
-  "exempt": {
-   "statusLine": 1
-  },
+  "exempt": {},
   "mapped": [
    "casualMode",
    "currentEngineSection",
@@ -558,6 +582,7 @@
    "transcriptionEngine",
    "transcriptionEngine.change",
    "unloadModel",
+   "whisperModel.cancelDownload",
    "whisperModel.recheck",
    "whisperModel.resume"
   ]
@@ -617,7 +642,6 @@
    "transcriptionEngine.allLanguages",
    "transcriptionEngine.fast",
    "transcriptionEngine.keepCurrent",
-   "transcriptionEngine.recheckFast",
    "unloadModel"
   ]
  },
@@ -813,7 +837,8 @@
    "inputDevice",
    "mediaDuringDictation",
    "micReadiness",
-   "section.microphone"
+   "section.microphone",
+   "silentMicWarning"
   ]
  },
  "dictation.microphone.multiInput": {
@@ -831,7 +856,8 @@
    "inputSocket",
    "mediaDuringDictation",
    "micReadiness",
-   "section.microphone"
+   "section.microphone",
+   "silentMicWarning"
   ]
  },
  "dictation.pill": {
@@ -867,6 +893,7 @@
   "exempt": {},
   "mapped": [
    "contactsSyncOnLaunch",
+   "fixLearnedWords",
    "importContacts",
    "learnFrom",
    "selfLearningDictionary",
@@ -877,6 +904,7 @@
   "exempt": {},
   "mapped": [
    "contactsSyncOnLaunch",
+   "fixLearnedWords",
    "importContacts",
    "learnFrom",
    "selfLearningDictionary",

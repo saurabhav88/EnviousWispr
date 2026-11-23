@@ -1,5 +1,6 @@
 import AppKit
 import EnviousWisprCore
+import EnviousWisprLocalPolish
 import EnviousWisprServices
 import Foundation
 
@@ -64,9 +65,10 @@ final class MenuBarController: NSObject {
   /// install the accessibility-change icon-refresh seam. Called once from
   /// `AppDelegate.applicationDidFinishLaunching` (was `setupStatusItem()`).
   func installStatusItem() {
-    // #2480: start toward the right end on a Mac that has never placed ours.
-    StatusItemPlacement.seedPreferredPositionIfAbsent(in: .standard)
-    statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
+    // #2480: start toward the right end on a Mac that has never placed ours (seeded by
+    // `MenuBarStatusItem`). #4849: the item was created at the start of launch so it keeps
+    // `Item-0`, ahead of the hidden SwiftUI menu bar scene.
+    statusItem = MenuBarStatusItem.take()
     guard let button = statusItem?.button else { return }
 
     iconAnimator.configure(button: button)
@@ -654,28 +656,24 @@ final class MenuBarController: NSObject {
 
     // #3438: the chosen AI polish model is not set up. A reminder, not an error: dictation still
     // works (basic cleanup only), so the icon does not change and the line has no dismissal.
-    if state.onboardingComplete, let subject = state.polishSetupWarning {
-      let polishItem = NSMenuItem(
-        title: PolishSetupSurfaceCopy.menuLine,
-        action: #selector(openAIPolishAction),
-        keyEquivalent: "")
-      polishItem.image = NSImage(
-        systemSymbolName: "sparkles",
-        accessibilityDescription: String(
-          localized: "AI polish needs setup",
-          comment: "Menu bar menu, VoiceOver: the icon beside the AI polish setup line."))
-      polishItem.target = self
-      // What the line was about when the menu was built; the click reports this.
-      polishItem.representedObject = subject
-      polishItem.identifier = MenuBarItemID.polishSetup
-      menu.addItem(polishItem)
+    // #4721: one line, about AI polish, the EnviousMeet summary engine, or both.
+    // #4845 D-F: the selected AI polish model's download takes the slot while it runs or waits
+    // paused; the warning returns when it ends.
+    if let item = Self.polishSlotItem(
+      onboardingComplete: state.onboardingComplete, download: state.polishDownload,
+      warning: state.polishSetupWarning, target: self)
+    {
+      menu.addItem(item)
     }
 
-    menu.addItem(.separator())
+    let polishSlotEnd = NSMenuItem.separator()
+    polishSlotEnd.identifier = MenuBarItemID.polishSlotEnd
+    menu.addItem(polishSlotEnd)
 
     // #3454: Microphone submenu: Auto, then each input in the Settings dropdown's order, checkmark
     // on the saved choice. The same choice as Settings > Dictation > Microphone, saved through the
-    // same `SettingsManager.chooseInputDevice(uid:)`, so the two can never disagree.
+    // same shared `MicrophoneChoiceOwner` and `SettingsManager.chooseInputDevice(uid:)` (#4021),
+    // so the two can never disagree and only the latest choice is saved.
     let microphoneItem = NSMenuItem(
       title: String(
         localized: "Microphone",
@@ -853,6 +851,7 @@ final class MenuBarController: NSObject {
       appearancePreference: settings.appearancePreference,
       pasteLastShortcut: Self.shortcutLabel(for: .pasteLast, bindings: settings.shortcutBindings),
       polishSetupWarning: actions.polishSetupWarning(),
+      polishDownload: actions.polishDownload(),
       lastDictation: actions.lastDictation().map {
         LastDictationMenuState(
           rowID: $0.id, preview: LastDictationMenuState.preview(of: $0.text),
@@ -916,10 +915,10 @@ final class MenuBarController: NSObject {
   /// owner Settings uses.
   @objc private func setMicrophoneAction(_ sender: NSMenuItem) {
     guard let uid = sender.representedObject as? String else { return }
-    // #3479: a mic unplugged while the menu was open leaves a clickable row. Auto ("") is always
-    // valid; any other UID must still be plugged in, or nothing would ever correct the write.
-    guard uid.isEmpty || actions.isMicrophoneConnected(uid) else { return }
-    settings.chooseInputDevice(uid: uid)
+    // #3479: a mic unplugged while the menu was open leaves a clickable row. The shared choice
+    // owner saves Auto ("") at once and any other UID only if it is still plugged in (checked
+    // off the main actor, #4021) and still the latest choice.
+    actions.chooseMicrophone(uid)
   }
 
   @objc private func openTranscribeFileAction() {
@@ -998,11 +997,116 @@ final class MenuBarController: NSObject {
     }
   }
 
+  // MARK: #4845 D-F: the AI polish slot
+
+  /// The one AI polish line: the selected model's download (downloading with a known percent,
+  /// or paused) after Setup, else the setup warning (#3438, #4721), else nothing. One slot, one
+  /// sparkle icon.
+  static func polishSlotItem(
+    onboardingComplete: Bool, download: PolishDownloadLine?,
+    warning: PolishSetupWarningSubjects?, target: AnyObject
+  ) -> NSMenuItem? {
+    guard onboardingComplete else { return nil }
+    if let download {
+      let item: NSMenuItem
+      switch download {
+      case .downloading(_, let fraction):
+        let percent = fraction.formatted(.percent.precision(.fractionLength(0)))
+        item = NSMenuItem(
+          title: String(
+            localized: "AI polish downloading · \(percent)",
+            comment:
+              "Menu bar menu: the AI polish model is downloading. %@ is the percent done, formatted for the region, such as 42%."
+          ),
+          action: #selector(openAIPolishForDownloadAction), keyEquivalent: "")
+      case .paused(let model):
+        item = NSMenuItem(
+          title: String(
+            localized: "AI polish download paused · Resume",
+            comment: "Menu bar menu: the AI polish download is paused; clicking resumes it."),
+          action: #selector(resumePolishDownloadAction), keyEquivalent: "")
+        // The exact model this line was built for; the click resumes only that one.
+        item.representedObject = PolishDownloadModelBox(model)
+      }
+      item.image = NSImage(systemSymbolName: "sparkles", accessibilityDescription: item.title)
+      item.target = target
+      item.identifier = MenuBarItemID.polishDownload
+      return item
+    }
+    guard let subjects = warning else { return nil }
+    let polishItem = NSMenuItem(
+      title: PolishSetupSurfaceCopy.menuLine(subjects),
+      action: #selector(openAIPolishAction),
+      keyEquivalent: "")
+    polishItem.image = NSImage(
+      systemSymbolName: "sparkles",
+      accessibilityDescription: subjects.summary == nil
+        ? String(
+          localized: "AI polish needs setup",
+          comment: "Menu bar menu, VoiceOver: the icon beside the AI polish setup line.")
+        // The line's own words, so VoiceOver names the engine the line is about.
+        : PolishSetupSurfaceCopy.menuLine(subjects))
+    polishItem.target = target
+    // What the line was about when the menu was built; the click reports this.
+    polishItem.representedObject = subjects
+    polishItem.identifier = MenuBarItemID.polishSetup
+    return polishItem
+  }
+
+  /// What a slot item says and does, for the tick's "unchanged" check.
+  private static func slotSignature(_ item: NSMenuItem) -> String {
+    let carried: String
+    if let box = item.representedObject as? PolishDownloadModelBox {
+      carried = String(describing: box.model)
+    } else if let subjects = item.representedObject as? PolishSetupWarningSubjects {
+      carried = String(describing: subjects)
+    } else {
+      carried = ""
+    }
+    return [item.identifier?.rawValue ?? "", item.title, carried].joined(separator: "|")
+  }
+
+  /// The open-menu tick: rebuilds the AI polish slot from the three facts it shows (Setup done,
+  /// the download, the setup warning), never the whole menu state, in place before its separator
+  /// (percent, paused to downloading, the download ending and the warning returning).
+  func refreshPolishSlot(in menu: NSMenu) {
+    let fresh = Self.polishSlotItem(
+      onboardingComplete: settings.onboardingState == .completed,
+      download: actions.polishDownload(), warning: actions.polishSetupWarning(), target: self)
+    let slotIDs = [MenuBarItemID.polishDownload, MenuBarItemID.polishSetup]
+    if let shown = menu.items.firstIndex(where: { item in
+      slotIDs.contains { $0 == item.identifier }
+    }) {
+      if let fresh, Self.slotSignature(fresh) == Self.slotSignature(menu.items[shown]) { return }
+      menu.removeItem(at: shown)
+      if let fresh { menu.insertItem(fresh, at: shown) }
+      return
+    }
+    guard let fresh,
+      let end = menu.items.firstIndex(where: { $0.identifier == MenuBarItemID.polishSlotEnd })
+    else { return }
+    menu.insertItem(fresh, at: end)
+  }
+
+  /// #4845: the downloading line opens AI Polish in Settings (the warning's selector needs its
+  /// subjects, which a download line has none of).
+  @objc private func openAIPolishForDownloadAction(_ sender: NSMenuItem) {
+    actions.openAIPolishForDownload()
+  }
+
+  /// #4845: Resume for the exact model the line was built for; the action re-reads the selection
+  /// and the paused state before starting anything.
+  @objc private func resumePolishDownloadAction(_ sender: NSMenuItem) {
+    guard let box = sender.representedObject as? PolishDownloadModelBox else { return }
+    actions.resumePolishDownload(box.model)
+  }
+
   /// #3438: the AI polish setup line opens Settings on AI Polish, reporting what the line
-  /// showed when the menu was built (even if the setup was finished since).
+  /// showed when the menu was built (even if the setup was finished since). #4721: a line about
+  /// the summary engine alone opens the Summaries tab.
   @objc private func openAIPolishAction(_ sender: NSMenuItem) {
-    guard let subject = sender.representedObject as? PolishSetupPromptSubject else { return }
-    actions.openAIPolish(subject)
+    guard let subjects = sender.representedObject as? PolishSetupWarningSubjects else { return }
+    actions.openAIPolish(subjects)
   }
 
   /// #1047: set the window-appearance preference from the Appearance submenu.
@@ -1042,6 +1146,7 @@ extension MenuBarController: NSMenuDelegate {
         MainActor.assumeIsolated {
           guard let self, let open = self.statusItem?.menu else { return }
           self.refreshMeetingLines(in: open)
+          self.refreshPolishSlot(in: open)
         }
       }
       RunLoop.main.add(ticker, forMode: .eventTracking)
@@ -1153,18 +1258,21 @@ struct MenuBarActions: Sendable {
   /// The inputs for the Microphone submenu, in the Settings dropdown's order, read when the menu
   /// is built (#3454). Plain values: this file may not import the Audio module.
   let microphoneChoices: @MainActor () -> [MicrophoneMenuChoice]
-  /// Whether this input is plugged in RIGHT NOW (#3479), asked of the system at click time. The
-  /// cached list behind `microphoneChoices` is refreshed on a separately scheduled task, so it can
-  /// still hold a mic unplugged while the menu was open.
-  let isMicrophoneConnected: @MainActor (String) -> Bool
+  /// Choose this input ("" is Auto) through the shared microphone-choice owner (#3479, #4021).
+  /// The owner checks at click time that a device is still plugged in, because the cached list
+  /// behind `microphoneChoices` can still hold a mic unplugged while the menu was open, and saves
+  /// only the latest choice.
+  let chooseMicrophone: @MainActor (String) -> Void
   /// Open the unified window on the Transcribe a File page (#2772).
   let openTranscribeFile: @MainActor () -> Void
   let openPermissions: @MainActor () -> Void
   /// #3438: what the AI polish setup line is about, or nil when it does not show, evaluated live
   /// by the warning monitor at the moment the menu is built; and what clicking it does (open
   /// Settings on AI Polish), given what the line showed.
-  let polishSetupWarning: @MainActor () -> PolishSetupPromptSubject?
-  let openAIPolish: @MainActor (PolishSetupPromptSubject) -> Void
+  /// #4721: about dictation's engine, the summary engine or both; opens AI Polish while
+  /// dictation's engine needs it, otherwise the Summaries tab.
+  let polishSetupWarning: @MainActor () -> PolishSetupWarningSubjects?
+  let openAIPolish: @MainActor (PolishSetupWarningSubjects) -> Void
   let toggleRecording: @MainActor () async -> Void
   /// #3972: EnviousMeet's phase now, or nil before it exists.
   let meetingPhase: @MainActor () -> MeetingCoordinator.Phase?
@@ -1180,6 +1288,66 @@ struct MenuBarActions: Sendable {
   let lastDictation: @MainActor () -> (id: UUID, text: String)?
   /// Paste the dictation with this row id into this application (#3106), both sampled at menu-open.
   let pasteLastDictation: @MainActor (UUID?, NSRunningApplication?) -> Void
+  /// #4845 D-F: the selected AI polish model's download as the menu line shows it, read live from
+  /// its runtime when the menu is built and on the open-menu tick; nil when there is none.
+  var polishDownload: @MainActor () -> PolishDownloadLine? = { nil }
+  /// #4845: open Settings on AI Polish from the downloading line.
+  var openAIPolishForDownload: @MainActor () -> Void = {}
+  /// #4845: resume this exact model's paused download, if it is still the selection and paused.
+  var resumePolishDownload: @MainActor (LocalPolishModelID) -> Void = { _ in }
+}
+
+/// #4845 D-F: what the AI polish slot shows for a download.
+enum PolishDownloadLine: Equatable {
+  /// A real transfer with a known fraction (0...1).
+  case downloading(model: LocalPolishModelID, fraction: Double)
+  /// Stopped with progress kept; Resume continues it.
+  case paused(model: LocalPolishModelID)
+}
+
+/// #4845 D-F: the two decisions behind the slot's download line, as plain functions of the live
+/// facts, so the composition root and the tests use the same rule.
+enum PolishDownloadMenu {
+  /// What the line shows for the selected bundled model: a real transfer with a known fraction,
+  /// or paused; verifying shows nothing, and a failure keeps the existing warning.
+  static func line(
+    setupComplete: Bool, selected: LocalPolishModelID, installState: EGOneInstallState?
+  ) -> PolishDownloadLine? {
+    guard setupComplete, let installState else { return nil }
+    switch installState {
+    case .downloading(let fraction, _): return .downloading(model: selected, fraction: fraction)
+    // An update that stopped with its partial bytes kept resumes the same way (Setup's Practice
+    // note points here). An update that never started has nothing to resume: the existing
+    // warning row keeps the slot, and Settings offers to start it.
+    case .paused, .updatePaused(resumable: true, _): return .paused(model: selected)
+    case .notInstalled, .updatePaused(resumable: false, _), .verifying, .installed, .failed:
+      return nil
+    }
+  }
+
+  /// Resume from the line built for `shown`: only while it is still the selection and still
+  /// paused (a stale line starts nothing). Returns whether it started.
+  @discardableResult
+  static func resume(
+    _ shown: LocalPolishModelID, selected: LocalPolishModelID, installState: EGOneInstallState?,
+    start: () -> Void
+  ) -> Bool {
+    guard shown == selected, let installState else { return false }
+    switch installState {
+    case .paused, .updatePaused(resumable: true, _): break
+    case .notInstalled, .updatePaused(resumable: false, _), .downloading, .verifying, .installed,
+      .failed:
+      return false
+    }
+    start()
+    return true
+  }
+}
+
+/// The model a Resume line was built for, carried on the menu item to its click.
+final class PolishDownloadModelBox: NSObject {
+  let model: LocalPolishModelID
+  init(_ model: LocalPolishModelID) { self.model = model }
 }
 
 /// What the Paste Last Dictation row shows and carries to its click (#3106).
@@ -1312,7 +1480,10 @@ struct MenuBarViewState: Equatable {
   var pasteLastShortcut: String? = nil
   /// #3438: what the chosen AI polish model's unfinished setup is (monitor's menu surface), or
   /// nil. Display only; deliberately not read by `iconState`.
-  var polishSetupWarning: PolishSetupPromptSubject? = nil
+  var polishSetupWarning: PolishSetupWarningSubjects? = nil
+  /// #4845 D-F: the selected AI polish model's download line, or nil. Takes the slot over the
+  /// warning while present; display only, not read by `iconState`.
+  var polishDownload: PolishDownloadLine? = nil
   /// #3106: the Paste Last row's content, or nil when nothing may be reused (row disabled).
   var lastDictation: LastDictationMenuState? = nil
   /// #3454: the Microphone submenu's inputs (Auto is added by `renderMenu`).
@@ -1335,6 +1506,10 @@ struct MicrophoneMenuChoice: Equatable {
 extension MenuBarItemID {
   /// #3438: the "Finish setting up AI polish" line.
   static let polishSetup = NSUserInterfaceItemIdentifier("menu.polishSetup")
+  /// #4845: the AI polish download line (the same slot as the setup line).
+  static let polishDownload = NSUserInterfaceItemIdentifier("menu.polishDownload")
+  /// #4845: the separator that closes the AI polish slot; the open-menu tick inserts before it.
+  static let polishSlotEnd = NSUserInterfaceItemIdentifier("menu.polishSlotEnd")
 }
 
 /// Late binding for the settings change hook, which is installed before the menu bar exists

@@ -70,11 +70,13 @@ public struct CaptureRouteDecision: Sendable {
 ///
 /// Ownership: source selection, device discovery, transport filtering, user preference interpretation.
 /// Does NOT create sources — returns a decision that AudioCaptureManager acts on.
-@MainActor
-struct CaptureRouteResolver {
+/// `Sendable` (#4601): a copy crosses to the audio-unit lane, where its reads run.
+struct CaptureRouteResolver: Sendable {
 
-  var defaultOutputDeviceID: () -> AudioDeviceID? = AudioDeviceEnumerator.defaultOutputDeviceID
-  var isBluetoothOutputDevice: (AudioDeviceID) -> Bool = AudioDeviceEnumerator.isBluetoothDevice
+  var defaultOutputDeviceID: @Sendable () -> AudioDeviceID? =
+    AudioDeviceEnumerator.defaultOutputDeviceID
+  var isBluetoothOutputDevice: @Sendable (AudioDeviceID) -> Bool =
+    AudioDeviceEnumerator.isBluetoothDevice
 
   /// Resolve which capture source to use. Every route now returns the HAL
   /// device source; the reason distinguishes BT-output vs no-BT context and

@@ -54,7 +54,7 @@ final class MenuBarIconAnimator {
   /// Call once from setupStatusItem() after creating the button.
   func configure(button: NSStatusBarButton) {
     self.button = button
-    self.idleImage = renderIdleLips()
+    self.idleImage = Self.renderIdleLips()
     self.recordingImage = renderRecordingLips()
     self.errorImage = renderErrorLips()
     button.image = self.idleImage
@@ -269,7 +269,8 @@ final class MenuBarIconAnimator {
 
   /// Render idle lips — same 9+9 bar geometry as recording/error lips, but monochrome.
   /// Uses black at 0.65 alpha so macOS template rendering inverts correctly for dark/light mode.
-  private func renderIdleLips() -> NSImage {
+  /// Static so the Setup film can draw the same icon (#4528).
+  static func renderIdleLips() -> NSImage {
     let size = NSSize(width: 22, height: 22)
     let image = NSImage(size: size, flipped: true) { rect in
       guard let ctx = NSGraphicsContext.current?.cgContext else { return false }

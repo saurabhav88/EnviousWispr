@@ -612,6 +612,83 @@ import Testing
     #expect(h.adapter.readiness != .ready)
   }
 
+  @Test(
+    "#4537: every ensureEngineWarm exit fires the settled signal once, after readiness is final")
+  func ensureEngineWarmSignalsSettledOnEveryExit() async throws {
+    struct BoomError: Error {}
+    let cases: [(String, Harness, Bool)] = [
+      ("success", makeDriver(), false),
+      ("failure", makeDriver(behavior: .failLoad(BoomError())), false),
+      ("cancel", makeDriver(behavior: .failLoad(ASRLoadCancelledError())), false),
+      ("already ready", makeDriver(), true),
+    ]
+    for (label, h, prewarm) in cases {
+      if prewarm { try await h.adapter.warmUp(modelReceipt: nil) }
+      var settled: [ASREngineReadiness] = []
+      h.driver.onEngineWarmSettled = { settled.append(h.adapter.readiness) }
+      _ = await h.driver.ensureEngineWarm(reason: .launch)
+      #expect(settled.count == 1, "\(label): fired \(settled.count) times")
+      #expect(settled.first != .warming, "\(label): fired while the load was still in flight")
+    }
+  }
+
+  // MARK: #4528 — Setup's practice take reads the concluded take's own terminal
+
+  @Test("#4528: a practice take reads its own delivery facts, never the previous take's")
+  func practiceEvidenceReadsOnlyTheConcludedTake() async throws {
+    // When this fails, Setup's practice screen says a take landed in its box, or was copied,
+    // because the PREVIOUS take did.
+    let h = makeDriver()
+    #expect(h.driver.practiceTakeEvidence == nil, "no take yet, nothing to read")
+    h.outcome.practiceVerifiedEditor = "EnviousWispr.Setup.Practice.previous"
+    h.outcome.practiceCopiedToClipboard = true
+    try await startDriverToLive(h)
+    #expect(h.driver.practiceTakeEvidence == nil, "a live take has no terminal to read")
+    h.capture.deliverSamples([Float](repeating: 0.3, count: 32_000))  // two seconds of speech
+    try await h.driver.handle(event: .toggleRecording(.testDefault()))
+    await drainUntil { h.kernel.recordingOutcome != nil }
+    #expect(h.kernel.recordingOutcome == .completed)
+    #expect(
+      h.driver.practiceTakeEvidence
+        == .delivered(verifiedEditor: nil, copied: false, polished: false))
+  }
+
+  @Test("#4845: only a take that waited for the polish model counts as Skip ahead's basic cleanup")
+  func practiceEvidenceWaitedForModel() {
+    // When this fails, Setup's Practice after Skip ahead calls a crashed or failed polish "basic
+    // cleanup for now", or tells a person whose take waited for the downloading model to try again.
+    let context = PolishSetupTakeContext(
+      provider: .egOne, model: "eg-1", configurationRevision: 1, episode: nil)
+    func outcome(_ result: PolishTakeResult, _ evidence: PolishSetupEvidence?) -> PolishTakeOutcome {
+      PolishTakeOutcome(
+        takeID: "take", context: context, result: result, evidence: evidence, setupProblem: nil,
+        observedAt: .now)
+    }
+    let waited = PracticeTakeEvidence.waitedForModel
+    #expect(waited(outcome(.skippedSilently, .localEngineNotReady)), "a model still starting")
+    #expect(waited(outcome(.skippedWithNotice, .localEngineDownloadPending)), "a model downloading")
+    #expect(waited(outcome(.bypassed, nil)), "a take too short to polish")
+    #expect(!waited(outcome(.skippedSilently, nil)), "a crash mid-request counted as waiting")
+    #expect(!waited(outcome(.failed, nil)), "a polish failure counted as waiting")
+    #expect(!waited(outcome(.polished, nil)), "a polished take counted as waiting")
+    #expect(!waited(nil), "a take with no polish outcome counted as waiting")
+  }
+
+  @Test("#4528: a practice take stopped before it heard anything reads as no speech")
+  func practiceEvidenceMapsAnEarlyStopToNoSpeech() async throws {
+    // When this fails, Setup tells a person who let go too early that dictation failed.
+    let h = makeDriver()
+    try await h.adapter.warmUp(modelReceipt: nil)
+    h.capture.gateStabilizationCall = 1
+    try await h.driver.handle(event: .toggleRecording(.testDefault()))
+    await h.capture.awaitStabilizationGateReached()
+    try await h.driver.handle(event: .toggleRecording(.testDefault()))
+    h.capture.releaseStabilizationGate()
+    await drainUntil { h.kernel.recordingOutcome != nil }
+    #expect(h.kernel.recordingOutcome == .discarded(.releasedBeforeRecording))
+    #expect(h.driver.practiceTakeEvidence == .noSpeech)
+  }
+
   // MARK: #1388 — terminal classification (user Cancel vs guard verdict vs failure)
 
   @Test("#1388: the cancellation error maps to .cancelled — never .failed")

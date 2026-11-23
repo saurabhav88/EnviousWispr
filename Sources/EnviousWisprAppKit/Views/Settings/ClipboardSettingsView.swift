@@ -28,14 +28,31 @@ struct ClipboardSettingsView: View {
       BrandedSection {
         BrandedRow {
           SettingsRow(
+            map: .id(.automaticDictationPaste),
+            icon: "clipboard",
+            help: Copy.automaticPasteShort
+          ) {
+            Toggle("", isOn: $settings.automaticDictationPasteEnabled)
+              .labelsHidden()
+              .toggleStyle(BrandedToggleStyle())
+              .fixedSize()
+              .accessibilityLabel(Text(Copy.automaticPasteTitle))
+          }
+        }
+        BrandedRow {
+          SettingsRow(
             map: .id(.autoCopyToClipboard),
             icon: "doc.on.clipboard",
             help: Copy.autoCopyHelp
           ) {
-            Toggle("", isOn: $settings.autoCopyToClipboard)
+            Toggle(
+              "",
+              isOn: settings.automaticDictationPasteEnabled ? $settings.autoCopyToClipboard : .constant(true)
+            )
               .labelsHidden()
               .toggleStyle(BrandedToggleStyle())
               .fixedSize()
+              .disabled(!settings.automaticDictationPasteEnabled)
               .accessibilityLabel(Text(Copy.autoCopyTitle))
           }
         }

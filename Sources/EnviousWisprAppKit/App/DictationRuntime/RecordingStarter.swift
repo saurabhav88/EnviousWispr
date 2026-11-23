@@ -64,7 +64,7 @@ final class RecordingStarter {
     /// opaque directive payload (nil when recovery is off or could not arm).
     /// (#1063 PR1.)
     let makeDirective:
-      @MainActor (SettingsManager, ASRBackendType, Bool, LocalPolishModelID, String) async -> (
+      @MainActor (SettingsManager, ASRBackendType, Bool, LocalPolishModelID, String, Bool) async -> (
         recoverySessionID: String, payload: Data
       )?
 
@@ -98,7 +98,7 @@ final class RecordingStarter {
 
     /// The recovery-off shape, for construction that is not about recovery.
     static let disabled = RecoveryAccess(
-      makeDirective: { _, _, _, _, _ in nil },
+      makeDirective: { _, _, _, _, _, _ in nil },
       cleanupArm: { _ in },
       isRecovering: { false },
       signalPendingLiveStart: {},
@@ -152,11 +152,14 @@ final class RecordingStarter {
   /// `EngineCoordinator.beginMinting`/`.endMinting`; default no-ops keep legacy/test
   /// construction unchanged.
   let beginMinting: @MainActor () -> Void
-  /// #1386 PR-2c: the selected engine's model-on-disk truth (EngineCoordinator's
-  /// `status.selectedInstalled`), read at press time so a removed model presses
-  /// into the honest not-installed pill. Defaults open (true) — a missing
+  /// #1386 PR-2c: the selected engine's model-on-disk truth, read at press time so a removed
+  /// model presses into the honest not-installed pill. #4578: decided by
+  /// `SpeechJobAdmission` over `SpeechModelLibrary`'s facts, awaiting a fresh read when the
+  /// fact is still unknown (never guessing "missing"). Defaults open (true) — a missing
   /// authority must not block dictation.
-  var isSelectedModelInstalled: @MainActor () -> Bool = { true }
+  var isSelectedModelInstalled: @MainActor () async -> Bool = { true }
+  var selectedEngineRequiresRetry: @MainActor (ASRBackendType) -> Bool = { _ in false }
+  var confirmSelectedEngineRequiresRetry: @MainActor (ASRBackendType) async -> Bool = { _ in false }
   /// #4069: "Turn off dictation during meetings" is on and a meeting is capturing
   /// (`MeetingCoordinator.isCapturing`). Read once per START press, before any await. Defaults
   /// open (false): a missing authority must not block dictation.
@@ -389,6 +392,10 @@ final class RecordingStarter {
   private func start(preAdmitted: PendingDictationRequests.Admission?) async
     -> RecordingStartOutcome
   {
+    // #4601 §3a: the press's microphone-start budget begins HERE, before every preflight wait
+    // (installation read, recovery arm). A press that waited for its engine turn runs again from
+    // the top and starts its budget then: that wait was for the engine, not for the microphone.
+    let pressOrigin = ContinuousClock.now
     // Handed to `DictationLifecycleCoordinator` at the moment a session is
     // minted, and released here on every path that mints nothing. `defer` reads
     // this variable's FINAL value, so the single assignment at the hand-off
@@ -468,7 +475,10 @@ final class RecordingStarter {
     // mid-removal mints nothing and shows the honest not-installed pill. One
     // gate, before any readiness/warm logic — a removal's first instants can
     // still read "ready", so the readiness path alone cannot cover this.
-    guard isSelectedModelInstalled() else {
+    // #4578: the gate below may await a fresh installation read. A release, Stop, cancel or
+    // quit during that wait predates `pttStart`, so it is checked against this instant.
+    let installationGateEntered = ContinuousClock.now
+    guard await isSelectedModelInstalled() else {
       recordingOverlay.present(
         .warning(reason: .modelNotDownloaded(engineLabel: active.engineDisplayName)))
       TelemetryService.shared.coldStartPressBlocked(
@@ -476,6 +486,13 @@ final class RecordingStarter {
         model: active.requestedModelAttribution)
       return .noRecording
     }
+    if pendingRequests.isClosed || endedDuringStartUp(preAdmitted)
+      || (lastUserStopAccess.read().map { $0 > installationGateEntered } ?? false)
+    {
+      return .noRecording
+    }
+    // A selection change landed during the wait is honoured the same way as before it.
+    if reconcileSelectedBackendIfNeeded() { return .noRecording }
     lastRecordingResult?.polishError = nil
     // #879 — cold-boot press safety. A press on a not-ready engine must NOT mint
     // a recording session (no audio captured → none discarded). Hand off to the
@@ -486,7 +503,10 @@ final class RecordingStarter {
     if readinessAtEntry != .ready {
       ColdPressGuard.handle(
         overlay: recordingOverlay, active: active,
-        backendTag: backend.rawValue, readiness: readinessAtEntry)
+        backendTag: backend.rawValue, readiness: readinessAtEntry,
+        confirmExplicitRetry: { [confirmSelectedEngineRequiresRetry] in
+          await confirmSelectedEngineRequiresRetry(backend)
+        })
       return .noRecording
     }
     // #1171 — committed to minting on `active` (selected == active confirmed above,
@@ -497,6 +517,7 @@ final class RecordingStarter {
     beginMinting()
     defer { endMinting() }
     accessibilityRefresh()
+    let fixLearnedWords = settings.fixLearnedWords
     recordingOverlay.present(
       .recording(
         RecordingPillInput(
@@ -510,8 +531,11 @@ final class RecordingStarter {
           recordingElapsedProvider: { [weak active] in active?.recordingElapsedSeconds },
           isLocked: false)))
     let pttStart = ContinuousClock.now
+    // #4601 §3a: the press's ONE microphone-start budget (from `pressOrigin`); the pre-warm and
+    // the take's own start below both spend it.
+    let microphoneStartDeadline = MicrophoneStartBudget.deadline(from: pressOrigin)
     do {
-      try await active.handle(event: .preWarm)
+      try await active.handle(event: .preWarm(microphoneStartDeadline: microphoneStartDeadline))
     } catch is CancellationError {
       audioCapture.abortPreWarm()
       recordingOverlay.dismissCurrent(.announced)
@@ -532,6 +556,9 @@ final class RecordingStarter {
       let reason: TerminalNoticeReason
       if micPermissionDenied() {
         reason = .permissionDenied
+      } else if MicrophoneStartFailure.isNotResponding(error) {
+        // #4601 §3.7: after permission, the one shared not-responding decision.
+        reason = .micNotResponding
       } else {
         let nsError = error as NSError
         let noMic =
@@ -567,7 +594,8 @@ final class RecordingStarter {
     }
     let preWarmMs = Self.elapsedMs(since: pttStart)
     do {
-      let config = await makeSessionConfig(triggerSource: .pttHotkey, armRecovery: true)
+      let config = await makeSessionConfig(
+        triggerSource: .pttHotkey, armRecovery: true, fixLearnedWords: fixLearnedWords)
       // #1063 PR1: the recovery-arm await widened the pre-session window. If PTT
       // was released during it, `requestStop` hit the idle kernel and was ignored
       // — bail before minting a session so a quick release can't leave a recording
@@ -605,7 +633,8 @@ final class RecordingStarter {
       // #1171 — no engine-changed re-check here: the `beginMinting()` state-gate
       // (held since before preWarm) guarantees the coordinator did NOT switch the
       // active engine across these awaits, so `active` is still the user's choice.
-      try await active.handle(event: .toggleRecording(config))
+      try await active.handle(
+        event: .toggleRecording(config, microphoneStartDeadline: microphoneStartDeadline))
       dispatchedStart = true
       // The session is minted, so the claim now belongs to the session rather
       // than to this call. Both start methods RETURN while the recording is
@@ -717,6 +746,8 @@ final class RecordingStarter {
   private func toggle(
     source: TriggerSource, preAdmitted: PendingDictationRequests.Admission?
   ) async {
+    // #4601 §3a: same origin rule as `start(preAdmitted:)`.
+    let pressOrigin = ContinuousClock.now
     // #2648 — held from the claim below until either the mint hands it to the
     // lifecycle coordinator or this call ends without minting. Declared out here
     // because the claim happens inside the start-only gate block and the release
@@ -785,7 +816,9 @@ final class RecordingStarter {
       // minting a session (the toggle-hotkey is a user press too). A toggle that
       // STOPS an active session is unaffected (guarded by `isStartingFromIdle`).
       // #1386 PR-2c (founder): same removal/not-installed gate as the PTT path.
-      guard isSelectedModelInstalled() else {
+      // #4578: same ownership re-check after the gate's possible await as the PTT path.
+      let installationGateEntered = ContinuousClock.now
+      guard await isSelectedModelInstalled() else {
         recordingOverlay.present(
           .warning(reason: .modelNotDownloaded(engineLabel: active.engineDisplayName)))
         TelemetryService.shared.coldStartPressBlocked(
@@ -793,11 +826,20 @@ final class RecordingStarter {
           model: active.requestedModelAttribution)
         return
       }
+      if pendingRequests.isClosed || endedDuringStartUp(preAdmitted)
+        || (lastUserStopAccess.read().map { $0 > installationGateEntered } ?? false)
+      {
+        return
+      }
+      if reconcileSelectedBackendIfNeeded() { return }
       if active.engineReadiness != .ready {
         // #879 — same cold-boot press safety as the PTT path.
         ColdPressGuard.handle(
           overlay: recordingOverlay, active: active,
-          backendTag: backend.rawValue, readiness: active.engineReadiness)
+          backendTag: backend.rawValue, readiness: active.engineReadiness,
+          confirmExplicitRetry: { [confirmSelectedEngineRequiresRetry] in
+            await confirmSelectedEngineRequiresRetry(backend)
+          })
         return
       }
     }
@@ -809,12 +851,13 @@ final class RecordingStarter {
     defer { if isStartingFromIdle { endMinting() } }
     accessibilityRefresh()
     let toggleStart = ContinuousClock.now
+    let microphoneStartDeadline = MicrophoneStartBudget.deadline(from: pressOrigin)
     do {
       // #1063 PR1: arm recovery ONLY when this toggle STARTS a recording. A stop
       // toggle reaches here too, but the kernel ignores the config — arming there
       // would orphan a key (Codex code-diff P2).
       let config = await makeSessionConfig(
-        triggerSource: source, armRecovery: isStartingFromIdle)
+        triggerSource: source, armRecovery: isStartingFromIdle, fixLearnedWords: settings.fixLearnedWords)
       // #1063 PR1 (Codex r3 P1): the recovery-arm await (when armRecovery)
       // suspended this start path. If the user cancelled, OR a concurrent toggle
       // started the kernel during that window, do NOT start a fresh recording —
@@ -848,7 +891,8 @@ final class RecordingStarter {
         // (held since before the recovery-arm await) guarantees the coordinator did
         // NOT switch the active engine, so `active` is still the user's choice.
       }
-      try await active.handle(event: .toggleRecording(config))
+      try await active.handle(
+        event: .toggleRecording(config, microphoneStartDeadline: microphoneStartDeadline))
       dispatchedStart = true
       // Minted, so the claim belongs to the session now — same hand-off as the
       // PTT path, for the same reason: this method returns while the recording
@@ -888,6 +932,14 @@ final class RecordingStarter {
   /// when it handled the mismatch/in-flight switch (the caller must `return`).
   private func reconcileSelectedBackendIfNeeded() -> Bool {
     let selected = settings.selectedBackend
+    let selectedDriver = selected == .whisper ? whisperKernelDriver : kernelDriver
+    if selectedEngineRequiresRetry(selected) {
+      ColdPressGuard.presentExplicitRetry(
+        overlay: recordingOverlay, engineLabel: selected.displayName)
+      ColdPressGuard.recordBlockedPress(
+        active: selectedDriver, backendTag: selected.rawValue, readiness: selectedDriver.engineReadiness)
+      return true
+    }
     guard asrManager.activeBackendType != selected || isEngineSwitching() else { return false }
     if selected == .parakeet, let isActivating = isActivatingParakeetUpgrade, isActivating() {
       ColdPressGuard.reconcileParakeetUpgrade(
@@ -898,8 +950,11 @@ final class RecordingStarter {
     }
     ColdPressGuard.reconcileSelectedBackend(
       overlay: recordingOverlay,
-      selectedDriver: selected == .whisper ? whisperKernelDriver : kernelDriver,
-      ensureSelectedReady: ensureSelectedReadyForPress)
+      selectedDriver: selectedDriver,
+      ensureSelectedReady: ensureSelectedReadyForPress,
+      confirmExplicitRetry: { [confirmSelectedEngineRequiresRetry] in
+        await confirmSelectedEngineRequiresRetry(selected)
+      })
     return true
   }
 
@@ -910,7 +965,9 @@ final class RecordingStarter {
   /// The directive is nil unless recovery is on, so the heart path is unchanged.
   /// Reads the active engine's LID CAPABILITY (not an identity literal).
   /// (#1063 PR1.)
-  private func makeSessionConfig(triggerSource: TriggerSource, armRecovery: Bool) async
+  private func makeSessionConfig(
+    triggerSource: TriggerSource, armRecovery: Bool, fixLearnedWords: Bool
+  ) async
     -> DictationSessionConfig
   {
     // #4473 (plan §3.1.1 S6): the take's polish model is captured ONCE, here, before the
@@ -920,11 +977,13 @@ final class RecordingStarter {
     // saved recording another, nor send one provider's runtime another provider's model name.
     let polishModel = settings.polishModelID(for: settings.llmProvider)
     let polishWireModel = settings.effectiveLLMModel
+    let translationTarget = polishModel.provider.supportsDictationTranslation
+      ? settings.dictationTranslationTarget : nil
     let recovery =
       armRecovery
       ? await recovery.makeDirective(
         settings, asrManager.activeBackendType, activeDriver.supportsLanguageDetection,
-        polishModel, polishWireModel)
+        polishModel, polishWireModel, fixLearnedWords)
       : nil
     return DictationSessionConfigFactory.make(
       asrManager: asrManager,
@@ -933,6 +992,8 @@ final class RecordingStarter {
       settings: settings,
       polishModel: polishModel,
       polishWireModel: polishWireModel,
+      translationTarget: translationTarget,
+      fixLearnedWords: fixLearnedWords,
       triggerSource: triggerSource,
       recoverySessionID: recovery?.recoverySessionID,
       recoveryPayload: recovery?.payload)

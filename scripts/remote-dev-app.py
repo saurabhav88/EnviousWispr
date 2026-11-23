@@ -9,7 +9,7 @@ in order), builds its own tree there and runs the usual UAT commands over SSH.
   remote-dev-app.py status
   remote-dev-app.py build   [--host NAME]
   remote-dev-app.py push    [--host NAME] FILE       copy a clip; prints its remote path
-  remote-dev-app.py run     [--host NAME] uat|dev-control [ARGS...]
+  remote-dev-app.py run     [--host NAME] uat|dev-control|onboarding [ARGS...]
   remote-dev-app.py fetch   [--host NAME] REMOTE_PATH  copy back to build/remote-uat/<host>/
   remote-dev-app.py keys    [--host NAME] set PROVIDER --secret NAME | clear PROVIDER
   remote-dev-app.py release [--host NAME]
@@ -43,7 +43,8 @@ import remote_ship  # noqa: E402
 
 HOST_LOCKS = Path.home() / "Library/Caches/EnviousWispr/dev-app-lock-hosts"
 GET_KEY = Path.home() / ".claude/bin/get-key"
-RECIPES = {"uat": "Tests/RuntimeUAT/uat.py", "dev-control": "Tests/RuntimeUAT/dev_control.py"}
+RECIPES = {"uat": "Tests/RuntimeUAT/uat.py", "dev-control": "Tests/RuntimeUAT/dev_control.py",
+           "onboarding": "Tests/RuntimeUAT/onboarding_uat.py"}
 KEY_ENV = "EW_REMOTE_DEV_APP_KEY"
 OK, UNDECIDED, HELD, SETUP = 0, 2, 3, 4
 _LOCK = None
@@ -199,7 +200,7 @@ def build(host):
             fetch_script = (f"set -e; C={q(co)}; B={q(b)}; "
                             f"[ -d \"$C/.git\" ] || git clone -q {q(host['repo_url'])} \"$C\"; cd \"$C\"; "
                             "rm -f .ew-uat-tree; "
-                            "git bundle verify -q \"$B\" >/dev/null 2>&1 || { rm -f \"$B\"; exit 47; }; "
+                            + remote_ship.verify_bundle_script('"$B"', host["repo_url"], 'rm -f "$B";') + "; "
                             f"git fetch -q \"$B\" {q(ref + ':' + ref)}; rm -f \"$B\"; "
                             f"git checkout -q --detach {q(commit)}; git update-ref -d {q(ref)}; "
                             "git clean -q -ffdx -e .derivedData -e build")

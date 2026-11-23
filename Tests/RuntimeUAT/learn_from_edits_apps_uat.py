@@ -19,20 +19,29 @@ that app, and setting the value would answer a different question.
 Safety: no Enter/Return is ever pressed in any app; every app is asserted
 frontmost before each keystroke; each field is cleared afterwards
 (select-all, delete) and Mail's draft is discarded. Chat apps get text in
-their compose box only. Word list emptied for the run and restored after,
-verified byte for byte (same mechanics as `learn_from_edits_uat.py`).
+their compose box only. Before clearing the word list, the drill saves a
+private backup. After an interrupted run, quit EnviousWispr and use
+`--restore-words` before reopening it. Recover words only; this command
+does not restore audio or preferences. If you have edited the list since
+the interruption, copy the current list aside first.
+Full-screen screenshots are optional evidence; enable with `--screenshots`.
 
 Exit 0 when every app has a verdict, 2 when an app could not be staged
 (INSTRUMENT), 3 when the restore is unverified.
 """
 
 import argparse
+import base64
 import contextlib
+import fcntl
+import hashlib
 import io
+import json
 import os
 import re
 import subprocess
 import sys
+import tempfile
 import time
 
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -717,7 +726,9 @@ def run_app(app, args):
         return row, pid, doc
     tag = f"{app}-{args.then}{'-half' if args.half else ''}"
     time.sleep(0.8)  # settle: the pasted text renders before the proof screenshot; no ack
-    row["shot_pasted"] = d.screenshot(f"{tag}-1-pasted.png") and f"{tag}-1-pasted.png"
+    row["shot_pasted"] = (
+        args.screenshots and d.screenshot(f"{tag}-1-pasted.png") and f"{tag}-1-pasted.png"
+    )
     if cascade.group(2).lower() != bundle.lower():
         row["outcome"] = f"INSTRUMENT: paste went to {cascade.group(2)}"
         return row, pid, doc
@@ -800,7 +811,9 @@ def run_app(app, args):
     # quiet interval, so no proof screenshot or post-fix flow runs before it.
     if not args.send_fast:
         time.sleep(0.3)  # settle: the typed keys render before the proof screenshot; no ack
-        row["shot_fixed"] = d.screenshot(f"{tag}-2-fixed.png") and f"{tag}-2-fixed.png"
+        row["shot_fixed"] = (
+            args.screenshots and d.screenshot(f"{tag}-2-fixed.png") and f"{tag}-2-fixed.png"
+        )
         after_fix = focused_value(pid)
         row["field_after_fix"] = after_fix[-200:] if after_fix is not None else None
         time.sleep(0.8)  # settle: past flushMinQuietMs (500 ms), like a person finishing the word before moving on
@@ -853,7 +866,9 @@ def run_app(app, args):
                 return row, pid, doc
             row["then_at"] = time.time()
         time.sleep(0.5)  # settle: the post-fix action renders before its proof screenshot; no ack
-        row["shot_then"] = d.screenshot(f"{tag}-3-then.png") and f"{tag}-3-then.png"
+        row["shot_then"] = (
+            args.screenshots and d.screenshot(f"{tag}-3-then.png") and f"{tag}-3-then.png"
+        )
     if args.paragraph:
         time.sleep(0.5)  # settle: the host applies the keystrokes; no ack
         after = focused_value(pid) or ""
@@ -917,7 +932,7 @@ def run_app(app, args):
     # SEE and SAVE a fix in each app, not whether Undo works (the main drill).
     shown = d.wait_for("learn_undo_shown", lambda: d.has(fix_mark, "learn_undo_shown"), deadline=3.0)
     row["undo_shown"] = bool(shown)
-    if shown:
+    if shown and args.screenshots:
         d.screenshot(f"pill-{app}.png")
     ended = re.search(r"learn_observation_ended reason=\w+ settled_bursts=\d+ app_class=\w+", d.log_since(mark))
     row["observation"] = ended.group(0) if ended else None
@@ -925,9 +940,84 @@ def run_app(app, args):
     return row, pid, doc
 
 
+@contextlib.contextmanager
+def words_lock():
+    # Keep the same lock file across runs; removing it could give each process a different lock.
+    os.makedirs(d.SUPPORT, mode=0o700, exist_ok=True)
+    lock = os.open(d.WORDS + ".learn-uat.lock", os.O_CREAT | os.O_RDWR | os.O_NOFOLLOW, 0o600)
+    try:
+        try:
+            fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except BlockingIOError as error:
+            raise d.Aborted("another Learn apps drill or word restore holds the lock") from error
+        yield
+    finally:
+        os.close(lock)
+
+
+def save_words_backup(path):
+    snap = d.file_snapshot(d.WORDS)
+    record = None
+    if snap["exists"]:
+        record = {"mode": snap["mode"], "bytes": base64.b64encode(snap["bytes"]).decode("ascii")}
+    with tempfile.NamedTemporaryFile(mode="w", dir=os.path.dirname(path),
+                                     prefix=".learn-uat-", delete=False) as backup:
+        try:
+            json.dump(record, backup)
+            backup.flush()
+            os.fsync(backup.fileno())
+            os.replace(backup.name, path)
+        finally:
+            with contextlib.suppress(FileNotFoundError):
+                os.unlink(backup.name)
+    return snap
+
+
+def restore_words(path):
+    if d.running_instances():
+        raise d.Aborted("quit EnviousWispr before restoring the word list")
+    try:
+        with open(path, encoding="utf-8") as backup:
+            record = json.load(backup)
+        snap = {"exists": False}
+        if record is not None:
+            if (not isinstance(record, dict) or set(record) != {"mode", "bytes"}
+                    or type(record["mode"]) is not int or not 0 <= record["mode"] <= 0o777
+                    or not isinstance(record["bytes"], str)):
+                raise ValueError("invalid backup shape")
+            data = base64.b64decode(record["bytes"], validate=True)
+            try:
+                parsed = json.loads(data.decode("utf-8"))
+            except (UnicodeDecodeError, json.JSONDecodeError):
+                parsed = None
+            snap = {"exists": True, "mode": record["mode"], "bytes": data,
+                    "sha256": hashlib.sha256(data).hexdigest(), "parsed": parsed}
+    except FileNotFoundError as error:
+        raise d.Aborted(f"no pending word-list backup at {path}") from error
+    except (OSError, ValueError) as error:
+        raise d.Aborted(f"could not read the word-list backup at {path}") from error
+
+    try:
+        d.file_restore(d.WORDS, snap)
+        ok, reason = d.verify_restore(d.WORDS, snap, "words", verify_mode=True)
+        if not ok:
+            print(f"FAIL  word-list restore :: {reason}; backup at {path}")
+            return 3
+        os.unlink(path)
+    except OSError as error:
+        print(f"FAIL  word-list restore :: {error}; backup path is {path}")
+        return 3
+    print(f"PASS  word-list restore :: {reason}")
+    return 0
+
+
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument("--run-dir", required=True)
+    parser.add_argument("--restore-words", action="store_true",
+                        help="restore a pending word-list backup after quitting EnviousWispr and stopping other Learn drills")
+    parser.add_argument("--run-dir")
+    parser.add_argument("--screenshots", action="store_true",
+                        help="take optional full-screen pictures")
     parser.add_argument("--export", help="judge export dir for the DEBUG door; omit with --shipped-judge")
     parser.add_argument("--shipped-judge", action="store_true",
                         help="#3948: run the judge the app ships (no export door, no banner wait)")
@@ -949,6 +1039,26 @@ def main():
     parser.add_argument("--correct", help="#3969: what the last word is fixed to (default: Saurabh), e.g. 2 for a number-formatting edit")
     parser.add_argument("--expect", help="#3969: a word the delivered text must contain (default: invoices); required when --sentence lacks it")
     args = parser.parse_args()
+    if args.restore_words and sys.argv[1:] != ["--restore-words"]:
+        parser.error("--restore-words must be used alone")
+    if not args.restore_words and not args.run_dir:
+        parser.error("--run-dir is required for a drill run")
+
+    backup = d.WORDS + ".learn-uat-backup"
+    try:
+        with words_lock():
+            if args.restore_words:
+                return restore_words(backup)
+            if os.path.lexists(backup):
+                raise d.Aborted(f"pending word-list backup at {backup}; quit EnviousWispr and stop other Learn drills. "
+                                "Run this script with --restore-words before reopening the app. "
+                                "Copy the current list aside first if you changed it since the interruption.")
+            return run(args, backup, parser)
+    except OSError as error:
+        raise d.Aborted(f"Learn apps drill file operation failed: {error}") from error
+
+
+def run(args, backup, parser):
     global SENTENCE, CORRECT, EXPECT
     if args.sentence:
         SENTENCE = args.sentence
@@ -984,7 +1094,9 @@ def main():
     if others:
         raise d.Aborted(f"another EnviousWispr instance is running: {others}; refusing to choose")
     initially_running = d.app_pid() is not None
-    snaps = {"words": d.file_snapshot(d.WORDS), "defaults": d.defaults_snapshot(), "launchctl": d.launchctl_get()}
+    snaps = {"defaults": d.defaults_snapshot(), "launchctl": d.launchctl_get()}
+    if not args.screenshots:
+        print("Full-screen screenshots skipped (use --screenshots to enable).", flush=True)
     rows = []
     exit_code = 0
     route = None
@@ -992,11 +1104,15 @@ def main():
     audio_restored = True
     try:
         if d.app_pid() is None:
+            # Startup can migrate the live dictionary before the first clear.
+            snaps["words"] = save_words_backup(backup)
             d.launchctl_set(None if args.shipped_judge else args.export)
             d.start_app(shipped_judge=args.shipped_judge)
         route = d.audio_route()
         route.apply()
         d.stop_app()
+        if "words" not in snaps:
+            snaps["words"] = save_words_backup(backup)
         d.file_restore(d.WORDS, d.empty_words_like(snaps["words"]))
         d.defaults_write_bool(True)
         d.launchctl_set(None if args.shipped_judge else args.export)
@@ -1087,7 +1203,10 @@ def main():
             app_stopped = True
         except d.Aborted as error:
             print(f"    (app stop failed: {error})")
-        restored, receipt = d.finish_restore(snaps, initially_running, app_stopped, audio_restored)
+        restored, receipt = d.finish_restore(
+            snaps, initially_running, app_stopped, audio_restored,
+            words_restored=lambda: os.unlink(backup),
+        )
         print(f"\n  {'PASS' if restored else 'FAIL'}  restore :: {receipt}")
         if not restored:
             exit_code = 3

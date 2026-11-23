@@ -60,7 +60,8 @@ public final class CallMicrophoneWatcher {
   }
 
   /// `candidateBundleID(bundleID, executablePath)`: the bundle identifier to report for a
-  /// process (its own, or its owning app's for a helper), or nil when it is not a call app.
+  /// process (its owning app's when that app is known, else its own), or nil when it is not a call
+  /// app.
   public typealias CandidateFilter = @Sendable (String, String?) -> String?
   /// `mayBeCandidate(bundleID)`: whether a process whose executable cannot be read may still
   /// be a call app.

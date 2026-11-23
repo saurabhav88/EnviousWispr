@@ -71,9 +71,9 @@
    ]
   },
   "es": {
-   "title": "al superar el límite de almacenamiento",
    "words": [
-    "borrado automático"
+    "borrado automático",
+    "al superar el límite de almacenamiento"
    ],
    "phrases": [
     "preguntarme antes de liberar espacio al superar el límite",
@@ -102,7 +102,6 @@
    ]
   },
   "fr": {
-   "title": "en cas de dépassement du seuil",
    "words": [
     "suppression automatique"
    ],

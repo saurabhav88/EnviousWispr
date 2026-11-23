@@ -34,10 +34,15 @@ final class PipelineSettingsSync {
   /// because the two mean different things — "stop previewing" versus "preview
   /// with something else" — and a single hook would have to re-derive which.
   var onLivePreviewEngineChanged: () -> Void = {}
+  /// #3853: the idle time both bundled polish helpers are launched with. The composition root
+  /// binds the one value its launch factories read; a change of the setting updates it here and
+  /// then reconciles the selected local engine, which relaunches it when the spec differs.
+  var localPolishSleepIdle: LocalPolishSleepIdleSetting?
   /// #3242: the Dictionary switch or a polish engine choice (dictation's or Transcribe a
   /// File's) changed, so whether the shared word check is needed may have changed. The
   /// composition root binds this to `WordCheckRuntime.refresh`.
   var onWordCheckInputsChanged: () -> Void = {}
+  var onWordCheckWorkFinished: () -> Void = {}
 
   /// Tracks the last evictable Ollama model for #295. Independent of the
   /// kernel's polish step because SettingsManager's cascading didSet can
@@ -51,8 +56,14 @@ final class PipelineSettingsSync {
   /// state: the reconciler was keyed on dictation's settings alone.
   private var lastEvictableImportOllamaModel: String?
 
-  /// #4287: the meeting summary surface's counterpart, by the same reasoning.
-  private var lastEvictableSummaryOllamaModel: String?
+  /// #3853 (#4360): Ollama models owed an unload whose eviction was skipped because something
+  /// still held them (canonical name to the spelling the request uses). A model enters when a
+  /// local meeting summary starts using it, or when the dictation or import tracker leaves it
+  /// while any `stillWanted` reason holds it (the holding surface's own tracker may be stuck
+  /// behind a pin and never see it). It leaves when its unload is scheduled or it is proven
+  /// remote. The meeting summary SETTING never keeps a model wanted: only summary work does
+  /// (`summaryOllamaDemand`).
+  private var pendingOllamaUnloads: [String: String] = [:]
 
   /// #1914: is this Ollama model one the daemon proxies to Ollama's servers?
   ///
@@ -87,6 +98,8 @@ final class PipelineSettingsSync {
   /// #2648 — the Ollama model a RUNNING file import froze, or nil.
   private let importPinnedOllamaModel: @MainActor () -> String?
   private let summaryPinnedOllamaModel: @MainActor () -> String?
+  /// #3853 (#4360) — see the initializer parameter of the same name.
+  private let summaryOllamaDemand: @MainActor () -> Set<String>
 
   /// #3853 — see the initializer parameters of the same names.
   private let outputClassifierHolder: OutputClassifierHolder?
@@ -140,6 +153,11 @@ final class PipelineSettingsSync {
     /// evict the weights a long summary call is using. Defaults to nil so every existing
     /// construction is unchanged.
     summaryPinnedOllamaModel: @escaping @MainActor () -> String? = { nil },
+    /// #3853 (#4360) — the Ollama models meeting summary work needs now: every summary attempt
+    /// from its start to its end, plus the selected summary model while a meeting's final pass
+    /// runs. Only work keeps a summary model wanted, never the setting that selects it.
+    /// Defaults to empty so every existing construction is unchanged.
+    summaryOllamaDemand: @escaping @MainActor () -> Set<String> = { [] },
     /// #3853 — the output classifier's holder, released when no consumer needs it. Nil leaves
     /// the classifier out of this reconciliation (tests that do not care).
     outputClassifierHolder: OutputClassifierHolder? = nil,
@@ -158,6 +176,7 @@ final class PipelineSettingsSync {
     self.summaryPinnedLocalModel = summaryPinnedLocalModel
     self.importPinnedOllamaModel = importPinnedOllamaModel
     self.summaryPinnedOllamaModel = summaryPinnedOllamaModel
+    self.summaryOllamaDemand = summaryOllamaDemand
     self.kernelDriver = kernelDriver
     self.whisperKernelDriver = whisperKernelDriver
     self.audioCapture = audioCapture
@@ -245,10 +264,6 @@ final class PipelineSettingsSync {
     lastEvictableImportOllamaModel = OllamaConnector.effectiveOllamaModel(
       provider: settings.effectiveFileImportLLMProvider,
       model: settings.effectiveFileImportLLMModel
-    )
-    lastEvictableSummaryOllamaModel = OllamaConnector.effectiveOllamaModel(
-      provider: settings.effectiveMeetingSummaryLLMProvider,
-      model: settings.effectiveMeetingSummaryLLMModel
     )
 
     // #728: AppLogger defaults to debug=off / level=.info. Sync the persisted
@@ -387,6 +402,12 @@ final class PipelineSettingsSync {
       if settings.modelUnloadPolicy == .never {
         asrManager.cancelIdleTimer()
       }
+    case .localPolishUnloadPolicy:
+      // #3853: a new idle time is a new launch spec. The ordinary reconciliation relaunches the
+      // selected bundled engine when its spec differs, and defers while a take, import or
+      // summary pins it (the same deferral a provider or size change gets). The launch value
+      // changes only when the reconciliation goes through, so nothing relaunches under a pin.
+      reconcileLocalPolishUnloadPolicy(settings: settings)
     case .emojiFormatterEnabled:
       kernelDriver.emojiFormatter.emojiFormatterEnabled = settings.emojiFormatterEnabled
       whisperKernelDriver.emojiFormatter.emojiFormatterEnabled = settings.emojiFormatterEnabled
@@ -437,8 +458,9 @@ final class PipelineSettingsSync {
       break  // #4069: read by `RecordingStarter` at each dictation start press; nothing to push.
     case .meetingFollowsCallMute:
       break  // #4248: EnviousMeet is told directly (`WisprBootstrapper`'s settings change route).
-    case .autoCopyToClipboard, .vadAutoStop, .vadSilenceTimeout, .vadSensitivity,
-      .vadEnergyGate, .restoreClipboardAfterPaste, .keepDictationsOutOfClipboardHistory,
+    case .autoCopyToClipboard, .automaticDictationPasteEnabled, .vadAutoStop, .silentMicWarnings,
+      .vadSilenceTimeout,
+      .vadSensitivity, .vadEnergyGate, .restoreClipboardAfterPaste, .keepDictationsOutOfClipboardHistory,
       .smartInsertion, .languageMode, .englishSpelling, .useStreamingASR:
       break  // Frozen per recording; see `DictationSessionConfig`.
     case .egOneSize:
@@ -459,6 +481,8 @@ final class PipelineSettingsSync {
       break  // #1063: read by the recovery wiring at capture start, not the live pipeline.
     case .learnFromEdits:
       break  // #996: read live by the edit watcher at each paste; nothing in the pipeline reads it.
+    case .fixLearnedWords:
+      onWordCheckInputsChanged()
     case .shareUsageMetrics, .sendCrashReports:
       // #3269: `ObservabilityBootstrap` owns both. Usage metrics apply now (PostHog closes or
       // starts); crash reports are restart-only and never change the running Sentry. The
@@ -537,9 +561,17 @@ final class PipelineSettingsSync {
     // #4473: the selection is an exact model. A pinned take on another size of the same
     // provider defers the change like a pinned take on another engine.
     let selected = settings.polishModelID(for: settings.llmProvider)
-    if isLocalPolishPinnedInFlight(), pinnedLocalModel() != selected {
+    let pinned = pinnedLocalModel()
+    if let pinned, pinned != selected {
       egOneDeactivationPending = true
       return
+    }
+    // #3853: the idle time is part of every launch from here on. Under a pin on the selected
+    // model the value stays as it is (a relaunch under a take that froze the engine would skip
+    // that take's polish); the end-of-pin retry applies it.
+    if pinned == nil {
+      localPolishSleepIdle?.seconds = LocalPolishSleepIdle.seconds(
+        for: settings.localPolishUnloadPolicy)
     }
     // #2649: BOTH local engines are reconciled on every switch, and the order
     // is load-bearing. The outgoing model is stopped FIRST, so the incoming one
@@ -551,6 +583,42 @@ final class PipelineSettingsSync {
     }
     for runtime in localRuntimes {
       reconcile(runtime: runtime, isSelected: runtime.modelID == selected)
+    }
+  }
+
+  /// #3853: a change of "Unload polish model after". The idle time is part of the helper's launch,
+  /// so the selected engine is relaunched, but ONLY when it is running or starting: an edit to a
+  /// timer must never bring a stopped helper back (critical memory pressure, an outside stop, a
+  /// failed start) and must never wait on or break a take, import or summary that holds it. Under
+  /// a pin nothing changes now; `retryDeferredEGOneDeactivation` runs this again when work ends.
+  private func reconcileLocalPolishUnloadPolicy(settings: SettingsManager) {
+    guard pinnedLocalModel() == nil, let launchValue = localPolishSleepIdle else { return }
+    let idleSeconds = LocalPolishSleepIdle.seconds(for: settings.localPolishUnloadPolicy)
+    guard launchValue.seconds != idleSeconds else { return }
+    let selected = settings.polishModelID(for: settings.llmProvider)
+    guard let runtime = localRuntimes.first(where: { $0.modelID == selected }) else {
+      // No local engine is selected: nothing runs; the value is for the next launch.
+      launchValue.seconds = idleSeconds
+      return
+    }
+    Task { @MainActor [weak self] in
+      let lifecycle = await runtime.serverCoordinator.lifecycle(for: selected)
+      // Everything can change while the lifecycle is read: a take starting, another provider
+      // being selected, the choice being changed again. The launch value moves only when this
+      // task can act, so an edit that could not act stays pending for the retry at the end of
+      // the work that held it.
+      guard let self, self.pinnedLocalModel() == nil,
+        settings.polishModelID(for: settings.llmProvider) == selected,
+        LocalPolishSleepIdle.seconds(for: settings.localPolishUnloadPolicy) == idleSeconds,
+        launchValue.seconds != idleSeconds
+      else { return }
+      launchValue.seconds = idleSeconds
+      switch lifecycle.state {
+      case .starting, .ready:
+        runtime.activateAndProbe()
+      case .stopped, .pausedForMemoryPressure, .failed, .stoppedOutside:
+        return
+      }
     }
   }
 
@@ -619,8 +687,12 @@ final class PipelineSettingsSync {
         runtime.retryPendingAdapterReconfiguration()
       }
     }
-    guard forceReconciliation || egOneDeactivationPending else { return }
-    reconcileEGOneActivation(settings: settings)
+    if forceReconciliation || egOneDeactivationPending {
+      reconcileEGOneActivation(settings: settings)
+    } else {
+      // #3853: a change of the idle time made under a pin applies when the work ends.
+      reconcileLocalPolishUnloadPolicy(settings: settings)
+    }
   }
 
   /// #1386 PR-2c: true while a Whisper dictation session is in flight —
@@ -713,13 +785,11 @@ final class PipelineSettingsSync {
     // `llama3.2:latest` are one model, and the two surfaces can hold either spelling. An
     // exact set let an import walk away from `:latest` and evict the model dictation still
     // selected under the bare name. Found by the cloud review of PR #2786.
-    // #4287: the meeting summary surface is the third.
-    let summary = OllamaConnector.effectiveOllamaModel(
-      provider: settings.effectiveMeetingSummaryLLMProvider,
-      model: settings.effectiveMeetingSummaryLLMModel
-    )
-    let stillWanted = Set(
-      [dictation, fileImport, summary].compactMap { $0 }.map(Self.canonical))
+    // #3853 (#4360): the meeting summary is NOT a selection tracker any more. Its setting never
+    // keeps a model wanted: only summary work does (`summaryOllamaDemand`: each attempt from
+    // start to end, plus the selected summary model while a final pass runs).
+    let demand = Set(summaryOllamaDemand().map(Self.canonical))
+    let stillWanted = Set([dictation, fileImport].compactMap { $0 }.map(Self.canonical)).union(demand)
     var scheduledThisPass = Set<String>()
     reconcileEvictableModel(
       \.lastEvictableOllamaModel, new: dictation, stillWanted: stillWanted,
@@ -727,9 +797,43 @@ final class PipelineSettingsSync {
     reconcileEvictableModel(
       \.lastEvictableImportOllamaModel, new: fileImport, stillWanted: stillWanted,
       scheduled: &scheduledThisPass)
-    reconcileEvictableModel(
-      \.lastEvictableSummaryOllamaModel, new: summary, stillWanted: stillWanted,
-      scheduled: &scheduledThisPass)
+    reconcilePendingOllamaUnloads(stillWanted: stillWanted, scheduled: &scheduledThisPass)
+  }
+
+  /// #3853: one-off work (a local meeting summary, a History Polish again with run) used `model`,
+  /// which may leave it resident for the keep-alive window. It is owed an unload once nothing
+  /// holds it. Records only: the caller reconciles through `retryDeferredOllamaEviction`, at a
+  /// moment when the work's own pin is already clear.
+  func recordOllamaModelUsedByOneOffWork(_ model: String) {
+    guard !model.isEmpty else { return }
+    pendingOllamaUnloads[Self.canonical(model)] = model
+  }
+
+  /// Pays each owed unload once nothing holds the model. Same checks as a tracker departure:
+  /// already scheduled this pass (dropped), proven remote (dropped), held by a selection, summary
+  /// demand or a running call (kept), else one scheduled unload.
+  private func reconcilePendingOllamaUnloads(
+    stillWanted: Set<String>, scheduled: inout Set<String>
+  ) {
+    for (key, model) in pendingOllamaUnloads {
+      if scheduled.contains(key) {
+        pendingOllamaUnloads[key] = nil
+        continue
+      }
+      if ollamaRemotenessLookup(model) == true {
+        pendingOllamaUnloads[key] = nil
+        Task {
+          await AppLogger.shared.log(
+            "Ollama eviction skipped: model=\(model) reason=remote",
+            level: .info, category: "Ollama")
+        }
+        continue
+      }
+      if stillWanted.contains(key) || isOllamaModelPinnedInFlight(model) { continue }
+      pendingOllamaUnloads[key] = nil
+      scheduled.insert(key)
+      scheduleOllamaEviction(model)
+    }
   }
 
   /// One surface's tracker. The rules below predate the second tracker and apply to each
@@ -743,7 +847,15 @@ final class PipelineSettingsSync {
       self[keyPath: tracker] = new
       return
     }
-    if stillWanted.contains(Self.canonical(pre)) || scheduled.contains(Self.canonical(pre)) {
+    // #3853: a model held by ANY wanted reason is handed to the pending map before this tracker
+    // advances: the holding surface's own tracker may be stuck behind a pin on an older model
+    // and never see it. An already-scheduled model is being unloaded this pass.
+    if stillWanted.contains(Self.canonical(pre)) {
+      pendingOllamaUnloads[Self.canonical(pre)] = pre
+      self[keyPath: tracker] = new
+      return
+    }
+    if scheduled.contains(Self.canonical(pre)) {
       self[keyPath: tracker] = new
       return
     }

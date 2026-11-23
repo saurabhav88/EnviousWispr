@@ -1,0 +1,13 @@
+| Term | Verdict | Reason |
+|---|---|---|
+| `taille du modèle` | KEEP | Natural French for the size setting. It could also mean download size, which the cards show. |
+| `taille d'EG-1` | CHANGE → `taille du modèle EG-1` | Accurate, but the replacement makes it clearer that EG-1 is the model whose size you can choose. |
+| `EG-1 Micro, le plus petit et le plus rapide` | CHANGE → `choisir EG-1 Micro` | Matches the French card tagline, but the shorter query sounds more natural. `Micro` alone can mean microphone. `EG-1 Micro` identifies the model. |
+| `EG-1 Mini, polyvalent et rapide` | CHANGE → `choisir EG-1 Mini` | Matches the French card tagline. The model name is what someone would naturally type or say to find that size. |
+
+**FINAL LIST**
+
+- Words `["EG-1 dictée", "correcteur EnviousWispr", "taille du modèle", "taille du modèle EG-1"]`
+- Phrases `["utiliser EG-1 sur mon Mac pour corriger mes dictées", "choisir EG-1 Micro", "choisir EG-1 Mini"]`
+
+**VERDICT: REVISE**

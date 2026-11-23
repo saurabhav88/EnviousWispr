@@ -12,6 +12,8 @@ package enum HeldTextDeliveryOutcome: Equatable, Sendable {
   case clipboardOnly
   /// The text is on the clipboard because Accessibility is not granted.
   case accessibilityDenied
+  /// An intentional direct copy could not be confirmed.
+  case copyFailed
 }
 
 /// The outcome plus the change count of this delivery's own clipboard write, the receipt a later
@@ -34,15 +36,17 @@ package struct HeldDeliverySettings: Equatable, Sendable {
   package let autoPasteToActiveApp: Bool
   package let restoreClipboardAfterPaste: Bool
   package let keepDictationsOutOfClipboardHistory: Bool
+  package let copyOnlyByPreference: Bool
 
   package init(
     smartInsertion: Bool, autoPasteToActiveApp: Bool, restoreClipboardAfterPaste: Bool,
-    keepDictationsOutOfClipboardHistory: Bool
+    keepDictationsOutOfClipboardHistory: Bool, copyOnlyByPreference: Bool = false
   ) {
     self.smartInsertion = smartInsertion
     self.autoPasteToActiveApp = autoPasteToActiveApp
     self.restoreClipboardAfterPaste = restoreClipboardAfterPaste
     self.keepDictationsOutOfClipboardHistory = keepDictationsOutOfClipboardHistory
+    self.copyOnlyByPreference = copyOnlyByPreference
   }
 }
 
@@ -95,8 +99,13 @@ package enum HeldTextDelivery {
     // Accessibility work runs, and nothing schedules a restore over this explicit copy.
     guard settings.autoPasteToActiveApp else {
       ClipboardCleanup.deliveryClaimsBoard()
+      let hideCopy = settings.copyOnlyByPreference && settings.restoreClipboardAfterPaste
+        && settings.keepDictationsOutOfClipboardHistory
       let receipt = PasteService.copyToClipboardReturningChangeCount(
-        text, to: pasteboard, kind: .kept)
+        text, to: pasteboard, kind: hideCopy ? .keptHidden : .kept)
+      guard ClipboardCleanup.boardHolds(text, pasteboard) else {
+        return HeldTextDeliveryResult(outcome: .copyFailed, fallbackClipboardChangeCount: nil)
+      }
       return HeldTextDeliveryResult(outcome: .clipboardOnly, fallbackClipboardChangeCount: receipt)
     }
 

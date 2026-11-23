@@ -110,7 +110,8 @@ private struct CallPromptCard: View {
     case .ask(let identity), .switchMeeting(let identity), .endConfirmation(let identity),
       .switchNotConfirmed(let identity), .manualStart(let identity), .countdown(let identity?, _):
       CallAppIdentityTile(identity: identity, size: 40)
-    case .countdown(nil, _), .needsAttention, .couldNotStart, .firstTip, .lastTip, .stillInMeeting:
+    case .countdown(nil, _), .needsAttention, .couldNotStart, .noTranscriptionEngine, .firstTip,
+      .lastTip, .stillInMeeting:
       CallNotesLips(size: 40, animated: false)
     }
   }
@@ -203,6 +204,12 @@ private struct CallPromptCard: View {
       LocalizedStringResource(
         "EnviousMeet could not start recording",
         comment: "EnviousMeet: Yes to Record this call?, but the recording could not start.")
+    case .noTranscriptionEngine:
+      LocalizedStringResource(
+        "No speech engine downloaded",
+        comment:
+          "EnviousMeet: a call was detected or started, but neither speech engine (Parakeet or Whisper) is on this Mac, so nothing records."
+      )
     case .firstTip:
       LocalizedStringResource(
         "Tip: you can turn off call prompts for some apps in EnviousMeet settings.",
@@ -239,6 +246,10 @@ private struct CallPromptCard: View {
       LocalizedStringResource(
         "Open EnviousMeet to see why.",
         comment: "EnviousMeet: under EnviousMeet could not start recording.")
+    case .noTranscriptionEngine:
+      LocalizedStringResource(
+        "EnviousWispr needs a speech engine to transcribe this call. Nothing is being recorded.",
+        comment: "EnviousMeet: under No speech engine downloaded.")
     default: nil
     }
   }
@@ -287,7 +298,8 @@ private struct CallPromptCard: View {
         LocalizedStringResource(
           "Open", comment: "EnviousMeet: opens the recorded meeting in History."),
         primary: true, action: actions.open)
-    case .needsAttention, .couldNotStart, .firstTip, .lastTip:
+    // #4578: the no-engine card's button opens EnviousMeet > Models (the policy picks the tab).
+    case .needsAttention, .couldNotStart, .noTranscriptionEngine, .firstTip, .lastTip:
       button(
         LocalizedStringResource(
           "Open settings", comment: "EnviousMeet: opens the EnviousMeet settings page."),

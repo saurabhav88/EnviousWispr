@@ -52,6 +52,7 @@ enum PillCatalogRequest: Equatable, Sendable {
   /// The one request with no matching `OverlayIntent`. It is minted by a feature
   /// path rather than by the pipeline, which is why it announces nothing.
   case importStatus(message: String)
+  case meetingSummaryLimit(LLMProvider)
   /// #996 auto-learn: the Undo pill (`.learned` phase only; results are
   /// reducer morphs) and its standalone save-error notice. Feature routes with
   /// no matching pipeline intent; unlike import status they ARE announced: the
@@ -64,6 +65,8 @@ enum PillCatalogRequest: Equatable, Sendable {
   /// #3546 A3: the Parakeet Ultra upgrade pills. A feature route with no pipeline intent,
   /// announced by the catalog directly (medium).
   case parakeetUpgrade(ParakeetUpgradePillModel)
+  /// #4845 LIFE-5: the AI polish download completion pill.
+  case polishDownloadComplete(PolishDownloadPillModel)
 
   // **NINETEEN cases: `.recording`, the sixteen non-recording the migration
   // froze, and the two #996 auto-learn feature routes above.** C2 staged
@@ -163,8 +166,14 @@ enum PillCatalog {
     if case .polishSetupCard(let model) = request {
       return .medium(model.announcement)
     }
+    if case .meetingSummaryLimit(let provider) = request {
+      return .medium(MeetingSummaryLimitCopy.message(provider))
+    }
     if case .parakeetUpgrade(let model) = request {
       return .medium(DictationNarrator.parakeetUpgradeAnnouncement(for: model.phase))
+    }
+    if case .polishDownloadComplete(let model) = request {
+      return .medium(DictationNarrator.polishDownloadCompleteAnnouncement(modelName: model.modelName))
     }
     guard let intent = request.matchingIntent else {
       // **Import status announces NOTHING, and that is preserved rather than
@@ -251,6 +260,13 @@ enum PillCatalog {
         width: .fixed(messageWidth),
         expiry: .after(seconds: 2.5), severity: .warning, isMultiline: true)  // NotificationStyle 2.5
 
+    case .meetingSummaryLimit(let provider):
+      return notice(
+        id: id, kind: .notification, text: MeetingSummaryLimitCopy.message(provider),
+        width: .fixed(400), expiry: .after(seconds: 8), severity: .error, isMultiline: true,
+        action: NoticeAction(
+          label: MeetingSummaryLimitCopy.action, action: .chooseMeetingSummaryEngine))
+
     case .error(let reason):
       // #2549: `.permissionDenied` gets the richer badge+title+subtitle+button
       // shape (founder-directed visual, matching the mockup he supplied) in a
@@ -277,6 +293,20 @@ enum PillCatalog {
               localized: "Open Settings",
               comment: "Pill button: opens the macOS microphone privacy settings."),
             action: .openMicrophoneSettings))
+      }
+      // #4601: the not-responding notice is the narrator's three-sentence sentence plus a
+      // "How to fix" button, in the permission notice's 400 width (the button needs the room).
+      // 8 s is reading time for three sentences and lets a pointer or keyboard reach the
+      // button, the same reading-time figure the advisory below uses.
+      if reason == .micNotResponding {
+        return notice(
+          id: id, kind: .notification, text: DictationNarrator.copy(for: reason),
+          width: .fixed(400),
+          expiry: .after(seconds: 8), severity: .error, isMultiline: true,
+          action: NoticeAction(
+            label: DictationNarrator.microphoneHelpButtonLabel,
+            accessibilityLabel: DictationNarrator.microphoneHelpAccessibilityLabel,
+            action: .openMicrophoneHelp))
       }
       return notice(
         id: id, kind: .notification, text: DictationNarrator.copy(for: reason),
@@ -313,7 +343,7 @@ enum PillCatalog {
     case .passiveChip(let payload):
       return PillDefinition(
         id: id, content: .languageChip(payload: payload),
-        expiry: .after(seconds: 6, pausesOnHover: true),
+        expiry: .after(seconds: 6, hover: .restartFull),
         // #3912: the sentence wraps and the chip grows taller; its buttons stay put.
         requestedWidth: .fixed(340))  // :1410
 
@@ -400,25 +430,34 @@ enum PillCatalog {
         id: id, content: .parakeetUpgrade(model), expiry: expiry,
         requestedWidth: .fixed(messageWidth))
 
+    case .polishDownloadComplete(let model):
+      // #4845 LIFE-5: the upgrade ready pill's shape and three-second dwell.
+      return PillDefinition(
+        id: id, content: .polishDownloadComplete(model), expiry: .after(seconds: 3),
+        requestedWidth: .fixed(messageWidth))
+
     case .correctionLearned(let model):
       // 2026-09-21 plan §3.1 step 9, widened to three seconds on 2026-09-22
-      // (founder, live UAT: "the pill wasn't there long enough"), then to four
-      // on 2026-09-27 (founder, ENVIOUSWISPR-5E) alongside the countdown rail
-      // `CorrectionLearnedPillView` now draws. Hover still does NOT pause it
-      // (founder: "hovering over pill does not stop the timer"). Measured
-      // width: the view pins none, and the sentence shrinks to fit one line.
-      // The `Undone` / `Couldn’t undo` results re-arm their own dwell in the
-      // reducer.
+      // (founder, live UAT: "the pill wasn't there long enough"), to four on
+      // 2026-09-27 (founder, ENVIOUSWISPR-5E) alongside the countdown rail
+      // `CorrectionLearnedPillView` draws, and to twelve on 2026-11-17/18
+      // (founder, #4675). The 2026-09-27 decision that hover does NOT stop the
+      // timer ("hovering over pill does not stop the timer") is RETIRED: hover
+      // now freezes the countdown and leaving resumes it with at least two
+      // seconds left. Measured width: the view pins none, and the sentence
+      // shrinks to fit one line. The `Undone` / `Couldn’t undo` results re-arm
+      // their own dwell in the reducer.
       return PillDefinition(
         id: id, content: .correctionLearned(model),
         expiry: .after(
-          seconds: CorrectionLearnedPillCopy.learnedDwellSeconds, pausesOnHover: false),
+          seconds: CorrectionLearnedPillCopy.learnedDwellSeconds,
+          hover: .resume(floorSeconds: CorrectionLearnedPillCopy.hoverResumeFloorSeconds)),
         requestedWidth: .measured)
 
     case .correctionLearnedSaveError(let error):
       return PillDefinition(
         id: id, content: .correctionLearnedSaveError(error),
-        expiry: .after(seconds: CorrectionLearnedPillCopy.errorDwellSeconds, pausesOnHover: false),
+        expiry: .after(seconds: CorrectionLearnedPillCopy.errorDwellSeconds, hover: .ignore),
         requestedWidth: .measured)
 
     case .escapeRecovery(let transcriptID):
@@ -439,7 +478,7 @@ enum PillCatalog {
         // every diff review, because nothing in a diff can contradict a promise.
         // C4 was recorded as doing it and did not; C18 did.
         id: id, content: .escapeRecovery(transcriptID: transcriptID),
-        expiry: .after(seconds: 3, pausesOnHover: true), requestedWidth: .measured)
+        expiry: .after(seconds: 3, hover: .restartFull), requestedWidth: .measured)
 
     case .recording(let level, let design):
       // Moved from `OverlayReducer.presentation(for:id:)` in C3a with its own
@@ -450,17 +489,15 @@ enum PillCatalog {
       // now one. The definition carries the RESOLVED design's own width and
       // height, so nothing downstream has anything left to override.
       //
-      // The values are unchanged: classic is 185 wide with a fixed 92-point
-      // interaction frame that holds the normal capsule, the locked state and the
-      // #1060 notice expansion without resizing on every morph; the reading well
-      // is 400 wide and content-sized from the first frame so it does not visibly
-      // snap. Both are properties of `RecordingPillDesign`, measured at the sites
-      // its own doc comments cite.
+      // #4841: every design is content-sized from the first frame. The Capsule
+      // and Level Rail used to reserve a fixed 92-point box for the #1060 banner,
+      // because they could not grow; their notice is now a separate bubble and
+      // the window follows its measured height like the reading well's.
       return PillDefinition(
         id: id,
         content: .recording(audioLevel: level, isLocked: false, notice: nil, design: design),
         expiry: .untilReplaced, requestedWidth: .fixed(design.width),
-        reservesFixedHeight: design.reservedHeight)
+        reservesFixedHeight: nil)
 
     case .importStatus(let message):
       // Lifted from `reduceImportStatus`, where it was minted inline. The
@@ -543,8 +580,8 @@ extension PillCatalogRequest {
     case .recoverySucceeded: return .recoverySucceeded
     case .bluetoothAwareness: return .bluetoothAwareness
     case .escapeRecovery(let transcriptID): return .escapeRecovery(transcriptID: transcriptID)
-    case .importStatus, .correctionLearned, .correctionLearnedSaveError, .polishSetupCard,
-      .parakeetUpgrade:
+    case .importStatus, .meetingSummaryLimit, .correctionLearned, .correctionLearnedSaveError, .polishSetupCard,
+      .parakeetUpgrade, .polishDownloadComplete:
       return nil
     }
   }

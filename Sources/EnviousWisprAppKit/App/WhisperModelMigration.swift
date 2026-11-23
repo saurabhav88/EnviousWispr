@@ -156,6 +156,18 @@ final class WhisperModelMigration {
     return nil
   }
 
+  /// #4578: whether a complete cache for `artifact` may be admitted without a download. A
+  /// recorded decline (Cancel or Remove) refuses until an explicit Download records `.owed`;
+  /// an unusable record refuses too, because it may hold a decline this build cannot see.
+  /// No record yet (a fresh install) permits it.
+  func permitsAdoption(of artifact: Artifact) -> Bool {
+    switch readRecord() {
+    case .absent: return true
+    case .unusable: return false
+    case .present(let record): return record[artifact] != .declined
+    }
+  }
+
   /// Refuses (false) on an unusable record as well as on a failed write.
   private func setState(_ state: ReplacementState, for artifact: Artifact) -> Bool {
     var record: Record

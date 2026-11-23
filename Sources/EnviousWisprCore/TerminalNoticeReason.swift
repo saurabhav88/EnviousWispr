@@ -30,6 +30,10 @@ public enum TerminalNoticeReason: String, Equatable, Sendable, CaseIterable {
   case micWouldNotOpen = "mic_would_not_open"
   case captureStalled = "capture_stalled"
   case zeroSignal = "zero_signal"
+  /// #4601: the microphone start did not finish within its budget, was refused because an earlier
+  /// audio call is still past its deadline, or got status 60 from starting the unit. Its own
+  /// notice ("can't reach your microphone"), not the retry sentence above.
+  case micNotResponding = "mic_not_responding"
 
   // Transcribe-stage failures → "Transcription error. Try again."
   case asrFailed = "asr_failed"

@@ -1,4 +1,6 @@
+import AppKit
 import EnviousWisprCore
+import EnviousWisprStorage
 import Foundation
 
 /// The drawing rules of the Transcripts tab (#3147 PR3 §3.5): what an imported transcript's short
@@ -26,11 +28,11 @@ enum HistoryTranscriptPresentation {
 
   // MARK: - Short card
 
-  /// The facts a short card shows as chips, in the order drawn (the legacy row's inventory,
-  /// `TranscriptRowView`): file name, sorted speaker names, Recovered, Interrupted, the polish
-  /// model, the speech engine.
+  /// The facts a short card's footer line shows, in the order drawn (#4611: the Dictations
+  /// footer's order): Recovered, Interrupted, the speech engine, the polish model, how many
+  /// speakers ("2 speakers", as meeting cards show it; "1 speaker" for one voice, as the page's
+  /// facts line does). The file name is the card's title, so it is not repeated here.
   enum Chip: Hashable, Sendable {
-    case file(String)
     case speakers(String)
     case recovered
     case interrupted
@@ -41,40 +43,74 @@ enum HistoryTranscriptPresentation {
 
   static func chips(for row: Transcript) -> [Chip] {
     var chips: [Chip] = []
-    if let file = row.importedFileName { chips.append(.file(file)) }
-    if let names = speakerList(row) { chips.append(.speakers(names)) }
     // The legacy row's order: Recovered, then the verified-removal-only Interrupted.
     if row.isRecovered == true { chips.append(.recovered) }
     if row.inputDeviceWasRemoved == true { chips.append(.interrupted) }
-    if row.polishedText != nil { chips.append(.polish(model: row.llmModel)) }
     chips.append(.backend(row.backendType.displayName))
+    if row.polishedText != nil { chips.append(.polish(model: row.llmModel)) }
+    if let count = speakerCount(row.speakerAnalysis, names: row.speakerNames?.count) {
+      chips.append(.speakers(count))
+    }
     return chips
   }
 
-  /// Speaker names sorted for a stable order (a dictionary's iteration order is not); nil when
-  /// the row names nobody.
-  static func speakerList(_ row: Transcript) -> String? {
-    guard let names = row.speakerNames, !names.isEmpty else { return nil }
-    return names.values.sorted().joined(separator: ", ")
+  static func chips(for summary: HistoryCatalog.Summary) -> [Chip] {
+    var chips: [Chip] = []
+    if summary.recovered == true { chips.append(.recovered) }
+    if summary.interrupted == true { chips.append(.interrupted) }
+    if let engine = summary.backendName { chips.append(.backend(engine)) }
+    if summary.wasPolished == true { chips.append(.polish(model: summary.polishModel)) }
+    if let count = speakerCount(summary.meetingAnalysis, names: nil) {
+      chips.append(.speakers(count))
+    }
+    return chips
   }
 
-  /// The card's title: the imported file's name, or the kind word for a row without one.
+  /// "2 speakers" from the stored analysis, the meeting card's wording
+  /// (`MeetingsPresentation.speakers`); "1 speaker" for one voice (#4611 T4). A row with names
+  /// but no analysis counts its names.
+  static func speakerCount(_ analysis: TranscriptSpeakerAnalysis?, names: Int?) -> String? {
+    speakerNumber(analysis, names: names).flatMap { MeetingsPresentation.speakers(.labeled(count: $0)) }
+  }
+
+  /// How many speakers `speakerCount` names: 1 for one voice, the analysis' count, else how many
+  /// speakers carry a name; nil when unknown. The page offers who spoke and for how long from 2.
+  static func speakerNumber(_ analysis: TranscriptSpeakerAnalysis?, names: Int?) -> Int? {
+    switch analysis {
+    case .single?: return 1
+    case .labeled(let count)? where count > 0: return count
+    default:
+      guard let names, names > 0 else { return nil }
+      return names
+    }
+  }
+
+  /// The analysis a transcript's catalog summary keeps for its card: the row's own, or a count of
+  /// its names when that analysis gives no count (an older import), so the card and the page say
+  /// the same number.
+  static func catalogSpeakerAnalysis(_ row: Transcript) -> TranscriptSpeakerAnalysis? {
+    guard speakerNumber(row.speakerAnalysis, names: nil) == nil,
+      let names = row.speakerNames?.count, names > 0
+    else { return row.speakerAnalysis }
+    return .labeled(count: names)
+  }
+
+  /// The card's title: the user's name for the import, else its file name, else the kind word.
   static func title(for row: Transcript) -> String {
-    row.importedFileName ?? transcriptWord
+    row.displayTitle ?? transcriptWord
   }
 
-  /// "12:04 long": the source file's length (`Transcript.duration`), nil when unknown.
-  static func lengthLine(for row: Transcript) -> String? {
-    guard row.duration > 0 else { return nil }
-    let clock = HistoryDictationPresentation.clock(row.duration)
-    return String(
-      localized: "\(clock) long",
-      comment: "History transcript card: how long the original file is. %@ is a time like 12:04.")
+  /// "12:04": the source file's length on a footer line, the way a dictation's footer shows
+  /// its recording's length; nil when unknown.
+  static func footerClock(seconds: TimeInterval) -> String? {
+    guard seconds > 0 else { return nil }
+    return HistoryDictationPresentation.clock(seconds)
   }
 
   // MARK: - Original file
 
-  /// What the card's source line and the dock say about the original file.
+  /// What a card's footer and the full view know about the original file: whether it plays,
+  /// and if not, why (the footer's Audio unavailable mark and the dock).
   enum SourceLine: Equatable, Sendable {
     /// Not looked up yet: nothing is drawn, so the card never flashes a wrong claim.
     case checking
@@ -116,25 +152,58 @@ enum HistoryTranscriptPresentation {
     }
   }
 
+  /// #4799: Show in Finder is offered only while the original plays: on a card a verified
+  /// original, on the page and in its window one a player opened.
+  static func offersShowInFinder(_ line: SourceLine) -> Bool { line == .plays }
+
+  static var showInFinderLabel: String {
+    String(
+      localized: "Show in Finder",
+      comment: "History transcript, More menu: shows the original audio or video file in Finder.")
+  }
+
+  /// The Show in Finder row, after Open in new window (or after Save in the transcript's own
+  /// window); nil when the original does not play.
+  @MainActor
+  static func showInFinderItem(
+    rowID: UUID, line: SourceLine, sources: any ImportedSourceAccessing
+  ) -> HistoryMenuItem? {
+    guard offersShowInFinder(line) else { return nil }
+    return HistoryMenuItem(
+      id: "show-in-finder", title: showInFinderLabel, systemImage: "folder",
+      kind: .action {
+        Task { await showOriginalInFinder(rowID: rowID, sources: sources) }
+      })
+  }
+
+  /// Reveals the original only after a fresh identity check; true when it was shown. A
+  /// missing, replaced or unverifiable original is not shown and nothing is said: the fresh
+  /// look updates that row, so it shows Audio unavailable and Locate original instead.
+  @MainActor
+  @discardableResult
+  static func showOriginalInFinder(
+    rowID: UUID, sources: any ImportedSourceAccessing,
+    reveal: @MainActor (URL) -> Void = { NSWorkspace.shared.activateFileViewerSelecting([$0]) }
+  ) async -> Bool {
+    guard case .available(let original) = await sources.freshState(for: rowID) else {
+      return false
+    }
+    reveal(original.url)
+    return true
+  }
+
   /// Whether Locate original is offered for this line.
   static func offersLocate(_ line: SourceLine) -> Bool {
     if case .unavailable = line { return true }
     return false
   }
 
-  /// The card's short line.
-  static func cardLine(_ line: SourceLine) -> String? {
-    switch line {
-    case .checking, .removed: return nil
-    case .plays:
-      return String(
-        localized: "Plays from the original file",
-        comment: "History transcript card: the original audio or video file was found and can play."
-      )
-    case .unavailable(let reason):
-      return unavailableLine(reason)
-    }
-  }
+  /// The footer mark for an original that can't play (#4611); its reason is
+  /// `unavailableLine`, shown on hover and read by VoiceOver.
+  /// #4611 T7: the same words the transcript page's player card uses.
+  static let unplayableLabel = LocalizedStringResource(
+    "Audio unavailable",
+    comment: "History transcript card footer: the original audio or video file can't play. Hover gives the reason.")
 
   /// One sentence per reason. "Unavailable", never a guessed cause such as "moved".
   static func unavailableLine(_ reason: UnavailableReason) -> String {
@@ -173,15 +242,6 @@ enum HistoryTranscriptPresentation {
         localized: "Original file unavailable. It can't be opened for playback.",
         comment: "History transcript: the original file was found but could not be opened to play.")
     }
-  }
-
-  /// The dock's line when nothing can play: the times stay, for reading only.
-  static func dockUnavailableLine(_ reason: UnavailableReason) -> String {
-    String(
-      localized: "\(unavailableLine(reason)) The times are for reading only.",
-      comment:
-        "History transcript dock: why the original can't play, then that turn times can't be clicked. %@ is the reason sentence."
-    )
   }
 
   // MARK: - Locate original
@@ -235,16 +295,13 @@ enum HistoryTranscriptPresentation {
     let backend: String
     let polishModel: String?
     let aiPolished: Bool
-    let speakers: String?
-    let length: String?
   }
 
   static func provenance(for row: Transcript) -> Provenance {
     Provenance(
       createdAt: row.createdAt, backend: row.backendType.displayName,
       polishModel: row.polishedText != nil ? row.llmModel : nil,
-      aiPolished: row.polishedText != nil, speakers: speakerList(row),
-      length: lengthLine(for: row))
+      aiPolished: row.polishedText != nil)
   }
 
   /// The plain document shown when a row has no turns (`nil` or empty), as the legacy detail
@@ -273,7 +330,7 @@ enum HistoryTranscriptPresentation {
 
   /// The hint beside the view picker.
   static func viewHint(
-    mode: FileImportCoordinator.DocumentView, playable: Bool
+    mode: FileImportCoordinator.DocumentView, playable: Bool, timesOn: Bool = false
   ) -> String {
     switch mode {
     case .original:
@@ -285,7 +342,13 @@ enum HistoryTranscriptPresentation {
         localized: "Struck through: removed by cleanup. Highlighted: added.",
         comment: "History transcript: hint beside the Marked up view, explaining the marks.")
     case .cleaned:
-      playable
+      // #4611 T5: with Timestamps on, a turn's purple time plays from it; off, its play button.
+      playable && timesOn
+        ? String(
+          localized: "Click a purple time to hear that part",
+          comment:
+            "History transcript: hint beside the Cleaned view when the original can play and turn times show.")
+        : playable
         ? String(
           localized: "Click a turn's play button to hear that part",
           comment: "History transcript: hint beside the Cleaned view when the original can play.")
@@ -356,6 +419,51 @@ enum HistoryTranscriptPresentation {
   ) -> Bool {
     guard let current else { return true }
     return currentSource != resolved || current.state == .unavailable
+  }
+
+  /// #4808: where a transcript's player was, for the file it played.
+  struct PlaybackPlace: Equatable {
+    let rowID: UUID
+    let identity: ImportedSourceIdentity
+    let positionMs: Int
+    let playing: Bool
+  }
+
+  /// #4808: what a new player takes over from the place before it.
+  struct PlaybackCarryOver: Equatable {
+    let positionMs: Int
+    let resume: Bool
+  }
+
+  /// The place of a player that has one (playback was requested or a place was set); nil for no
+  /// player, or one never played or moved.
+  @MainActor static func place(
+    of player: MeetingPlaybackController?, source: ResolvedImportedSource?
+  ) -> PlaybackPlace? {
+    guard let player, let source, player.hasPosition else { return nil }
+    return PlaybackPlace(
+      rowID: source.rowID, identity: source.identity, positionMs: player.positionMs,
+      playing: player.state == .playing)
+  }
+
+  /// #4808: the same verified original (same row, same fingerprint) keeps its place wherever it
+  /// now is: moved and found again, located again, or a failed player rebuilt. The live player's
+  /// place wins over a retained one, and only a live player that is playing resumes. Another row
+  /// or another file starts fresh.
+  static func carryOver(
+    live: PlaybackPlace?, retained: PlaybackPlace?, to resolved: ResolvedImportedSource
+  ) -> PlaybackCarryOver? {
+    guard let place = live ?? retained, place.rowID == resolved.rowID,
+      place.identity == resolved.identity
+    else { return nil }
+    return PlaybackCarryOver(positionMs: place.positionMs, resume: live != nil && place.playing)
+  }
+
+  /// Applies a carry-over to a freshly built player: seek, then play when it was playing.
+  @MainActor static func apply(_ carry: PlaybackCarryOver?, to player: MeetingPlaybackController) {
+    guard let carry else { return }
+    player.seek(toMs: carry.positionMs)
+    if carry.resume { player.play() }
   }
 
   // MARK: - Transcribe again with

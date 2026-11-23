@@ -366,7 +366,8 @@ struct SettingsMapRenderingTests {
     .pill: [.sectionPill, .pillPosition, .pillStyle],
     .chimes: [.sectionChimes, .recordingChimes, .recordingChime],
     .clipboard: [
-      .sectionClipboard, .autoCopyToClipboard, .restoreClipboard, .keepOutOfClipboardHistory,
+      .sectionClipboard, .automaticDictationPaste, .autoCopyToClipboard, .restoreClipboard,
+      .keepOutOfClipboardHistory,
       .smartInsertion,
       .sectionQuickAddClipboard, .quickAddClipboardFallback,
     ],
@@ -703,8 +704,7 @@ struct SettingsMapRenderingTests {
         .egOne(.full): .init(
           base: nil, promptTemplateID: nil,
           runtime: home.egOne, debugThreshold: nil)
-      ],
-      currentModel: { .singleModel(for: $0) })
+      ])
     return AnyView(
       view
         .environment(home.settings).environment(words).environment(packs)
@@ -893,8 +893,7 @@ struct SettingsMapRenderingTests {
     let engineRow = MeetingTranscriptEngineRowModel(
       environment: .init(
         settings: home.settings,
-        whisperSetup: WhisperSetupService(engineMutationScope: .alwaysAllowedForTesting),
-        isMeetingActive: { false }))
+        whisperSetup: WhisperSetupService(engineMutationScope: .alwaysAllowedForTesting)))
     return (
       home,
       { view in

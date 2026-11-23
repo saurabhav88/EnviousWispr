@@ -9,6 +9,63 @@ import Foundation
 /// What a warning was about when it was shown: its problem and the provider that had it, taken
 /// together at that moment. A surface keeps this and reports with it, so a row stays true when
 /// the person changes model or finishes the setup before pressing a button.
+/// #4721: what the History banner and the menu line are about: dictation's AI polish engine,
+/// the EnviousMeet summary engine, or both, each as its own monitor showed it. Never both nil.
+struct PolishSetupWarningSubjects: Hashable {
+  let dictation: PolishSetupPromptSubject?
+  let summary: PolishSetupPromptSubject?
+
+  init?(dictation: PolishSetupPromptSubject?, summary: PolishSetupPromptSubject?) {
+    guard dictation != nil || summary != nil else { return nil }
+    self.dictation = dictation
+    self.summary = summary
+  }
+
+  /// Where Finish setup goes: AI Polish while dictation's engine needs it, otherwise the
+  /// Summaries tab. After AI Polish is fixed, the summary warning that remains routes there.
+  var destination: SettingsDestination {
+    dictation != nil ? .aiPolish : .meetings(.summaries)
+  }
+
+  /// Finish setup on the History banner or the menu line: one finish_setup row per engine the
+  /// warning named, on that engine's monitor and surface, then the destination. The menu also
+  /// opens the window (`showWindow`); the banner is already in it.
+  @MainActor
+  func finishSetup(
+    dictationMonitor: PolishSetupMonitor?, summaryMonitor: PolishSetupMonitor?,
+    on surface: Surface, request: (SettingsDestination) -> Void,
+    showWindow: (() -> Void)? = nil
+  ) {
+    if let dictation {
+      dictationMonitor?.recordPrompt(surface.dictation, .finishSetup, subject: dictation)
+    }
+    if let summary {
+      summaryMonitor?.recordPrompt(surface.summary, .finishSetup, subject: summary)
+    }
+    request(destination)
+    showWindow?()
+  }
+
+  /// Where a warning about both engines is shown, and the prompt surface each engine reports.
+  enum Surface {
+    case banner, menu
+
+    var dictation: PolishSetupPromptEvent.Surface {
+      switch self {
+      case .banner: .banner
+      case .menu: .menu
+      }
+    }
+
+    var summary: PolishSetupPromptEvent.Surface {
+      switch self {
+      case .banner: .summaryBanner
+      case .menu: .summaryMenu
+      }
+    }
+  }
+}
+
 struct PolishSetupPromptSubject: Hashable {
   let problem: PolishSetupProblem
   let provider: LLMProvider
@@ -35,6 +92,10 @@ struct PolishSetupPromptEvent: Equatable {
     case card
     case banner
     case menu
+    /// #4721: the History banner and the menu line about the summary engine; `banner` and
+    /// `menu` keep meaning dictation's AI polish engine. A line about both records one row each.
+    case summaryBanner = "summary_banner"
+    case summaryMenu = "summary_menu"
   }
 
   enum Action: String, CaseIterable {
@@ -107,7 +168,7 @@ extension PolishSetupLeaveAction {
   var promptAction: PolishSetupPromptEvent.Action {
     switch self {
     case .finishSetup: return .finishSetup
-    case .goBack: return .goBack
+    case .goBack, .goBackToEngine: return .goBack
     case .leaveAnyway: return .leaveAnyway
     case .ok: return .ok
     case .openSystemSettings: return .openSystemSettings

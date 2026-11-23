@@ -314,7 +314,7 @@ private final class HeartPathHarness {
   }
 
   func run() async throws -> HeartPathHarnessResult {
-    try await audioCapture.startEnginePhase()
+    try await audioCapture.startEnginePhase(startDeadline: MicrophoneStartBudget.deadline(from: .now))
     _ = try await audioCapture.beginCapturePhase()
     let captureResult = await audioCapture.stopCapture(
       sessionID: audioCapture.currentCaptureSessionID)
@@ -375,7 +375,7 @@ private final class HeartPathHarness {
       telemetryState: KernelTelemetryState(),
       // #2146: absorbed, never the real clipboard. Required argument, so this
       // cannot be forgotten back into inheriting the production write.
-      copyToClipboard: { _ in })
+      copyToClipboard: { _, _ in true })
 
     // The live order the kernel uses: process, then store, then deliver.
     let displayText = try await wiring.processText(asrResult.text) {}
@@ -561,7 +561,7 @@ internal final class FixtureAudioCapture: AudioCaptureInterface {
     return buffer
   }
 
-  func startEnginePhase() async throws {
+  func startEnginePhase(startDeadline: ContinuousClock.Instant) async throws {
     startEnginePhaseCallCount += 1
   }
 
@@ -583,7 +583,7 @@ internal final class FixtureAudioCapture: AudioCaptureInterface {
   }
 
   func startCapture() async throws -> AsyncStream<AVAudioPCMBuffer> {
-    try await startEnginePhase()
+    try await startEnginePhase(startDeadline: MicrophoneStartBudget.deadline(from: .now))
     return try await beginCapturePhase()
   }
 
@@ -600,7 +600,9 @@ internal final class FixtureAudioCapture: AudioCaptureInterface {
   func rebuildEngine() {}
   func retireCapturingSource(sessionID: UInt64) -> ZeroSignalRetireResult { .sourceNotRunning }
 
-  func preWarm() async throws {}
+  func preWarm(startDeadline: ContinuousClock.Instant) async throws {}
+
+  func abandonPendingStart() {}
 
   func abortPreWarm() {
     isCapturing = false
@@ -695,9 +697,6 @@ internal final class MockASRManager: ASRManagerInterface {
   var onVendorDecodeChunkScheduled: (@MainActor @Sendable () -> Void)?
   var onTranscriptionProgress: (@MainActor @Sendable (Double) -> Void)?
   var isStreaming: Bool = false
-  var downloadProgress: Double = 1
-  var downloadPhase: String = "ready"
-  var downloadDetail: String = ""
   var onServiceInterrupted: (() -> Void)?
   var loadProgressTickReporter: (@MainActor @Sendable (Date?, String) -> Void)?
 

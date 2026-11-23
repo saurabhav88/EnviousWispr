@@ -72,9 +72,9 @@
    ]
   },
   "es": {
-   "title": "mostrar palabras mientras hablas en EnviousMeet",
    "words": [
-    "texto en directo de reuniones"
+    "texto en directo de reuniones",
+    "mostrar palabras mientras hablas en EnviousMeet"
    ],
    "phrases": [
     "elegir el motor de la vista previa de EnviousMeet",
@@ -100,7 +100,6 @@
    ]
   },
   "fr": {
-   "title": "aperçu en direct des réunions dans EnviousMeet",
    "words": [],
    "phrases": [
     "choisir le moteur de l’aperçu en direct des réunions dans EnviousMeet",

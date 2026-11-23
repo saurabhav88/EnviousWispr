@@ -74,9 +74,9 @@
    ]
   },
   "es": {
-   "title": "etiquetas de hablantes",
    "words": [
-    "diferenciar voces"
+    "diferenciar voces",
+    "etiquetas de hablantes"
    ],
    "phrases": [
     "quién está hablando en la reunión",
@@ -104,7 +104,6 @@
    ]
   },
   "fr": {
-   "title": "identification des intervenants",
    "words": [
     "locuteurs",
     "distinction des voix"

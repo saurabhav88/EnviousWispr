@@ -445,6 +445,12 @@ enum SettingsMap {
       parent: .sectionMicrophone, destination: .dictation(.microphone), dictionaryTab: nil,
       visibility: .always, target: .micReadiness, fallbacks: []),
     SettingsMapNode(
+      id: .silentMicWarning, structure: .item, item: .setting,
+      title: .resource(DictationSettingsCopy.Microphone.silentMicTitle),
+      description: .resource(DictationSettingsCopy.Microphone.silentMicShort),
+      parent: .sectionMicrophone, destination: .dictation(.microphone), dictionaryTab: nil,
+      visibility: .always, target: .silentMicWarning, fallbacks: []),
+    SettingsMapNode(
       id: .bluetoothGuide, structure: .item, item: .feature,
       title: .resource(BluetoothTipsCopy.settingsHeaderResource),
       description: .resource(DictationSettingsCopy.Microphone.bluetoothShort),
@@ -577,6 +583,12 @@ enum SettingsMap {
       parent: .recordingChime, destination: .dictation(.chimes), dictionaryTab: nil,
       visibility: .always, target: .recordingChime, fallbacks: []),
     SettingsMapNode(
+      id: .automaticDictationPaste, structure: .item, item: .setting,
+      title: .resource(DictationSettingsCopy.Clipboard.automaticPasteTitle),
+      description: .resource(DictationSettingsCopy.Clipboard.automaticPasteShort),
+      parent: .sectionClipboard, destination: .dictation(.clipboard), dictionaryTab: nil,
+      visibility: .always, target: .automaticDictationPaste, fallbacks: []),
+    SettingsMapNode(
       id: .autoCopyToClipboard, structure: .item, item: .setting,
       title: .resource(DictationSettingsCopy.Clipboard.autoCopyTitle),
       description: .resource(DictationSettingsCopy.Clipboard.autoCopyShort),
@@ -690,7 +702,8 @@ enum SettingsMap {
       title: .resource(SettingsItemCopy.Shared.change),
       description: nil,
       parent: .meetingSummaryEngine, destination: .meetings(.summaries), dictionaryTab: nil,
-      visibility: .always, target: .meetingSummaryEngine, fallbacks: []),
+      visibility: .always, target: .meetingSummaryEngineChange,
+      fallbacks: [.meetingSummaryEngine]),
     SettingsMapNode(
       id: .meetingSummaryEngineKeepCurrent, structure: .item, item: .action,
       title: .resource(MeetingsCopy.keepCurrentSummaryEngine),
@@ -820,6 +833,12 @@ enum SettingsMap {
       description: nil,
       parent: .sectionAiPolishModel, destination: .aiPolish, dictionaryTab: nil,
       visibility: .aiPolishEnabled, target: .aiPolishProvider, fallbacks: [.enableAIPolish]),
+    SettingsMapNode(
+      id: .dictationOutputLanguage, structure: .item, item: .setting,
+      title: .resource(SettingsItemCopy.AIPolish.translationTitle),
+      description: .runtime,
+      parent: .pageAiPolish, destination: .aiPolish, dictionaryTab: nil,
+      visibility: .always, target: .dictationOutputLanguage, fallbacks: []),
     SettingsMapNode(
       id: .aiPolishProviderSection, structure: .item, item: .feature,
       title: .dynamic(.providerSection),
@@ -958,6 +977,13 @@ enum SettingsMap {
       description: .resource(S1ControlCopy.contextShortResource),
       parent: .aiPolishProviderSection, destination: .aiPolish, dictionaryTab: nil,
       visibility: .providerSelected, target: .s1Context, fallbacks: [.aiPolishProvider, .enableAIPolish]),
+    SettingsMapNode(
+      id: .unloadPolishModelAfter, structure: .item, item: .setting,
+      title: .resource(LocalPolishUnloadCopy.title),
+      description: .resource(LocalPolishUnloadCopy.short),
+      parent: .aiPolishProviderSection, destination: .aiPolish, dictionaryTab: nil,
+      visibility: .providerSelected, target: .unloadPolishModelAfter,
+      fallbacks: [.aiPolishProvider, .enableAIPolish]),
     SettingsMapNode(
       id: .appleIntelligenceStatus, structure: .item, item: .feature,
       title: .dynamic(.appleIntelligenceStatus),
@@ -1162,6 +1188,12 @@ enum SettingsMap {
       description: .resource(LearnFromEditsSettingsPresentation.rowCopyResource),
       parent: .dictionaryTabLearnFrom, destination: .dictionary, dictionaryTab: .learnFrom,
       visibility: .always, target: .selfLearningDictionary, fallbacks: []),
+    SettingsMapNode(
+      id: .fixLearnedWords, structure: .item, item: .setting,
+      title: .resource(LearnFromEditsSettingsPresentation.fixesTitle),
+      description: .resource(LearnFromEditsSettingsPresentation.fixesHelp),
+      parent: .dictionaryTabLearnFrom, destination: .dictionary, dictionaryTab: .learnFrom,
+      visibility: .always, target: .fixLearnedWords, fallbacks: [.selfLearningDictionary]),
     SettingsMapNode(
       id: .selfLearningDictionaryLearnMore, structure: .item, item: .action,
       title: .resource(LearnFromEditsSettingsPresentation.learnMoreLabelResource),
@@ -1539,6 +1571,12 @@ enum SettingsMap {
       of: .unloadModelAfter, destination: .dictation(.engine), dictionaryTab: nil,
       visibility: .always, fallbacks: [],
       ModelUnloadPolicy.allCases.map { ($0.settingsMapID, .resource($0.displayNameResource), nil) })
+    + choices(
+      of: .unloadPolishModelAfter, destination: .aiPolish, dictionaryTab: nil,
+      visibility: .providerSelected, fallbacks: [.aiPolishProvider, .enableAIPolish],
+      ModelUnloadPolicy.allCases.map {
+        ($0.polishSettingsMapID, .resource($0.displayNameResource), nil)
+      })
     + choices(
       of: .mediaDuringDictation, destination: .dictation(.microphone), dictionaryTab: nil,
       visibility: .always, fallbacks: [],

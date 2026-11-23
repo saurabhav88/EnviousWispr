@@ -7,7 +7,7 @@ import SwiftUI
 /// see how beautiful this drop down menu is?"). Each choice is a button with its connection
 /// under its name; the chosen one is highlighted and checked. Presentation only: the caller
 /// owns the binding (and its two preference writes), the device list, the resolved device and
-/// the transport tokens.
+/// the transport tokens, which `MicrophonePickerModel` builds for every screen (#4528 D6a).
 struct MicrophoneDevicePicker: View {
   @Binding var selection: String
   let devices: [AudioInputDevice]
@@ -105,7 +105,7 @@ struct MicrophoneDevicePicker: View {
       leading: {
         Image(systemName: icon)
           .font(.system(size: 14, weight: .medium))
-          .foregroundStyle(isChosen ? Color.stAccent : Color.stTextSecondary)
+          .foregroundStyle(Color.stTextPrimary)
           .frame(width: 18)
       },
       title: title,

@@ -67,7 +67,8 @@
         heartControlRecovery: hcr,
         recordingLockedAccess: lockAccess,
         languageSuggestionPresenter: nil,
-        pendingRequests: PendingDictationRequests(access: .alwaysAllowedForTesting)
+        pendingRequests: PendingDictationRequests(access: .alwaysAllowedForTesting),
+        abandonPendingStart: {}
       )
       return Fixture(
         finalizer: finalizer,

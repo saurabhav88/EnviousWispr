@@ -46,6 +46,9 @@ enum DesignPartsSheets {
     ".settingsHoverRow(...)": "structure",
     "SettingsTabStrip": "controls",
     "BrandedSegmentedPicker": "controls",
+    "SettingsMenuPicker": "controls",
+    "settingsDropdown": "controls",
+    "SettingsDropdownRow": "controls",
     "BrandedToggleStyle": "controls",
     "BrandedSlider": "controls",
     ".settingsButton(...)": "controls",
@@ -56,6 +59,7 @@ enum DesignPartsSheets {
     "OnboardingButtonStyle": "controls",
     "SettingsSummaryCard": "cards",
     "EngineCard": "cards",
+    "CorrectionLearnedPillFace": "cards",
   ]
 
   static func sheet(_ name: String) -> AnyView? {
@@ -171,6 +175,34 @@ enum DesignPartsSheets {
             }
           }, footer: { EmptyView() })
         BrandedSection(
+          verbatimHeader: "Drop-downs",
+          content: {
+            BrandedRow {
+              SettingsMenuPicker(
+                title: "Keep for", selection: .constant(1), valueLabel: "Until I delete them"
+              ) {
+                Text(verbatim: "7 days").tag(0)
+                Text(verbatim: "Until I delete them").tag(1)
+              }
+            }
+            // The rows `settingsDropdown` opens, drawn in place: a popover does not render
+            // off screen.
+            BrandedRow(showDivider: false) {
+              VStack(alignment: .leading, spacing: 2) {
+                SettingsDropdownRow(
+                  isChosen: true, spokenTitle: "Auto", action: {},
+                  leading: { Image(systemName: "arrow.triangle.2.circlepath") },
+                  title: "Auto",
+                  subtitle: { DesignPartsSheets.label("Follows macOS") })
+                SettingsDropdownRow(
+                  isChosen: false, spokenTitle: "MacBook Pro Microphone", action: {},
+                  leading: { Image(systemName: "mic") },
+                  title: "MacBook Pro Microphone",
+                  subtitle: { DesignPartsSheets.label("Built-in") })
+              }
+            }
+          }, footer: { EmptyView() })
+        BrandedSection(
           verbatimHeader: "Switch, slider and field",
           content: {
             BrandedRow {
@@ -249,6 +281,7 @@ enum DesignPartsSheets {
             }
           }, footer: { EmptyView() })
       }
+      .environment(\.enviousButtonShape, .roundedRect)
     }
   }
 
@@ -329,6 +362,30 @@ enum DesignPartsSheets {
             isSelected: false, onSelect: {})
         }
         .environment(\.settingsPR1Density, true)
+        LearnedPillFaceSample()
+      }
+    }
+  }
+
+  /// `CorrectionLearnedPillFace` at rest: the real face and copy, the palette of the sheet's own
+  /// appearance, and the countdown a fixed way along so every run draws the same picture.
+  private struct LearnedPillFaceSample: View {
+    @Environment(\.colorScheme) private var colorScheme
+
+    var body: some View {
+      VStack(alignment: .leading, spacing: 6) {
+        DesignPartsSheets.label("CorrectionLearnedPillFace")
+        CorrectionLearnedPillFace(
+          line: CorrectionLearnedPillCopy.line(
+            for: LearnedCorrectionPillModel(
+              id: UUID(uuidString: "4506A71A-0000-0000-0000-000000000002")!,
+              wordID: UUID(uuidString: "4506A71A-0000-0000-0000-000000000003")!,
+              canonical: "Tuist", kind: .added, phase: .learned)),
+          progress: 0.4,
+          palette: PillPalette.forScheme(colorScheme)
+        )
+        .fixedSize()
+        .allowsHitTesting(false)
       }
     }
   }

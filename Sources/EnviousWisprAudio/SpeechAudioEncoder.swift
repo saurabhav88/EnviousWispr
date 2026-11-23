@@ -4,7 +4,8 @@ import Foundation
 /// Compresses speech audio to AAC-LC in an m4a file and proves the result before reporting
 /// success (#3147 §3.1).
 ///
-/// Used for saved dictation recordings (History playback) and, later, for compacting finished
+/// Used for saved dictation recordings (History playback), for History's Save audio of a
+/// meeting (#4799: the mixed tracks, fed window by window) and, later, for compacting finished
 /// meeting tracks. The bitrates are the ones measured in P1-0
 /// (`SpeechAudioCodecRealBoundaryTests`): 32 kbps projects to 14.79 MB per hour of dictation and
 /// 48 kbps to 22.03 MB per meeting track-hour, both at 16 kHz mono, with no change in what
@@ -115,6 +116,37 @@ public enum SpeechAudioEncoder {
         try reader.read(into: buffer, frameCount: chunkFrames)
         guard buffer.frameLength > 0 else { break }
         try writer.write(from: buffer)
+      }
+    }
+  }
+
+  /// Encodes `frames` samples supplied window by window (#4799): `read(offset, count)` must
+  /// return exactly `count` Float32 16 kHz mono samples starting at sample `offset`. For a long
+  /// source, such as a meeting's mixed tracks, that must never be held whole in memory. Windows
+  /// are contiguous and at most `chunkFrames` long; a read that returns another count fails the
+  /// encode, and every failure removes the output.
+  public static func encode(
+    frames: Int64, purpose: Purpose, to destination: URL,
+    read: (_ offset: Int64, _ count: Int) throws -> [Float]
+  ) throws -> Output {
+    guard frames > 0 else { throw Failure.emptyInput }
+    let format = try processingFormat()
+    return try writeVerified(to: destination, purpose: purpose, expectedFrames: frames) {
+      writer in
+      var offset: Int64 = 0
+      while offset < frames {
+        try Task.checkCancellation()
+        let count = Int(min(Int64(chunkFrames), frames - offset))
+        let window = try read(offset, count)
+        guard window.count == count,
+          let buffer = AVAudioPCMBuffer(pcmFormat: format, frameCapacity: AVAudioFrameCount(count))
+        else { throw Failure.encodeFailed }
+        buffer.frameLength = AVAudioFrameCount(count)
+        window.withUnsafeBufferPointer { source in
+          buffer.floatChannelData![0].update(from: source.baseAddress!, count: count)
+        }
+        try writer.write(from: buffer)
+        offset += Int64(count)
       }
     }
   }

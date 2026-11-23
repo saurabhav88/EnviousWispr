@@ -1,0 +1,334 @@
+{
+ "id": "unloadPolishModel",
+ "blocks": [
+  {
+   "language": "ar",
+   "title": "إزالة نموذج تنقيح النص من الذاكرة بعد الخمول",
+   "words": [
+    "تحرير ذاكرة نموذج التنقيح"
+   ],
+   "phrases": [
+    "كيف أفرغ ذاكرة نموذج تحسين النص لما أوقف الإملاء؟"
+   ]
+  },
+  {
+   "language": "bg",
+   "title": "разтоварване на модела за изглаждане на текста след неактивност",
+   "words": [
+    "освобождаване на паметта на модела"
+   ],
+   "phrases": [
+    "освободи паметта на модела за редакция, когато спра да диктувам"
+   ]
+  },
+  {
+   "language": "cs",
+   "title": "uvolnění modelu pro úpravu textu z paměti po nečinnosti",
+   "words": [
+    "uvolnění ram modelu"
+   ],
+   "phrases": [
+    "jak dlouho zůstane model pro úpravu textu v paměti, když přestanu diktovat"
+   ]
+  },
+  {
+   "language": "da",
+   "title": "fjern modellen til tekstfinpudsning fra hukommelsen efter inaktivitet",
+   "words": [
+    "frigør modellens ram"
+   ],
+   "phrases": [
+    "frigør hukommelsen fra modellen til tekstforbedring, når jeg holder op med at diktere"
+   ]
+  },
+  {
+   "language": "de",
+   "words": [
+    "Modellspeicher freigeben",
+    "Leerlaufzeit fürs Entladen"
+   ],
+   "phrases": [
+    "Speicher des KI-Modells freigeben, wenn du nicht mehr diktierst",
+    "wie lange bleibt das Polish-Modell nach dem Diktieren im Arbeitsspeicher"
+   ]
+  },
+  {
+   "language": "el",
+   "title": "αποδέσμευση του μοντέλου βελτίωσης κειμένου από τη μνήμη μετά από αδράνεια",
+   "words": [
+    "απελευθέρωση μνήμης μοντέλου"
+   ],
+   "phrases": [
+    "άδειασε τη μνήμη του μοντέλου που διορθώνει το κείμενο όταν σταματάω να υπαγορεύω"
+   ]
+  },
+  {
+   "language": "en",
+   "words": [
+    "free model memory",
+    "model idle timeout"
+   ],
+   "phrases": [
+    "free up ram used by ai polish when i stop dictating",
+    "how long does the text cleanup model stay in memory"
+   ]
+  },
+  {
+   "language": "es",
+   "words": [
+    "liberar memoria del modelo",
+    "tiempo de inactividad"
+   ],
+   "phrases": [
+    "liberar memoria del modelo que mejora el texto cuando dejas de dictar",
+    "cuánto tiempo sigue cargado el modelo de pulido cuando no dictas"
+   ]
+  },
+  {
+   "language": "et",
+   "title": "teksti viimistlemise mudeli eemaldamine mälust pärast jõudeolekut",
+   "words": [
+    "mudeli mälu vabastamine"
+   ],
+   "phrases": [
+    "vabasta teksti parandava mudeli mälu, kui ma enam ei dikteeri"
+   ]
+  },
+  {
+   "language": "fi",
+   "title": "tekstin viimeistelymallin poistaminen muistista tauon jälkeen",
+   "words": [
+    "mallin käyttämän muistin vapautus"
+   ],
+   "phrases": [
+    "vapauta tekstiä siistivän mallin muisti, kun lopetan sanelun"
+   ]
+  },
+  {
+   "language": "fr",
+   "words": [
+    "libérer la mémoire du modèle",
+    "délai d’inactivité du modèle"
+   ],
+   "phrases": [
+    "libérer la mémoire du modèle qui corrige le texte quand vous arrêtez de dicter",
+    "combien de temps le modèle de retouche reste en mémoire quand vous ne dictez plus"
+   ]
+  },
+  {
+   "language": "hi",
+   "title": "निष्क्रिय होने पर टेक्स्ट सुधार मॉडल को मेमोरी से हटाएँ",
+   "words": [
+    "मॉडल की रैम खाली करना"
+   ],
+   "phrases": [
+    "बोलकर लिखना बंद करने पर टेक्स्ट सुधार मॉडल की मेमोरी खाली करें"
+   ]
+  },
+  {
+   "language": "hr",
+   "title": "uklanjanje modela za doradu teksta iz memorije nakon neaktivnosti",
+   "words": [
+    "oslobađanje memorije modela"
+   ],
+   "phrases": [
+    "oslobodi memoriju koju koristi model za sređivanje teksta kad prestanem diktirati"
+   ]
+  },
+  {
+   "language": "hu",
+   "title": "a szövegfinomító modell eltávolítása a memóriából tétlenség után",
+   "words": [
+    "modellmemória felszabadítása"
+   ],
+   "phrases": [
+    "mennyi ideig marad a szövegjavító modell a memóriában, ha abbahagyom a diktálást"
+   ]
+  },
+  {
+   "language": "it",
+   "title": "scarica dalla memoria il modello di revisione del testo dopo un periodo di inattività",
+   "words": [
+    "libera la ram del modello"
+   ],
+   "phrases": [
+    "libera la memoria del modello che sistema il testo quando smetto di dettare"
+   ]
+  },
+  {
+   "language": "ja",
+   "title": "一定時間操作がないときに文章推敲モデルをメモリから解放",
+   "words": [
+    "モデルのアンロード"
+   ],
+   "phrases": [
+    "音声入力をやめたら文章を整えるモデルのメモリを解放したい",
+    "音声入力をしない間は文章修正モデルをメモリに残さない"
+   ]
+  },
+  {
+   "language": "ko",
+   "title": "받아쓰기 미사용 시 텍스트 다듬기 모델을 메모리에서 해제",
+   "words": [
+    "모델 언로드"
+   ],
+   "phrases": [
+    "받아쓰기를 멈추면 문장 보정 모델이 쓰는 메모리 비우기",
+    "받아쓰기 안 할 때 텍스트 다듬기 모델이 메모리에 얼마나 남아 있나요"
+   ]
+  },
+  {
+   "language": "lt",
+   "title": "teksto gludinimo modelio pašalinimas iš atminties po neveiklos",
+   "words": [
+    "modelio atminties atlaisvinimas"
+   ],
+   "phrases": [
+    "atlaisvinti teksto taisymo modelio naudojamą atmintį, kai nustoju diktuoti"
+   ]
+  },
+  {
+   "language": "lv",
+   "title": "teksta uzlabošanas modeļa izņemšana no atmiņas pēc neaktivitātes",
+   "words": [
+    "modeļa atmiņas atbrīvošana"
+   ],
+   "phrases": [
+    "atbrīvot teksta labošanas modeļa izmantoto atmiņu, kad pārstāju diktēt"
+   ]
+  },
+  {
+   "language": "mt",
+   "title": "neħħi l-mudell tal-irfinar tat-test mill-memorja wara perjodu ta’ inattività",
+   "words": [
+    "illibera r-ram tal-mudell"
+   ],
+   "phrases": [
+    "illibera l-memorja li juża l-mudell li jirranġa t-test meta nieqaf niddetta"
+   ]
+  },
+  {
+   "language": "nl",
+   "title": "model voor tekstverbetering na inactiviteit uit het geheugen halen",
+   "words": [
+    "werkgeheugen van model vrijmaken"
+   ],
+   "phrases": [
+    "geheugen vrijmaken dat het tekstverbeteringsmodel gebruikt als ik stop met dicteren"
+   ]
+  },
+  {
+   "language": "pl",
+   "title": "usuwanie modelu wygładzania tekstu z pamięci po okresie bezczynności",
+   "words": [
+    "zwalnianie ramu modelu"
+   ],
+   "phrases": [
+    "zwolnij pamięć zajętą przez model do poprawiania tekstu, gdy przestanę dyktować"
+   ]
+  },
+  {
+   "language": "pt",
+   "title": "remover o modelo de revisão de texto da memória após inatividade",
+   "words": [
+    "liberar a ram do modelo"
+   ],
+   "phrases": [
+    "liberar a memória usada pelo modelo que corrige o texto quando paro de ditar"
+   ]
+  },
+  {
+   "language": "ro",
+   "title": "scoaterea din memorie a modelului de rafinare a textului după o perioadă de inactivitate",
+   "words": [
+    "eliberare ram model"
+   ],
+   "phrases": [
+    "eliberează memoria folosită de modelul care corectează textul când nu mai dictez"
+   ]
+  },
+  {
+   "language": "ru",
+   "title": "выгрузка модели улучшения текста из памяти после простоя",
+   "words": [
+    "освобождение памяти модели"
+   ],
+   "phrases": [
+    "освободить память модели правки текста, когда я перестаю диктовать",
+    "через сколько выгружается модель правки текста без диктовки"
+   ]
+  },
+  {
+   "language": "sk",
+   "title": "uvoľnenie modelu na úpravu textu z pamäte po nečinnosti",
+   "words": [
+    "uvoľnenie ram modelu"
+   ],
+   "phrases": [
+    "ako dlho zostane model na úpravu textu v pamäti, keď prestanem diktovať"
+   ]
+  },
+  {
+   "language": "sl",
+   "title": "odstranitev modela za izboljšanje besedila iz pomnilnika po nedejavnosti",
+   "words": [
+    "sprostitev pomnilnika modela"
+   ],
+   "phrases": [
+    "sprosti pomnilnik, ki ga uporablja model za popravljanje besedila, ko neham narekovati"
+   ]
+  },
+  {
+   "language": "sv",
+   "title": "läs ut modellen för textbearbetning ur minnet efter inaktivitet",
+   "words": [
+    "frigör modellens arbetsminne"
+   ],
+   "phrases": [
+    "frigör minnet som modellen för textförbättring använder när jag slutar diktera"
+   ]
+  },
+  {
+   "language": "tr",
+   "title": "boşta kalınca metin iyileştirme modelini bellekten kaldır",
+   "words": [
+    "modelin ram kullanımını boşaltma"
+   ],
+   "phrases": [
+    "dikte etmeyi bırakınca metin düzeltme modelinin kullandığı belleği boşalt"
+   ]
+  },
+  {
+   "language": "uk",
+   "title": "вивантаження моделі покращення тексту з пам’яті після простою",
+   "words": [
+    "звільнення пам’яті моделі"
+   ],
+   "phrases": [
+    "звільнити пам’ять моделі редагування тексту, коли я припиняю диктувати"
+   ]
+  },
+  {
+   "language": "vi",
+   "title": "gỡ mô hình chỉnh sửa văn bản khỏi bộ nhớ sau một thời gian không dùng",
+   "words": [
+    "giải phóng ram của mô hình"
+   ],
+   "phrases": [
+    "giải phóng bộ nhớ của mô hình sửa văn bản khi ngừng đọc chính tả"
+   ]
+  },
+  {
+   "language": "zh",
+   "title": "闲置后卸载文本润色模型",
+   "words": [
+    "释放模型内存",
+    "空闲卸载"
+   ],
+   "phrases": [
+    "停止语音输入后释放润色模型占用的内存",
+    "不在听写时多久卸载润色模型"
+   ]
+  }
+ ]
+}

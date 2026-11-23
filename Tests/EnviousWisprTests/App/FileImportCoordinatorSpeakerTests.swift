@@ -1706,6 +1706,12 @@ struct FileImportCoordinatorSpeakerTests {
     for _ in 0..<20 { await Task.yield() }
     #expect(coordinator.state == .stopped, "a late part cannot finish a stopped run")
     #expect(store.mergeCalls == 1)
+    #expect(await settleUntil {
+      !coordinator.isEngineHeld && !coordinator.hasPendingSettlement
+        && !coordinator.isSettlingRunPersistence
+    })
+    #expect(coordinator.externalImportBlock == nil,
+      "a new share can replace a stopped import whose raw labeled transcript is saved")
   }
 
   /// What a completed first cleanup left everywhere the user can read it (#3903).
@@ -1936,6 +1942,26 @@ struct FileImportCoordinatorSpeakerTests {
       store.current(id)?.displayText == c.documentText,
       "History's text and the screen describe the same cleanup")
     #expect(after.saved)
+  }
+
+  @Test("Share protects an unsaved cleanup with the same words and a different provider")
+  func shareProtectsUnsavedCleanupCredit() async throws {
+    let store = FakeHistoryStore()
+    let script = ReRunScript()
+    script.sameWordsOnRerun = true
+    let coordinator = makeReRunCoordinator(
+      script, store: store, labeled: false, telemetry: TurnTelemetryRecorder())
+    let (id, first) = try #require(await completeFirstCleanup(coordinator, store, script))
+    script.failingUpdates = 1
+    coordinator.rePolish()
+    try #require(await settleUntil {
+      coordinator.state == .finished && script.failingUpdates == 0 && !coordinator.isEngineHeld
+    })
+    #expect(await settleWrites(coordinator))
+    #expect(coordinator.documentText == first.documentText)
+    #expect(coordinator.runConfiguration?.polishProvider == .gemini)
+    #expect(store.current(id)?.llmProvider == LLMProvider.openAI.rawValue)
+    #expect(coordinator.externalImportBlock == .unsavedDocument)
   }
 
   @Test(

@@ -8,7 +8,9 @@ import os
 @testable import EnviousWisprAppKit
 @testable import EnviousWisprAudio
 @testable import EnviousWisprCore
+@testable import EnviousWisprLivePreview
 @testable import EnviousWisprPipeline
+@testable import EnviousWisprPostProcessing
 @testable import EnviousWisprStorage
 import EnviousWisprAppKitTestSupport
 
@@ -32,6 +34,8 @@ struct MeetingCoordinatorTests {
       case failEmpty
       /// Parks until `stop` or `stopForQuit`, then reports that the stop took over.
       case hold
+      /// #4601: the microphone did not answer (the recorder passes that error on unchanged).
+      case failNotResponding
     }
 
     let configuration: MeetingRecorder.Configuration
@@ -58,6 +62,9 @@ struct MeetingCoordinatorTests {
       if case .failEmpty = start {
         throw MeetingRecorder.RecorderError.microphoneUnavailable("no_device")
       }
+      if case .failNotResponding = start {
+        throw AudioError.microphoneNotResponding(source: "HALDeviceInputSource.prepare.timed_out")
+      }
       // Real audio in the real meeting folder: what processing reads.
       try MeetingAudioFixture.writeSegment(
         in: configuration.folder, index: 1, startMs: 0, frames: 16_000)
@@ -67,7 +74,7 @@ struct MeetingCoordinatorTests {
         return MeetingRecorder.StartResult(
           microphone: .captured, callSound: callSound,
           echoProvenance: callSound == .captured ? Self.echoProvenance : nil)
-      case .fail, .failEmpty:
+      case .fail, .failEmpty, .failNotResponding:
         throw MeetingRecorder.RecorderError.microphoneUnavailable("microphone_lost")
       case .hold:
         await withCheckedContinuation { continuation in
@@ -174,6 +181,9 @@ struct MeetingCoordinatorTests {
       [:]
     /// #4013 chunk 12A: the saved speaker evidence each run was given, in order.
     private(set) var receivedCallSpeakers: [MeetingCallSpeakerEvidence] = []
+    /// #4578: the resolution the coordinator built this job with; when set, the result is
+    /// stamped from it as the real job does.
+    var resolution: MeetingEngineResolution?
     var isEngineResident = false
     var isUnitInFlight = false
     var isOwnModelResident = false
@@ -203,8 +213,10 @@ struct MeetingCoordinatorTests {
       receivedAttempts.append(attempt)
       receivedMissingAudio = missingAudio
       onStage(.composing)
-      // The real job resolves the attempt it was given (C2: always to its requested engine).
-      return try await behavior(access).resolving(attempt)
+      // The real job resolves the attempt it was given, stamped from its resolution.
+      let result = try await behavior(access)
+      if let resolution { return result.resolving(attempt, resolution: resolution, language: language) }
+      return result.resolving(attempt)
     }
 
     func cancel() { cancelled = true }
@@ -341,6 +353,8 @@ struct MeetingCoordinatorTests {
           MeetingCoordinatorTests.result()
         }
     var saved: [Transcript] = []
+    var wordLookups: WordCorrector.Lookups?
+    var afterPlainSave: (@MainActor (Transcript, WordCorrector.Lookups) async -> Void)?
     /// Every History save asked for, recorded before anything can fail it.
     var saveRequests: [Transcript] = []
     /// The meeting's saved state at the moment its History row was written.
@@ -404,6 +418,10 @@ struct MeetingCoordinatorTests {
     var logs: [String] = []
     var workChanges = 0
     var settleCalls = 0
+    /// #4578: the Transcript engine setting a Start reads.
+    var transcriptEngine: MeetingEngineChoice = .parakeet
+    /// #4578: what the engine resolution answers; nil keeps the requested engine.
+    var resolveEngine: (@MainActor (MeetingAttemptConfiguration) async -> MeetingEngineResolution?)?
     @ObservationIgnored lazy var coordinator = MeetingCoordinator(dependencies: dependencies())
 
     init() throws {
@@ -432,6 +450,19 @@ struct MeetingCoordinatorTests {
     func dependencies() -> MeetingCoordinator.Dependencies {
       var dependencies = makeDependencies()
       dependencies.meetingLanguage = { [self] in language }
+      // Read live, so a test can change the downloaded engines between passes.
+      let requestedOnly = dependencies.resolveEngine
+      dependencies.resolveEngine = { [self] attempt in
+        if let resolveEngine { return await resolveEngine(attempt) }
+        return await requestedOnly(attempt)
+      }
+      dependencies.meetingTranscriptEngine = { [self] in transcriptEngine }
+      dependencies.liveVocabulary = { [self] in
+        LivePreviewVocabulary(lookups: wordLookups, contextualPhrases: [], dictionaryEnabled: wordLookups != nil)
+      }
+      dependencies.correctTranscript = { [self] row, lookups, _, _ in
+        await afterPlainSave?(row, lookups)
+      }
       // #4356: a test never presses a real Zoom button.
       dependencies.selfProbe = { _, _, _, _ in .refused(.notFound, elapsedMs: 0) }
       return dependencies
@@ -447,8 +478,9 @@ struct MeetingCoordinatorTests {
           recorders.append(recorder)
           return recorder
         },
-        makeJob: { [self] _ in
+        makeJob: { [self] resolution in
           let job = FakeJob(behavior: jobBehavior)
+          if self.resolveEngine != nil { job.resolution = resolution }
           jobs.append(job)
           return job
         },
@@ -483,9 +515,13 @@ struct MeetingCoordinatorTests {
           await saveGate?.wait()
           if let saveError { throw saveError }
           var summary: SpeakerNamingSummary?
-          if let history { summary = try await history.saveAndShowDurably(transcript, naming: naming) }
+          var savedRow = transcript
+          if let history {
+            summary = try await history.saveAndShowDurably(
+              transcript, naming: naming, didPublish: { savedRow = $0 })
+          }
           saved.append(transcript)
-          return summary
+          return (savedRow, summary)
         },
         durableHistoryRow: { [self] id in
           await historyReadGate?.wait()
@@ -544,10 +580,12 @@ struct MeetingCoordinatorTests {
     }
   }
 
-  static func result(text: String = "hello there") -> MeetingTranscriptionJob.Result {
+  static func result(
+    text: String = "hello there", turns: [Turn] = []
+  ) -> MeetingTranscriptionJob.Result {
     MeetingTranscriptionJob.Result(
       composition: MeetingComposition(
-        text: text, turns: [], speakerNames: [:], echoTurnIDs: ["mic-3"], speakerCount: 1),
+        text: text, turns: turns, speakerNames: [:], echoTurnIDs: ["mic-3"], speakerCount: 1),
       speakerOutcomes: [.microphone: .single], forcedCuts: 0, failedPieces: 0, failedRanges: [:],
       resumedPieces: 0, checkpointSaveFailures: 0, yieldCount: 0, processingSeconds: 1,
       audioSeconds: 1, resolved: placeholderResolved)
@@ -673,6 +711,60 @@ struct MeetingCoordinatorTests {
 
   /// #3147 PR4A (Codex integration r1 #1): a note typed while recording is stamped from the
   /// recorder's own host-time anchor, never the wall clock, so a slow start does not shift it.
+  @Test("finished meetings save plain first and use the vocabulary frozen for each attempt")
+  func frozenMeetingWords() async throws {
+    let harness = try Harness()
+    let text = "Sunny brought the notes."
+    let turn = Turn(
+      id: "m0-0", speakerId: "mic:you", startMs: 0, endMs: 1000,
+      originalTextRange: 0..<text.utf16.count)
+    harness.jobBehavior = { _ in Self.result(text: text, turns: [turn]) }
+    harness.wordLookups = WordCorrector.buildLookups(
+      words: [CustomWord(canonical: "Sunee", aliases: ["Sunny"])])
+    let correctionGate = Gate()
+    var corrections: [String] = []
+    harness.afterPlainSave = { row, lookups in
+      #expect(harness.saved.last?.meetingTranscriptGeneration == row.meetingTranscriptGeneration)
+      #expect(row.text == text)
+      #expect(row.processedText == nil)
+      if let id = row.meetingID {
+        #expect(FileManager.default.fileExists(atPath: harness.store.transcriptReplacementURL(for: id).path) == false)
+      }
+      await correctionGate.wait()
+      corrections.append(WordCorrector().correct(row.text, using: lookups).corrected)
+    }
+    let coordinator = harness.coordinator
+    coordinator.summaries = MeetingSummaryOwner(
+      dependencies: .init(
+        isEnabled: { true }, selection: { (.openAI, "test") }, cloudModelList: { nil },
+        prepare: { _, _, _ in
+          #expect(corrections.first == "Sunee brought the notes.")
+          return .failure(.notReady)
+        },
+        visibleTranscript: { _ in nil },
+        hasNoWords: { _ in false }, isLocalTurn: { _ in true }, wakes: nil,
+        emitFinished: { _ in }, log: { _ in }),
+      documents: coordinator.documents, lane: MeetingLocalModelLane())
+    await coordinator.start(from: .history)
+    let id = try onlyMeeting(harness).id
+    harness.wordLookups = WordCorrector.buildLookups(
+      words: [CustomWord(canonical: "Sunni", aliases: ["Sunny"])])
+    await coordinator.stop(reason: .user)
+    await Self.eventually("plain row published and correction admitted") { correctionGate.parked }
+    #expect(coordinator.isWorkInFlight == false)
+    #expect(coordinator.summaries?.activity[id] == nil)
+    correctionGate.open()
+    await Self.livePassFinished(coordinator, id)
+    #expect(corrections == ["Sunee brought the notes."])
+    await Self.eventually("summary starts after correction") {
+      coordinator.summaries?.activity[id] != nil
+    }
+    let generation = try #require(coordinator.record(id: id)?.committedTranscriptGeneration)
+    #expect(await coordinator.transcribeAgain(meetingID: id, engine: .parakeet))
+    await Self.livePassFinished(coordinator, id, replacing: generation)
+    #expect(corrections == ["Sunee brought the notes.", "Sunni brought the notes."])
+  }
+
   @Test("the recording position counts from the recorder's anchor, only while recording")
   func recordingPositionFromTheRecorderAnchor() async throws {
     let harness = try Harness()
@@ -692,6 +784,99 @@ struct MeetingCoordinatorTests {
     #expect(coordinator.recordingPositionMs(meetingID: meetingID) == 0, "a clock before the anchor")
     await coordinator.stop(reason: .user)
     #expect(coordinator.recordingPositionMs(meetingID: meetingID) == nil, "not after Stop")
+  }
+
+  /// #4578: a meeting whose transcript is due when no speech engine is on the Mac. When this
+  /// fails, a pass loads (and downloads) a removed engine, or the meeting sits Transcribing
+  /// forever instead of saying why and keeping its audio for Transcribe again.
+  @Test("with no speech engine the meeting fails with the reason, runs no pass and keeps its audio")
+  func noEngineFailsWithTheReason() async throws {
+    let harness = try Harness()
+    harness.resolveEngine = { _ in nil }
+    let coordinator = harness.coordinator
+    await coordinator.start(from: .history)
+    let meetingID = try onlyMeeting(harness).id
+    await coordinator.stop(reason: .user)
+    await Self.eventually("failed") {
+      coordinator.record(id: meetingID)?.state == .failed && coordinator.processing == nil
+    }
+    let saved = try harness.store.load(id: meetingID)
+    #expect(saved.failureCode == "no_engine_downloaded")
+    #expect(harness.jobs.isEmpty, "no pass was built")
+    #expect(harness.ended.count == 1)
+    #expect(
+      MeetingsPresentation.failureLine(saved)
+        == "No speech engine was downloaded. Download one in Settings, then use Transcribe again.")
+    #expect(FileManager.default.fileExists(atPath: harness.store.folder(for: meetingID).path))
+  }
+
+  /// #4578: a meeting whose engine was removed is written by the other downloaded engine, and
+  /// History says which one, in both directions. When this fails, the meeting loses its
+  /// transcript although an engine is downloaded, or History names the wrong engine.
+  @Test(
+    "a removed engine's meeting is written by the other one, stamped and published",
+    arguments: [MeetingEngineChoice.parakeet, .whisper])
+  func removedEngineFallsBackThroughPublication(requested: MeetingEngineChoice) async throws {
+    let harness = try Harness()
+    harness.transcriptEngine = requested
+    // The real resolver with only the other engine downloaded.
+    harness.resolveEngine = { attempt in
+      await MeetingWiring.resolve(
+        attempt, whisper: MeetingWiringTests.whisperEngine(path: requested == .parakeet ? "/m.gguf" : nil),
+        parakeetInstalled: { requested == .whisper })
+    }
+    let coordinator = harness.coordinator
+    await coordinator.start(from: .history)
+    let meetingID = try onlyMeeting(harness).id
+    await coordinator.stop(reason: .user)
+    await Self.livePassFinished(coordinator, meetingID)
+    let other: MeetingEngineChoice = requested == .parakeet ? .whisper : .parakeet
+    let saved = try harness.store.load(id: meetingID)
+    #expect(saved.requestedTranscriptEngine == requested)
+    #expect(saved.transcriptEngineUsed == other)
+    #expect(saved.transcriptEngineFallbackReason == .notDownloaded)
+    #expect(harness.saved.count == 1, "the transcript reached History")
+    #expect(harness.jobs.first?.receivedAttempts.first?.requestedEngine == requested)
+  }
+
+  /// #4578: Transcribe again with no engine keeps the transcript it would have replaced, and a
+  /// later Transcribe again (once an engine is back) runs on it. When this fails, a retry with
+  /// nothing downloaded erases the meeting's transcript.
+  @Test("Transcribe again with no engine keeps the old transcript; with one back it runs")
+  func noEngineRetryKeepsTheTranscript() async throws {
+    let harness = try Harness()
+    let coordinator = harness.coordinator
+    await coordinator.start(from: .history)
+    let meetingID = try onlyMeeting(harness).id
+    await coordinator.stop(reason: .user)
+    await Self.livePassFinished(coordinator, meetingID)
+    let committed = try #require(coordinator.record(id: meetingID)?.committedTranscriptGeneration)
+    let transcriptID = try harness.store.load(id: meetingID).transcriptID
+
+    harness.resolveEngine = { _ in nil }
+    await Self.transcribeAgainOnceOffered(coordinator, meetingID: meetingID)
+    await Self.eventually("failed") {
+      coordinator.record(id: meetingID)?.state == .failed && coordinator.processing == nil
+    }
+    let failed = try harness.store.load(id: meetingID)
+    #expect(failed.failureCode == "no_engine_downloaded")
+    #expect(failed.committedTranscriptGeneration == committed, "the old transcript stays")
+    #expect(failed.transcriptID == transcriptID)
+    #expect(harness.removedRows.isEmpty && harness.saved.count == 1)
+    #expect(harness.jobs.count == 1, "no pass was built for the refused retry")
+
+    // Whisper is downloaded now; Parakeet is still gone.
+    harness.resolveEngine = { attempt in
+      await MeetingWiring.resolve(
+        attempt, whisper: MeetingWiringTests.whisperEngine(path: "/m.gguf"),
+        parakeetInstalled: { false })
+    }
+    await Self.transcribeAgainOnceOffered(coordinator, meetingID: meetingID)
+    await Self.livePassFinished(coordinator, meetingID, replacing: committed)
+    let rewritten = try harness.store.load(id: meetingID)
+    #expect(rewritten.transcriptEngineUsed == .whisper)
+    #expect(rewritten.transcriptEngineFallbackReason == .notDownloaded)
+    #expect(rewritten.failureCode == nil)
   }
 
   @Test("the bounded wait fails when its signal never comes")
@@ -969,6 +1154,19 @@ struct MeetingCoordinatorTests {
         .filter { !$0.hasPrefix(".") }.isEmpty)
     #expect(harness.activitiesBegun == harness.activitiesEnded)
     #expect(harness.jobs.isEmpty)
+  }
+
+  /// #4601: a meeting start whose microphone did not answer shows the stuck-microphone notice,
+  /// not the generic "could not start" one, and leaves no meeting.
+  @Test("a microphone that did not answer shows its own notice and leaves no meeting")
+  func microphoneNotRespondingNotice() async throws {
+    let harness = try Harness()
+    harness.recorderStart = .failNotResponding
+    let coordinator = harness.coordinator
+    await coordinator.start(from: .history)
+    #expect(coordinator.phase == .idle)
+    #expect(coordinator.notice == .microphoneNotResponding)
+    #expect(coordinator.meetings.isEmpty)
   }
 
   @Test("a microphone lost during the start keeps what reached disk and processes it")
@@ -1574,6 +1772,213 @@ struct MeetingCoordinatorTests {
         == .skipped, "nothing left to remove")
   }
 
+  @Test("retention skips a meeting whose audio Save audio is mixing (#4799)")
+  func retentionSkipsExportingMeeting() async throws {
+    let harness = try Harness()
+    let coordinator = harness.coordinator
+    await coordinator.start(from: .history)
+    let meetingID = try onlyMeeting(harness).id
+    await coordinator.stop(reason: .user)
+    await Self.eventually("ready") {
+      coordinator.record(id: meetingID)?.state == .ready && coordinator.processing == nil
+    }
+    let exporting = ExportingIDs([meetingID])
+    coordinator.isExportingAudio = { exporting.ids.contains($0) }
+
+    #expect(
+      await coordinator.removeAudioForRetention(meetingID: meetingID, stillEligible: { _ in true })
+        == .skipped)
+    #expect(try harness.store.load(id: meetingID).audioKept, "kept while it is being saved")
+
+    exporting.ids = []
+    #expect(
+      await coordinator.removeAudioForRetention(meetingID: meetingID, stillEligible: { _ in true })
+        == .removed)
+  }
+
+  @Test("Save audio's snapshot: offered for a ready meeting, never while recording or removing (#4799)")
+  func audioExportSnapshotAdmission() async throws {
+    let harness = try Harness()
+    let coordinator = harness.coordinator
+    let gate = harness.writeGate
+    await coordinator.start(from: .history)
+    let meetingID = try onlyMeeting(harness).id
+    #expect(coordinator.audioExportSnapshot(meetingID: meetingID) == nil, "still recording")
+    await coordinator.stop(reason: .user)
+    await Self.eventually("ready") {
+      coordinator.record(id: meetingID)?.state == .ready && coordinator.processing == nil
+    }
+
+    let record = try #require(coordinator.record(id: meetingID))
+    let snapshot = try #require(coordinator.audioExportSnapshot(meetingID: meetingID))
+    #expect(snapshot.segments == record.segments)
+    #expect(snapshot.durationMs == record.recordedDurationMs)
+    #expect(snapshot.durationMs > 0)
+    #expect(snapshot.folder == harness.store.folder(for: meetingID))
+    #expect(coordinator.audioExportSnapshot(meetingID: meetingID) == snapshot, "stable")
+
+    // Delete audio claims the meeting before its save lands: no snapshot from that moment.
+    gate.holdNext { $0.id == meetingID && !$0.audioKept }
+    let removing = Task { await coordinator.deleteAudio(meetingID: meetingID) }
+    // Off the main actor: a blocking wait there would stall the save it waits on.
+    #expect(await Task.detached { Self.waitBlocking(gate.entered) }.value == .success)
+    #expect(coordinator.audioExportSnapshot(meetingID: meetingID) == nil)
+    gate.release.signal()
+    await removing.value
+    #expect(gate.timedOut.withLock { $0 } == false, "a held write waited out its bound")
+    #expect(coordinator.audioExportSnapshot(meetingID: meetingID) == nil, "no audio kept")
+  }
+
+  @Test("History Delete All's mark refuses Save audio before the saved record changes (#4799)")
+  func audioExportSnapshotSeesDeleteAllIntent() async throws {
+    let harness = try Harness()
+    let coordinator = harness.coordinator
+    let gate = harness.writeGate
+    await coordinator.start(from: .history)
+    let meetingID = try onlyMeeting(harness).id
+    await coordinator.stop(reason: .user)
+    await Self.eventually("ready") {
+      coordinator.record(id: meetingID)?.state == .ready && coordinator.processing == nil
+    }
+    #expect(coordinator.audioExportSnapshot(meetingID: meetingID) != nil)
+
+    gate.holdNext { $0.id == meetingID && $0.deletionRequested }
+    let marking = Task { await coordinator.deleteForHistoryDeleteAll(meetingIDs: [meetingID]) }
+    // Off the main actor: a blocking wait there would stall the mark it waits on.
+    #expect(await Task.detached { Self.waitBlocking(gate.entered) }.value == .success)
+    // The saved record still plays; the deletion is only intended.
+    #expect(coordinator.playbackSource(meetingID: meetingID) != nil)
+    #expect(coordinator.audioExportSnapshot(meetingID: meetingID) == nil)
+    gate.release.signal()
+    _ = await marking.value
+    #expect(gate.timedOut.withLock { $0 } == false, "a held write waited out its bound")
+  }
+
+  @Test("Save audio's menu row: none while recording, offered when ready, none while the page is busy (#4799)")
+  func audioExportMenuRow() async throws {
+    let harness = try Harness()
+    let coordinator = harness.coordinator
+    let export = HistoryAudioExport(
+      effects: HistoryAudioExport.Effects(
+        chooseURL: { _ in nil }, reveal: { _ in }, notify: { _, _ in }))
+    await coordinator.start(from: .history)
+    let meetingID = try onlyMeeting(harness).id
+    // The card's call and the page's call.
+    #expect(export.meetingMenuItem(meetingID: meetingID, meetings: coordinator, start: {}) == nil)
+    await coordinator.stop(reason: .user)
+    await Self.eventually("ready") {
+      coordinator.record(id: meetingID)?.state == .ready && coordinator.processing == nil
+    }
+    #expect(export.meetingMenuItem(meetingID: meetingID, meetings: coordinator, start: {}) != nil)
+    #expect(
+      export.meetingMenuItem(
+        meetingID: meetingID, meetings: coordinator, actionInFlight: true, start: {}) == nil)
+    await coordinator.deleteAudio(meetingID: meetingID)
+    #expect(export.meetingMenuItem(meetingID: meetingID, meetings: coordinator, start: {}) == nil)
+  }
+
+  @Test("a save overtaken by Delete audio or Delete All is reported deleted, not changed (#4799)")
+  func audioExportCheckSeesRemovalBeforeSave() async throws {
+    let harness = try Harness()
+    let coordinator = harness.coordinator
+    let gate = harness.writeGate
+    await coordinator.start(from: .history)
+    let meetingID = try onlyMeeting(harness).id
+    await coordinator.stop(reason: .user)
+    await Self.eventually("ready") {
+      coordinator.record(id: meetingID)?.state == .ready && coordinator.processing == nil
+    }
+
+    // Delete audio, held before its save lands: the saved record still keeps the audio.
+    let first = HistoryAudioExport.meeting(
+      meetingID: meetingID, defaultName: "Meeting", meetings: coordinator, window: { nil })
+    #expect(await first.admit() != nil)
+    #expect(first.check() == .deliverable)
+    gate.holdNext { $0.id == meetingID && !$0.audioKept }
+    let removing = Task { await coordinator.deleteAudio(meetingID: meetingID) }
+    // Off the main actor: a blocking wait there would stall the save it waits on.
+    #expect(await Task.detached { Self.waitBlocking(gate.entered) }.value == .success)
+    #expect(coordinator.record(id: meetingID)?.audioKept == true, "saved record unchanged")
+    #expect(first.check() == .deleted)
+    gate.release.signal()
+    await removing.value
+    #expect(gate.timedOut.withLock { $0 } == false, "a held write waited out its bound")
+  }
+
+  @Test("a save overtaken by History Delete All's mark is reported deleted (#4799)")
+  func audioExportCheckSeesDeleteAllMark() async throws {
+    let harness = try Harness()
+    let coordinator = harness.coordinator
+    let gate = harness.writeGate
+    await coordinator.start(from: .history)
+    let meetingID = try onlyMeeting(harness).id
+    await coordinator.stop(reason: .user)
+    await Self.eventually("ready") {
+      coordinator.record(id: meetingID)?.state == .ready && coordinator.processing == nil
+    }
+    let request = HistoryAudioExport.meeting(
+      meetingID: meetingID, defaultName: "Meeting", meetings: coordinator, window: { nil })
+    #expect(await request.admit() != nil)
+
+    gate.holdNext { $0.id == meetingID && $0.deletionRequested }
+    let marking = Task { await coordinator.deleteForHistoryDeleteAll(meetingIDs: [meetingID]) }
+    // Off the main actor: a blocking wait there would stall the mark it waits on.
+    #expect(await Task.detached { Self.waitBlocking(gate.entered) }.value == .success)
+    #expect(coordinator.record(id: meetingID)?.deletionRequested == false, "saved record unchanged")
+    #expect(request.check() == .deleted)
+    gate.release.signal()
+    _ = await marking.value
+    #expect(gate.timedOut.withLock { $0 } == false, "a held write waited out its bound")
+  }
+
+  @Test("a save overtaken by deleting the meeting itself is refused and reported deleted (#4799)")
+  func audioExportCheckSeesMeetingDeletion() async throws {
+    let harness = try Harness()
+    let coordinator = harness.coordinator
+    let gate = harness.writeGate
+    await coordinator.start(from: .history)
+    let meetingID = try onlyMeeting(harness).id
+    await coordinator.stop(reason: .user)
+    await Self.eventually("ready") {
+      coordinator.record(id: meetingID)?.state == .ready && coordinator.processing == nil
+    }
+    let request = HistoryAudioExport.meeting(
+      meetingID: meetingID, defaultName: "Meeting", meetings: coordinator, window: { nil })
+    #expect(await request.admit() != nil)
+
+    // Delete meeting claims it at once; its mark is held before the saved record changes.
+    gate.holdNext { $0.id == meetingID && $0.deletionRequested }
+    let deleting = Task { await coordinator.delete(meetingID: meetingID) }
+    // Off the main actor: a blocking wait there would stall the mark it waits on.
+    #expect(await Task.detached { Self.waitBlocking(gate.entered) }.value == .success)
+    #expect(coordinator.record(id: meetingID)?.deletionRequested == false, "saved record unchanged")
+    #expect(coordinator.audioExportSnapshot(meetingID: meetingID) == nil)
+    #expect(request.check() == .deleted)
+    gate.release.signal()
+    _ = await deleting.value
+    #expect(gate.timedOut.withLock { $0 } == false, "a held write waited out its bound")
+  }
+
+  @Test("a snapshot whose inventory differs only by a frame count is not equal (#4799)")
+  func audioExportSnapshotEqualityIncludesFrames() {
+    let id = UUID()
+    let folder = URL(filePath: "/tmp/meeting")
+    func snapshot(frames: Int) -> MeetingAudioExportSnapshot {
+      MeetingAudioExportSnapshot(
+        meetingID: id, folder: folder,
+        segments: [
+          .microphone: [
+            MeetingSegmentInfo(index: 1, fileName: "mic-00001-s000000000.caf", startMs: 0, frameCount: frames)
+          ]
+        ], durationMs: 1_000)
+    }
+    #expect(snapshot(frames: 16_000) == snapshot(frames: 16_000))
+    #expect(snapshot(frames: 16_000) != snapshot(frames: 15_999))
+    #expect(
+      snapshot(frames: 16_000).trackFiles[.microphone]?.map(\.url)
+        == [folder.appendingPathComponent("mic-00001-s000000000.caf")])
+  }
+
   @Test("a meeting audio file that cannot be removed counts as failed, never as removed")
   func retentionReportsFailedFileRemoval() async throws {
     let harness = try Harness()
@@ -2046,6 +2451,101 @@ struct MeetingCoordinatorTests {
     #expect(harness.removedRows == [deleted.transcriptID])
   }
 
+  @Test(
+    "a second interruption stops automatic meeting transcription and leaves a manual retry",
+    .bug("https://github.com/saurabhav88/EnviousWispr/issues/4388", "meeting launch crash loop"))
+  func launchStopsAfterInterruptedAutomaticRetry() async throws {
+    let initial = try Harness()
+    initial.jobBehavior = { _ in
+      let text = "hello there"
+      return Self.result(
+        text: text,
+        turns: [
+          Turn(
+            id: "mic-1", speakerId: "mic:1", startMs: 0, endMs: 500,
+            originalTextRange: 0..<text.utf16.count)
+        ])
+    }
+    let original = initial.coordinator
+    await original.start(from: .history)
+    let id = try onlyMeeting(initial).id
+    await original.stop(reason: .user)
+    await Self.livePassFinished(original, id)
+    let prior = try #require(initial.saved.first)
+    let priorGeneration = try #require(prior.meetingTranscriptAttemptID)
+    let audio = try initial.store.segmentFiles(meeting: id).map { try Data(contentsOf: $0.url) }
+    try #require(audio.isEmpty == false)
+    initial.historyFiles[prior.id] = prior
+
+    let firstPass = Gate()
+    defer { firstPass.open() }
+    initial.jobBehavior = { _ in
+      await firstPass.wait()
+      throw MeetingTranscriptionJob.JobError.cancelled
+    }
+    await Self.transcribeAgainOnceOffered(original, meetingID: id)
+    await Self.eventually("original rerun started") { firstPass.parked }
+    try #require(initial.store.load(id: id).state == .processing)
+    let resumed = try Harness(copying: initial.root)
+    original.prepareForTermination()
+    firstPass.open()
+
+    let automaticPass = Gate()
+    defer { automaticPass.open() }
+    resumed.historyFiles[prior.id] = prior
+    resumed.jobBehavior = { _ in
+      await automaticPass.wait()
+      throw MeetingTranscriptionJob.JobError.cancelled
+    }
+    let firstRelaunch = resumed.coordinator
+    firstRelaunch.launch()
+    await Self.eventually("automatic retry started") { automaticPass.parked }
+    try #require(resumed.store.load(id: id).state == .processing)
+    let exhausted = try Harness(copying: resumed.root)
+    firstRelaunch.prepareForTermination()
+    automaticPass.open()
+
+    exhausted.historyFiles[prior.id] = prior
+    exhausted.jobBehavior = { _ in Self.result(text: "replacement transcript") }
+    let secondRelaunch = exhausted.coordinator
+    secondRelaunch.launch()
+    // On the parent, an unexpected additional automatic pass finishes and becomes ready.
+    // Both outcomes reach this same settled signal, so the state assertion detects the bug.
+    await Self.eventually("manual retry available after launch") {
+      secondRelaunch.canTranscribeAgain(id) && !secondRelaunch.hasFinalPassWork
+    }
+    let failed = try exhausted.store.load(id: id)
+    try #require(failed.state == .failed, "a second automatic retry must not run")
+    #expect(exhausted.jobs.isEmpty)
+    #expect(failed.audioKept)
+    #expect(try exhausted.store.segmentFiles(meeting: id).map { try Data(contentsOf: $0.url) } == audio)
+    let previousRow = try #require(exhausted.historyFiles[failed.transcriptID])
+    let previousProjection = MeetingHistoryPresentation.project(
+      previousRow, info: MeetingHistoryInfo.paired(with: failed), showEcho: true)
+    #expect(MeetingHistoryPresentation.previewText(previousProjection).contains(prior.text))
+    #expect(secondRelaunch.playbackSource(meetingID: id) != nil)
+
+    // A capture that was interrupted can still have only its recording checkpoint on disk.
+    // In that case the same failure offers Retry but must never advertise partial playback.
+    let interrupted = try Harness(copying: exhausted.root)
+    var checkpoint = failed
+    checkpoint.wasInterrupted = true
+    try interrupted.store.save(checkpoint)
+    let interruptedLaunch = interrupted.coordinator
+    interruptedLaunch.launch()
+    await Self.eventually("interrupted recording can be transcribed again") {
+      interruptedLaunch.canTranscribeAgain(id)
+    }
+    #expect(interruptedLaunch.playbackSource(meetingID: id) == nil)
+
+    await Self.transcribeAgainOnceOffered(secondRelaunch, meetingID: id)
+    await Self.livePassFinished(secondRelaunch, id, replacing: priorGeneration)
+    let replacement = try #require(exhausted.saved.first)
+    #expect(replacement.id == prior.id)
+    #expect(replacement.text == "replacement transcript")
+    #expect(replacement.meetingTranscriptAttemptID != priorGeneration)
+  }
+
   @Test("a meeting written by a newer build is listed but never recovered or rewritten")
   func newerFormatIsRefused() async throws {
     let harness = try Harness()
@@ -2471,6 +2971,10 @@ struct MeetingCoordinatorTests {
     let recovering = await Task.detached { Self.waitBlocking(recoverySignal) }.value
     #expect(recovering == .success)
     #expect(busy())
+    // #4799: playback stays available, but Save audio is refused while recovery may still
+    // rebuild the inventory.
+    #expect(coordinator.playbackSource(meetingID: meetingID) != nil)
+    #expect(coordinator.audioExportSnapshot(meetingID: meetingID) == nil)
     recovery.signal()
     // The checkpoint write is held next.
     let enteredSignal = harness.checkpointEntered

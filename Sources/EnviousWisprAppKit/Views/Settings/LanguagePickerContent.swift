@@ -47,10 +47,14 @@ struct LanguagePickerAutoRow {
 // MARK: - Dictation
 
 extension LanguagePickerContent {
-  /// The dictation language window, exactly as it was before #4320: rows from
-  /// `LanguageLockOptions.pickerRows` (the one owner of which rows the engine can honour and which
-  /// match the search), selection from the stored mode and spelling, and every choice, Auto
-  /// included, through `select` (nil is Auto).
+  static let hindiCode = "hi"
+  static let hindiNeedsWhisper = String(
+    localized: "Hindi needs the Whisper engine.",
+    comment: "Dictation language picker and Settings notice: Hindi needs Whisper instead of Parakeet.")
+
+  /// The dictation language window. `LanguageLockOptions.pickerRows` owns filtering and search.
+  /// Supported choices use `select` (nil is Auto). The Engine tab can also offer Hindi as an
+  /// explicit engine change when it cannot apply a Hindi lock on the current engine.
   @MainActor
   static func dictation(
     mode: LanguageMode,
@@ -60,17 +64,34 @@ extension LanguagePickerContent {
     offersEnglishUK: Bool,
     query: String,
     recents: [LanguageCatalog.Entry],
+    offerHindiOnWhisper: (@MainActor () -> Void)? = nil,
     select: @escaping @MainActor (LanguageCatalog.Entry?) -> Void
   ) -> LanguagePickerContent {
     let isAuto: Bool = {
       if case .auto = mode { return true }
       return false
     }()
+    let offersHindi = offerHindiOnWhisper != nil
+      && !LanguageLockOptions.isLockHonoured(hindiCode, in: lockableCodes)
     func row(_ entry: LanguageCatalog.Entry) -> LanguagePickerRow {
-      dictationRow(
+      if offersHindi, entry.lockCode == hindiCode, let offerHindiOnWhisper {
+        return dictationRow(
+          entry, isSelected: false, requirement: hindiNeedsWhisper, action: offerHindiOnWhisper)
+      }
+      return dictationRow(
         entry,
         isSelected: LanguageLockOptions.isSelected(entry, mode: mode, stored: stored)
       ) { select(entry) }
+    }
+    // #2443: reserve "All languages" for an unfiltered list. When the list includes
+    // a separate engine offer, the row says what that language needs.
+    let heading: String
+    if offersHindi {
+      heading = String(localized: "Languages").localizedUppercase
+    } else if lockableCodes == nil {
+      heading = String(localized: "ALL LANGUAGES")
+    } else {
+      heading = String(localized: "AVAILABLE ON THIS MAC")
     }
     return LanguagePickerContent(
       // "Lock language" while the first row CLEARS the lock is the sheet
@@ -82,29 +103,25 @@ extension LanguagePickerContent {
       contextSubtitle: contextSubtitle,
       autoRow: LanguagePickerAutoRow(isSelected: isAuto) { select(nil) },
       recents: recents.map(row),
-      // **`ALL LANGUAGES` was a claim wider than the list.** Opened from Live
-      // Preview this sheet shows only the languages installed AND lockable — on a
-      // stock Mac, one — under a heading saying all, so the app appeared to speak
-      // one language (#2443). The caller knows whether its list is complete;
-      // `lockableCodes == nil` is exactly "no filter applied".
-      heading: lockableCodes == nil
-        ? String(localized: "ALL LANGUAGES") : String(localized: "AVAILABLE ON THIS MAC"),
+      heading: heading,
       emptySearchText: String(localized: "No language matches your search."),
       rows: LanguageLockOptions.pickerRows(
-        lockableCodes: lockableCodes, query: query, offersEnglishUK: offersEnglishUK
+        lockableCodes: offersHindi ? lockableCodes?.union([hindiCode]) : lockableCodes,
+        query: query, offersEnglishUK: offersEnglishUK
       ).map(row))
   }
 
   /// A dictation row from a catalog entry.
   static func dictationRow(
-    _ entry: LanguageCatalog.Entry, isSelected: Bool,
+    _ entry: LanguageCatalog.Entry, isSelected: Bool, requirement: String? = nil,
     action: @escaping @MainActor () -> Void
   ) -> LanguagePickerRow {
-    LanguagePickerRow(
+    let name = accessibilityLabel(for: entry)
+    return LanguagePickerRow(
       id: entry.code, code: entry.lockCode, nativeName: entry.nativeName,
       englishName: entry.englishName, displayName: entry.displayName,
-      subtitle: LanguageCatalog.pickerSubtitle(for: entry), isSelected: isSelected,
-      accessibilityLabel: accessibilityLabel(for: entry), action: action)
+      subtitle: requirement ?? LanguageCatalog.pickerSubtitle(for: entry), isSelected: isSelected,
+      accessibilityLabel: requirement.map { "\(name). \($0)" } ?? name, action: action)
   }
 
   /// #3124: the two English rows differ only by spelling, so VoiceOver says which.
@@ -181,8 +198,10 @@ extension LanguagePickerContent {
   static func commitDictation(
     _ entry: LanguageCatalog.Entry?,
     to settings: SettingsManager,
-    track: (_ fromLang: String, _ toLang: String, _ reason: String) -> Void,
-    dismiss: () -> Void
+    track: (_ fromLang: String, _ toLang: String, _ reason: String) -> Void = { from, to, reason in
+      TelemetryService.shared.trackManualLockUsed(fromLang: from, toLang: to, reason: reason)
+    },
+    dismiss: () -> Void = {}
   ) {
     let event = LanguageLockOptions.apply(entry, to: settings)
     track(event.fromLang, event.toLang, event.reason)

@@ -38,44 +38,61 @@ struct EscapeRecoveryPillLayoutTests {
     let sentence = ceil(
       title.size(
         withAttributes: [
-          .font: NSFont.systemFont(ofSize: UndoPillMetrics.sentenceSize, weight: .medium)
+          .font: NSFont.systemFont(ofSize: EscapeRecoveryPillMetrics.sentenceSize, weight: .medium)
         ]
       ).width)
     let button = ceil(
       word.size(
         withAttributes: [
-          .font: NSFont.systemFont(ofSize: UndoPillMetrics.actionSize, weight: .semibold)
+          .font: NSFont.systemFont(ofSize: EscapeRecoveryPillMetrics.actionSize, weight: .semibold)
         ]
-      ).width) + 2 * UndoPillMetrics.actionPaddingAcross
+      ).width) + 2 * EscapeRecoveryPillMetrics.actionPaddingAcross
 
     let claimed =
-      UndoPillMetrics.sidePadding + sentence + UndoPillMetrics.rowGap + button
-      + UndoPillMetrics.sidePadding
+      EscapeRecoveryPillMetrics.sidePadding + sentence + EscapeRecoveryPillMetrics.rowGap + button
+      + EscapeRecoveryPillMetrics.sidePadding
 
     // Failing this renders "Dictation cance…", which the earlier fixed-width
     // pill did when the copy was revised.
     #expect(fittingSize(of: EscapeRecoveryPillFace(progress: 0, palette: .dark)).width >= claimed)
   }
 
-  /// **#3747, founder 2026-10-14: "make the dictation cancelled pill the same
-  /// size as the added to dictionary pill".** The two Undo pills are drawn by
-  /// different views with different sentences, so their WIDTHS differ by design;
-  /// their heights are the size a person compares. Both real views are rendered
-  /// and the heights are read from what SwiftUI lays out, so a change to either
-  /// view that moves one fails here.
-  @Test("The cancelled pill is as tall as the learned-word pill")
-  @MainActor func theCancelledPillMatchesTheLearnedWordPillHeight() {
-    let learned = NSHostingView(
-      rootView: CorrectionLearnedPillView(
-        model: LearnedPillFixture.model(canonical: "Tuist", kind: .added), onUndo: {}, dwell: nil))
-    learned.layoutSubtreeIfNeeded()
+  /// The pill is its row plus its own padding. Since #4675 the learned-word pill has its own card
+  /// and size (founder kept this pill as it was; #3747's equal-height rule was retired), so this
+  /// pill's geometry is pinned against ITS OWN parts: the height is the taller of the sentence and
+  /// the button, plus the vertical padding on both sides, measured from the fonts and metrics
+  /// independently of the view's layout. A change to this pill's metrics or row that moves its
+  /// height fails here.
+  @Test("The cancelled pill is exactly its row plus its own vertical padding")
+  @MainActor func theCancelledPillKeepsItsOwnGeometry() {
     let cancelled = fittingSize(of: EscapeRecoveryPillFace(progress: 0, palette: .dark))
+    let sentenceFont = NSFont.systemFont(
+      ofSize: EscapeRecoveryPillMetrics.sentenceSize, weight: .medium)
+    let actionFont = NSFont.systemFont(
+      ofSize: EscapeRecoveryPillMetrics.actionSize, weight: .semibold)
+    let sentenceHeight = ceil(sentenceFont.ascender - sentenceFont.descender + sentenceFont.leading)
+    let buttonHeight =
+      ceil(actionFont.ascender - actionFont.descender + actionFont.leading)
+      + 2 * EscapeRecoveryPillMetrics.actionPaddingDown
+    let claimed = 2 * EscapeRecoveryPillMetrics.verticalPadding + max(sentenceHeight, buttonHeight)
 
-    #expect(learned.fittingSize.height > 0, "the learned-word pill did not lay out")
     #expect(cancelled.height > 0, "the cancelled pill did not lay out")
     #expect(
-      abs(cancelled.height - learned.fittingSize.height) <= 0.5,
-      "cancelled \(cancelled.height) vs learned-word \(learned.fittingSize.height)")
+      abs(cancelled.height - claimed) <= 1.5,
+      "cancelled \(cancelled.height) vs its row plus padding \(claimed)")
+  }
+
+  @Test("The cancelled pill's metrics are the values it shipped with")
+  func theCancelledPillMetricsAreUnchanged() {
+    // The numbers the pill had while it shared them with the learned-word pill (#3747), moved
+    // under its own name for #4675 without a visual change.
+    #expect(EscapeRecoveryPillMetrics.sentenceSize == 13)
+    #expect(EscapeRecoveryPillMetrics.actionSize == 12)
+    #expect(EscapeRecoveryPillMetrics.actionPaddingAcross == 12)
+    #expect(EscapeRecoveryPillMetrics.actionPaddingDown == 4)
+    #expect(EscapeRecoveryPillMetrics.rowGap == 10)
+    #expect(EscapeRecoveryPillMetrics.sidePadding == 14)
+    #expect(EscapeRecoveryPillMetrics.verticalPadding == 10)
   }
 
   @Test("The light and dark palettes lay out to the same size")

@@ -78,6 +78,8 @@ extension MeetingStore {
   public func loadDocuments(meeting id: UUID) throws -> LoadedDocuments {
     var read = try readDocuments(meeting: id)
     if read.loaded.repaired {
+      historyChanges?.begin()
+      defer { historyChanges?.finish(.meeting(id)) }
       do {
         try writeRepairs(read, meeting: id)
       } catch let error as DocumentError where error != .newerFormat {
@@ -85,6 +87,11 @@ extension MeetingStore {
       }
     }
     return read.loaded
+  }
+
+  /// The same visible document projection as loadDocuments without touching any saved file.
+  func historyDocuments(meeting id: UUID) throws -> LoadedDocuments {
+    try readDocuments(meeting: id).loaded
   }
 
   /// A settled read, and which notes files it found out of step.
@@ -164,6 +171,8 @@ extension MeetingStore {
   public func saveNotes(_ document: MeetingNotesDocument, revision: Int, meeting id: UUID) throws
     -> MeetingDocumentsManifest
   {
+    historyChanges?.begin()
+    defer { historyChanges?.finish(.meeting(id)) }
     try refuseDocumentWrite(id)
     let (base, old) = try currentManifestAndAge(id)
     try refuseUnreadableNotes(id)
@@ -221,6 +230,8 @@ extension MeetingStore {
   public func saveDraftNotes(_ document: MeetingNotesDocument, edits: Int, meeting id: UUID) throws
     -> LoadedDocuments
   {
+    historyChanges?.begin()
+    defer { historyChanges?.finish(.meeting(id)) }
     try refuseDocumentWrite(id)
     let read = try readDocuments(meeting: id)
     // Notes already on disk (a retry after a save that committed `notes.json` and failed later)
@@ -245,8 +256,11 @@ extension MeetingStore {
     _ text: String, origin: MeetingDocumentsManifest.Origin, inputs: SummaryInputs?,
     writtenInParts: Bool? = nil, meeting id: UUID
   ) throws -> MeetingDocumentsManifest {
+    historyChanges?.begin()
+    defer { historyChanges?.finish(.meeting(id)) }
     try refuseDocumentWrite(id)
     var next = try currentManifest(id)
+    if next.summary?.inputs != inputs { next.summaryNoticeDismissed = nil }
     next.summary = MeetingDocumentsManifest.Summary(
       sha256: MeetingDocumentHash.sha256(text), origin: origin, inputs: inputs,
       writtenInParts: inputs == nil ? nil : writtenInParts)
@@ -286,6 +300,13 @@ extension MeetingStore {
     case userEditKept(MeetingDocumentsManifest)
     /// The notes changed since the summary's inputs were read: not saved.
     case notesChanged(MeetingDocumentsManifest)
+    /// Another save or an external edit changed the summary shown by a manual preview.
+    case baseChanged(MeetingDocumentsManifest)
+  }
+
+  public enum SummaryPublication: Sendable {
+    case automatic
+    case replacing(MeetingDocumentsManifest.Summary?)
   }
 
   /// Saves a generated summary only if it may replace what is there, checked in the same file
@@ -295,21 +316,32 @@ extension MeetingStore {
   /// reconciled first, as a load does, so a summary or notes changed outside the app count.
   public func saveGeneratedSummary(
     _ text: String, inputs: SummaryInputs, writtenInParts: Bool, approvedUserEdit: String?,
-    meeting id: UUID
+    meeting id: UUID, publication: SummaryPublication = .automatic
   ) throws -> GeneratedSummarySave {
+    historyChanges?.begin()
+    defer { historyChanges?.finish(.meeting(id)) }
     try refuseDocumentWrite(id)
     var manifest = try readDocuments(meeting: id).loaded.manifest
-    manifest.summaryPending = nil
+    if case .replacing(let expected) = publication {
+      guard manifest.summary == expected,
+        try load(id: id).committedTranscriptGeneration
+          == (inputs.transcriptAttemptID ?? MeetingRecord.legacyTranscriptAttemptID)
+      else { return .baseChanged(manifest) }
+    } else {
+      manifest.summaryPending = nil
+    }
     if let current = manifest.summary, current.origin == .userEdited,
       current.sha256 != approvedUserEdit
     {
-      try writeManifest(manifest, meeting: id)
+      if case .automatic = publication { try writeManifest(manifest, meeting: id) }
       return .userEditKept(manifest)
     }
     if (manifest.notes?.revision ?? 0) != inputs.notesRevision {
-      try writeManifest(manifest, meeting: id)
+      if case .automatic = publication { try writeManifest(manifest, meeting: id) }
       return .notesChanged(manifest)
     }
+    manifest.summaryPending = nil
+    if manifest.summary?.inputs != inputs { manifest.summaryNoticeDismissed = nil }
     manifest.summary = MeetingDocumentsManifest.Summary(
       sha256: MeetingDocumentHash.sha256(text), origin: .generated, inputs: inputs,
       writtenInParts: writtenInParts)
@@ -323,9 +355,26 @@ extension MeetingStore {
   public func setSummaryPending(_ pending: Bool, meeting id: UUID) throws
     -> MeetingDocumentsManifest
   {
+    historyChanges?.begin()
+    defer { historyChanges?.finish(.meeting(id)) }
     try refuseDocumentWrite(id)
     var next = try currentManifest(id)
     next.summaryPending = pending ? true : nil
+    try writeManifest(next, meeting: id)
+    return next
+  }
+
+  /// #4611: records the meeting state (`current`, its summary inputs now) at which the person
+  /// dismissed the out-of-date notice, or clears it (nil), keeping the rest of the manifest as
+  /// on disk.
+  public func setSummaryNoticeDismissed(_ current: SummaryInputs?, meeting id: UUID) throws
+    -> MeetingDocumentsManifest
+  {
+    historyChanges?.begin()
+    defer { historyChanges?.finish(.meeting(id)) }
+    try refuseDocumentWrite(id)
+    var next = try currentManifest(id)
+    next.summaryNoticeDismissed = current
     try writeManifest(next, meeting: id)
     return next
   }

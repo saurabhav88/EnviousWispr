@@ -99,6 +99,7 @@ enum DesignPageCaptures {
       wrap: { view in
         AnyView(
           view.environment(\.locale, Locale(identifier: "en_US"))
+            .environment(\.enviousButtonShape, .roundedRect)
             .environment(\.holdsAnimatedMarksStill, true)
             .transaction { $0.disablesAnimations = true })
       },
@@ -217,7 +218,7 @@ enum DesignPageCaptures {
         engineMutationScope: .alwaysAllowedForTesting, isEngineSwitching: { false }))
     let windows = AppWindowCoordinator(
       application: RecordingDesktopPresentationEffects(), showInDock: { true },
-      canOpenOnboarding: { false }, isOnboardingComplete: { true })
+      isOnboardingComplete: { true })
     return AnyView(
       DiagnosticsSettingsView()
         .environment(settings).environment(diagnostics).environment(recording)
@@ -242,10 +243,11 @@ enum DesignPageCaptures {
 
   /// A recording pill leaf as the overlay draws it, with constant level and elapsed time.
   /// The screen atlas (#4506) also photographs it with words (`preview`) and with the in-pill
-  /// notice (`noticeText`); the defaults draw exactly what the Phase 2 captures drew.
+  /// notice (`notice`); the defaults draw exactly what the Phase 2 captures drew.
   static func pill(
     _ design: RecordingPillDesign, locked: Bool, preview: LivePreviewDisplay = .off,
-    noticeText: String? = nil
+    position: OverlayPillPosition = .top,
+    notice: RecordingNoticeReason? = nil
   ) -> AnyView {
     AnyView(
       RecordingOverlayView(
@@ -254,8 +256,11 @@ enum DesignPageCaptures {
         livePreviewProvider: { preview },
         onContentHeightChange: { _ in },
         chrome: design.chrome,
+        position: position,
         isLocked: locked,
-        noticeText: noticeText,
+        notice: notice.map {
+          RecordingNoticeDisplay(reason: $0, text: DictationNarrator.copy(for: $0))
+        },
         initialPreview: preview
       ).frame(width: design.width))
   }
@@ -299,6 +304,18 @@ enum DesignPageCaptures {
           wordID: UUID(uuidString: "4506A71A-0000-0000-0000-000000000003")!,
           canonical: "Tuist", kind: .added, phase: .learned))
     ),
+    // The result after Undo on an added word. Production never REQUESTS this phase: the reducer
+    // morphs the offer into it (`correctionLearnedResult`). The request exists so the atlas
+    // fixture is built from the same model type and copy as the live result, and so the
+    // exhaustive notice check covers it.
+    (
+      "correction-learned-removed",
+      .correctionLearned(
+        LearnedCorrectionPillModel(
+          id: UUID(uuidString: "4506A71A-0000-0000-0000-000000000002")!,
+          wordID: UUID(uuidString: "4506A71A-0000-0000-0000-000000000003")!,
+          canonical: "Tuist", kind: .added, phase: .undone))
+    ),
     (
       "language-chip",
       .passiveChip(
@@ -334,6 +351,8 @@ enum DesignPageCaptures {
     case .accessibilityToast: "accessibility-toast"
     case .warning: "warning-polish-failed"
     case .error: "error-capture"
+    // Reuses the actionable microphone notification layout; the live UAT captures this copy.
+    case .meetingSummaryLimit: nil
     case .advisory: "advisory-zero-signal"
     case .interruption: "interruption-device-removed"
     case .passiveChip: "language-chip"
@@ -344,10 +363,20 @@ enum DesignPageCaptures {
     case .bluetoothAwareness: "bluetooth"
     case .escapeRecovery: "escape-recovery"
     case .importStatus: "import-status"
-    case .correctionLearned: "correction-learned"
+    case .correctionLearned(let model):
+      switch model.phase {
+      case .learned: "correction-learned"
+      case .undone: "correction-learned-removed"  // an added word's removed result
+      // Pending and "Couldn't undo" have no atlas picture of their own: Pending draws the offer's
+      // card with its controls hidden, and the error is covered by the face tests (#4675 chunk 4).
+      case .undoPending, .undoError: nil
+      }
     case .correctionLearnedSaveError: "correction-save-error"
     case .polishSetupCard: "polish-setup-card"
     case .parakeetUpgrade: "parakeet-upgrade"
+    // #4845: the Parakeet ready pill's layout (ColdStartNoticeView, ready icon) with other words;
+    // PolishDownloadPillTests checks the words and the live UAT captures it.
+    case .polishDownloadComplete: nil
     }
   }
 
@@ -359,6 +388,12 @@ enum DesignPageCaptures {
     let definition = PillCatalog.entry(
       for: request, id: PresentationID(rawValue: UUID())
     ).definition
+    // The learned-word pill is drawn by its production face at a fixed countdown share, so the
+    // offer's brand rail is a visible stretch and not the live view's t=0 spark. The wrapper
+    // that follows the dwell clock is not used: a still picture needs no clock.
+    if case .correctionLearned(let learned)? = definition?.content {
+      return AnyView(LearnedPillCapture(model: learned))
+    }
     let model = OverlayRenderModel()
     model.publish(definition)
     // The interruption pill pulses on a clock (red lips and edge glow), so two runs differ; it is
@@ -401,5 +436,26 @@ enum DesignPageCaptures {
     default:
       throw DesignRenderHarness.RenderError("unknown logo fixture \(key)")
     }
+  }
+}
+
+/// The learned-word card as the atlas photographs it: `CorrectionLearnedPillFace` with the copy
+/// the live pill uses, the palette of the capture's own appearance, and the countdown a fixed
+/// way along. A result has no countdown, so its progress is never drawn.
+private struct LearnedPillCapture: View {
+  let model: LearnedCorrectionPillModel
+  /// How far along the offer's rail is drawn. Fixed so every run is the same picture.
+  static let railProgress = 0.4
+
+  @Environment(\.colorScheme) private var colorScheme
+
+  var body: some View {
+    CorrectionLearnedPillFace(
+      line: CorrectionLearnedPillCopy.line(for: model),
+      progress: Self.railProgress,
+      palette: PillPalette.forScheme(colorScheme)
+    )
+    .fixedSize()
+    .allowsHitTesting(false)
   }
 }

@@ -46,6 +46,7 @@ enum SettingsDefaultValues {
   /// value set, read here rather than restated so the two cannot drift.
   static let s1Control: S1ControlSettings = .default
 
+  static let automaticDictationPasteEnabled = true
   static let autoCopyToClipboard = true
   /// #3972: EnviousMeet records the call sound unless the user turns it off.
   static let meetingCaptureCallSound = true
@@ -79,6 +80,8 @@ enum SettingsDefaultValues {
   static let hotkeyEnabled = true
 
   static let vadAutoStop = false
+  /// #4841: founder decision 2026-11-22, on by default.
+  static let silentMicWarnings = true
   static let vadSilenceTimeout: Double = 1.5
   static let vadSensitivity: Float = 0.5
   static let vadEnergyGate = true
@@ -101,6 +104,8 @@ enum SettingsDefaultValues {
   static let pushToTalkModifiersRaw: UInt = NSEvent.ModifierFlags.option.rawValue
 
   static let modelUnloadPolicy: ModelUnloadPolicy = .never
+  /// #3853: the on-Mac polish helper stays loaded unless the user picks a time.
+  static let localPolishUnloadPolicy: ModelUnloadPolicy = .never
   static let restoreClipboardAfterPaste = true
   /// #3672: OFF, the released behavior; ON adds the nspasteboard.org transient marker.
   static let keepDictationsOutOfClipboardHistory = false
@@ -164,6 +169,7 @@ enum SettingsDefaultValues {
   // #996: learn from edits. ON by default (founder 2026-09-18): the card only
   // asks, nothing is remembered without a click. See `SettingsManager.learnFromEdits`.
   static let learnFromEdits = true
+  static let fixLearnedWords = true
 
   // #3147 Gate 2 (founder 2026-11-12): recordings are kept until the user deletes them (D2:
   // no automatic seven-day removal); meeting audio likewise; warn at 2 GB and ask (D3).
@@ -182,6 +188,7 @@ enum SettingsDefaultValues {
   static let whisperKitLanguage = "en"
   // #3124: American spelling unless the user picks English (UK); only in force with an English lock.
   static let englishSpelling: EnglishSpelling = .american
+  static let dictationTranslationTarget: DictationTranslationTarget? = nil
 
   static let selectedInputDeviceUID = ""
   static let preferredInputDeviceIDOverride = ""

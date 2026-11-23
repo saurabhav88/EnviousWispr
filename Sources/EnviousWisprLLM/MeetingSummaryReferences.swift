@@ -120,10 +120,7 @@ public enum MeetingSummaryReferences {
     return MeetingTranscriptProjection.visible(
       turns: turns, echoTurnIDs: echoTurnIDs, showEcho: showEcho
     ).turns.compactMap { turn in
-      let lower = max(0, min(turn.originalTextRange.lowerBound, utf16.count))
-      let upper = max(lower, min(turn.originalTextRange.upperBound, utf16.count))
-      let words = String(decoding: utf16[lower..<upper], as: UTF16.self)
-        .trimmingCharacters(in: .whitespacesAndNewlines)
+      let words = MeetingTranscriptProjection.displayWords(in: turn, originalUTF16: utf16)
       guard !words.isEmpty else { return nil }
       let name = speakerNames[turn.speakerId].flatMap { $0.isEmpty ? nil : $0 }
       return MeetingSummaryTurnSource(id: turn.id, speaker: name, text: line(words))

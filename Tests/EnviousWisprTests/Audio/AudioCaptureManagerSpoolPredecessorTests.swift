@@ -230,7 +230,7 @@ import EnviousWisprAppKitTestSupport
       manager.installDiskSpaceCheckForTesting { _ in true }
       let stub = StopFenceStub()
       manager.installSourceFactoryForTesting { _ in stub }
-      try await manager.startEnginePhase()
+      try await manager.startEnginePhase(startDeadline: MicrophoneStartBudget.deadline(from: .now))
 
       manager.armRecoverySpoolingForTesting(
         payload: try Self.payload(sessionID: "interrupted-take", dir: dir))

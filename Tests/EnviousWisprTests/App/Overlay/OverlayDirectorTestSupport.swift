@@ -37,7 +37,7 @@ enum OverlayTestDouble {
       // Announcements go nowhere: a test that has not asked for a screen has not
       // asked for VoiceOver either, and the real post reaches the system.
       announce: { _ in }, livePreview: .disabled, grantAccessibility: {},
-      openMicrophoneSettings: {}, advisoryHint: { _ in nil }, selections: { .shipped },
+      openMicrophoneSettings: {}, openMicrophoneHelp: {}, advisoryHint: { _ in nil }, selections: { .shipped },
       firstRenderSchedule: { $0() })
   }
 
@@ -56,7 +56,7 @@ enum OverlayTestDouble {
     return (
       OverlayDirector(
         host: host, announce: { _ in },
-        livePreview: .disabled, grantAccessibility: {}, openMicrophoneSettings: {},
+        livePreview: .disabled, grantAccessibility: {}, openMicrophoneSettings: {}, openMicrophoneHelp: {},
         advisoryHint: advisoryHint,
         selections: { .shipped }, firstRenderSchedule: { $0() }),
       host

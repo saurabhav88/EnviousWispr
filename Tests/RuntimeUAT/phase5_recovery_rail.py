@@ -2,7 +2,7 @@
 
 Phase 5 deleted the recovery pill's `dismissTask` and `onExpire`, so the
 director's clock is the only thing that dismisses this rail. The catalog arms it
-`.after(seconds: 3, pausesOnHover: true)` (`PillCatalog.swift:320`), and until the
+`.after(seconds: 3, hover: .restartFull)` (`PillCatalog.swift:320`), and until the
 cutover there were TWO three-second timers running side by side — a panel-level
 one and the view's own — which cloud review caught only because the rail finished
 while the pill was still on screen. This row is the outside proof that one

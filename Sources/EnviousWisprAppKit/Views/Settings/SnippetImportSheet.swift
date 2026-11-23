@@ -9,14 +9,26 @@ import SwiftUI
 /// review and commit path. Dismissing at any point cancels in-flight work and writes
 /// nothing; a commit already started completes and is not shown.
 struct SnippetImportSheet: View {
-  private static let screenTransition: AnyTransition = .asymmetric(
-    insertion: .opacity.combined(with: .offset(y: 20)),
-    removal: .opacity
-  )
+  /// #4866: with Reduce Motion on, a screen change swaps at once (no 20 pt slide, no fade);
+  /// the state still changes. Same swap shape as swift-patterns RULE: swap-whole-screens-without-animation.
+  private static func screenTransition(reduceMotion: Bool) -> AnyTransition {
+    reduceMotion
+      ? .identity
+      : .asymmetric(
+        insertion: .opacity.combined(with: .offset(y: 20)),
+        removal: .opacity
+      )
+  }
+
+  /// The one container animation for a screen change; nil under Reduce Motion (#4866).
+  static func stepAnimation(reduceMotion: Bool) -> Animation? {
+    reduceMotion ? nil : .easeInOut(duration: 0.25)
+  }
 
   @State private var model: SnippetImportFlowModel
   @State private var showDiscardConfirm = false
   @Environment(\.dismiss) private var dismiss
+  @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
   /// `startingWith` opens on that method's screen instead of the method picker (#3034).
   init(
@@ -52,31 +64,32 @@ struct SnippetImportSheet: View {
       header
 
       ZStack {
+        let transition = Self.screenTransition(reduceMotion: reduceMotion)
         switch model.step {
         case .methodPicker:
           SnippetImportMethodPickerScreen(model: model)
-            .transition(Self.screenTransition)
+            .transition(transition)
         case .paste:
           SnippetImportPasteScreen(model: model)
-            .transition(Self.screenTransition)
+            .transition(transition)
         case .file:
           SnippetImportFileScreen(model: model)
-            .transition(Self.screenTransition)
+            .transition(transition)
         case .appPicker:
           SnippetImportAppPickerScreen(model: model)
-            .transition(Self.screenTransition)
+            .transition(transition)
         case .review:
           SnippetImportReviewScreen(model: model)
-            .transition(Self.screenTransition)
+            .transition(transition)
         case .working(let work):
           SnippetImportWorkingScreen(work: work)
-            .transition(Self.screenTransition)
+            .transition(transition)
         case .result(let result):
           SnippetImportResultScreen(result: result)
-            .transition(Self.screenTransition)
+            .transition(transition)
         }
       }
-      .animation(.easeInOut(duration: 0.25), value: model.step)
+      .animation(Self.stepAnimation(reduceMotion: reduceMotion), value: model.step)
 
       footer
     }

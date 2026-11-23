@@ -4,11 +4,9 @@ import Foundation
 /// Telemetry Bible Phase 7 (#1176): the in-flight onboarding session + its single
 /// terminal emit.
 ///
-/// Written by `OnboardingV2View` as the user advances; its terminal methods are
-/// called by the App-layer terminal paths — window-close via the existing
-/// `onOnboardingDismissed` closure, app-quit via the bootstrapper's terminate
-/// forwarding. Owning the guarded emit HERE means no coordinator gains a stored
-/// property (those have exact-allowlist ceiling tests) and callers are one-liners.
+/// The active Setup workflow updates its visit position and calls the terminal methods on close,
+/// completion or quit. During the cutover, legacy onboarding and the shared Setup session use this
+/// same guarded box under exclusive ownership.
 ///
 /// Plain `@MainActor final class` (NOT `@Observable`) — nothing renders off it; it
 /// is written by the view and read once at terminal, so reactive observation would
@@ -79,13 +77,16 @@ final class OnboardingProgress {
   /// app-quit terminate path call this. Emits at most once per session; a clean
   /// finish (`markCompleted`) or a prior abandon suppresses it. Posture is passed
   /// in by the caller so this box does not depend on `PermissionsService`.
-  func emitAbandonIfInFlight(reason: String, micStatus: String, accessibilityStatus: String) {
+  func emitAbandonIfInFlight(
+    reason: String, micStatus: String, accessibilityStatus: String,
+    skipAhead: OnboardingTelemetry.SkipAheadVisitSummary? = nil
+  ) {
     guard let started = sessionStartedAt, !terminalEmitted else { return }
     terminalEmitted = true
     TelemetryService.shared.onboardingAbandoned(
       screen: screen, step: step,
       elapsedSeconds: Date().timeIntervalSince(started),
       micStatus: micStatus, accessibilityStatus: accessibilityStatus,
-      abandonReason: reason, source: source)
+      abandonReason: reason, source: source, skipAhead: skipAhead)
   }
 }

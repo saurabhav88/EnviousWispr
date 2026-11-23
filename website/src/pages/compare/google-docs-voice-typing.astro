@@ -1,5 +1,6 @@
 ---
 import CompareLayout from '../../layouts/CompareLayout.astro';
+import { faqAnswerHtml } from '../../utils/compare-faq.js';
 
 const meta = {
   "slug": "google-docs-voice-typing",
@@ -20,7 +21,7 @@ const faqs = [
   },
   {
     "q": "Can I dictate outside Google Docs for free?",
-    "a": "Yes. EnviousWispr is free, with no subscription, no usage limits, and no account required. Download and start dictating in any app on your Mac."
+    "a": "Yes. EnviousWispr is free, with no subscription, no usage limits, and no account required. Download and start dictating in any app on your Mac. See the [2-minute getting started guide](/blog/getting-started-enviouswispr-under-2-minutes/)."
   },
   {
     "q": "Does EnviousWispr work offline?",
@@ -40,11 +41,11 @@ const faqs = [
   },
   {
     "q": "Can EnviousWispr remove filler words?",
-    "a": "Yes. EnviousWispr automatically removes um, uh, like, and other filler words. Google Docs voice typing transcribes everything as spoken, including fillers."
+    "a": "Yes. EnviousWispr automatically removes spoken noises like \"um\", \"uh\" and \"hmm\", with no AI needed. When AI polish runs, it also removes false starts and repeated words. Google Docs voice typing transcribes everything as spoken, including fillers."
   },
   {
     "q": "Is EnviousWispr open source?",
-    "a": "Open source under the GNU General Public License v3 (GPLv3), an OSI-approved license. You can read, build, and inspect every line of code on GitHub. Contributions are welcome."
+    "a": "Open source under the GNU General Public License v3 (GPLv3), an OSI-approved license. You can read, build, inspect, and contribute to every line of code on GitHub. Contributions are welcome."
   },
   {
     "q": "Can I use Google Docs voice typing in Slack, VS Code, or other apps?",
@@ -52,11 +53,11 @@ const faqs = [
   },
   {
     "q": "Does Google Docs voice typing add punctuation automatically?",
-    "a": "Only to a limited extent. In most languages, you need to say period, comma, question mark, and other punctuation aloud. EnviousWispr handles punctuation automatically through its ASR engine and optional LLM polish."
+    "a": "Only to a limited extent. In most languages, you need to say \"period\", \"comma\", \"question mark\", and other punctuation aloud. EnviousWispr handles punctuation automatically through its ASR engine and optional LLM polish, so you can speak naturally without thinking about punctuation."
   },
   {
     "q": "Can I teach Google Docs voice typing my company's terminology?",
-    "a": "No. Google Docs Voice Typing has no custom vocabulary feature. EnviousWispr's Custom Words feature lets you define exact spellings for names, jargon, and domain-specific terms that get applied every time you dictate."
+    "a": "No. Google Docs Voice Typing has no custom vocabulary feature. If it misrecognizes a product name, acronym, or technical term, there is no way to correct it. EnviousWispr's Custom Words feature lets you define exact spellings for names, jargon, and domain-specific terms that get applied every time you dictate."
   }
 ];
 ---
@@ -247,7 +248,7 @@ const faqs = [
       </span>
       <span class="hero-pill">
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
-        0.61s median latency
+        Sub-second for short dictations
       </span>
     </div>
     <div class="hero-cta reveal">
@@ -393,7 +394,7 @@ const faqs = [
           </tr>
           <tr>
             <td>Transcription latency</td>
-            <td><span class="table-highlight">0.61s median</span>; ~1.65s with on-device AI polish</td>
+            <td><span class="table-highlight">Under a second</span> for typical short dictations; AI polish adds time that grows with length</td>
             <td>Depends on network + Google server load</td>
           </tr>
         </tbody>
@@ -446,7 +447,7 @@ const faqs = [
       <div class="advantage-card reveal">
         <div class="advantage-icon">⚡</div>
         <div class="advantage-title">Fast local transcription</div>
-        <p class="advantage-desc">Median time to text is 0.61s on Apple Silicon. No network round-trips, no server queues. Immune to bad Wi-Fi, unlike cloud-dependent dictation.</p>
+        <p class="advantage-desc">Short dictations are typically transcribed in under a second on Apple Silicon. Transcription has no network round-trips or server queues, so it is immune to bad Wi-Fi, unlike cloud-dependent dictation.</p>
       </div>
     </div>
   </div>
@@ -552,26 +553,26 @@ const faqs = [
     <div class="section-head reveal">
       <div class="section-label-pill amber">Speed</div>
       <h2 class="section-title">Fast because there is no upload step</h2>
-      <p class="section-sub">On Apple Silicon Macs, EnviousWispr transcribes speech locally. No network round-trip before text appears.</p>
+      <p class="section-sub">On Apple Silicon Macs, EnviousWispr transcribes speech locally. Transcription never waits on an upload round trip.</p>
     </div>
     <div class="speed-stats">
       <div class="speed-card reveal">
-        <div class="speed-value">0.61s</div>
-        <div class="speed-label">Median transcription</div>
-        <div class="speed-detail">From end of speech to raw text</div>
+        <div class="speed-value">&lt;1s</div>
+        <div class="speed-label">Transcription, short dictations</div>
+        <div class="speed-detail">Typical time after you stop speaking</div>
       </div>
       <div class="speed-card reveal">
-        <div class="speed-value">1.65s</div>
-        <div class="speed-label">With AI polish</div>
-        <div class="speed-detail">EG-1 or Apple, on-device; scales with dictation length</div>
+        <div class="speed-value">Scales</div>
+        <div class="speed-label">AI polish time</div>
+        <div class="speed-detail">Grows with how much you dictated</div>
       </div>
       <div class="speed-card reveal">
         <div class="speed-value">0ms</div>
         <div class="speed-label">Network overhead</div>
-        <div class="speed-detail">Immune to bad Wi-Fi</div>
+        <div class="speed-detail">Transcription is immune to bad Wi-Fi</div>
       </div>
     </div>
-    <p style="font-size: 11px; color: var(--text-3); margin-top: 12px; text-align: center;">Based on production data from Apple Silicon Macs. Results vary by hardware and settings.</p>
+    <p style="font-size: 11px; color: var(--text-3); margin-top: 12px; text-align: center;">Transcription time is the median for short dictations (under 5 seconds of speech) with the default Parakeet Ultra engine, from production use on Apple Silicon Macs, measured October 2026. It is still under a second on the oldest supported Macs (M1). It excludes AI polish and pasting; longer recordings take longer.</p>
   </div>
 </section>
 
@@ -622,50 +623,12 @@ const faqs = [
       <h2 class="section-title">Common questions</h2>
     </div>
     <div class="faq-list">
-      <div class="faq-item reveal">
-        <div class="faq-q">Is there a Google Docs voice typing alternative that works outside the browser?</div>
-        <p class="faq-a">Yes. EnviousWispr is a native Mac app that works in any text field system-wide. Dictate into Slack, VS Code, email, Notes, or any other app. No browser required.</p>
-      </div>
-      <div class="faq-item reveal">
-        <div class="faq-q">Can I dictate outside Google Docs for free?</div>
-        <p class="faq-a">Yes. EnviousWispr is free, with no subscription, no usage limits, and no account required. Download and start dictating in any app on your Mac. See the <a href="/blog/getting-started-enviouswispr-under-2-minutes/" style="color: var(--accent); text-decoration: underline;">2-minute getting started guide</a>.</p>
-      </div>
-      <div class="faq-item reveal">
-        <div class="faq-q">Does EnviousWispr work offline?</div>
-        <p class="faq-a">Transcription runs entirely on-device and works without internet. AI polish requires an LLM; you can use a local model for fully offline operation or bring your own API key for a cloud provider.</p>
-      </div>
-      <div class="faq-item reveal">
-        <div class="faq-q">Does Google Docs voice typing send my audio to the cloud?</div>
-        <p class="faq-a">In Chrome, yes: Google's speech service processes your audio, which needs an internet connection. Google says your browser controls the speech service, so in Edge or Safari the browser's own service handles it. EnviousWispr processes audio entirely on your Mac, on the Apple Silicon Neural Engine or GPU.</p>
-      </div>
-      <div class="faq-item reveal">
-        <div class="faq-q">Does EnviousWispr have voice commands like Google Docs?</div>
-        <p class="faq-a">Not the same kind. Google Docs supports voice commands for select, format, and navigate in English. EnviousWispr supports spoken punctuation and emoji, but has no voice commands for app navigation or editing.</p>
-      </div>
-      <div class="faq-item reveal">
-        <div class="faq-q">What Mac do I need?</div>
-        <p class="faq-a">Any Mac with Apple Silicon (M1 or later) running macOS 14 Sonoma or newer. The Neural Engine and GPU on Apple Silicon are what make on-device transcription fast.</p>
-      </div>
-      <div class="faq-item reveal">
-        <div class="faq-q">Can EnviousWispr remove filler words?</div>
-        <p class="faq-a">Yes. EnviousWispr automatically removes "um", "uh", "like", and other filler words. Google Docs voice typing transcribes everything as spoken, including fillers.</p>
-      </div>
-      <div class="faq-item reveal">
-        <div class="faq-q">Is EnviousWispr open source?</div>
-        <p class="faq-a">Open source under the GNU General Public License v3 (GPLv3), an OSI-approved license. You can read, build, inspect, and contribute to every line of code on GitHub. Contributions are welcome.</p>
-      </div>
-      <div class="faq-item reveal">
-        <div class="faq-q">Can I use Google Docs voice typing in Slack, VS Code, or other apps?</div>
-        <p class="faq-a">No. Google Docs Voice Typing only works inside Google Docs and Google Slides in a supported browser. If you need to dictate into Slack, VS Code, email clients, terminals, or any other app, you need a system-wide tool. Google's separate Gemini app for Mac now offers system-wide dictation that works in the cloud; EnviousWispr does it on your Mac.</p>
-      </div>
-      <div class="faq-item reveal">
-        <div class="faq-q">Does Google Docs voice typing add punctuation automatically?</div>
-        <p class="faq-a">Only to a limited extent. In most languages, you need to say "period", "comma", "question mark", and other punctuation aloud. EnviousWispr handles punctuation automatically through its ASR engine and optional LLM polish, so you can speak naturally without thinking about punctuation.</p>
-      </div>
-      <div class="faq-item reveal">
-        <div class="faq-q">Can I teach Google Docs voice typing my company's terminology?</div>
-        <p class="faq-a">No. Google Docs Voice Typing has no custom vocabulary feature. If it misrecognizes a product name, acronym, or technical term, there is no way to correct it. EnviousWispr's Custom Words feature lets you define exact spellings for names, jargon, and domain-specific terms that get applied every time you dictate.</p>
-      </div>
+      {faqs.map(({ q, a }) => (
+        <div class="faq-item reveal">
+          <div class="faq-q">{q}</div>
+          <p class="faq-a" set:html={faqAnswerHtml(a)} />
+        </div>
+      ))}
     </div>
   </div>
 </section>

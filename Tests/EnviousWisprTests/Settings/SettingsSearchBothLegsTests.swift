@@ -80,14 +80,17 @@ struct SettingsSearchBothLegsTests {
   /// English and German, through the shipped search with both legs. #4320 founder decision 9: a
   /// search for "Live Preview" shows both dictation's and EnviousMeet's Live Preview, told apart
   /// by their page breadcrumbs; the old meeting name still finds the meeting card.
-  @Test("Live Preview finds both dictation's and EnviousMeet's, and Transcript language is found first")
+  @Test(
+    "Live Preview finds both dictation's and EnviousMeet's, and Transcript language is found first")
   func meetingLanguageRowsAreFound() async throws {
     let english = try Self.model("en")
     let german = try Self.model("de")
     for (model, query) in [(english, "live preview"), (german, "Live-Vorschau")] {
       let ids = Array(await Self.search(model, query).prefix(5))
       #expect(
-        !Set(ids).isDisjoint(with: ["livePreview", "dictation.tab.livePreview", "section.livePreview"]),
+        !Set(ids).isDisjoint(with: [
+          "livePreview", "dictation.tab.livePreview", "section.livePreview",
+        ]),
         "\(query): dictation's Live Preview in \(ids)")
       #expect(ids.contains("meetingLiveWords"), "\(query): EnviousMeet's Live Preview in \(ids)")
     }
@@ -131,7 +134,9 @@ struct SettingsSearchBothLegsTests {
     let english = try Self.model("en")
     let german = try Self.model("de")
     let overrides = SettingsSearchMatchingTests.bothLegsOverrides
-    for wordRow in SettingsSearchMatchingTests.queryTable + SettingsSearchMatchingTests.sentenceTable {
+    for wordRow in SettingsSearchMatchingTests.queryTable
+      + SettingsSearchMatchingTests.sentenceTable
+    {
       let row =
         overrides.first { $0.language == wordRow.language && $0.query == wordRow.query } ?? wordRow
       check(row, await Self.search(row.language == "de" ? german : english, row.query))
@@ -147,8 +152,8 @@ struct SettingsSearchBothLegsTests {
 
   /// #4473: a search naming an EG-1 size reaches an EG-1 place on the AI Polish page, in English
   /// and German. A user typing "EG-1 Micro" would otherwise find nothing about the card they want.
-  /// Only the queries that land there today are asserted; "Mini", "Micro", "model size",
-  /// "smaller model" and the German "Modellgröße" / "kleineres Modell" do not (reported as gaps).
+  /// #4501 added the bare size words below; "smaller model" and "kleineres Modell" still are not
+  /// asserted (gaps).
   @Test("searches naming an EG-1 size reach an EG-1 place on the AI Polish page")
   func eg1SizeSearchesReachEG1() async throws {
     let english = try Self.model("en")
@@ -165,6 +170,97 @@ struct SettingsSearchBothLegsTests {
       let ids = Array(await Self.search(model, query).prefix(5))
       let landed = ids.contains { places.contains($0) || $0.hasPrefix("localModel.") }
       #expect(landed, "\(query): \(ids)")
+    }
+  }
+
+  /// #4501: the bare size words and "model size" reach the EG-1 choice (`aiPolishProvider.egOne`,
+  /// where the size cards live), measured with each language's real index and a finished meaning
+  /// pass. A word entry would score 110 and outrank the microphone titles and S1-mini's title
+  /// (100), so "Micro" and "Mini" ride on phrases (45): the microphone places and S1-mini keep
+  /// first place and EG-1 joins the top five where the words are unambiguous. In French and
+  /// Spanish a bare "micro" means microphone and several places score 110 for it, so EG-1 does
+  /// not surface for "Micro" or "Mini" there by design (a microphone place leads "Micro" and an
+  /// S1-mini or local-model place leads "Mini"); "taille" and "tamaño" work.
+  /// #4841: the silent-microphone switch is found by what a user calls it, with a finished
+  /// meaning pass. When this fails, someone looking for the warning switch does not find it.
+  @Test("the silent-microphone warning switch is found by its own words (#4841)")
+  func silentMicWarningIsFound() async throws {
+    let rows: [(String, String)] = [
+      ("en", "silent microphone"), ("en", "silence warning"), ("en", "silent input alert"),
+      ("de", "Mikrofonstille"), ("de", "Stillehinweis"),
+    ]
+    for (language, query) in rows {
+      let model = try Self.model(language)
+      let ids = await Self.search(model, query)
+      #expect(model.meaningPass == .completed, "the meaning pass did not finish for \(query)")
+      #expect(
+        ids.prefix(3).contains("silentMicWarning"), "\(language) \(query): \(Array(ids.prefix(5)))")
+    }
+  }
+
+  @Test("size searches reach the EG-1 choice without displacing the microphone or S1-mini (#4501)")
+  func eg1SizeWordsReachEG1Choice() async throws {
+    func model(_ index: Result<SettingsSearchIndex, any Error>) throws -> SettingsSearchModel {
+      let index = try index.get()
+      return SettingsSearchModel(
+        loadIndex: { index }, meaningWorker: Self.worker(), meaningDeadlineElapses: Self.noDeadline,
+        announce: { _ in }, announcementDelay: .seconds(60))
+    }
+    let egOne = "aiPolishProvider.egOne"
+    func isS1Place(_ id: String) -> Bool {
+      id.hasPrefix("s1") || id.hasPrefix("localModel.")
+        || id.localizedCaseInsensitiveContains("s1Mini")
+    }
+    /// Searches and requires the meaning pass to have finished, so a skipped pass cannot pass.
+    func search(_ model: SettingsSearchModel, _ query: String) async -> [String] {
+      let ids = await Self.search(model, query)
+      #expect(model.meaningPass == .completed, "the meaning pass did not finish for \(query)")
+      return ids
+    }
+    func isMicrophone(_ id: String) -> Bool {
+      id.localizedCaseInsensitiveContains("microphone") || id.hasPrefix("micReadiness")
+        || id.hasPrefix("inputDevice")
+    }
+    let s1Mini: Set<String> = ["aiPolish.whyUse.s1Mini", "aiPolishProvider.s1Mini"]
+
+    // "model size" in every language: the EG-1 choice is in the top three.
+    let sizeWords: [(String, Result<SettingsSearchIndex, any Error>, String)] = [
+      ("en", SettingsSearchMatchingTests.english, "model size"),
+      ("de", SettingsSearchMatchingTests.german, "Modellgröße"),
+      ("fr", SettingsSearchMatchingTests.french, "taille du modèle"),
+      ("es", SettingsSearchMatchingTests.spanish, "tamaño del modelo"),
+    ]
+    for (language, index, query) in sizeWords {
+      let ids = Array(await search(try model(index), query).prefix(3))
+      #expect(ids.contains(egOne), "\(language) \(query): \(ids)")
+    }
+
+    // "Micro" and "Mini" in English and German: the microphone places or S1-mini stay first. EG-1
+    // is in the top five for "Mini" and the top six for "Micro": #4841 added a fifth place whose
+    // title names the microphone ("Warn when the microphone is silent"), and a title match outranks
+    // EG-1's "EG-1 Micro" phrase by design. Founder decision 2026-11-22: accept sixth place.
+    for (language, index) in [
+      ("en", SettingsSearchMatchingTests.english), ("de", SettingsSearchMatchingTests.german),
+    ] {
+      let micro = await search(try model(index), "Micro")
+      #expect(micro.first.map(isMicrophone) == true, "\(language) Micro first: \(micro.prefix(5))")
+      #expect(micro.prefix(6).contains(egOne), "\(language) Micro: \(micro.prefix(8))")
+      let mini = await search(try model(index), "Mini")
+      #expect(mini.first.map(s1Mini.contains) == true, "\(language) Mini first: \(mini.prefix(5))")
+      #expect(mini.prefix(5).contains(egOne), "\(language) Mini: \(mini.prefix(8))")
+    }
+
+    // French and Spanish: the documented limit. Microphone places and S1-mini places lead, and
+    // EG-1 is not put above them.
+    for (language, index) in [
+      ("fr", SettingsSearchMatchingTests.french), ("es", SettingsSearchMatchingTests.spanish),
+    ] {
+      let micro = await search(try model(index), "Micro")
+      #expect(micro.first.map(isMicrophone) == true, "\(language) Micro first: \(micro.prefix(5))")
+      #expect(!micro.prefix(1).contains(egOne), "\(language) Micro: EG-1 must not lead")
+      let mini = await search(try model(index), "Mini")
+      #expect(mini.first.map(isS1Place) == true, "\(language) Mini first: \(mini.prefix(5))")
+      #expect(!mini.prefix(1).contains(egOne), "\(language) Mini: EG-1 must not lead")
     }
   }
 
@@ -298,6 +394,9 @@ struct SettingsSearchMeaningCampaignTests {
       try #require(phase == "warm", "EW_MEANING_CAMPAIGN is cold:<n> or warm")
       first = 30
     }
+    // #4772: the title index is built before the clock starts, as an open window has it, so the
+    // cold samples time the full index and the meaning pass only.
+    try #require(await SettingsSearchModelTests.prepared(model), "the title index never arrived")
     model.setQuery(queries[first])
     let started = ContinuousClock.now
     await gate.open()

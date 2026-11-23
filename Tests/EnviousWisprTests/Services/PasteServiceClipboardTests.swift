@@ -305,7 +305,7 @@ struct PasteServiceClipboardTests {
 
   @Test("#3528: the paste entry publishes the requested marker before dispatch")
   func pasteEntryPublishesRequestedMarker() throws {
-    let cases: [(PasteService.WriteKind, Bool)] = [(.temporary, true), (.kept, false)]
+    let cases: [(PasteService.WriteKind, Bool)] = [(.temporary, true), (.kept, false), (.keptHidden, true)]
     for (kind, expectedMarker) in cases {
       try withPrivatePasteboard { board in
         var posts = 0

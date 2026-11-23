@@ -6,6 +6,7 @@ import json, os, platform, sys, subprocess, time
 import datetime as _dt
 import pathlib
 sys.path.insert(0, os.path.dirname(__file__))
+import log_verdict
 from ui_helpers import (find_app_pid, get_ax_app, get_attr, set_attr, perform_action,
     find_element, find_all_elements, find_control_for_label, wait_for_condition,
     get_process_memory_mb, get_clipboard_text, validate_app_ready, element_frame,
@@ -592,27 +593,71 @@ def _play_take(audio, on_fail):
             raise _tg.SetupFailed("playback", f"afplay did not start: {exc!r}")
 
 
+_DRIVER_ACTIVE_STATES = {"loadingModel", "recording", "transcribing", "polishing"}
+# The dev control door of the app under test, set by `audio_rig.AudioRig` (its pinned client) for
+# the length of a rig (#4829); outside a rig the idle check opens one for `_pid`.
+_idle_door = None
+
+
+def _driver_state(timeout=2.0):
+    """The app's own dictation state, `activeDriver.state` from the dev control door's read-only
+    `status` (`DevControlDispatcher.project(_:)`: idle, loadingModel, recording, transcribing,
+    polishing, complete, error, advisory), or None when the door cannot answer within `timeout`
+    seconds (#4829)."""
+    import dev_control
+    try:
+        client = _idle_door if _idle_door is not None else dev_control.DoorClient(_pid)
+        previous, client.timeout = client.timeout, timeout
+        try:
+            reply = client.status()
+        finally:
+            client.timeout = previous
+        state = reply.get("activeDriver", {}).get("state")
+    except Exception:
+        return None
+    return state if isinstance(state, str) else None
+
+
 def _recording_idle(seconds=30.0):
-    """Whether the app stopped recording: its menu offers Start Recording and not Stop Recording.
-    Both are read so a menu AX cannot see at all never reads as idle (#3764).
+    """Whether the app stopped recording, polled until `seconds` pass.
 
-    Both items live in the status item's menu (`AXExtrasMenuBar`), so only the menu bars are
-    searched (#4047): a search of the whole app for the ABSENT "Stop Recording" walked every open
-    window and took 90 s per call (measured 2026-10-24), which stalled every take
-    after the first by about 100 s. With no readable menu bar the answer stays "not idle"."""
-    menus = [m for m in (get_attr(_app, "AXExtrasMenuBar"), get_attr(_app, "AXMenuBar")) if m is not None]
-    if not menus:
-        return False
+    First the app's own signal: the dev control door's dictation state is not one of the active
+    states (the same set as `PipelineState.isActive`) (#4829). The status-item menu is NOT a
+    reliable signal: measured on main 09fbe748d, its `AXExtrasMenuBar` vanishes from the AX tree
+    when recording starts and returns about 30 s after the take ends, so a check made right after
+    a take read no menu and answered "not idle" every time.
 
-    def offered(label):
-        return any(_find_match(m, label, "AXMenuItem") is not None for m in menus)
+    Only when the door cannot answer, the menu: it offers Start Recording and not Stop Recording,
+    both read so a menu AX cannot see never reads as idle (#3764), re-read on every poll because
+    the bar comes and goes. Only the menu bars are searched (#4047): a search of the whole app for
+    the ABSENT "Stop Recording" walked every open window and took 90 s per call."""
+
+    def menu_idle():
+        menus = [m for m in (get_attr(_app, "AXExtrasMenuBar"), get_attr(_app, "AXMenuBar"))
+                 if m is not None]
+        if not menus:
+            return False
+
+        def offered(label):
+            return any(_find_match(m, label, "AXMenuItem") is not None for m in menus)
+
+        return not offered("Stop Recording") and offered("Start Recording")
 
     deadline = time.monotonic() + seconds
-    while time.monotonic() < deadline:
-        if not offered("Stop Recording") and offered("Start Recording"):
+    while True:
+        # Each door call gets only the time left (at least 0.2 s), and an answer that lands after
+        # the deadline is unconfirmed: a slow door never stretches cleanup past `seconds`.
+        state = _driver_state(timeout=max(0.2, min(2.0, deadline - time.monotonic())))
+        if time.monotonic() > deadline:
+            return False
+        if state is not None:
+            if state not in _DRIVER_ACTIVE_STATES:
+                return True
+        elif menu_idle() and time.monotonic() <= deadline:  # a late menu answer is unconfirmed
             return True
+        if time.monotonic() >= deadline:
+            return False
         time.sleep(0.3)  # settle: the recording state changes asynchronously; no ack to await
-    return False
 
 
 def _take_lines(start):
@@ -1515,13 +1560,22 @@ def _scan_probes():
         backend = stored_or_none("selectedBackend")
         return None if backend is None else backend == "parakeet"
 
+    def summary_only():
+        # #4578: with "Change speech engine" open, every engine card shows its own status row
+        # (an installed Parakeet card says Remove, a removing one says "Removing model..."), so
+        # those words no longer belong to the selected engine's summary. True only while the
+        # panel is closed; None when that cannot be read.
+        open_panel = button(_sn.ENGINE_DISCLOSURE[2])
+        return None if open_panel is None else not open_panel
+
     def language_section_visible():
         backend = stored_or_none("selectedBackend")
         if backend is None: return None
         if backend == "parakeet": return True
+        if summary_only() is not True: return None
         # Whisper shows the language rows only once its model is ready, the state that
-        # also shows Remove Model (`languageSectionIsAvailable`).
-        if button("Remove Model") or text("Removing model..."): return True
+        # also shows Remove (`languageSectionIsAvailable`).
+        if button("Remove") or text("Removing model..."): return True
         if any(button(b) for b in ("Set up model", "Resume", "Try Again")): return False
         if text("Checking model status..."): return False
         return None
@@ -1530,6 +1584,7 @@ def _scan_probes():
         backend = stored_or_none("selectedBackend")
         if backend is None: return None
         if backend == "parakeet": return False
+        if summary_only() is not True: return None
         # Every Whisper model state offers one action except checking and removing.
         checking, removing = text("Checking model status..."), text("Removing model...")
         if checking is None or removing is None: return None
@@ -1539,9 +1594,10 @@ def _scan_probes():
         backend = stored_or_none("selectedBackend")
         if backend is None: return None
         if backend == "parakeet": return False
+        if summary_only() is not True: return None
         # Re-check shows while the model is not downloaded, paused or ready (not removing).
         if text("Removing model..."): return False
-        if any(button(b) for b in ("Set up model", "Resume", "Remove Model")): return True
+        if any(button(b) for b in ("Set up model", "Resume", "Remove")): return True
         if any(button(b) for b in ("Cancel", "Try Again")) or text("Checking model status..."):
             return False
         return None
@@ -1856,13 +1912,16 @@ def _snapshot_log_size():
     return _snapshot_log_state()
 
 
-def _wait_for_pipeline_completion(log_state_before, clip_before, timeout):
+def _wait_for_pipeline_completion(log_state_before, clip_before, timeout, *, require_terminal=False):
     """Block until the pipeline emits a completion marker in app.log, or
     timeout. Handles rotation/truncation mid-test. Falls back to clipboard
     polling if app.log isn't actually growing (Debug mode off but a stale
     file exists from a previous session). Captures the transient clipboard
     value AT detection time so a 'restore clipboard after paste' cycle
     doesn't wipe it before extract.
+
+    PTT uses the app's asynchronously logged terminal row as its completion
+    signal, using the same cursor and deadline.
 
     Returns: (completed, signal, completion_line, states_seen, clip_seen, lines_accumulated)
         signal in {"log", "clipboard", None}
@@ -1871,9 +1930,10 @@ def _wait_for_pipeline_completion(log_state_before, clip_before, timeout):
             content across mid-test rotation)
     """
     states_seen = []
-    t_stop = time.time()
+    t_stop = time.monotonic()
     completion_line = None
     signal = None
+    completed = False
     clip_seen = None
     lines_accumulated = []
 
@@ -1881,29 +1941,44 @@ def _wait_for_pipeline_completion(log_state_before, clip_before, timeout):
     log_has_grown = False
     log_stale_warned = False
 
-    mode = "log" if log_state is not None else "clipboard fallback — enable Debug mode in Settings -> Diagnostics"
+    mode = "take terminal" if require_terminal else (
+        "log" if log_state is not None else "clipboard fallback — enable Debug mode in Settings -> Diagnostics"
+    )
     print(f"Watching pipeline ({mode})...")
 
-    while time.time() - t_stop < timeout:
+    while time.monotonic() - t_stop < timeout:
         for label in ("Transcribing", "Loading model", "Polishing", "Starting"):
             if _text_visible(label) and label not in states_seen:
                 states_seen.append(label)
-                print(f"  [{time.time() - t_stop:.1f}s] {label}...")
+                print(f"  [{time.monotonic() - t_stop:.1f}s] {label}...")
 
         # Log path: read any new lines, accumulate them so extraction has them
         # even if rotation later wipes the file.
         if log_state is not None:
             new_lines, log_state = _read_new_log_lines(log_state)
+            if require_terminal and time.monotonic() - t_stop >= timeout:
+                break
             if new_lines:
                 log_has_grown = True
                 lines_accumulated.extend(new_lines)
                 for line in new_lines:
-                    if any(m in line for m in _COMPLETION_MARKERS):
-                        completion_line = line.strip()
-                        signal = "log"
-                        break
+                    if require_terminal:
+                        entry = log_verdict.LINE.match(line)
+                        if not entry or entry.group("cat") != "Telemetry":
+                            continue
+                        terminal = log_verdict.TERMINAL.match(entry.group("msg"))
+                        if not terminal:
+                            continue
+                        completed = terminal.group("result") == "completed"
+                    elif any(marker in line for marker in _COMPLETION_MARKERS):
+                        completed = True
+                    else:
+                        continue
+                    completion_line = line.strip()
+                    signal = "log"
+                    break
                 if signal == "log":
-                    print(f"  [{time.time() - t_stop:.1f}s] Pipeline complete (log)")
+                    print(f"  [{time.monotonic() - t_stop:.1f}s] Pipeline ended (log)")
                     break
 
             # Stale-log fallback: a pre-existing app.log from a prior debug
@@ -1912,28 +1987,31 @@ def _wait_for_pipeline_completion(log_state_before, clip_before, timeout):
             # labels, because a fast pipeline can finish before AX state
             # reads catch a label.
             if (
-                not log_has_grown
-                and (time.time() - t_stop) > 1.5
+                not require_terminal
+                and not log_has_grown
+                and (time.monotonic() - t_stop) > 1.5
                 and not log_stale_warned
             ):
-                print(f"  [{time.time() - t_stop:.1f}s] app.log not growing — falling back to clipboard. Toggle Debug mode in Settings -> Diagnostics to fix.")
+                print(f"  [{time.monotonic() - t_stop:.1f}s] app.log not growing — falling back to clipboard. Toggle Debug mode in Settings -> Diagnostics to fix.")
                 log_stale_warned = True
 
         # Clipboard path: primary when no log file at all; fallback when log
         # exists but isn't being written to.
-        if log_state is None or log_stale_warned:
+        if not require_terminal and (log_state is None or log_stale_warned):
             clip_now = get_clipboard_text() or ""
             if clip_now != clip_before:
                 signal = "clipboard"
                 clip_seen = clip_now  # capture before restore-after-paste reverts
-                print(f"  [{time.time() - t_stop:.1f}s] Clipboard updated!")
+                print(f"  [{time.monotonic() - t_stop:.1f}s] Clipboard updated!")
+                completed = True
                 break
 
         time.sleep(0.2)
-    else:
-        print(f"  [{time.time() - t_stop:.1f}s] TIMEOUT — pipeline did not complete")
+    if signal is None:
+        detail = "missing take terminal" if require_terminal else "pipeline did not complete"
+        print(f"  [{time.monotonic() - t_stop:.1f}s] TIMEOUT — {detail}")
 
-    return (signal is not None, signal, completion_line, states_seen, clip_seen, lines_accumulated)
+    return completed, signal, completion_line, states_seen, clip_seen, lines_accumulated
 
 
 def _extract_transcript_text(signal, log_state_before, clip_seen=None, lines_accumulated=None):
@@ -3158,7 +3236,7 @@ def test_hands_free(audio=None, sentence=None, hold=4.0, expect=None, timeout=30
     return overall_pass
 
 
-def test_ptt(key=None, audio=None, sentence=None, expect=None, timeout=10.0):
+def test_ptt(key=None, audio=None, sentence=None, expect=None, timeout=30.0):
     """End-to-end PTT (push-to-talk) recording test via key hold.
 
     #1707 Phase 3 crash-safety-net Live UAT recipe (bounded-wait + refuse-
@@ -3191,7 +3269,7 @@ def test_ptt(key=None, audio=None, sentence=None, expect=None, timeout=10.0):
     3. Play audio through speakers
     4. Wait for audio to finish + buffer
     5. Release key (recording stops, pipeline runs)
-    6. Monitor pipeline via state polling + clipboard delta
+    6. Observe the take's terminal in the log
 
     Args:
         key:      Key to hold. None (default) auto-detects from EnviousWispr's
@@ -3245,7 +3323,6 @@ def test_ptt(key=None, audio=None, sentence=None, expect=None, timeout=10.0):
 
     log_size_before = _snapshot_log_size()
     take_started = _dt.datetime.now().astimezone()  # #3764: the take gate reads from here
-    clip_before = get_clipboard_text() or ""
 
     # Phase 1: Key down (recording starts)
     import simulate_input as _si
@@ -3294,13 +3371,13 @@ def test_ptt(key=None, audio=None, sentence=None, expect=None, timeout=10.0):
     _key_up()
     _tg.take_stopped()
 
-    # Phase 5: Wait for completion (log-based with clipboard fallback)
+    # Phase 5: Wait for the current take's terminal in the log.
     t_stop = time.time()
-    completed, signal, completion_line, states_seen, clip_seen, log_lines = _wait_for_pipeline_completion(
-        log_size_before, clip_before, timeout
+    completed, signal, completion_line, states_seen, _, log_lines = _wait_for_pipeline_completion(
+        log_size_before, None, timeout, require_terminal=True
     )
     pipeline_time = time.time() - t_stop
-    transcription = _extract_transcript_text(signal, log_size_before, clip_seen, log_lines)
+    transcription = _extract_transcript_text(signal, log_size_before, lines_accumulated=log_lines)
 
     # Phase 6: Report
     print(f"\n{'=' * 60}")
@@ -3314,18 +3391,19 @@ def test_ptt(key=None, audio=None, sentence=None, expect=None, timeout=10.0):
     if completion_line:
         print(f"Log line:       {completion_line}")
 
+    if signal is None and not states_seen:
+        _ptt_binding_diagnostic(key)
+    end_test()
+    _tg.check_player(*player)
+    if signal is None:
+        _tg.check_after_take("\n".join(log_lines))
+        raise _tg.CouldNotTell(f"no take terminal observed within {timeout:g}s after key release")
+    _tg.check_after_take(_take_lines(take_started))
+
     # PTT always uses audio (we played a file), so non-completion is FAIL
     # regardless of "audio was empty" semantics.
     overall_pass = _report_result(completed, audio, expect, transcription)
-    # Nothing happened at all: print what the instrument believed, so a reader
-    # can tell a real product failure from a key the app was never listening
-    # for. Gated on the silent shape so a passing run gains no noise.
-    if not completed and not states_seen:
-        _ptt_binding_diagnostic(key)
     print(f"{'=' * 60}")
-    end_test()
-    _tg.check_player(*player)
-    _tg.check_after_take(_take_lines(take_started))
     return overall_pass
 
 
@@ -4412,9 +4490,14 @@ def _self_test():
         ("parakeet_selected", (), WK, None, None, False),
         ("parakeet_selected", (), None, None, None, None),
         ("language_section_visible", (), PK, None, None, True),
-        ("language_section_visible", (btn("Remove Model"),), WK, None, None, True),
+        ("language_section_visible", (btn("Remove"),), WK, None, None, True),
         ("language_section_visible", (btn("Set up model"),), WK, None, None, False),
         ("language_section_visible", (), None, None, None, None),
+        # #4578: Whisper selected but missing, Change open: the Remove is the Parakeet card's.
+        ("language_section_visible", (btn("Keep current engine"), btn("Remove")), WK, None, None, None),
+        ("whisper_actions_shown", (btn("Keep current engine"), txt("Removing model...")), WK, None, None, None),
+        ("whisper_recheck_shown", (btn("Keep current engine"), btn("Remove")), WK, None, None, None),
+        ("whisper_recheck_shown", (btn("Remove"),), WK, None, None, True),
         ("whisper_actions_shown", (), PK, None, None, False),
         ("whisper_actions_shown", (btn("Set up model"),), WK, None, None, True),
         ("whisper_actions_shown", (txt("Checking model status..."),), WK, None, None, False),
@@ -4503,8 +4586,28 @@ def _self_test():
         else:
             print(f"  ok      {why}")
 
+    # #4648: the timing marker and final result are written separately.
+    from unittest.mock import Mock, patch
+    cursor = (1, 0, 0)
+    after_timing = (1, 80, 0)
+    timing = "[2026-01-01T12:00:00-05:00] [INFO] [Pipeline] Pipeline timing TOTAL: 11.0s"
+    terminal = ("[2026-01-01T12:00:01-05:00] [INFO] [Telemetry] "
+                "dictation_terminal result=completed reason=nil take=abc backend=parakeet")
+    clock = Mock()
+    clock.monotonic.side_effect = [0, 11, 11, 12, 12, 12]
+    read = Mock(side_effect=[([timing], after_timing), ([terminal], (1, 200, 0))])
+    with patch.multiple(sys.modules[__name__], time=clock, _read_new_log_lines=read,
+                        _text_visible=lambda _label: False):
+        completed, signal, _, _, _, lines = _wait_for_pipeline_completion(
+            cursor, "", 30, require_terminal=True
+        )
+    if (completed, signal, lines, [args[0] for args, _ in read.call_args_list]) != (
+        True, "log", [timing, terminal], [cursor, after_timing]
+    ):
+        failures.append("#4648: PTT failed to await the terminal on the existing log cursor")
+
     total = (len(pr3_rows) + guard_rows + len(banner_cases) + banner_rows_extra + file_rows
-             + len(window_cases) + entry_rows + find_rows + wrap_rows_total)
+             + len(window_cases) + entry_rows + find_rows + wrap_rows_total + 1)
     if failures:
         for f in failures:
             print(f"  FAIL    {f}")

@@ -41,6 +41,7 @@ enum InputResolutionTelemetryReporting {
       eligibleDeviceCount: attempt.eligibleDeviceCount,
       inputResolutionSource: attempt.inputResolutionSource,
       selectedTransport: attempt.selectedTransport,
+      skippedDefaultTransport: attempt.skippedDefaultTransport,
       bindOutcome: attempt.bindOutcome,
       prepareOutcome: attempt.prepareOutcome,
       prepareFailedStep: attempt.prepareFailedStep,

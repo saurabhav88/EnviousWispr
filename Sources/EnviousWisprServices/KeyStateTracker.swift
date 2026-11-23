@@ -140,7 +140,7 @@ package struct KeyStateTracker: Equatable, Sendable {
   /// One ordinary keyDown or keyUp (#3544 P4). Returns whether it is a fresh press: a keyDown that
   /// is not autorepeat. Modifier keys, our own events and every other kind change nothing.
   package mutating func ingestOrdinary(_ event: KeyEventValue) -> Bool {
-    guard !event.isOurs, ModifierKeyCodes.flag(for: event.keyCode) == nil else { return false }
+    guard !event.isOurs, ModifierKeyCodes.isHeldOrdinaryKey(event.keyCode) else { return false }
     switch event.kind {
     case .keyDown:
       ordinaryDown.insert(event.keyCode)
@@ -181,7 +181,7 @@ package struct KeyStateTracker: Equatable, Sendable {
     // from isAutorepeat, not ordinaryDown insertion, so excluding the key does not
     // independently protect fresh-key dismissal. Keep the exclusion to avoid counting
     // the event's own key as a reading-driven recovery.
-    for (key, answer) in answers where key != except && ModifierKeyCodes.flag(for: key) == nil {
+    for (key, answer) in answers where key != except && ModifierKeyCodes.isHeldOrdinaryKey(key) {
       switch answer {
       case .down: ordinaryDown.insert(key)
       case .up:

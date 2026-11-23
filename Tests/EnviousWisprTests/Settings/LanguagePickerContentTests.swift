@@ -23,11 +23,13 @@ struct LanguagePickerContentTests {
   func dictation(
     mode: LanguageMode = .auto, stored: EnglishSpelling = .american,
     lockable: Set<String>? = nil, query: String = "",
-    recents: [LanguageCatalog.Entry] = [], picks: Picks = Picks()
+    recents: [LanguageCatalog.Entry] = [], picks: Picks = Picks(),
+    offerHindiOnWhisper: (@MainActor () -> Void)? = nil
   ) -> LanguagePickerContent {
     LanguagePickerContent.dictation(
       mode: mode, stored: stored, lockableCodes: lockable, contextSubtitle: nil,
-      offersEnglishUK: true, query: query, recents: recents
+      offersEnglishUK: true, query: query, recents: recents,
+      offerHindiOnWhisper: offerHindiOnWhisper
     ) { picks.chosen.append($0?.code) }
   }
 
@@ -37,6 +39,28 @@ struct LanguagePickerContentTests {
     let content = dictation(lockable: ["en", "de"])
     #expect(content.rows.map(\.id) == ["en", "en-gb", "de"], "catalog display order, UK right after English")
     #expect(content.heading == String(localized: "AVAILABLE ON THIS MAC"))
+  }
+
+  @Test("Hindi search offers Whisper without committing an unsupported lock",
+    .bug("https://github.com/saurabhav88/EnviousWispr/issues/4448", "Find Hindi while using Parakeet"))
+  func hindiSearchOffersWhisperBeforeApplyingTheLock() throws {
+    let picks = Picks()
+    var offers = 0
+    let parakeet = dictation(
+      mode: .locked("hi"), lockable: ["en", "de"], query: "Hindi", picks: picks
+    ) { offers += 1 }
+    let hindiOffer = try #require(parakeet.rows.first { $0.id == "hi" })
+    #expect(hindiOffer.isSelected == false)
+    #expect(hindiOffer.accessibilityLabel.contains(hindiOffer.subtitle))
+    hindiOffer.action()
+    #expect(offers == 1)
+    #expect(picks.chosen.isEmpty)
+    #expect(dictation(lockable: ["en", "de"], query: "Hindi").rows.isEmpty)
+
+    let whisper = dictation(query: "Hindi", picks: picks) { offers += 1 }
+    try #require(whisper.rows.first { $0.id == "hi" }).action()
+    #expect(picks.chosen == ["hi"])
+    #expect(offers == 1)
   }
 
   @Test("unrestricted, the window lists every picker row under the all-languages heading")

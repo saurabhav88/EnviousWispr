@@ -40,6 +40,8 @@ final class FakeAudioCapture: AudioCaptureInterface {
   /// `preWarm()` throws this when non-nil (#903 — lets a test drive the real
   /// `RecordingSessionKernel.preWarm()` rethrow path). Nil = preWarm succeeds.
   var preWarmError: Error?
+  /// #4601: when set, every `startEnginePhase` throws this exact error (a real `AudioError`).
+  var startEnginePhaseError: Error?
 
   // MARK: Observed counters (for FakeAudioCaptureTests teardown assertion)
 
@@ -113,6 +115,10 @@ final class FakeAudioCapture: AudioCaptureInterface {
   // MARK: AudioCaptureInterface — observable state (inert constants)
 
   private(set) var isCapturing = false
+  /// #4841: what `exactZeroRun` reports while capturing. Like `AudioCaptureManager`, the
+  /// reading exists only while capture runs (nil otherwise); the default is "no silence yet".
+  var exactZeroRunWhileCapturing = ExactZeroRun(sampleCount: 0, sinceTakeStart: false)
+  var exactZeroRun: ExactZeroRun? { isCapturing ? exactZeroRunWhileCapturing : nil }
   var audioLevel: Float { 0 }
   var capturedSamples: [Float] { accumulatedSamples }
   /// #1780: tests mutate this to prove the record-start markers carry the
@@ -164,37 +170,6 @@ final class FakeAudioCapture: AudioCaptureInterface {
     return stubbedZeroSignalDiscriminatorDevice
   }
 
-  // #1578: the categorical replacements for the old boolean saw-ineligible
-  // seam, which is deleted here rather than kept. The kernel no longer
-  // reads the legacy Boolean at all, so stubbing it here would model a path
-  // production does not take.
-
-  /// The reason the reactive producer froze for the current run, if any. Read by
-  /// the production snapshot closure when the run was classified reactively.
-  var stubbedZeroSignalRefusalReason: ZeroSignalEligibility?
-  /// Whether the current run was already classified by the reactive producer.
-  /// True must short-circuit BEFORE the frozen bind is consulted.
-  var stubbedZeroSignalRunWasClassifiedReactively = false
-  /// Contexts a rejected reactive forward left behind, handed over in order by
-  /// the atomic take.
-  var stubbedPendingZeroSignalRefusals: [ZeroSignalRefusalContext] = []
-  /// Counts atomic takes, so a test can prove a second drain happened AND was
-  /// empty rather than never happening at all.
-  private(set) var takePendingZeroSignalRefusalsCallCount = 0
-
-  var zeroSignalRefusalReason: ZeroSignalEligibility? { stubbedZeroSignalRefusalReason }
-
-  var zeroSignalRunWasClassifiedReactively: Bool { stubbedZeroSignalRunWasClassifiedReactively }
-
-  /// Mirrors `AudioCaptureManager`'s contract exactly: synchronous, order
-  /// preserving, and empty on every call after the first.
-  func takePendingZeroSignalRefusals() -> [ZeroSignalRefusalContext] {
-    takePendingZeroSignalRefusalsCallCount += 1
-    let pending = stubbedPendingZeroSignalRefusals
-    stubbedPendingZeroSignalRefusals.removeAll(keepingCapacity: true)
-    return pending
-  }
-
   // MARK: AudioCaptureInterface — callbacks
 
   var onBufferCaptured: (@Sendable (AVAudioPCMBuffer) -> Void)?
@@ -215,8 +190,21 @@ final class FakeAudioCapture: AudioCaptureInterface {
 
   // MARK: AudioCaptureInterface — core lifecycle
 
-  func startEnginePhase() async throws {
+  /// #4601: the microphone-start deadline each start call received, in order.
+  private(set) var startEnginePhaseDeadlines: [MicrophoneStartBudget.Deadline] = []
+  private(set) var preWarmDeadlines: [MicrophoneStartBudget.Deadline] = []
+  private(set) var abandonPendingStartCallCount = 0
+  /// #4601 §3a: what `isStartAbandoned(startDeadline:)` answers (the real manager's record).
+  var startAbandoned = false
+
+  func isStartAbandoned(startDeadline: MicrophoneStartBudget.Deadline) -> Bool { startAbandoned }
+  /// #4601: runs inside each start call, before it answers (a user command arriving mid-start).
+  var duringStartEnginePhase: (() -> Void)?
+
+  func startEnginePhase(startDeadline: MicrophoneStartBudget.Deadline) async throws {
     startEnginePhaseCallCount += 1
+    startEnginePhaseDeadlines.append(startDeadline)
+    duringStartEnginePhase?()
     // #1714: publish this attempt's attribution BEFORE any throw, the way the
     // real manager stores it synchronously inside `prepare()`.
     if !inputResolutionSourcePerAttempt.isEmpty {
@@ -224,6 +212,7 @@ final class FakeAudioCapture: AudioCaptureInterface {
       currentInputResolutionSource = inputResolutionSourcePerAttempt[index]
     }
     if permissionDenied { throw FakeCaptureError.permissionDenied }
+    if let startEnginePhaseError { throw startEnginePhaseError }
     if failEngineStart { throw FakeCaptureError.engineStartFailed }
     if failEngineStartOnAttempt == startEnginePhaseCallCount {
       throw FakeCaptureError.engineStartFailed
@@ -252,7 +241,7 @@ final class FakeAudioCapture: AudioCaptureInterface {
   }
 
   func startCapture() async throws -> AsyncStream<AVAudioPCMBuffer> {
-    try await startEnginePhase()
+    try await startEnginePhase(startDeadline: MicrophoneStartBudget.deadline(from: .now))
     return try await beginCapturePhase()
   }
 
@@ -319,13 +308,18 @@ final class FakeAudioCapture: AudioCaptureInterface {
     return retireCapturingSourceResult
   }
 
-  func preWarm() async throws {
+  func preWarm(startDeadline: MicrophoneStartBudget.Deadline) async throws {
     preWarmCallCount += 1
+    preWarmDeadlines.append(startDeadline)
     if let preWarmError { throw preWarmError }
   }
 
   func abortPreWarm() {
     abortPreWarmCallCount += 1
+  }
+
+  func abandonPendingStart() {
+    abandonPendingStartCallCount += 1
   }
 
   /// #3878: counted so a kernel test can see a pre-capture terminal release the prepared source.
