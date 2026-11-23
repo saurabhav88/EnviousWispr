@@ -3926,14 +3926,15 @@ package final class WisprBootstrapper {
       if meetingIsActive() { return .refusedMeetingActive }
       return nil
     }
-    speechModels.parakeetRemoval.unloadForRemoval = {
-      [weak kernelDriver, asrManager, concreteASRManager] in
+    // #4859: Remove waits for a load that is running before it records anything.
+    speechModels.parakeetRemoval.settleLoad = { [concreteASRManager] in
+      await concreteASRManager.awaitInFlightLoad()
+    }
+    speechModels.parakeetRemoval.unloadForRemoval = { [weak kernelDriver, asrManager] in
       // The idle-unload timer must not race the unload; the same order as the Ultra
       // activation's unload.
       kernelDriver?.cancelPendingEngineUnload()
-      // #4859: a load that is running finishes first (Remove used to cancel it and delete
-      // the files under the vendor call); then the normal unload frees what it loaded.
-      await concreteASRManager.unloadAfterInFlightLoad()
+      await asrManager.unloadModel()
       // Freed only when no Parakeet model stays loaded (an unload refused mid-stream).
       return !(asrManager.activeBackendType == .parakeet && asrManager.isModelLoaded)
     }

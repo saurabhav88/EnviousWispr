@@ -511,15 +511,15 @@ struct ASRManagerLoadGenerationTests {
   }
 
   // Known limit of tests 1 and 3 (round 2 review): no production signal marks "the wrapper is
-  // inside its join", so a skip-join wrapper is caught because its queued unload runs within the
-  // 50 MainActor turns below, not by a guarantee; with the join the wrapper cannot finish before
-  // the gate opens, so those tests never fail on a correct implementation. The product proof is
-  // the live Remove-during-load run (plan section 11). Control run: body `await unloadModel()`.
-  private func startRemoval(on manager: ASRManager) -> (RemovalProbe, Task<Void, Never>) {
+  // inside its join", so a skip-join wrapper is caught because it finishes within the 50
+  // MainActor turns below, not by a guarantee; with the join the wrapper cannot finish before the
+  // gate opens, so those tests never fail on a correct implementation. The product proof is the
+  // live Remove-during-load run (plan section 11). Control run: empty body of the method.
+  private func startSettle(on manager: ASRManager) -> (RemovalProbe, Task<Void, Never>) {
     let probe = RemovalProbe()
     let task = Task { @MainActor in
       probe.started = true
-      await manager.unloadAfterInFlightLoad()
+      await manager.awaitInFlightLoad()
       probe.finished = true
     }
     return (probe, task)
@@ -536,11 +536,10 @@ struct ASRManagerLoadGenerationTests {
     return false
   }
 
-  /// #4859: Parakeet Remove used to call `unloadModel()`, which cancelled the load task and
-  /// returned at its not-loaded guard, so the files were deleted under a vendor load that
-  /// kept running. When this fails, Remove deletes a model that is still loading.
-  @Test("unloadAfterInFlightLoad leaves a running load alone, then frees what it loaded (#4859)")
-  func unloadAfterInFlightLoadWaitsForTheLoad() async throws {
+  /// #4859: Parakeet Remove used to record and delete while a load was running; the files went
+  /// under a vendor load that kept running. When this fails, Remove does not wait for the load.
+  @Test("awaitInFlightLoad waits for a running load and leaves it alone (#4859)")
+  func awaitInFlightLoadWaitsForTheLoad() async throws {
     let parakeet = FakeASRBackend(initiallyReady: false, gated: true)
     let manager = ASRManager(
       engineMutationScope: .alwaysAllowedForTesting,
@@ -550,45 +549,43 @@ struct ASRManagerLoadGenerationTests {
     // `try #require`: a late prepare would park after the release and hang the test.
     try #require(await parakeet.prepareParked(), "the load is parked inside the backend")
 
-    let (probe, removal) = startRemoval(on: manager)
-    #expect(await waitUntil("the removal task started") { probe.started })
-    // More MainActor turns than a version that skips the join needs to finish its unload.
+    let (probe, settle) = startSettle(on: manager)
+    #expect(await waitUntil("the settle task started") { probe.started })
+    // More MainActor turns than a version that skips the join needs to return.
     for _ in 0..<50 { await Task.yield() }
-    #expect(probe.finished == false, "the removal is still waiting for the load")
+    #expect(probe.finished == false, "Remove is still waiting for the load")
     #expect(manager.isLoadOrUnloadInFlight, "nothing superseded the load")
-    #expect(await parakeet.unloadCount == 0, "nothing is unloaded while the load is running")
 
     await parakeet.releaseGate()
-    try await load.value  // the ORIGINAL load must succeed, not be superseded
-    await removal.value
+    try await load.value  // the load itself succeeds, it is not superseded or unloaded
+    await settle.value
     #expect(probe.finished)
-    #expect(manager.isModelLoaded == false, "what the load published is freed afterwards")
-    #expect(await parakeet.unloadCount == 1, "freed by exactly one unload")
+    #expect(manager.isModelLoaded, "the wait only waits: the published model is still there")
+    #expect(await parakeet.unloadCount == 0, "and nothing was unloaded")
   }
 
-  @Test("unloadAfterInFlightLoad with no load running is one plain unload and starts no load (#4859)")
-  func unloadAfterInFlightLoadWithNoLoadIsAPlainUnload() async throws {
+  @Test("awaitInFlightLoad with no load running returns at once and starts no load (#4859)")
+  func awaitInFlightLoadWithNoLoadReturnsAtOnce() async throws {
     let parakeet = FakeASRBackend(initiallyReady: true)
     let manager = ASRManager(
       engineMutationScope: .alwaysAllowedForTesting,
       parakeetSelection: ParakeetSelectionProvider(), parakeetBackendFactory: { parakeet })
 
-    await manager.unloadAfterInFlightLoad()
+    await manager.awaitInFlightLoad()
     #expect(await parakeet.prepareCount == 0, "an empty manager starts no load")
-    #expect(await parakeet.unloadCount == 0, "and has nothing to unload")
 
+    // A finished load whose owner has not cleared its handle yet must not spin the loop.
     try await manager.loadModel()
-    #expect(manager.isModelLoaded)
-    await manager.unloadAfterInFlightLoad()
+    await manager.awaitInFlightLoad()
     #expect(await parakeet.prepareCount == 1, "a resident model is not loaded again")
-    #expect(await parakeet.unloadCount == 1)
-    #expect(manager.isModelLoaded == false)
+    #expect(await parakeet.unloadCount == 0)
+    #expect(manager.isModelLoaded)
   }
 
   /// #4859 known limit: a wedge release resumes the joined caller while the vendor call may
   /// still run, so Remove cannot be stuck behind a call that never returns.
-  @Test("a wedge release frees unloadAfterInFlightLoad while the vendor call is still parked (#4859)")
-  func unloadAfterInFlightLoadIsFreedByAWedgeRelease() async throws {
+  @Test("a wedge release frees awaitInFlightLoad while the vendor call is still parked (#4859)")
+  func awaitInFlightLoadIsFreedByAWedgeRelease() async throws {
     let parakeet = FakeASRBackend(initiallyReady: false, gated: true)
     let manager = ASRManager(
       engineMutationScope: .alwaysAllowedForTesting,
@@ -597,16 +594,15 @@ struct ASRManagerLoadGenerationTests {
     let load = Task { @MainActor in
       await #expect(throws: ASRLoadCancelledError.self) { try await manager.loadModel() }
     }
-    // `try #require`: a late prepare would park after the release and hang the test.
     try #require(await parakeet.prepareParked(), "the load is parked inside the backend")
-    let (probe, removal) = startRemoval(on: manager)
-    #expect(await waitUntil("the removal task started") { probe.started })
+    let (probe, settle) = startSettle(on: manager)
+    #expect(await waitUntil("the settle task started") { probe.started })
     for _ in 0..<50 { await Task.yield() }
     // Waiting on the load, not an empty-path no-op: a no-op would already have finished.
-    #expect(probe.finished == false, "the removal joined the running load")
+    #expect(probe.finished == false, "Remove joined the running load")
 
     manager.cancelInFlightLoad()
-    let freed = await waitUntil("the wedge release returned the removal") { probe.finished }
+    let freed = await waitUntil("the wedge release returned the wait") { probe.finished }
     #expect(await parakeet.prepareParked(), "the vendor call is still parked")
     #expect(manager.isModelLoaded == false)
 
@@ -617,7 +613,7 @@ struct ASRManagerLoadGenerationTests {
     let cleanedUp = await parakeet.unloadParked()
     await parakeet.releaseUnload()
     await load.value
-    await removal.value
+    await settle.value
     #expect(freed)
     #expect(cleanedUp, "the orphaned candidate's cleanup ran when it ended")
     #expect(await parakeet.unloadCount == 1, "cleaned up exactly once")
