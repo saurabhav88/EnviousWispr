@@ -77,18 +77,25 @@ package final class LiveApplication {
 
   // MARK: - Scene surface
 
-  // The main title is available before the bootstrapper exists (#3252).
-  package var mainWindowTitle: String { LaunchWindowIdentity.mainTitle }
+  /// The app's name, available before the bootstrapper exists (#3252): the hidden menu bar
+  /// scene's title and the Window menu command's label (#4842).
+  package var appName: String { LaunchWindowIdentity.mainTitle }
 
-  /// The gate draws nothing, and hides its window, until the bootstrapper exists; the real
-  /// root then replaces it. On a healthy launch the target exists already, so the real root
-  /// mounts at once.
-  package func mainWindowContent() -> some View {
-    LaunchGate(sequencer) { $0.mainWindowContent() }
+  /// #4842: the Window menu's EnviousWispr command. Nothing to show before the bootstrapper
+  /// exists (a relocation offer is still open), so it does nothing then.
+  package func showMainWindow() {
+    sequencer.target?.showMainWindow()
   }
-  /// The main window's menu commands: Edit › Find Settings (#3482). Built here, not on the
-  /// bootstrapper, whose public surface stays the lifecycle forwards and view factories.
-  package func mainWindowCommands() -> some Commands { FindSettingsCommand() }
+
+  /// The app's menu commands: Edit › Find Settings (#3482), and Window › EnviousWispr, which
+  /// brings back the main window (#4842: a SwiftUI `Window` scene used to add it). Built here,
+  /// not on the bootstrapper, whose public surface stays the lifecycle forwards and view
+  /// factories.
+  @CommandsBuilder
+  package func mainWindowCommands() -> some Commands {
+    FindSettingsCommand()
+    MainWindowMenuCommand(title: appName, show: { [weak self] in self?.showMainWindow() })
+  }
   /// #3147 PR3: one transcript opened in its own window.
   package var transcriptWindowID: String { TranscriptWindowIdentity.sceneID }
   package var transcriptWindowTitle: String { TranscriptWindowIdentity.title }
@@ -99,6 +106,10 @@ package final class LiveApplication {
   // MARK: - Lifecycle surface
 
   package func applicationWillFinishLaunching() {
+    // #4849: FIRST, on every launch path: our menu bar icon's status item must exist before
+    // SwiftUI builds the hidden menu bar scene, so ours keeps AppKit's `Item-0` (saved position,
+    // visibility, first-run placement).
+    MenuBarStatusItem.reserveAtLaunch()
     sequencer.applicationWillFinishLaunching()
     // #2377 Phase 6: arm the DEBUG marker sink in the callback BEFORE the
     // measured one, and AFTER this callback's own production work.

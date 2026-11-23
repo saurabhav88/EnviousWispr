@@ -52,8 +52,14 @@ final class PipelineSettingsSync {
   /// state: the reconciler was keyed on dictation's settings alone.
   private var lastEvictableImportOllamaModel: String?
 
-  /// #4287: the meeting summary surface's counterpart, by the same reasoning.
-  private var lastEvictableSummaryOllamaModel: String?
+  /// #3853 (#4360): Ollama models owed an unload whose eviction was skipped because something
+  /// still held them (canonical name to the spelling the request uses). A model enters when a
+  /// local meeting summary starts using it, or when the dictation or import tracker leaves it
+  /// while any `stillWanted` reason holds it (the holding surface's own tracker may be stuck
+  /// behind a pin and never see it). It leaves when its unload is scheduled or it is proven
+  /// remote. The meeting summary SETTING never keeps a model wanted: only summary work does
+  /// (`summaryOllamaDemand`).
+  private var pendingOllamaUnloads: [String: String] = [:]
 
   /// #1914: is this Ollama model one the daemon proxies to Ollama's servers?
   ///
@@ -88,6 +94,8 @@ final class PipelineSettingsSync {
   /// #2648 — the Ollama model a RUNNING file import froze, or nil.
   private let importPinnedOllamaModel: @MainActor () -> String?
   private let summaryPinnedOllamaModel: @MainActor () -> String?
+  /// #3853 (#4360) — see the initializer parameter of the same name.
+  private let summaryOllamaDemand: @MainActor () -> Set<String>
 
   /// #3853 — see the initializer parameters of the same names.
   private let outputClassifierHolder: OutputClassifierHolder?
@@ -141,6 +149,11 @@ final class PipelineSettingsSync {
     /// evict the weights a long summary call is using. Defaults to nil so every existing
     /// construction is unchanged.
     summaryPinnedOllamaModel: @escaping @MainActor () -> String? = { nil },
+    /// #3853 (#4360) — the Ollama models meeting summary work needs now: every summary attempt
+    /// from its start to its end, plus the selected summary model while a meeting's final pass
+    /// runs. Only work keeps a summary model wanted, never the setting that selects it.
+    /// Defaults to empty so every existing construction is unchanged.
+    summaryOllamaDemand: @escaping @MainActor () -> Set<String> = { [] },
     /// #3853 — the output classifier's holder, released when no consumer needs it. Nil leaves
     /// the classifier out of this reconciliation (tests that do not care).
     outputClassifierHolder: OutputClassifierHolder? = nil,
@@ -159,6 +172,7 @@ final class PipelineSettingsSync {
     self.summaryPinnedLocalModel = summaryPinnedLocalModel
     self.importPinnedOllamaModel = importPinnedOllamaModel
     self.summaryPinnedOllamaModel = summaryPinnedOllamaModel
+    self.summaryOllamaDemand = summaryOllamaDemand
     self.kernelDriver = kernelDriver
     self.whisperKernelDriver = whisperKernelDriver
     self.audioCapture = audioCapture
@@ -246,10 +260,6 @@ final class PipelineSettingsSync {
     lastEvictableImportOllamaModel = OllamaConnector.effectiveOllamaModel(
       provider: settings.effectiveFileImportLLMProvider,
       model: settings.effectiveFileImportLLMModel
-    )
-    lastEvictableSummaryOllamaModel = OllamaConnector.effectiveOllamaModel(
-      provider: settings.effectiveMeetingSummaryLLMProvider,
-      model: settings.effectiveMeetingSummaryLLMModel
     )
 
     // #728: AppLogger defaults to debug=off / level=.info. Sync the persisted
@@ -717,13 +727,11 @@ final class PipelineSettingsSync {
     // `llama3.2:latest` are one model, and the two surfaces can hold either spelling. An
     // exact set let an import walk away from `:latest` and evict the model dictation still
     // selected under the bare name. Found by the cloud review of PR #2786.
-    // #4287: the meeting summary surface is the third.
-    let summary = OllamaConnector.effectiveOllamaModel(
-      provider: settings.effectiveMeetingSummaryLLMProvider,
-      model: settings.effectiveMeetingSummaryLLMModel
-    )
-    let stillWanted = Set(
-      [dictation, fileImport, summary].compactMap { $0 }.map(Self.canonical))
+    // #3853 (#4360): the meeting summary is NOT a selection tracker any more. Its setting never
+    // keeps a model wanted: only summary work does (`summaryOllamaDemand`: each attempt from
+    // start to end, plus the selected summary model while a final pass runs).
+    let demand = Set(summaryOllamaDemand().map(Self.canonical))
+    let stillWanted = Set([dictation, fileImport].compactMap { $0 }.map(Self.canonical)).union(demand)
     var scheduledThisPass = Set<String>()
     reconcileEvictableModel(
       \.lastEvictableOllamaModel, new: dictation, stillWanted: stillWanted,
@@ -731,9 +739,42 @@ final class PipelineSettingsSync {
     reconcileEvictableModel(
       \.lastEvictableImportOllamaModel, new: fileImport, stillWanted: stillWanted,
       scheduled: &scheduledThisPass)
-    reconcileEvictableModel(
-      \.lastEvictableSummaryOllamaModel, new: summary, stillWanted: stillWanted,
-      scheduled: &scheduledThisPass)
+    reconcilePendingOllamaUnloads(stillWanted: stillWanted, scheduled: &scheduledThisPass)
+  }
+
+  /// #3853 (#4360): a local meeting summary started using `model`, which may leave it resident
+  /// for the keep-alive window. It is owed an unload once nothing holds it.
+  func summaryUsedOllamaModel(_ model: String, settings: SettingsManager) {
+    guard !model.isEmpty else { return }
+    pendingOllamaUnloads[Self.canonical(model)] = model
+    reconcileOllamaEviction(settings: settings)
+  }
+
+  /// Pays each owed unload once nothing holds the model. Same checks as a tracker departure:
+  /// already scheduled this pass (dropped), proven remote (dropped), held by a selection, summary
+  /// demand or a running call (kept), else one scheduled unload.
+  private func reconcilePendingOllamaUnloads(
+    stillWanted: Set<String>, scheduled: inout Set<String>
+  ) {
+    for (key, model) in pendingOllamaUnloads {
+      if scheduled.contains(key) {
+        pendingOllamaUnloads[key] = nil
+        continue
+      }
+      if ollamaRemotenessLookup(model) == true {
+        pendingOllamaUnloads[key] = nil
+        Task {
+          await AppLogger.shared.log(
+            "Ollama eviction skipped: model=\(model) reason=remote",
+            level: .info, category: "Ollama")
+        }
+        continue
+      }
+      if stillWanted.contains(key) || isOllamaModelPinnedInFlight(model) { continue }
+      pendingOllamaUnloads[key] = nil
+      scheduled.insert(key)
+      scheduleOllamaEviction(model)
+    }
   }
 
   /// One surface's tracker. The rules below predate the second tracker and apply to each
@@ -747,7 +788,15 @@ final class PipelineSettingsSync {
       self[keyPath: tracker] = new
       return
     }
-    if stillWanted.contains(Self.canonical(pre)) || scheduled.contains(Self.canonical(pre)) {
+    // #3853: a model held by ANY wanted reason is handed to the pending map before this tracker
+    // advances: the holding surface's own tracker may be stuck behind a pin on an older model
+    // and never see it. An already-scheduled model is being unloaded this pass.
+    if stillWanted.contains(Self.canonical(pre)) {
+      pendingOllamaUnloads[Self.canonical(pre)] = pre
+      self[keyPath: tracker] = new
+      return
+    }
+    if scheduled.contains(Self.canonical(pre)) {
       self[keyPath: tracker] = new
       return
     }

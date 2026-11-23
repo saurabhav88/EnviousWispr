@@ -195,6 +195,17 @@ final class MeetingSummaryOwner {
   /// deferred for that pin is retried (`PipelineSettingsSync.retryDeferredOllamaEviction`).
   /// Set by the composition root; nil in tests that do not care.
   var onOllamaModelReleased: (@MainActor () -> Void)?
+  /// #3853 (#4360): the Ollama model of each summary attempt, from `start` to the end of `run`
+  /// (every exit: owed-mark failure, preparation failure, hosted, cancel, finish). Registered
+  /// before a replaced attempt is cancelled, so a replacement never leaves a gap in which the
+  /// model looks unneeded. `PipelineSettingsSync` keeps these models wanted.
+  private var ollamaDemand: [UUID: String] = [:]
+  var ollamaSummaryDemand: Set<String> { Set(ollamaDemand.values) }
+  /// #3853: told when a LOCAL attempt reaches the queue for an Ollama model (the model: it may
+  /// now be loaded there, so it is owed an unload) and when an attempt's demand ends (nil), so
+  /// `PipelineSettingsSync` checks residency again. Set by the composition root; nil in tests
+  /// that do not care.
+  var onOllamaSummaryWorkChanged: (@MainActor (_ usedModel: String?) -> Void)?
   private var terminating = false
 
   init(dependencies: Dependencies, documents: MeetingDocumentsOwner, lane: MeetingLocalModelLane) {
@@ -452,10 +463,14 @@ final class MeetingSummaryOwner {
     preview: HistoryPolishChoice? = nil
   ) {
     guard !terminating else { return }
+    // #3853: the selection is read once, here, and carried to `run`, so the demand registered
+    // below and the model the attempt uses are the same.
+    let selection = preview.map { (provider: $0.provider, model: $0.model) } ?? deps.selection()
+    let attempt = UUID()
+    if selection.provider == .ollama { ollamaDemand[attempt] = selection.model }
     // A newer attempt replaces one still running (a Retry made a new transcript, or Write
     // again); the old one ends as cancelled and stays tracked until it has ended.
     if let previous = currentAttempt[meetingID] { attempts[previous]?.task.cancel() }
-    let attempt = UUID()
     activity[meetingID] = .waiting
     if preview != nil {
       previews[meetingID] = .generating(attempt)
@@ -465,7 +480,7 @@ final class MeetingSummaryOwner {
     let task = Task { [weak self] () -> Void in
       guard let self else { return }
       await self.run(
-        meetingID, attempt: attempt, approvedUserEdit: approvedUserEdit,
+        meetingID, attempt: attempt, selection: selection, approvedUserEdit: approvedUserEdit,
         owedAlready: owedAlready, preview: preview)
     }
     attempts[attempt] = Running(meetingID: meetingID, task: task)
@@ -504,12 +519,12 @@ final class MeetingSummaryOwner {
   }
 
   private func run(
-    _ meetingID: UUID, attempt: UUID, approvedUserEdit: String?, owedAlready: Bool,
-    preview: HistoryPolishChoice?
+    _ meetingID: UUID, attempt: UUID, selection: (provider: LLMProvider, model: String),
+    approvedUserEdit: String?, owedAlready: Bool, preview: HistoryPolishChoice?
   ) async {
     // Where the model runs is known from the selection before anything can fail, so every row
-    // pairs `none` with `noProvider` only (R57). No provider ends the attempt at once.
-    let selection = preview.map { (provider: $0.provider, model: $0.model) } ?? deps.selection()
+    // pairs `none` with `noProvider` only (R57). No provider ends the attempt at once. The
+    // selection was read once in `start` (#3853).
     attempts[attempt]?.provider = selection.provider
     // #4353 D6: captured with the selection, before the first suspension, and carried to
     // `prepare`; planning and every request of this attempt use it.
@@ -529,6 +544,8 @@ final class MeetingSummaryOwner {
       firstAttempts[attempt] = nil
       pendingCandidates[attempt] = nil
       localQueued.remove(attempt)
+      // #3853: this attempt no longer needs its Ollama model; residency is checked again.
+      if ollamaDemand.removeValue(forKey: attempt) != nil { onOllamaSummaryWorkChanged?(nil) }
     }
     if preview != nil {
       let written = pendingCandidates.removeValue(forKey: attempt)
@@ -643,6 +660,9 @@ final class MeetingSummaryOwner {
     }
     lane.summaryQueued()
     localQueued.insert(attempt)
+    // #3853: from here this Mac's Ollama may load the model; it is owed an unload once nothing
+    // needs it.
+    if selection.provider == .ollama { onOllamaSummaryWorkChanged?(selection.model) }
     defer { lane.summaryFinished() }
     // This attempt's whole write runs after the previous local attempt's whole write. A
     // cancelled attempt stops waiting at once (a final pass may be waiting for it to settle,

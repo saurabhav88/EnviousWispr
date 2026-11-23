@@ -17,10 +17,11 @@ import SwiftUI
 /// can link this code WITHOUT launching the app. The thin `EnviousWisprApp`
 /// shell (still `@main`, still owning the `@NSApplicationDelegateAdaptor` and
 /// app identity) constructs ONE of these in `App.init()`, attaches it to the
-/// shell `AppDelegate`, and shows `mainWindowContent()`.
+/// shell `AppDelegate`. The main window is an AppKit window `AppWindowCoordinator` owns
+/// (#4842), so the shell declares no main scene.
 /// App-owned homes stay `internal` to this module (no public leak); only the
-/// bootstrapper type + its init + 4 lifecycle methods + 2 view factories + 2
-/// window-title accessors cross to the shell.
+/// bootstrapper type + its init + the lifecycle methods + the transcript view factory +
+/// `showMainWindow()` cross to the shell.
 @MainActor
 package final class WisprBootstrapper {
   // App-owned homes (epic #763 composition root). Held as `let` on this
@@ -207,6 +208,8 @@ package final class WisprBootstrapper {
   /// coordinator and the paste registry hold their collaborators weakly, so
   /// this property is what keeps the feature alive for the app's lifetime.
   let learnFromEdits: LearnFromEditsWiring
+  /// #4843: the delivered-dictation broadcast, also read by Settings search (`AppHomesEnvironment`).
+  let pasteCompletionRegistry: PasteCompletionRegistry
 
   /// - Parameter makeHotkeyEffects: supplies the live desktop-effect adapter the
   ///   one shared `HotkeyService` will use.
@@ -227,9 +230,8 @@ package final class WisprBootstrapper {
   /// One stored property, not two: the panel seam is consumed by collaborators
   /// rather than by this type, so only the activator is retained.
   ///
-  /// `fileprivate`, not `private`: `ActionWirer` below is a separate type in this
-  /// file and is handed this seam at construction. Swift's `private` does not reach
-  /// across type boundaries even within one file. Still unreachable from anywhere
+  /// `fileprivate`, not `private`, from when a separate view type in this file was handed it
+  /// (that type went with the SwiftUI main scene in #4842). Still unreachable from anywhere
   /// else, which is what the C3 seam is for.
   fileprivate let application: any ApplicationActivating
 
@@ -400,6 +402,9 @@ package final class WisprBootstrapper {
     // #4287: same pattern; the settings sync is built long before the meeting summary owner,
     // and its eviction check must see a summary call that is running on an Ollama model.
     weak var meetingSummariesForEviction: MeetingSummaryOwner?
+    // #3853 (#4360): same pattern; a running meeting final pass keeps the selected summary
+    // model wanted, because it may start a summary on it.
+    weak var meetingCoordinatorForEviction: MeetingCoordinator?
     // #3853: same pattern; the import's frozen polish provider lives on the runner.
     weak var fileImportRunnerForGates: FileImportRunner?
     // GitHub cloud review, PR #1732: captured by `isDictationActive` below,
@@ -520,6 +525,7 @@ package final class WisprBootstrapper {
     // share the same registry. (#1106 re-homed this from the deleted re-polish
     // service per `state-ownership.md` shared-infra-homes-not-feature-services.)
     let pasteCompletionRegistry = PasteCompletionRegistry()
+    self.pasteCompletionRegistry = pasteCompletionRegistry
 
     // #1348 Phase 2/3 — owned model delivery. Constructed BEFORE EG-1 so the
     // EG-1 adapter receives the ONE shared `ModelDeliveryController` (#1348
@@ -1146,6 +1152,19 @@ package final class WisprBootstrapper {
           ?? historyRepolishForGates?.heldRun?.configuration.ollamaModel
       },
       summaryPinnedOllamaModel: { meetingSummariesForEviction?.summaryPinnedOllamaModel },
+      // #3853 (#4360): only summary WORK keeps a summary model wanted, never the setting: each
+      // attempt from its start to its end, plus the selected model while a final pass runs.
+      summaryOllamaDemand: {
+        var demand = meetingSummariesForEviction?.ollamaSummaryDemand ?? []
+        if meetingCoordinatorForEviction?.processing != nil,
+          let selected = OllamaConnector.effectiveOllamaModel(
+            provider: settings.effectiveMeetingSummaryLLMProvider,
+            model: settings.effectiveMeetingSummaryLLMModel)
+        {
+          demand.insert(selected)
+        }
+        return demand
+      },
       outputClassifierHolder: outputClassifierHolder,
       loadOutputClassifier: { [outputClassifierHolder] in
         WisprBootstrapper.prewarmOutputClassifier(holder: outputClassifierHolder)
@@ -1581,6 +1600,17 @@ package final class WisprBootstrapper {
         asrManager.activeBackendType == .parakeet
       else { return }
       _ = await kernelDriver?.ensureEngineWarm(reason: .explicitRetry)
+    }
+
+    // #4837: a Parakeet download admitted while the app runs loads the engine now. Setup warms
+    // itself and launch skips the warm until Setup ends, so this runs only after Setup finished.
+    modelDelivery.warmParakeetAfterAdmission = { [weak kernelDriver, asrManager] in
+      guard
+        LaunchEngineWarm.allowedAfterDownload(
+          selectedBackend: settings.selectedBackend, activeBackend: asrManager.activeBackendType,
+          onboardingState: settings.onboardingState)
+      else { return }
+      _ = await kernelDriver?.ensureEngineWarm(reason: .afterDownload)
     }
 
     if LaunchEngineWarm.allowed(
@@ -3087,7 +3117,12 @@ package final class WisprBootstrapper {
         installedNow: { [weak speechModels] in speechModels?.installedSnapshot(.parakeet) == true }),
       modelUseGate: modelDelivery.controller.meetingModelUseGate,
       isDeliveryEnabled: { [modelDelivery] in modelDelivery.parakeetHandle?.isEnabled() ?? false },
-      workChanged: { [weak engineCoordinator] in engineCoordinator?.poke(.parakeetUpgradeOwed) },
+      // #3853: a final pass ending also rechecks Ollama residency (a Transcribe again starts no
+      // summary, so no summary hook would).
+      workChanged: { [weak engineCoordinator, weak settingsSync, settings] in
+        engineCoordinator?.poke(.parakeetUpgradeOwed)
+        settingsSync?.retryDeferredOllamaEviction(settings: settings)
+      },
       log: { line in
         Task { await AppLogger.shared.log(line, level: .info, category: "Meetings") }
       },
@@ -3358,10 +3393,21 @@ package final class WisprBootstrapper {
     recordingRetentionForSettings = recordingRetention
     recordingRetention?.start()
     meetingSummariesForEviction = meetingCoordinator.summaries
+    meetingCoordinatorForEviction = meetingCoordinator
     // #4287: an eviction deferred while a summary call used its Ollama model runs once the
     // call releases it, as dictation and file import retry theirs on completion.
     meetingCoordinator.summaries?.onOllamaModelReleased = { [weak settingsSync, settings] in
       settingsSync?.retryDeferredOllamaEviction(settings: settings)
+    }
+    // #3853 (#4360): a local summary reaching the queue for an Ollama model owes it an unload; an
+    // attempt ending (finish, failure or cancel) rechecks whether anything still needs it.
+    meetingCoordinator.summaries?.onOllamaSummaryWorkChanged = {
+      [weak settingsSync, settings] model in
+      if let model {
+        settingsSync?.summaryUsedOllamaModel(model, settings: settings)
+      } else {
+        settingsSync?.retryDeferredOllamaEviction(settings: settings)
+      }
     }
     // #4287 PR 3: both live dictation polish steps skip polish while a summary call runs on
     // the same local engine. File import, re-polish and recovery build their own steps and
@@ -3899,6 +3945,12 @@ package final class WisprBootstrapper {
   // evaluates (issue #739 / SparkleUpdateController contract).
 
   package func applicationWillFinishLaunching() {
+    // #4842: the main window's content, installed before any launch presentation can run. Weak:
+    // a strong capture would cycle bootstrapper → coordinator → presenter → closure.
+    appWindowCoordinator.mainWindowPresenter.makeContent = { [weak self] in
+      guard let self else { return AnyView(EmptyView()) }
+      return AnyView(MainWindowRoot(b: self))
+    }
     // #2480: regular before any scene or Sparkle window exists, so the launch window
     // opens with the app menu, Dock icon and Cmd-Tab entry.
     appWindowCoordinator.beginLaunch()
@@ -3947,8 +3999,15 @@ package final class WisprBootstrapper {
     transcriptCoordinator.startHistoryCatalog()
     callDetection.start()
     appLifecycleCoordinator.runDidFinishLaunching()
-    // #2480: bring the launch window to the front.
-    appWindowCoordinator.finishLaunch()
+    // #4842: the launch's first window (Setup or the main window), after the close observer is
+    // installed above; the window that opens brings the app to the front. On a relocation launch
+    // this runs in `LaunchSequencer.startNormally()`'s replay, while the phase is `.starting`.
+    #if DEBUG
+      let automaticallyOpenSetup = !DevControlOnboarding.holdsAutomaticPresentation
+    #else
+      let automaticallyOpenSetup = true
+    #endif
+    appWindowCoordinator.openFirstSurfaceAtLaunch(automaticallyOpenSetup: automaticallyOpenSetup)
     // #2381.
     quickAdd.install()
     // #3438: the setup warnings watch dictation's chosen model from launch, Settings open or not;
@@ -4090,17 +4149,14 @@ package final class WisprBootstrapper {
     appWindowCoordinator.showWindow()
   }
 
-  // MARK: - Window titles (so the shell needs no EnviousWisprCore dependency)
-
-  package var mainWindowTitle: String { LaunchWindowIdentity.mainTitle }
+  /// #4842: the Window menu's EnviousWispr command (through `LiveApplication`).
+  package func showMainWindow() {
+    appWindowCoordinator.showWindow()
+  }
 
   // MARK: - Root content
   // Homes are injected here, INSIDE the kit — the shell injects nothing, so no
   // home type crosses the module boundary (keeps the public surface tiny).
-
-  package func mainWindowContent() -> some View {
-    MainWindowRoot(b: self)
-  }
 
   /// #3147 PR3: one detached transcript window's content.
   package func transcriptWindowContent(rowID: UUID) -> some View {
@@ -4157,6 +4213,7 @@ private struct AppHomesEnvironment: ViewModifier {
         .environment(b.languageSuggestionPresenter)
         .environment(b.updateCoordinatorHolder)
         .environment(\.settingsKeyMonitor, b.settingsKeyMonitor)
+        .environment(\.pasteCompletionRegistry, b.pasteCompletionRegistry)
         .environment(\.historyScrollMonitor, b.historyScrollMonitor)
         .environment(\.historyClickMonitor, b.historyClickMonitor)
         .environment(b.transcriptCoordinator)
@@ -4245,30 +4302,9 @@ private struct MainWindowRoot: View {
       // 750 = two-card frame chrome (outer inset 28 + sidebar 200 + spacing 14 =
       // 242) + the History split floors inside the detail card (230+8+260=498),
       // so the window can never crush the History split (#1024; #1296 frame).
-      .frame(minWidth: 750, minHeight: 400)
+      .frame(
+        minWidth: MainWindowLayout.minimum.width, minHeight: MainWindowLayout.minimum.height)
       .appHomes(b)
-      .background(ActionWirer(appWindowCoordinator: b.appWindowCoordinator))
-  }
-}
-
-/// Supplies the SwiftUI main opener and admits the first Setup presentation.
-private struct ActionWirer: View {
-  let appWindowCoordinator: AppWindowCoordinator
-  @Environment(\.openWindow) private var openWindow
-
-  var body: some View {
-    Color.clear
-      .frame(width: 0, height: 0)
-      .task {
-        #if DEBUG
-          let automaticallyOpenSetup = !DevControlOnboarding.holdsAutomaticPresentation
-        #else
-          let automaticallyOpenSetup = true
-        #endif
-        appWindowCoordinator.attachMainWindow(
-          open: { [openWindow] in openWindow(id: "main") },
-          automaticallyOpenSetup: automaticallyOpenSetup)
-      }
   }
 }
 

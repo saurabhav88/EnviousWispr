@@ -9,7 +9,7 @@ import ApplicationServices
 /// because `HotkeyService` — its only consumer — is there. Every consumer of these
 /// two is in AppKit: `AppWindowCoordinator`, `SparkleUpdateController`,
 /// `AppLifecycleCoordinator`, `CenteredRelocationPresenter`, `QuickAddPanelHost`,
-/// `WisprBootstrapper` and `ActionWirer`. Putting them in Services would move them
+/// `WisprBootstrapper`. Putting them in Services would move them
 /// everything that uses them and make that module a place interfaces go when
 /// nobody decided where they belong.
 ///

@@ -191,7 +191,7 @@ final class AppLifecycleCoordinator {
     // #2480: no Dock-policy write here. Launch used to force `.accessory` once
     // onboarding was done, which left the launch window behind other apps with no
     // app menu or Cmd-Tab entry. `AppWindowCoordinator` owns the policy now
-    // (`beginLaunch` / `finishLaunch`, called by the bootstrapper).
+    // (`beginLaunch`, then `openFirstSurfaceAtLaunch`, whose window activates the app; #4842).
 
     // #1451: App Translocation recovery. Runs on EVERY launch (NOT gated by
     // onboarding — the 14 stuck users already finished onboarding), is synchronous and
@@ -357,8 +357,8 @@ final class AppLifecycleCoordinator {
       Task { await contactsImportCoordinator.syncNewContacts() }
     }
 
-    // Onboarding auto-open is handled by ActionWirer inside the main Window
-    // scene. No deferred dispatch required here.
+    // Onboarding auto-open is the bootstrapper's `openFirstSurfaceAtLaunch` call, right after
+    // this method returns (#4842). No deferred dispatch required here.
 
     #if DEBUG
       // V2 fault-injection (issue #291). Only when explicitly opted in via env var.

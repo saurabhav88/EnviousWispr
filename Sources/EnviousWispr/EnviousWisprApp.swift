@@ -33,19 +33,16 @@ struct EnviousWisprApp: App {
   }
 
   var body: some Scene {
-    // Real title (app name) so the Window menu, window switcher, and VoiceOver
-    // have a name for this window; the visible title text is suppressed by the
-    // principal toolbar item (the centered wordmark is the visible identity).
-    // AppWindowCoordinator identifies this window by this title.
-    Window(application.mainWindowTitle, id: "main") {
-      application.mainWindowContent()
+    // #4842: the main window is an AppKit window the app creates and releases
+    // (`MainWindowPresenter`), not a SwiftUI `Window` scene: Apple documents that an app whose
+    // primary scene is a single `Window` quits when that window closes, and 2.6.1 users saw it.
+    // This menu bar scene comes first so SwiftUI opens NO window at launch (an empty `Settings`
+    // scene in this place opened a blank Settings window on macOS 27) and treats the app as
+    // menu-bar resident. It is never inserted: the visible menu bar icon is the AppKit status
+    // item `MenuBarController` owns. Probed on macOS 26 and 27 (#4842).
+    MenuBarExtra(application.appName, isInserted: .constant(false)) {
+      EmptyView()
     }
-    // First-open size for new users (macOS restores the user's own size after that).
-    // 1100x760 fits the smallest supported screen (13-inch MacBook Air, 1440x900).
-    .defaultSize(width: 1100, height: 760)
-    .windowToolbarStyle(.unifiedCompact)
-    // #3482: Edit › Find Settings (Command-F), routed to the focused main window.
-    .commands { application.mainWindowCommands() }
 
     // #3147 PR3: one imported transcript in its own window, one window per History row.
     WindowGroup(application.transcriptWindowTitle, id: application.transcriptWindowID,
@@ -56,5 +53,9 @@ struct EnviousWisprApp: App {
       }
     }
     .defaultSize(width: 720, height: 640)
+    // #3482: Edit › Find Settings (Command-F), routed to the focused main window through its
+    // focused value; #4842: Window › EnviousWispr. Commands are app-wide; they sit on this scene
+    // because the main window is no longer a scene.
+    .commands { application.mainWindowCommands() }
   }
 }

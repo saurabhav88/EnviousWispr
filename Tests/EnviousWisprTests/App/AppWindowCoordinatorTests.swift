@@ -10,85 +10,89 @@ import Testing
 struct AppWindowCoordinatorTests {
   init() { _ = NSApplication.shared }
 
-  @Test("an interrupted Setup completion requests the main window when its bridge attaches")
-  func completionBeforeMainBridge() {
-    // An existing native main window can satisfy the handoff without the bridge.
-    let windows = NSApp.windows.filter { $0.title == AppConstants.appName }
-    #expect(windows.isEmpty)
-    guard windows.isEmpty else { return }
-    let coordinator = AppWindowCoordinator(
-      application: RecordingDesktopPresentationEffects(), showInDock: { false },
-      isOnboardingComplete: { true })
-    var mainOpens = 0
-    coordinator.finishSetup()
-    #expect(mainOpens == 0)
-    coordinator.attachMainWindow(open: { mainOpens += 1 })
-    coordinator.attachMainWindow(open: { mainOpens += 1 })
-    #expect(mainOpens == 1)
+  /// Takes down any main window a test showed (tests run in one process).
+  private func tearDown(_ coordinator: AppWindowCoordinator) {
+    coordinator.mainWindowPresenter.window?.orderOut(nil)
   }
 
-  @Test("ordinary completed startup does not create a Setup session or a second main open")
-  func completedStartup() {
+  @Test("a completed install's launch shows the main window once and brings the app forward")
+  func completedLaunchShowsMainOnce() {
+    let effects = RecordingDesktopPresentationEffects()
     let coordinator = AppWindowCoordinator(
-      application: RecordingDesktopPresentationEffects(), showInDock: { true },
-      isOnboardingComplete: { true })
+      application: effects, showInDock: { false }, isOnboardingComplete: { true })
+    coordinator.mainWindowPresenter.frameName = ""
+    defer { tearDown(coordinator) }
     let session = SetupSession { _ in fatalError("completed startup should not build Setup") }
     coordinator.setupSession = session
-    var mainOpens = 0
-    coordinator.attachMainWindow(open: { mainOpens += 1 })
-    #expect(!coordinator.openOnboardingWindow())
-    #expect(session.components == nil && mainOpens == 0)
+    coordinator.openFirstSurfaceAtLaunch(automaticallyOpenSetup: true)
+    let window = coordinator.mainWindowPresenter.window
+    #expect(window?.isVisible == true)
+    #expect(window?.title == AppConstants.appName)
+    // A relocation replay or a second call opens nothing more.
+    coordinator.openFirstSurfaceAtLaunch(automaticallyOpenSetup: true)
+    #expect(coordinator.mainWindowPresenter.window === window)
+    #expect(effects.calls == [.setPolicy(.regular), .activate(.ignoringOtherApps)])
+    #expect(session.components == nil)
   }
 
-  // MARK: - #1392: isMainWindowPresented(windowStates:)
+  @Test("finishing Setup shows the main window, marks the handoff, and works with no prior open")
+  func finishSetupShowsMain() {
+    let effects = RecordingDesktopPresentationEffects()
+    let coordinator = AppWindowCoordinator(
+      application: effects, showInDock: { false }, isOnboardingComplete: { true })
+    coordinator.mainWindowPresenter.frameName = ""
+    defer { tearDown(coordinator) }
+    coordinator.finishSetup()
+    #expect(coordinator.mainWindowPresenter.window?.isVisible == true)
+    #expect(coordinator.mainWindowVisitIsSetupHandoff)
+    // The launch path that follows an interrupted visit's completion shows nothing more.
+    let window = coordinator.mainWindowPresenter.window
+    coordinator.openFirstSurfaceAtLaunch(automaticallyOpenSetup: true)
+    #expect(coordinator.mainWindowPresenter.window === window)
+    #expect(effects.activations == [.ignoringOtherApps])
+  }
 
-  /// Input-driven pure decision — no real `NSWindow`/`NSApp` state, matching
-  /// this suite's existing convention (real window-server behavior is Live
-  /// UAT-only, per the file header above). r2 (code-diff review): dropped
-  /// the app-hidden broadening a stale/closed-but-retained window could
-  /// exploit — presence is `isVisible || isMiniaturized` only now.
+  @Test("closing the main window keeps the Dock icon only while the switch or another window asks")
+  func mainCloseRefreshesDockPolicy() throws {
+    let effects = RecordingDesktopPresentationEffects()
+    let coordinator = AppWindowCoordinator(
+      application: effects, showInDock: { false }, isOnboardingComplete: { true })
+    coordinator.mainWindowPresenter.frameName = ""
+    defer { tearDown(coordinator) }
+    coordinator.showWindow()
+    let window = try #require(coordinator.mainWindowPresenter.window)
+    window.performClose(nil)  // the red button's path: AppKit calls the presenter as delegate
+    #expect(coordinator.mainWindowPresenter.window == nil)
+    #expect(effects.policies.last == .accessory)
+    window.orderOut(nil)
+  }
 
-  @Test("matching visible window is presented")
+  // MARK: - #1392: isMainWindowPresented
+
+  /// Input-driven pure decision: no real `NSWindow`/`NSApp` state. Presence is
+  /// `isVisible || isMiniaturized` only (#1392 r2: an app-wide hide is not presence).
+
+  @Test("a visible main window is presented")
   func isMainWindowPresentedTrueForVisible() {
-    let present = AppWindowCoordinator.isMainWindowPresented(
-      windowStates: [(matchesIdentity: true, isVisible: true, isMiniaturized: false)]
-    )
-    #expect(present)
+    #expect(AppWindowCoordinator.isMainWindowPresented((isVisible: true, isMiniaturized: false)))
   }
 
-  @Test("matching minimized window is still presented — #1392 r1 finding")
+  @Test("a minimized main window is still presented — #1392 r1 finding")
   func isMainWindowPresentedTrueForMinimized() {
-    let present = AppWindowCoordinator.isMainWindowPresented(
-      windowStates: [(matchesIdentity: true, isVisible: false, isMiniaturized: true)]
-    )
-    #expect(present, "a minimized window still exists — isVisible alone is the wrong proxy")
+    #expect(
+      AppWindowCoordinator.isMainWindowPresented((isVisible: false, isMiniaturized: true)),
+      "a minimized window still exists — isVisible alone is the wrong proxy")
   }
 
-  @Test("a matching but neither-visible-nor-minimized window is not presented — #1392 r2 finding")
+  @Test("a main window neither visible nor minimized is not presented — #1392 r2 finding")
   func isMainWindowPresentedFalseForHiddenNotMinimized() {
-    // Covers a stale/closed-but-retained `NSWindow` still enumerable in
-    // `NSApp.windows`: it must never count as presented on its own, even
-    // though a real app-hide would ALSO put a genuinely-open window in this
-    // exact (isVisible: false, isMiniaturized: false) shape — that's the
-    // accepted tradeoff (Live UAT preface above), not a regression.
-    let present = AppWindowCoordinator.isMainWindowPresented(
-      windowStates: [(matchesIdentity: true, isVisible: false, isMiniaturized: false)]
-    )
-    #expect(!present)
+    #expect(
+      AppWindowCoordinator.isMainWindowPresented((isVisible: false, isMiniaturized: false)) == false)
   }
 
-  @Test("no matching window in the list is not presented")
+  @Test("no main window is not presented")
   func isMainWindowPresentedFalseWhenAbsent() {
-    let present = AppWindowCoordinator.isMainWindowPresented(windowStates: [])
-    #expect(!present)
-  }
-
-  @Test("only a non-matching window (Sparkle's dialog) present is not presented")
-  func isMainWindowPresentedFalseForNonMatchingOnly() {
-    let present = AppWindowCoordinator.isMainWindowPresented(
-      windowStates: [(matchesIdentity: false, isVisible: true, isMiniaturized: false)]
-    )
-    #expect(!present, "a titled-but-differently-named window (Sparkle's dialog) must not count")
+    #expect(AppWindowCoordinator.isMainWindowPresented(nil) == false)
   }
 
   @Test("the Setup window is found by its scene id, whatever its title says (#3142)")

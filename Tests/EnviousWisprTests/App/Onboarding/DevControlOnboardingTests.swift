@@ -311,6 +311,7 @@
       let windows = AppWindowCoordinator(
         application: RecordingDesktopPresentationEffects(), showInDock: { true },
         isOnboardingComplete: { false })
+      windows.mainWindowPresenter.frameName = ""
       windows.setupSession = door.setupSession
       defer { _ = door.stop() }
       _ = door.begin()
@@ -319,6 +320,47 @@
       #expect(door.session?.coordinator.state.step == .welcome)
       #expect(door.setupSession.presenter.isVisible)
       #expect(world.log.contains("restart"))
+    }
+
+    @Test("a launch with Setup unfinished shows Setup and leaves the main window unshown (#4842)")
+    func launchShowsSetupFirst() {
+      let world = OnboardingCoordinatorTests.World()
+      let (door, _) = Self.make(world)
+      let windows = AppWindowCoordinator(
+        application: RecordingDesktopPresentationEffects(), showInDock: { false },
+        isOnboardingComplete: { false })
+      windows.mainWindowPresenter.frameName = ""
+      windows.setupSession = door.setupSession
+      defer {
+        _ = door.stop()
+        windows.mainWindowPresenter.window?.orderOut(nil)
+      }
+      windows.openFirstSurfaceAtLaunch(automaticallyOpenSetup: true)
+      #expect(door.setupSession.presenter.isVisible)
+      #expect(windows.mainWindowPresenter.window == nil)
+    }
+
+    @Test("Restart Setup from an open main window takes the main window off screen at once (#4842)")
+    func restartHidesMainAtOnce() throws {
+      let world = OnboardingCoordinatorTests.World()
+      let (door, _) = Self.make(world)
+      let windows = AppWindowCoordinator(
+        application: RecordingDesktopPresentationEffects(), showInDock: { false },
+        isOnboardingComplete: { false })
+      windows.mainWindowPresenter.frameName = ""
+      windows.setupSession = door.setupSession
+      defer {
+        _ = door.stop()
+        windows.mainWindowPresenter.window?.orderOut(nil)
+      }
+      windows.showWindow()
+      let main = try #require(windows.mainWindowPresenter.window)
+      #expect(main.isVisible)
+      windows.restartOnboarding()
+      #expect(door.setupSession.presenter.isVisible)
+      #expect(main.isVisible == false)
+      // Ordered out, not closed: the same window comes back when Setup finishes.
+      #expect(windows.mainWindowPresenter.window === main)
     }
 
     @Test(

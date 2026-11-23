@@ -64,9 +64,10 @@ final class MenuBarController: NSObject {
   /// install the accessibility-change icon-refresh seam. Called once from
   /// `AppDelegate.applicationDidFinishLaunching` (was `setupStatusItem()`).
   func installStatusItem() {
-    // #2480: start toward the right end on a Mac that has never placed ours.
-    StatusItemPlacement.seedPreferredPositionIfAbsent(in: .standard)
-    statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
+    // #2480: start toward the right end on a Mac that has never placed ours (seeded by
+    // `MenuBarStatusItem`). #4849: the item was created at the start of launch so it keeps
+    // `Item-0`, ahead of the hidden SwiftUI menu bar scene.
+    statusItem = MenuBarStatusItem.take()
     guard let button = statusItem?.button else { return }
 
     iconAnimator.configure(button: button)

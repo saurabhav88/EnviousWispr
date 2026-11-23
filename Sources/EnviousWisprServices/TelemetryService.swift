@@ -2586,7 +2586,7 @@ public final class TelemetryService {
   // MARK: - Cold-boot warm-up (#879)
 
   /// Cold-boot warm-up began for the active engine. `reason` tags the call site
-  /// (launch / onboarding / engine_swap / cold_press / explicit_retry); `warmupInFlight` is true
+  /// (launch / onboarding / engine_swap / cold_press / explicit_retry / after_download); `warmupInFlight` is true
   /// when a prior warm-up was already running and this call joined it. Privacy:
   /// timing/state only, no audio or text (telemetry-privacy boundary).
   /// #3546 §3.7 T1: `model` is the identity this warm-up was asked to load,

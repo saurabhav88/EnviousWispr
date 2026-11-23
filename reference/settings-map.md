@@ -14,7 +14,7 @@ The interface ships in English, German, Spanish and French. The other 28 languag
 
 328 nodes, 299 searchable, 9568 vocabulary blocks.
 
-Fingerprints: mapSHA256 `b0a757e8b509c67ed717e19e702e8e03e8dac37a64d2e148c6a65f0bf3253ef3`, uiCatalogSHA256 `0f8cd3e7815e11ffba273a1440e611fb99f11eec4e5b8f4ea328ce2cf7cfd2c9`, vocabularyCanonicalization `length-prefixed-v1`, vocabularySHA256 `3569cfeeade30b6ccc4da09c7096abb6f25ee75e69455e8ccce7d86b5dd40394`
+Fingerprints: mapSHA256 `b0a757e8b509c67ed717e19e702e8e03e8dac37a64d2e148c6a65f0bf3253ef3`, uiCatalogSHA256 `0f8cd3e7815e11ffba273a1440e611fb99f11eec4e5b8f4ea328ce2cf7cfd2c9`, vocabularyCanonicalization `length-prefixed-v1`, vocabularySHA256 `f2c5708ff2a80079eb4ab65d201a766497fd9d7b1728161f23abdce9383a7617`
 
 ## Structure
 
@@ -7299,10 +7299,10 @@ Fingerprints: mapSHA256 `b0a757e8b509c67ed717e19e702e8e03e8dac37a64d2e148c6a65f0
 | Arrival target | [`aiPolishProvider`](#node-aiPolishProvider) |
 | Fallbacks, in order | [`aiPolishProvider`](#node-aiPolishProvider), [`enableAIPolish`](#node-enableAIPolish) |
 | Declared in | [Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift](../Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift) |
-| Search (en) | phrases: use the app's own model to clean up my dictation; choose EG-1 for dictation cleanup on this Mac |
-| Search (de) | phrases: verbessere meine Diktate mit dem eigenen Modell der App; wähle EG-1 für die Diktatkorrektur auf diesem Mac |
-| Search (es) | words: EG-1 dictado, corrector propio<br>phrases: usar EG-1 para corregir mi dictado en el Mac |
-| Search (fr) | words: EG-1 dictée, correcteur EnviousWispr<br>phrases: utiliser EG-1 sur mon Mac pour corriger mes dictées |
+| Search (en) | words: model size, EG-1 size<br>phrases: use the app's own model to clean up my dictation; choose EG-1 for dictation cleanup on this Mac; EG-1 Micro; EG-1 Mini |
+| Search (de) | words: Modellgröße, EG-1-Größe<br>phrases: verbessere meine Diktate mit dem eigenen Modell der App; wähle EG-1 für die Diktatkorrektur auf diesem Mac; EG-1 Micro, am kleinsten und schnellsten; EG-1 Mini, schneller Allrounder |
+| Search (es) | words: EG-1 dictado, corrector propio, tamaño del modelo, tamaños de EG-1<br>phrases: usar EG-1 para corregir mi dictado en el Mac; cambiar a EG-1 Micro; cambiar a EG-1 Mini |
+| Search (fr) | words: EG-1 dictée, correcteur EnviousWispr, taille du modèle, taille du modèle EG-1<br>phrases: utiliser EG-1 sur mon Mac pour corriger mes dictées; choisir EG-1 Micro; choisir EG-1 Mini |
 | Search (other 28 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
 
 <a id="node-aiPolishProvider-s1Mini"></a>
