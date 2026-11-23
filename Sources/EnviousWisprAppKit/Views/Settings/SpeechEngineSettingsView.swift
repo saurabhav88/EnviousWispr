@@ -431,20 +431,12 @@ struct SpeechEngineSettingsView: View {
               .settingsArrivalFocusControl()
               .accessibilityLabel(Text(Copy.unloadTitle))
             }
-            // Kept visible as well as behind "?": it says what the chosen
-            // policy costs on the next recording, which is a consequence of
-            // the current value rather than an explanation of the control.
-            if settings.modelUnloadPolicy != .never {
-              Text(Copy.unloadHelp)
-                .settingsReadingCopy()
-                .padding(.leading, 37)
-            }
             if settings.modelUnloadPolicy == .immediately {
-              Text(
-                "Model is freed after every transcription. Expect a reload delay on each recording."
+              InsetNotice(
+                text:
+                  "Model is freed after every transcription. Expect a reload delay on each recording.",
+                systemImage: "exclamationmark.triangle", tint: .stWarning
               )
-              .font(.stHelper)
-              .foregroundStyle(.stWarning)
               .padding(.leading, 37)
             }
           }
