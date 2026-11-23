@@ -2841,7 +2841,7 @@ final class MeetingCoordinator {
       !record.deletionRequested, record.compressedAudio == nil, committedAudio[meetingID] == nil,
       !isActive(meetingID), !closeOwned.contains(meetingID), !unknownCommits.contains(meetingID),
       !unresolvedReceipts.contains(meetingID), unpublishedReceipts[meetingID] == nil,
-      !persistence.hasUnansweredWrites(meetingID)
+      !persistence.hasUnansweredWrites(meetingID), !isExportingAudio(meetingID)
     else { return false }
     return true
   }
@@ -2857,7 +2857,12 @@ final class MeetingCoordinator {
   /// remove (it asks `retireSupersededAudio`, which re-checks everything).
   func audioRetirementCandidates() -> [UUID] {
     guard launched, launchTask == nil, !quitting else { return [] }
-    return meetings.map(\.id).filter { committedAudio[$0] != nil }
+    // Not while a page holds a player of the meeting (retirement would end it for good) or a
+    // Save audio of it is running (it reads the files now); the export's end is observed.
+    return meetings.map(\.id).filter {
+      committedAudio[$0] != nil && playbackArbiter?.hasPlayer(.meeting($0)) != true
+        && !isExportingAudio($0)
+    }
   }
 
   /// Claims one meeting for compaction, against its record now (generation and segments). Nil
@@ -3011,7 +3016,7 @@ final class MeetingCoordinator {
       !isActive(meetingID), !closeOwned.contains(meetingID), !unknownCommits.contains(meetingID),
       !unresolvedReceipts.contains(meetingID), compactionClaims[meetingID] == nil,
       compactionWork[meetingID] == nil,
-      playbackArbiter?.isPlaying(.meeting(meetingID)) != true
+      playbackArbiter?.hasPlayer(.meeting(meetingID)) != true, !isExportingAudio(meetingID)
     else { return .refused }
     let generation = record.committedTranscriptGeneration
     // Playback stops before any file of this meeting is removed.

@@ -88,10 +88,7 @@ final class MeetingAudioCompactionScheduler {
         }
         continue
       }
-      let candidates = coordinator.audioCompactionCandidates().filter {
-        !settled.contains($0) && !deferred.contains($0)
-      }
-      guard let meetingID = candidates.first else {
+      guard let meetingID = nextCompaction(coordinator) else {
         // Nothing to do until the meeting list changes (a meeting became ready, or one deferred
         // may be tried again).
         let snapshot = coordinator.meetings
@@ -99,7 +96,9 @@ final class MeetingAudioCompactionScheduler {
           guard let coordinator = coordinator else { return true }
           // A meeting list change, or a retirement that became possible without one (launch
           // recovery ending): the candidates read observed state, so this wakes on either.
-          return coordinator.meetings != snapshot || self?.nextRetirement(coordinator) != nil
+          guard let self else { return true }
+          return coordinator.meetings != snapshot || self.nextRetirement(coordinator) != nil
+            || self.nextCompaction(coordinator) != nil
         }
         deferred.removeAll()
         retirementDeferred.removeAll()
@@ -115,6 +114,13 @@ final class MeetingAudioCompactionScheduler {
       case .deferred, .stale:
         deferred.insert(meetingID)
       }
+    }
+  }
+
+  /// The next meeting a compaction may claim now, if any.
+  private func nextCompaction(_ coordinator: MeetingCoordinator) -> UUID? {
+    coordinator.audioCompactionCandidates().first {
+      !settled.contains($0) && !deferred.contains($0)
     }
   }
 

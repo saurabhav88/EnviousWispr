@@ -194,6 +194,9 @@ extension MeetingStore {
 
     let dir = folder(for: id)
     let names = Set(try FileManager.default.contentsOfDirectory(atPath: dir.path))
+    // The inventory must be one readers accept, complete and correctly named, before any
+    // original goes (a copy that merely hashes right is not enough).
+    try Self.validate(inventory, record: record, folderNames: names, requireOriginals: false)
     // The committed copy must be whole and unchanged before any original goes.
     for segment in inventory.segments {
       guard names.contains(segment.compressed.fileName) else {
@@ -241,6 +244,17 @@ extension MeetingStore {
     let record = try load(id: id)
     guard record.isWritableByThisBuild else { throw StoreError.newerFormat }
     let committed = Set(record.compressedAudio?.segments.map(\.compressed.fileName) ?? [])
+    // A record with no inventory whose recorder files are not all on disk may have lost its
+    // inventory after a retirement: the compacted files are then the only audio left, so none
+    // is treated as abandoned. Only a meeting whose every listed original is still there can
+    // have uncommitted compacted files.
+    if record.compressedAudio == nil {
+      let names = Set(try FileManager.default.contentsOfDirectory(atPath: folder(for: id).path))
+      let originalsAllPresent = record.segments.values.joined().allSatisfy {
+        names.contains($0.fileName)
+      }
+      guard originalsAllPresent else { return 0 }
+    }
     var removed = 0
     for file in try segmentFiles(meeting: id) where file.encoding == .aacM4A {
       if !file.partial, committed.contains(file.url.lastPathComponent) { continue }
@@ -292,8 +306,14 @@ extension MeetingStore {
 
   /// Every logical segment once, every output owned and correctly named, every cleaned original
   /// on disk covered: the complete set a reader will ask the selector for.
+  ///
+  /// `requireOriginals` is true at commit. Retirement passes false: a resumed retirement finds
+  /// some originals already gone, but still refuses an inventory this build cannot read, one
+  /// whose names or mapping are off, or one the selector refuses (playback would then use the
+  /// originals, which retirement must never remove).
   static func validate(
-    _ inventory: MeetingCompressedInventory, record: MeetingRecord, folderNames: Set<String>
+    _ inventory: MeetingCompressedInventory, record: MeetingRecord, folderNames: Set<String>,
+    requireOriginals: Bool = true
   ) throws {
     guard inventory.version == MeetingCompressedInventory.currentVersion else {
       throw CompactionError.invalidInventory("version")
@@ -320,7 +340,7 @@ extension MeetingStore {
             source: source, track: segment.track, variant: segment.variant,
             inventoryID: inventory.id, partial: false)
       else { throw CompactionError.invalidInventory("output_name") }
-      guard folderNames.contains(source.fileName) else {
+      guard !requireOriginals || folderNames.contains(source.fileName) else {
         throw CompactionError.missingFile(source.fileName)
       }
     }
@@ -345,7 +365,8 @@ extension MeetingStore {
     let cleanedInInventory = inventory.segments.filter { $0.variant == .cleaned }
     // By file name, never index alone: two cleaned files sharing an index are two entries, and
     // the selector below refuses the duplicate logical key.
-    guard Set(cleanedInInventory.map(\.source.fileName)) == cleanedOnDisk else {
+    guard !requireOriginals || Set(cleanedInInventory.map(\.source.fileName)) == cleanedOnDisk
+    else {
       throw CompactionError.invalidInventory("cleaned_set")
     }
     var logical: [MeetingLogicalSegment] = []

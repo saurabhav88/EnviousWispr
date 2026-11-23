@@ -543,6 +543,44 @@ struct MeetingAudioCompactionLifecycleTests {
     }
   }
 
+  @Test("retirement waits for an open player (even paused) and for a running Save audio")
+  func retirementWaitsForPlayerAndExport() async throws {
+    final class Exporting { var ids: Set<UUID> = [] }
+    let harness = try Harness()
+    let record = try Self.readyMeeting(harness)
+    let coordinator = harness.coordinator
+    let arbiter = PlaybackArbiter()
+    coordinator.playbackArbiter = arbiter
+    let exporting = Exporting()
+    coordinator.isExportingAudio = { exporting.ids.contains($0) }
+    await Self.launched(harness, record.id)
+    #expect(
+      await coordinator.compactAudio(meetingID: record.id, with: MeetingAudioCompactor())
+        == .committed)
+    #expect(coordinator.audioRetirementCandidates() == [record.id])
+
+    var player: MeetingPlaybackController? = MeetingPlaybackController(
+      media: .transcript(Silence()), durationMs: 3_000,
+      output: MeetingPlaybackControllerTests.FakeOutput(), sourceID: .meeting(record.id),
+      arbiter: arbiter)
+    #expect(player != nil)
+    #expect(coordinator.audioRetirementCandidates().isEmpty, "an idle open player counts")
+    #expect(await coordinator.retireSupersededAudio(meetingID: record.id) == .refused)
+    player = nil
+    exporting.ids = [record.id]
+    #expect(coordinator.audioRetirementCandidates().isEmpty, "a running Save audio counts")
+    #expect(await coordinator.retireSupersededAudio(meetingID: record.id) == .refused)
+    for name in Self.originals(record) {
+      #expect(try Self.names(harness, record.id).contains(name))
+    }
+    exporting.ids = []
+    #expect(coordinator.audioRetirementCandidates() == [record.id])
+    guard case .removed = await coordinator.retireSupersededAudio(meetingID: record.id) else {
+      Issue.record("retirement must proceed once both ended")
+      return
+    }
+  }
+
   @Test("Transcribe again after the commit does not block retirement under the new generation")
   func retirementAfterRetranscription() async throws {
     let harness = try Harness()

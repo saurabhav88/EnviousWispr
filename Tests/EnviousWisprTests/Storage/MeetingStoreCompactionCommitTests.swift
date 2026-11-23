@@ -501,6 +501,54 @@ struct MeetingStoreCompactionCommitTests {
     }
   }
 
+  @Test("retirement refuses an inventory this build cannot read, even when every hash matches")
+  func retirementRefusesUnreadableInventory() throws {
+    let f = try Self.fixture()
+    _ = try f.commit()
+    var record = try f.store.load(id: f.id)
+    record.commitCompressedAudio(Self.replacing(f.inventory, version: 2))
+    try f.store.save(record)
+    #expect(throws: MeetingStore.CompactionError.invalidInventory("version")) { try f.retire() }
+
+    let renamed = try Self.fixture()
+    _ = try renamed.commit()
+    var other = try renamed.store.load(id: renamed.id)
+    var segments = renamed.inventory.segments
+    segments[0] = Self.renamed(segments[0], output: "mic-00001-s000000000-cdeadbeef.m4a")
+    other.commitCompressedAudio(Self.replacing(renamed.inventory, segments: segments))
+    try renamed.store.save(other)
+    #expect(throws: MeetingStore.CompactionError.self) { try renamed.retire() }
+
+    for fixture in [f, renamed] {
+      for name in fixture.cafNames { #expect(fixture.exists(name), "\(name) must stay") }
+    }
+  }
+
+  @Test("launch cleanup keeps compacted files when the record lost its inventory after retirement")
+  func cleanupKeepsAudioWhenInventoryLost() throws {
+    let f = try Self.fixture()
+    _ = try f.commit()
+    #expect(try f.retire() == f.cafNames.count)
+    // The record loses its inventory (an older build rewrote it): the compacted files are now
+    // the only audio, so none may be called abandoned.
+    let url = f.store.recordURL(for: f.id)
+    var json = try #require(
+      JSONSerialization.jsonObject(with: Data(contentsOf: url)) as? [String: Any])
+    json.removeValue(forKey: "compressedAudio")
+    try JSONSerialization.data(withJSONObject: json).write(to: url)
+    #expect(try f.store.load(id: f.id).compressedAudio == nil)
+    #expect(try f.store.removeAbandonedCompactedAudio(meeting: f.id) == 0)
+    for name in f.outputNames { #expect(f.exists(name), "\(name) must stay") }
+
+    // A meeting whose originals are all still there does have abandoned candidates to remove.
+    let fresh = try Self.fixture()
+    try fresh.write(
+      MeetingSegmentNaming.compactedFileName(
+        source: Self.segment(.microphone, 1), track: .microphone, variant: .raw,
+        inventoryID: UUID(), partial: false), "aac stray")
+    #expect(try fresh.store.removeAbandonedCompactedAudio(meeting: fresh.id) > 0)
+  }
+
   @Test("an interrupted retirement reports what it removed, keeps the rest, and resumes")
   func interruptedRetirementResumes() throws {
     let f = try Self.fixture()
