@@ -30,6 +30,12 @@ enum GuidedTourStop: String, CaseIterable, Equatable, Sendable {
     }
   }
 
+  /// The card's title: the sidebar's own label for the page. Every tour page has one; the
+  /// fallback is the stop's own name as a non-literal, so it is never a catalog key.
+  var pageTitle: LocalizedStringResource {
+    page.labelResource ?? LocalizedStringResource(String.LocalizationValue(rawValue))
+  }
+
   /// The navigation the stop requests, through the same guarded path every other request takes.
   var intent: SettingsNavigationIntent {
     switch self {

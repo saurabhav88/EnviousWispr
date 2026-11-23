@@ -54,7 +54,7 @@ struct GuidedTourCard: View {
     .onChange(of: phase) { _, new in
       // One announcement per stop change; focus is never moved.
       if case .stop(let stop) = new, let position = plan.position(of: stop) {
-        let name = String(localized: stop.page.labelResource ?? "EnviousWispr")
+        let name = String(localized: stop.pageTitle)
         AccessibilityNotification.Announcement(
           String(localized: "\(name), \(position) of \(plan.count)")
         ).post()
@@ -65,7 +65,7 @@ struct GuidedTourCard: View {
   private var title: LocalizedStringResource {
     switch phase {
     case .offer: "Take a quick tour"
-    case .stop(let stop): stop.page.labelResource ?? "EnviousWispr"
+    case .stop(let stop): stop.pageTitle
     }
   }
 
@@ -117,7 +117,7 @@ struct GuidedTourCard: View {
     let name =
       stop == .recordings
       ? String(localized: AppSettingsTab.recordings.label)
-      : String(localized: stop.page.labelResource ?? "EnviousWispr")
+      : String(localized: stop.pageTitle)
     return "Open \(name)"
   }
 
