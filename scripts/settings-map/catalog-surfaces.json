@@ -269,6 +269,9 @@
    "micReadiness.60s",
    "micReadiness.always"
   ],
+  "mac-ctl-silent-mic-warnings": [
+   "silentMicWarning"
+  ],
   "mac-ctl-bt-learn-more": [
    "bluetoothGuide",
    "bluetoothGuide.learnMore"
@@ -992,6 +995,11 @@
    "kind": "control",
    "parent": "mac-sec-polish-setup",
    "label": "Unload polish model after"
+  },
+  "mac-ctl-silent-mic-warnings": {
+   "kind": "control",
+   "parent": "mac-sec-mic-input",
+   "label": "Warn when the microphone is silent"
   }
  }
 }

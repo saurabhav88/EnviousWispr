@@ -61,6 +61,52 @@ struct RecordingDisclosureTests {
     #expect(!settings.showsRecordingUpgradeDisclosure)
   }
 
+  // MARK: - #4565 guided tour offer state
+
+  @Test("an install that finished setup before the tour gets no automatic offer, whatever it did with the recording notice")
+  func earlierInstallGetsNoAutomaticTour() {
+    for acknowledged in [false, true] {
+      let defaults = suite()
+      defaults.set(true, forKey: "hasCompletedOnboarding")  // set up on an earlier version
+      defaults.set(acknowledged, forKey: "recordingDisclosureAcknowledged")
+      let settings = SettingsManager(defaults: defaults)
+      #expect(settings.guidedTourOfferState == .earlier)
+      settings.consumeGuidedTourOffer()
+      #expect(settings.guidedTourOfferState == .earlier, "a replay never turns earlier into consumed")
+    }
+  }
+
+  @Test("an install still in setup at update time is offered the tour once")
+  func unfinishedSetupGetsExactlyOneOffer() {
+    let defaults = suite()
+    defaults.set("needsModelDownload", forKey: "onboardingState")  // started, never finished
+    let settings = SettingsManager(defaults: defaults)
+    #expect(settings.guidedTourOfferState == .eligible)
+
+    settings.onboardingState = .completed  // finishes setup in this run
+    #expect(settings.guidedTourOfferState == .eligible, "finishing setup does not change the seed")
+    settings.consumeGuidedTourOffer()
+    #expect(settings.guidedTourOfferState == .consumed)
+    #expect(
+      SettingsManager(defaults: defaults).guidedTourOfferState == .consumed,
+      "shown once, gone after a relaunch")
+  }
+
+  @Test("a brand-new install is eligible and the tour state is independent of the recording notice")
+  func freshInstallIsEligibleAndIndependent() {
+    let defaults = suite()
+    let settings = SettingsManager(defaults: defaults)
+    #expect(settings.guidedTourOfferState == .eligible)
+    settings.acknowledgeRecordingDisclosure()
+    #expect(settings.guidedTourOfferState == .eligible, "the notice does not consume the tour")
+    settings.consumeGuidedTourOffer()
+    #expect(settings.recordingDisclosureAcknowledged)
+
+    let other = SettingsManager(defaults: suite())
+    other.consumeGuidedTourOffer()
+    #expect(!other.recordingDisclosureAcknowledged, "the tour does not dismiss the notice")
+  }
+
   @Test("opening What's New does not dismiss the History notice")
   func whatsNewIsIndependent() {
     let defaults = suite()

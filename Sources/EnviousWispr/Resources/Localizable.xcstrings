@@ -2525,6 +2525,34 @@
         }
       }
     },
+    "%@, %lld of %lld" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "%1$@, %2$lld of %3$lld"
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@, %lld von %lld"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@, %lld sur %lld"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@, %lld de %lld"
+          }
+        }
+      }
+    },
     "%@, example, pastes %@" : {
       "localizations" : {
         "en" : {
@@ -14491,6 +14519,28 @@
         }
       }
     },
+    "Choose an audio or video file here to get a transcript." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Wähle hier eine Audio- oder Videodatei, um ein Transkript zu erhalten."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Choisissez ici un fichier audio ou vidéo pour obtenir une transcription."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Elige aquí un archivo de audio o vídeo para obtener una transcripción."
+          }
+        }
+      }
+    },
     "Choose an engine" : {
       "comment" : "EnviousMeet page, Live Preview: the engine menu before an engine is chosen.",
       "localizations" : {
@@ -15011,6 +15061,28 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Elige tu Pulido con IA"
+          }
+        }
+      }
+    },
+    "Choose your speech engine, microphone and recording pill here." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Wähle hier deine Engine für die Spracherkennung, dein Mikrofon und die Aufnahmeanzeige."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Choisissez ici votre moteur de reconnaissance vocale, votre micro et la pastille d’enregistrement."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Elige aquí tu motor de reconocimiento de voz, tu micrófono y la píldora de grabación."
           }
         }
       }
@@ -20246,28 +20318,6 @@
         }
       }
     },
-    "Dictation recordings" : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Diktataufnahmen"
-          }
-        },
-        "fr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Enregistrements de dictée"
-          }
-        },
-        "es" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Grabaciones de dictado"
-          }
-        }
-      }
-    },
     "Dictation recordings: about %@" : {
       "comment" : "App Settings, Recordings: disk used by dictation recordings. %@ is a size.",
       "localizations" : {
@@ -22445,6 +22495,28 @@
         }
       }
     },
+    "End tour" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Tour beenden"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Quitter la visite"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Salir del recorrido"
+          }
+        }
+      }
+    },
     "Ends recording after you stop speaking." : {
       "comment" : "Speech engine settings: short line under Stop recording on silence.",
       "localizations" : {
@@ -22809,6 +22881,28 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "EnviousMeet detecta tus llamadas"
+          }
+        }
+      }
+    },
+    "EnviousMeet records your calls and turns them into transcripts." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "EnviousMeet nimmt deine Anrufe auf und macht daraus Transkripte."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "EnviousMeet enregistre vos appels et les transforme en transcriptions."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "EnviousMeet graba tus llamadas y las convierte en transcripciones."
           }
         }
       }
@@ -25076,6 +25170,28 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Terminar la configuración de los resúmenes"
+          }
+        }
+      }
+    },
+    "Finish tour" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Tour abschließen"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Terminer la visite"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Terminar el recorrido"
           }
         }
       }
@@ -30572,6 +30688,29 @@
         }
       }
     },
+    "Keep waiting for AI polish to finish downloading" : {
+      "comment" : "Setup Getting ready: VoiceOver label of the Keep waiting button on the slow-download card.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Weiter warten, bis die KI-Nachbearbeitung heruntergeladen ist"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Continuer d’attendre la fin du téléchargement de la retouche IA"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Seguir esperando a que termine la descarga del Pulido con IA"
+          }
+        }
+      }
+    },
     "Keeping your mic ready reduces Bluetooth startup delay." : {
       "comment" : "Microphone settings: short line under the Bluetooth guide row.",
       "localizations" : {
@@ -33793,28 +33932,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Maltés"
-          }
-        }
-      }
-    },
-    "Manage recordings" : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Aufnahmen verwalten"
-          }
-        },
-        "fr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Gérer les enregistrements"
-          }
-        },
-        "es" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Gestionar grabaciones"
           }
         }
       }
@@ -40792,28 +40909,6 @@
         }
       }
     },
-    "Open History" : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Verlauf öffnen"
-          }
-        },
-        "fr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Ouvrir l’Historique"
-          }
-        },
-        "es" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Abrir el Historial"
-          }
-        }
-      }
-    },
     "Open More actions and choose a model to try again." : {
       "comment" : "History: under a failed polish; says how to try polishing again.",
       "localizations" : {
@@ -43348,28 +43443,6 @@
         }
       }
     },
-    "Play or delete a recording" : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Aufnahme abspielen oder löschen"
-          }
-        },
-        "fr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Lire ou supprimer un enregistrement"
-          }
-        },
-        "es" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Reproducir o eliminar una grabación"
-          }
-        }
-      }
-    },
     "Play recording chimes" : {
       "comment" : "Chimes settings: switch that plays a short sound when recording starts and stops.",
       "localizations" : {
@@ -44098,28 +44171,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Pulsa %@ o abre el menú de EnviousWispr y elige la opción que empieza por “Añadir”."
-          }
-        }
-      }
-    },
-    "Press Play to listen. To remove just the audio and keep the text, open More actions and choose Delete recording, keep text." : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Klicke auf „Abspielen“, um die Aufnahme anzuhören. Wenn du nur die Audioaufnahme löschen und den Text behalten möchtest, öffne „Weitere Aktionen“ und wähle „Aufnahme löschen, Text behalten“."
-          }
-        },
-        "fr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Sélectionnez Lire pour écouter. Pour supprimer uniquement l’audio et conserver le texte, ouvrez Autres actions et choisissez « Supprimer l’enregistrement, conserver le texte »."
-          }
-        },
-        "es" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Pulsa Reproducir para escuchar. Para eliminar solo el audio y conservar el texto, abre “Más acciones” y selecciona “Eliminar grabación y conservar el texto”."
           }
         }
       }
@@ -50103,6 +50154,28 @@
         }
       }
     },
+    "See where everything is in EnviousWispr." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Schau dir an, wo du in EnviousWispr alles findest."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Découvrez où tout se trouve dans EnviousWispr."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Descubre dónde está todo en EnviousWispr."
+          }
+        }
+      }
+    },
     "See words before you finish your dictation." : {
       "comment" : "Live Preview settings: short line under Show words while you speak.",
       "localizations" : {
@@ -50849,6 +50922,28 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Configurar modelos de resumen en EnviousMeet"
+          }
+        }
+      }
+    },
+    "Set your dictation shortcut under %@." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Lege dein Diktat-Tastenkürzel unter „%@“ fest."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Définissez votre raccourci de dictée dans « %@ »."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Define tu atajo de dictado en «%@»."
           }
         }
       }
@@ -51927,6 +52022,29 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Passer cette étape"
+          }
+        }
+      }
+    },
+    "Skip ahead and start dictating now" : {
+      "comment" : "Setup Getting ready: VoiceOver label of the Skip ahead button on the slow-download card.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Überspringen und jetzt schon diktieren"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Passer cette étape et commencer à dicter dès maintenant"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Saltar este paso y empezar a dictar ya"
           }
         }
       }
@@ -54888,6 +55006,28 @@
         }
       }
     },
+    "Take a quick tour" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Mach eine kurze Tour"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Faites une visite rapide"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Haz un recorrido rápido"
+          }
+        }
+      }
+    },
     "Take notes on this %@ call?" : {
       "comment" : "EnviousMeet: a call app uses the microphone; the app's short name. Recording is offered, not started.",
       "localizations" : {
@@ -54930,6 +55070,29 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "¿Tomar notas de esta reunión de Slack?"
+          }
+        }
+      }
+    },
+    "Take the Tour" : {
+      "comment" : "Menu bar menu: starts the guided tour of the app.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Tour machen"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Faire la visite"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hacer el recorrido"
           }
         }
       }
@@ -62034,24 +62197,24 @@
         }
       }
     },
-    "Turn off Save dictation recordings to stop saving new audio. Choose how long to keep recordings, or delete them all. Your text stays either way." : {
+    "Turn off %@ to stop saving audio, or delete recordings here." : {
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Deaktiviere „Diktataufnahmen speichern“, damit bei neuen Diktaten kein Audio gespeichert wird. Wähle, wie lange du Aufnahmen behalten möchtest, oder lösche sie alle. Dein Text bleibt in beiden Fällen erhalten."
+            "value" : "Schalte „%@“ aus, um keine Audiodaten mehr zu speichern, oder lösche hier Aufnahmen."
           }
         },
         "fr" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Désactivez « Enregistrer l’audio des dictées » pour ne plus sauvegarder l’audio des nouvelles dictées. Choisissez la durée de conservation des enregistrements ou supprimez-les tous. Votre texte reste conservé dans les deux cas."
+            "value" : "Désactivez « %@ » pour ne plus sauvegarder l’audio, ou supprimez ici les enregistrements."
           }
         },
         "es" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Desactiva “Guardar grabaciones de dictado” para dejar de guardar audio nuevo. Elige cuánto tiempo quieres conservar las grabaciones o elimínalas todas. En ambos casos, el texto se conserva."
+            "value" : "Desactiva «%@» para dejar de guardar audio, o elimina aquí las grabaciones."
           }
         }
       }
@@ -62144,6 +62307,28 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Activar"
+          }
+        }
+      }
+    },
+    "Turn on %@ to tidy your dictation with a model you choose." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Aktiviere „%@“, um dein Diktat mit einem Modell deiner Wahl zu überarbeiten."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Activez « %@ » pour retoucher votre dictée avec un modèle de votre choix."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Activa «%@» para pulir tu dictado con un modelo de tu elección."
           }
         }
       }
@@ -63483,6 +63668,28 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Usar %@"
+          }
+        }
+      }
+    },
+    "Use %@ to teach EnviousWispr names and terms." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Mit „%@“ bringst du EnviousWispr Namen und Begriffe bei."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Utilisez « %@ » pour apprendre des noms et des termes à EnviousWispr."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Usa «%@» para enseñarle nombres y términos a EnviousWispr."
           }
         }
       }
@@ -67869,24 +68076,24 @@
         }
       }
     },
-    "Your dictation recordings are saved on this Mac. Take a quick look at where to play and manage them." : {
+    "Your dictations are listed here. When one has a recording, press Play to hear it." : {
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Deine Diktataufnahmen werden auf diesem Mac gespeichert. Sieh dir kurz an, wo du sie abspielen und verwalten kannst."
+            "value" : "Hier findest du deine Diktate. Wenn zu einem Diktat eine Aufnahme vorliegt, drücke auf „Abspielen“, um sie anzuhören."
           }
         },
         "fr" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Les enregistrements de vos dictées sont stockés sur ce Mac. Découvrez où les écouter et les gérer."
+            "value" : "Vos dictées s’affichent ici. Si une dictée est associée à un enregistrement, appuyez sur « Lire » pour écouter l’enregistrement."
           }
         },
         "es" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Las grabaciones de tus dictados se guardan en este Mac. Echa un vistazo rápido a dónde reproducirlas y gestionarlas."
+            "value" : "Tus dictados aparecen aquí. Cuando uno tiene grabación, pulsa «Reproducir» para escucharla."
           }
         }
       }
@@ -88379,48 +88586,24 @@
         }
       }
     },
-    "Keep waiting for AI polish to finish downloading" : {
-      "comment" : "Setup Getting ready: VoiceOver label of the Keep waiting button on the slow-download card.",
+    "Use %@ to save text that appears when you say your keyword, then its trigger." : {
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Weiter warten, bis die KI-Nachbearbeitung heruntergeladen ist"
+            "value" : "Mit „%@“ speicherst du Text, der erscheint, wenn du dein Schlüsselwort und dann den Auslöser sagst."
           }
         },
         "fr" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Continuer d’attendre la fin du téléchargement de la retouche IA"
+            "value" : "Avec « %@ », enregistrez un texte qui apparaît quand vous dites votre mot-clé, puis son déclencheur."
           }
         },
         "es" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Seguir esperando a que termine la descarga del Pulido con IA"
-          }
-        }
-      }
-    },
-    "Skip ahead and start dictating now" : {
-      "comment" : "Setup Getting ready: VoiceOver label of the Skip ahead button on the slow-download card.",
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Überspringen und jetzt schon diktieren"
-          }
-        },
-        "fr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Passer cette étape et commencer à dicter dès maintenant"
-          }
-        },
-        "es" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Saltar este paso y empezar a dictar ya"
+            "value" : "Con «%@» guardas un texto que aparece cuando dices tu palabra clave y luego su activador."
           }
         }
       }
