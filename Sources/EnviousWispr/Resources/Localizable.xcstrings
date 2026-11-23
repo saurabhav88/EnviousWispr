@@ -63672,28 +63672,6 @@
         }
       }
     },
-    "Use %@ to save text that appears when you say its keyword." : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Mit „%@“ speicherst du Text, der erscheint, wenn du das zugehörige Schlüsselwort sagst."
-          }
-        },
-        "fr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Utilisez « %@ » pour enregistrer du texte qui s’affiche quand vous prononcez le mot-clé associé."
-          }
-        },
-        "es" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Usa «%@» para guardar texto que aparece cuando dices la palabra clave asociada."
-          }
-        }
-      }
-    },
     "Use %@ to teach EnviousWispr names and terms." : {
       "localizations" : {
         "de" : {
@@ -88604,6 +88582,28 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Ahora las notificaciones son más claras cuando algo falla, con avisos distintos para los fallos parciales y completos."
+          }
+        }
+      }
+    },
+    "Use %@ to save text that appears when you say your keyword, then its trigger." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Mit „%@“ speicherst du Text, der erscheint, wenn du dein Schlüsselwort und dann den Auslöser sagst."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Avec « %@ », enregistrez un texte qui apparaît quand vous dites votre mot-clé, puis son déclencheur."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Con «%@» guardas un texto que aparece cuando dices tu palabra clave y luego su activador."
           }
         }
       }

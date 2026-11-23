@@ -51,15 +51,18 @@ struct GuidedTourCard: View {
       }
     }
     .accessibilityElement(children: .contain)
-    .onChange(of: phase) { _, new in
-      // One announcement per stop change; focus is never moved.
-      if case .stop(let stop) = new, let position = plan.position(of: stop) {
-        let name = String(localized: stop.pageTitle)
-        AccessibilityNotification.Announcement(
-          String(localized: "\(name), \(position) of \(plan.count)")
-        ).post()
-      }
-    }
+    .onAppear { announce(phase) }
+    .onChange(of: phase) { _, new in announce(new) }
+  }
+
+  /// One announcement per stop, when the card mounts on a stop (a replay with no card showing) and
+  /// on every later stop change. Focus is never moved.
+  private func announce(_ phase: GuidedTourModel.Phase) {
+    guard case .stop(let stop) = phase, let position = plan.position(of: stop) else { return }
+    let name = String(localized: stop.pageTitle)
+    AccessibilityNotification.Announcement(
+      String(localized: "\(name), \(position) of \(plan.count)")
+    ).post()
   }
 
   private var title: LocalizedStringResource {
@@ -101,7 +104,7 @@ struct GuidedTourCard: View {
       return "Use \(name) to teach EnviousWispr names and terms."
     case .snippets:
       let name = String(localized: SettingsItemCopy.Snippets.add)
-      return "Use \(name) to save text that appears when you say its keyword."
+      return "Use \(name) to save text that appears when you say your keyword, then its trigger."
     case .transcribeFile:
       return "Choose an audio or video file here to get a transcript."
     case .meetings:
