@@ -99,7 +99,7 @@ final class MeetingAudioCompactionScheduler {
           guard let coordinator = coordinator else { return true }
           // A meeting list change, or a retirement that became possible without one (launch
           // recovery ending): the candidates read observed state, so this wakes on either.
-          return coordinator.meetings != snapshot || self.nextRetirement(coordinator) != nil
+          return coordinator.meetings != snapshot || self?.nextRetirement(coordinator) != nil
         }
         deferred.removeAll()
         retirementDeferred.removeAll()
