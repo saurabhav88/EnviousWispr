@@ -1964,18 +1964,19 @@ struct MeetingCoordinatorTests {
     let id = UUID()
     let folder = URL(filePath: "/tmp/meeting")
     func snapshot(frames: Int) -> MeetingAudioExportSnapshot {
-      MeetingAudioExportSnapshot(
-        meetingID: id, folder: folder,
-        segments: [
-          .microphone: [
-            MeetingSegmentInfo(index: 1, fileName: "mic-00001-s000000000.caf", startMs: 0, frameCount: frames)
-          ]
-        ], durationMs: 1_000)
+      var record = MeetingRecord(engine: .parakeet, trackStatus: [.microphone: .captured])
+      record.segments = [
+        .microphone: [
+          MeetingSegmentInfo(index: 1, fileName: "mic-00001-s000000000.caf", startMs: 0, frameCount: frames)
+        ]
+      ]
+      return MeetingAudioExportSnapshot(
+        meetingID: id, source: MeetingPlaybackSource(record: record, folder: folder))
     }
     #expect(snapshot(frames: 16_000) == snapshot(frames: 16_000))
     #expect(snapshot(frames: 16_000) != snapshot(frames: 15_999))
     #expect(
-      snapshot(frames: 16_000).trackFiles[.microphone]?.map(\.url)
+      snapshot(frames: 16_000).source.files[.microphone]?.map(\.url)
         == [folder.appendingPathComponent("mic-00001-s000000000.caf")])
   }
 

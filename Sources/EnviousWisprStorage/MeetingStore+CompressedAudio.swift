@@ -18,7 +18,7 @@ import Foundation
 ///
 /// **Retirement** (`removeSupersededPCM`) removes only the recorder files the committed
 /// inventory names as sources, after re-reading and re-hashing every committed output and every
-/// source it would remove. Nothing in the app calls it yet (main wires it after C6).
+/// source it would remove. `MeetingCoordinator.retireSupersededAudio` calls it, scheduled by `MeetingAudioCompactionScheduler`.
 ///
 /// Both run on the caller's queue; production calls them through `MeetingFileWriter`, so they
 /// are ordered with every other write of the meeting. They read the record from disk, never a
@@ -165,7 +165,7 @@ extension MeetingStore {
   /// how many it removed (0 on a retry with nothing left). Before removing anything it re-reads
   /// the record, re-hashes every committed output and every original it would remove, and
   /// refuses on any difference. Removes only files named as sources in that inventory: never a
-  /// compacted file, a proof, an unlisted file or a document. Not called in production yet.
+  /// compacted file, a proof, an unlisted file or a document.
   public func removeSupersededPCM(
     meeting id: UUID,
     expectedTranscriptGeneration: UUID?,

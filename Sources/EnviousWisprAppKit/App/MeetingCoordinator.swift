@@ -860,8 +860,8 @@ final class MeetingCoordinator {
       record.recordedDurationMs > 0, record.segments.values.contains(where: { !$0.isEmpty })
     else { return nil }
     return MeetingAudioExportSnapshot(
-      meetingID: meetingID, folder: deps.store.folder(for: meetingID), segments: record.segments,
-      durationMs: record.recordedDurationMs)
+      meetingID: meetingID,
+      source: MeetingPlaybackSource(record: record, folder: deps.store.folder(for: meetingID)))
   }
 
   /// #4799: whether this meeting's audio is gone or going, from the owner's live state (a
@@ -996,7 +996,7 @@ final class MeetingCoordinator {
       // the audio is gone).
       if !current.audioKept, current.isWritableByThisBuild {
         await finishAudioDeletion(meetingID)
-      } else if record.isWritableByThisBuild {
+      } else if current.isWritableByThisBuild {
         // #3147 PR4B: compacted output no committed inventory names (a preparation or commit an
         // exit cut short) is temporary: it goes now. Originals and committed files stay.
         await removeAbandonedCompaction(meetingID)
@@ -2853,6 +2853,12 @@ final class MeetingCoordinator {
     }
   }
 
+  /// Meetings holding a committed compacted copy, whose superseded originals the scheduler may
+  /// remove (it asks `retireSupersededAudio`, which re-checks everything).
+  func audioRetirementCandidates() -> [UUID] {
+    meetings.map(\.id).filter { committedAudio[$0] != nil }
+  }
+
   /// Claims one meeting for compaction, against its record now (generation and segments). Nil
   /// when it is not eligible or already claimed. Synchronous: nothing can start in between.
   func claimAudioCompaction(meetingID: UUID) -> MeetingAudioCompactionTicket? {
@@ -2993,9 +2999,9 @@ final class MeetingCoordinator {
   /// (`MeetingStore.removeSupersededPCM`, which re-hashes every committed file and every
   /// original before removing only originals that inventory names).
   ///
-  /// #3147 PR4B: built and tested only. Nothing in the app calls it until the C6 parity gate
-  /// passes on every required machine (main adds the call site in a later step). Repeatable: a
-  /// relaunch retries only what is left and never publishes another inventory.
+  /// #3147 PR4B: the scheduler calls it once per session per meeting with a committed copy, so
+  /// it also resumes a retirement a quit or crash cut short. Repeatable: a relaunch retries only
+  /// what is left and never publishes another inventory.
   func retireSupersededAudio(meetingID: UUID) async -> AudioRetirement {
     guard launched, launchTask == nil, !quitting, let inventory = committedAudio[meetingID],
       let record = live[meetingID], record.compressedAudio?.id == inventory.id,
@@ -3600,14 +3606,7 @@ final class MeetingCoordinator {
 /// the length is the same, so a recovery that rewrote the inventory is seen at commit.
 struct MeetingAudioExportSnapshot: Sendable, Equatable {
   let meetingID: UUID
-  let folder: URL
-  let segments: [MeetingTrackKind: [MeetingSegmentInfo]]
-  let durationMs: Int
-
-  /// The files to mix, as playback reads them.
-  var trackFiles: MeetingPlaybackController.TrackFiles {
-    segments.mapValues { list in
-      list.map { (url: folder.appendingPathComponent($0.fileName), startMs: $0.startMs) }
-    }
-  }
+  /// What playback would read now: the recorder's files, or a committed compacted copy through
+  /// recovery. Compared whole, so a commit or a recovery that changed the audio is seen.
+  let source: MeetingPlaybackSource
 }

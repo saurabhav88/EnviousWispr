@@ -14,6 +14,14 @@ import Testing
 @MainActor
 @Suite("History Save audio", .tags(.productOutcome), .timeLimit(.minutes(1)))
 struct HistoryAudioExportTests {
+  /// Recorder files as the export source reads them (no compacted copy).
+  static func media(_ files: [MeetingTrackKind: [(url: URL, startMs: Int)]]) -> PlaybackMedia {
+    .meeting(
+      files.mapValues {
+        $0.map { MeetingTrackAudio.SourceFile(url: $0.url, startMs: $0.startMs, logicalFrames: nil) }
+      })
+  }
+
   /// Records what a save did outside the app.
   @MainActor final class Recorder {
     var destination: URL?
@@ -340,7 +348,7 @@ struct HistoryAudioExportTests {
     let outcome = await export.save(
       HistoryAudioExport.Request(
         key: .meeting(UUID()), defaultName: "Meeting",
-        admit: { .meeting(files: [.microphone: [(broken, 0)]], durationMs: 1_000) },
+        admit: { .meeting(media: Self.media([.microphone: [(broken, 0)]]), durationMs: 1_000) },
         check: { .deleted }))?.value
 
     #expect(outcome == .notSaved(.deleted))
@@ -363,7 +371,7 @@ struct HistoryAudioExportTests {
       key: .meeting(UUID()), defaultName: "Meeting",
       admit: { [export] in
         export.cancelAll()
-        return .meeting(files: [.microphone: [(mic, 0)]], durationMs: 60_000)
+        return .meeting(media: Self.media([.microphone: [(mic, 0)]]), durationMs: 60_000)
       }, check: { .deliverable })
 
     let outcome = await export.save(request)?.value
@@ -485,7 +493,7 @@ struct HistoryAudioExportTests {
       HistoryAudioExport.Request(
         key: .meeting(UUID()), defaultName: "Customer call",
         admit: {
-          .meeting(files: [.microphone: [(mic, 0)], .callSound: [(call, 500)]], durationMs: 5_000)
+          .meeting(media: Self.media([.microphone: [(mic, 0)], .callSound: [(call, 500)]]), durationMs: 5_000)
         }, check: { .deliverable }))?.value
 
     let destination = try #require(recorder.destination)
@@ -534,7 +542,7 @@ struct HistoryAudioExportTests {
       HistoryAudioExport.Request(
         key: .meeting(UUID()), defaultName: "Meeting",
         admit: {
-          .meeting(files: [.microphone: [(mic, 0)], .callSound: [(broken, 0)]], durationMs: 1_000)
+          .meeting(media: Self.media([.microphone: [(mic, 0)], .callSound: [(broken, 0)]]), durationMs: 1_000)
         }, check: { .deliverable }))?.value
 
     let destination = try #require(recorder.destination)
@@ -556,7 +564,7 @@ struct HistoryAudioExportTests {
     let outcome = await export.save(
       HistoryAudioExport.Request(
         key: .meeting(UUID()), defaultName: "Meeting",
-        admit: { .meeting(files: [.microphone: [(broken, 0)]], durationMs: 1_000) },
+        admit: { .meeting(media: Self.media([.microphone: [(broken, 0)]]), durationMs: 1_000) },
         check: { .deliverable }))?.value
 
     guard case .notSaved(.failed) = outcome else {

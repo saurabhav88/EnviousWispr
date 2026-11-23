@@ -614,7 +614,7 @@ struct MeetingAudioCompactionLifecycleTests {
 
   // MARK: - Scheduler
 
-  @Test("the scheduler waits for its turn, then compacts an eligible meeting on its own")
+  @Test("the scheduler waits for its turn, compacts an eligible meeting, then removes its originals")
   func schedulerCompacts() async throws {
     let harness = try Harness()
     let record = try Self.readyMeeting(harness)
@@ -634,11 +634,61 @@ struct MeetingAudioCompactionLifecycleTests {
     await MeetingCoordinatorTests.eventually("compacted in the background") {
       coordinator.record(id: record.id)?.compressedAudio != nil
     }
-    for name in Self.originals(record) {
-      #expect(try Self.names(harness, record.id).contains(name))
+    let inventory = try #require(coordinator.record(id: record.id)?.compressedAudio)
+    await MeetingCoordinatorTests.eventually("originals removed after the commit") {
+      (try? Self.names(harness, record.id).contains(where: { name in
+        inventory.segments.contains { $0.source.fileName == name }
+      })) == false
     }
+    #expect(try Self.compactedNames(harness, record.id).count == inventory.segments.count)
+    #expect(coordinator.playbackSource(meetingID: record.id) != nil)
     coordinator.prepareForTermination()
     #expect(coordinator.audioCompaction?.isRunning == false)
+  }
+
+  @Test("a relaunch resumes a retirement the quit cut short, once, with the copy left whole")
+  func schedulerResumesInterruptedRetirement() async throws {
+    let first = try Harness()
+    let record = try Self.readyMeeting(first)
+    await Self.launched(first, record.id)
+    #expect(
+      await first.coordinator.compactAudio(
+        meetingID: record.id, with: MeetingAudioCompactor()) == .committed)
+    let inventory = try #require(try first.store.load(id: record.id).compressedAudio)
+    // The first process ended after the commit and before any original was removed.
+    let second = try Harness(copying: first.root)
+    let coordinator = second.coordinator
+    coordinator.audioCompaction = MeetingAudioCompactionScheduler(
+      coordinator: coordinator, compactor: MeetingAudioCompactor(),
+      dependencies: .init(mayRun: { true }, wakes: nil, log: { _ in }))
+    coordinator.launch()
+    await MeetingCoordinatorTests.eventually("originals removed on relaunch") {
+      (try? Self.names(second, record.id).contains(where: { name in
+        inventory.segments.contains { $0.source.fileName == name }
+      })) == false
+    }
+    #expect(try Self.compactedNames(second, record.id).count == inventory.segments.count)
+    #expect(try second.store.load(id: record.id).compressedAudio == inventory)
+    coordinator.prepareForTermination()
+  }
+
+  @Test("an unreadable inventory keeps every original: nothing is retired")
+  func unreadableInventoryKeepsOriginals() async throws {
+    let harness = try Harness()
+    let record = try Self.readyMeeting(harness)
+    await Self.launched(harness, record.id)
+    #expect(
+      await harness.coordinator.compactAudio(
+        meetingID: record.id, with: MeetingAudioCompactor()) == .committed)
+    // Damage a committed copy: the store re-hashes it before any original goes.
+    let inventory = try #require(try harness.store.load(id: record.id).compressedAudio)
+    let copy = harness.store.folder(for: record.id)
+      .appendingPathComponent(inventory.segments[0].compressed.fileName)
+    try Data("damaged".utf8).write(to: copy)
+    let before = try Self.names(harness, record.id)
+    let outcome = await harness.coordinator.retireSupersededAudio(meetingID: record.id)
+    #expect(outcome != .removed(inventory.segments.count))
+    #expect(try Self.names(harness, record.id) == before, "no file was removed")
   }
 }
 #endif

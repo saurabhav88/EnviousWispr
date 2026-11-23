@@ -384,7 +384,17 @@ final class MeetingPlaybackController {
   /// Opens the audio for the first window: the meeting's tracks, or the dictation's file.
   nonisolated static func open(_ media: PlaybackMedia) throws -> any PlaybackWindowAudio {
     switch media {
-    case .meeting(let files): return MeetingMixedAudio(tracks: try load(files))
+    case .meeting, .compactedMeeting: return MeetingMixedAudio(tracks: try openMeetingTracks(media))
+    case .dictation(let url): return try DictationPlaybackAudio(url: url)
+    case .transcript(let audio): return audio
+    }
+  }
+
+  /// A meeting's readable tracks for `media` (playback and History's Save audio share it, so a
+  /// compacted meeting is read through recovery's authority whichever way it is opened).
+  nonisolated static func openMeetingTracks(_ media: PlaybackMedia) throws -> [MeetingTrackAudio] {
+    switch media {
+    case .meeting(let files): return try load(files)
     case .compactedMeeting(let folder, let inventory):
       let report = MeetingTrackRecovery.recover(
         folder: folder, inventory: inventory, identity: MeetingStore.audioFileIdentity(at:))
@@ -395,9 +405,8 @@ final class MeetingPlaybackController {
         return audio.isEmpty ? nil : audio
       }
       guard !tracks.isEmpty else { throw PlaybackError.noReadableAudio }
-      return MeetingMixedAudio(tracks: tracks)
-    case .dictation(let url): return try DictationPlaybackAudio(url: url)
-    case .transcript(let audio): return audio
+      return tracks
+    case .dictation, .transcript: throw PlaybackError.noReadableAudio
     }
   }
 

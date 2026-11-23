@@ -37,6 +37,12 @@ final class MeetingAudioCompactionScheduler {
   /// Meetings tried again only after the meeting list changes (deferred while playing, or
   /// changed under their claim).
   private var deferred: Set<UUID> = []
+  /// Meetings whose superseded originals were handled this session (removed, or a failure that
+  /// the next launch retries).
+  private var retirementSettled: Set<UUID> = []
+  /// Retirements refused for now (playing, other work owns the meeting); tried again once the
+  /// meeting list changes.
+  private var retirementDeferred: Set<UUID> = []
 
   init(
     coordinator: MeetingCoordinator, compactor: any MeetingAudioCompacting,
@@ -67,6 +73,23 @@ final class MeetingAudioCompactionScheduler {
       await MeetingWorkAdmission.waitUntil(
         { [weak self] in self?.mayWork ?? true }, wakes: deps.wakes)
       guard !Task.isCancelled, let coordinator else { return }
+      // Originals a committed copy supersedes go first: a copy committed this session, and the
+      // resumed retirement of one a quit or crash cut short (an interrupted swap), once per
+      // session. The store re-hashes every file before removing any.
+      if let meetingID = coordinator.audioRetirementCandidates().first(where: {
+        !retirementSettled.contains($0) && !retirementDeferred.contains($0)
+      }) {
+        switch await coordinator.retireSupersededAudio(meetingID: meetingID) {
+        case .removed(let count):
+          deps.log("meeting compaction originals removed count=\(count)")
+          retirementSettled.insert(meetingID)
+        case .failed:
+          retirementSettled.insert(meetingID)
+        case .refused:
+          retirementDeferred.insert(meetingID)
+        }
+        continue
+      }
       let candidates = coordinator.audioCompactionCandidates().filter {
         !settled.contains($0) && !deferred.contains($0)
       }
@@ -78,6 +101,7 @@ final class MeetingAudioCompactionScheduler {
           coordinator.map { $0.meetings != snapshot } ?? true
         }
         deferred.removeAll()
+        retirementDeferred.removeAll()
         continue
       }
       switch await coordinator.compactAudio(meetingID: meetingID, with: compactor) {
