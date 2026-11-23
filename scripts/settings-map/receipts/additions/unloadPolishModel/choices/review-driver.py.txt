@@ -1,0 +1,71 @@
+#!/usr/bin/env python3
+"""#3853: one fresh isolated Codex session per language reviews the seven drafted search blocks
+for the choices of unloadPolishModel (accuracy, naturalness, collisions with the speech model's
+unload choices and with the parent row). Mirrors review3853.py and draft-vocabulary.sh isolation.
+Usage: review3853b.py <worktree> <outdir> <draft.json>..."""
+import concurrent.futures, json, os, pathlib, subprocess, sys, tempfile
+
+wt = pathlib.Path(sys.argv[1]); out = pathlib.Path(sys.argv[2]); out.mkdir(parents=True, exist_ok=True)
+drafts = {}
+for p in sys.argv[3:]:
+    j = json.load(open(p, encoding="utf-8")); drafts[j["id"]] = {b["language"]: b for b in j["blocks"]}
+parent = json.load(open(wt / "build/settings-map-drafts/unloadPolishModel.reviewed.json", encoding="utf-8"))["blocks"]
+vocab = json.load(open(wt / "Sources/EnviousWisprAppKit/Resources/SettingsSearchVocabulary.json", encoding="utf-8"))
+by_id = {e["id"]: {b["language"]: b for b in e["blocks"]} for e in vocab["entries"]}
+LABEL = {"never": "Never", "immediately": "Immediately (about 10 seconds)", "twoMinutes": "After 2 minutes",
+         "fiveMinutes": "After 5 minutes", "tenMinutes": "After 10 minutes",
+         "fifteenMinutes": "After 15 minutes", "oneHour": "After 1 hour"}
+SPEECH = ["unloadModel." + c for c in ["never", "immediately", "twoMinutes", "fiveMinutes", "tenMinutes", "fifteenMinutes", "sixtyMinutes", "oneHour"]]
+
+BRIEF = """You are reviewing draft search vocabulary blocks for SEVEN places in the Settings search box of EnviousWispr, a macOS dictation app (press a key and speak, it types your words into any app; optional "AI Polish" cleans the text with a model that runs on the Mac). The language you review is "{lang}".
+
+Use ONLY this brief and the data below. Do not open, search or read any file, folder, repository or website. Do not run commands.
+
+The seven places are the choices of ONE menu on the AI Polish page called "Unload polish model after" (English description: "Frees the polish model's memory when you are not dictating."). It decides how long the on-Mac polish model (EG-1 or S1-mini) may sit unused before it frees its memory. The next dictation wakes it again. The choices, with their English labels (the title of each place):
+{labels}
+A choice is searchable on its own: someone types the time ("5 minutes", "never") or what it does. Every block must make sense for THIS menu: it never deletes the model, never turns AI polish off.
+
+Review each draft block for language "{lang}":
+1. Accuracy: remove or rewrite anything the choice does not do. "Immediately" means about 10 seconds after the last use, not literally instantly. "Never" keeps the model loaded.
+2. Collisions: the menu for the SPEECH recognition model ("Unload model after" on the Dictation Engine tab) has the same choices. The blocks below must lean on the POLISH model (polish, AI Polish, text cleanup), not only on the time, so a search about the speech model does not land here equally. The parent menu's block and the speech menu's blocks in "{lang}" are listed below.
+3. Naturalness: wording a native speaker of "{lang}" would really type or see in an app's settings. For the title: how an app in that language would label that menu choice. Keep product names unchanged. Lowercase except nouns the language capitalises. "title" is present for every language EXCEPT en, de, es and fr (those four take their title from the app).
+4. Shape: words 0 to 6, phrases 1 to 3.
+
+Parent menu block in "{lang}":
+{parent}
+
+Speech model menu blocks in "{lang}" (id -> block):
+{speech}
+
+Drafts for "{lang}" (id -> block):
+{drafts}
+
+Output: one JSON object only, no commentary, no code fence, mapping each of the seven ids to its corrected block, in exactly the draft's shape: {{"unloadPolishModel.never": {{"language": "{lang}", "title": "...", "words": [...], "phrases": [...]}}, ...}} (omit "title" for en, de, es and fr). If a draft is already right, return it unchanged.
+"""
+
+def run(lang):
+    labels = "\n".join(f"- unloadPolishModel.{k}: {v}" for k, v in LABEL.items())
+    d = {i: drafts[i][lang] for i in drafts}
+    prompt = BRIEF.format(lang=lang, labels=labels, parent=json.dumps(parent[lang], ensure_ascii=False, indent=1),
+        speech=json.dumps({i: by_id[i][lang] for i in SPEECH if i in by_id and lang in by_id[i]}, ensure_ascii=False, indent=1),
+        drafts=json.dumps(d, ensure_ascii=False, indent=1))
+    iso = pathlib.Path(tempfile.mkdtemp(prefix="ew-vocab-review."))
+    (iso / "work").mkdir(); (iso / "codex-home").mkdir()
+    os.symlink(os.path.expanduser("~/.codex/auth.json"), iso / "codex-home" / "auth.json")
+    answer = iso / "out.txt"
+    env = dict(os.environ, CODEX_HOME=str(iso / "codex-home"))
+    proc = subprocess.run([os.path.expanduser("~/.claude/bin/codex-run"), str(answer), "-c", "tools.web_search=false", "exec",
+        "--sandbox", "read-only", "--skip-git-repo-check", "--ignore-rules", "--ephemeral", "-C", str(iso / "work")],
+        input=prompt, text=True, env=env, cwd=str(iso / "work"), capture_output=True)
+    last = pathlib.Path(str(answer) + ".last")
+    if proc.returncode == 0 and last.exists():
+        (out / f"review-{lang}.txt").write_text(last.read_text(encoding="utf-8"), encoding="utf-8")
+    else:
+        (out / f"review-{lang}.FAILED").write_text(f"exit {proc.returncode}\n{proc.stderr[-2000:]}", encoding="utf-8")
+    return lang, proc.returncode
+
+langs = list(next(iter(drafts.values())).keys())
+with concurrent.futures.ThreadPoolExecutor(max_workers=6) as pool:
+    for lang, rc in pool.map(run, langs):
+        print(f"{lang}: exit {rc}", flush=True)
+print("DONE", flush=True)

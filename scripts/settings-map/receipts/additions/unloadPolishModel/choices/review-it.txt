@@ -1,0 +1,44 @@
+{
+  "unloadPolishModel.fifteenMinutes": {
+    "language": "it",
+    "title": "dopo 15 minuti",
+    "words": ["AI Polish 15 min", "correzione del testo un quarto d'ora"],
+    "phrases": ["libera la RAM del modello di correzione del testo dopo un quarto d'ora di inattività"]
+  },
+  "unloadPolishModel.fiveMinutes": {
+    "language": "it",
+    "title": "dopo 5 minuti",
+    "words": ["AI Polish 5 min", "correzione del testo cinque minuti"],
+    "phrases": ["libera la memoria del modello di correzione del testo dopo 5 minuti di inattività"]
+  },
+  "unloadPolishModel.immediately": {
+    "language": "it",
+    "title": "subito (circa 10 secondi)",
+    "words": ["AI Polish subito", "AI Polish 10 secondi"],
+    "phrases": ["libera la RAM del modello di correzione del testo circa 10 secondi dopo l'ultimo utilizzo"]
+  },
+  "unloadPolishModel.never": {
+    "language": "it",
+    "title": "mai",
+    "words": ["AI Polish sempre in memoria", "modello di correzione sempre caricato"],
+    "phrases": ["tieni sempre in memoria il modello di correzione del testo, anche quando non detto"]
+  },
+  "unloadPolishModel.oneHour": {
+    "language": "it",
+    "title": "dopo 1 ora",
+    "words": ["AI Polish 60 minuti", "AI Polish 1 h", "correzione del testo un'ora"],
+    "phrases": ["libera la memoria del modello di correzione del testo dopo un'ora di inattività"]
+  },
+  "unloadPolishModel.tenMinutes": {
+    "language": "it",
+    "title": "dopo 10 minuti",
+    "words": ["AI Polish 10 min", "correzione del testo dieci minuti"],
+    "phrases": ["libera la memoria del modello di correzione del testo dopo 10 minuti di inattività"]
+  },
+  "unloadPolishModel.twoMinutes": {
+    "language": "it",
+    "title": "dopo 2 minuti",
+    "words": ["AI Polish 2 min", "correzione del testo due minuti", "AI Polish 120 secondi"],
+    "phrases": ["libera la RAM del modello di correzione del testo dopo 2 minuti di inattività"]
+  }
+}

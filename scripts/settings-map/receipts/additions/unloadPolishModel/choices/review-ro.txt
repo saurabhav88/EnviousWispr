@@ -1,0 +1,79 @@
+{
+  "unloadPolishModel.fifteenMinutes": {
+    "language": "ro",
+    "title": "după 15 minute",
+    "words": [
+      "AI Polish 15 min",
+      "corectare text un sfert de oră"
+    ],
+    "phrases": [
+      "scoate modelul de corectare a textului din memorie după 15 minute fără dictare"
+    ]
+  },
+  "unloadPolishModel.fiveMinutes": {
+    "language": "ro",
+    "title": "după 5 minute",
+    "words": [
+      "AI Polish 5 min",
+      "corectare text cinci minute"
+    ],
+    "phrases": [
+      "eliberează memoria modelului de corectare a textului după 5 minute fără dictare"
+    ]
+  },
+  "unloadPolishModel.immediately": {
+    "language": "ro",
+    "title": "imediat (aprox. 10 secunde)",
+    "words": [
+      "AI Polish imediat",
+      "corectare text 10 secunde"
+    ],
+    "phrases": [
+      "scoate modelul de corectare a textului din memorie la aproximativ 10 secunde de la ultima utilizare"
+    ]
+  },
+  "unloadPolishModel.never": {
+    "language": "ro",
+    "title": "niciodată",
+    "words": [
+      "AI Polish mereu în memorie",
+      "model de corectare mereu încărcat"
+    ],
+    "phrases": [
+      "modelul de îmbunătățire a textului să rămână în memorie și când nu dictez"
+    ]
+  },
+  "unloadPolishModel.oneHour": {
+    "language": "ro",
+    "title": "după o oră",
+    "words": [
+      "AI Polish 1 h",
+      "corectare text 60 de minute"
+    ],
+    "phrases": [
+      "eliberează memoria modelului de îmbunătățire a textului după o oră fără dictare"
+    ]
+  },
+  "unloadPolishModel.tenMinutes": {
+    "language": "ro",
+    "title": "după 10 minute",
+    "words": [
+      "AI Polish 10 min",
+      "corectare text zece minute"
+    ],
+    "phrases": [
+      "eliberează memoria modelului de corectare a textului după 10 minute fără dictare"
+    ]
+  },
+  "unloadPolishModel.twoMinutes": {
+    "language": "ro",
+    "title": "după 2 minute",
+    "words": [
+      "AI Polish 2 min",
+      "corectare text două minute"
+    ],
+    "phrases": [
+      "scoate modelul de corectare a textului din memorie după 2 minute fără dictare"
+    ]
+  }
+}

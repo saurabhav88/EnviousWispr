@@ -1,0 +1,79 @@
+{
+  "unloadPolishModel.fifteenMinutes": {
+    "language": "pt",
+    "title": "após 15 minutos",
+    "words": [
+      "revisão de texto 15 min",
+      "AI Polish 15 minutos"
+    ],
+    "phrases": [
+      "liberar da memória o modelo de revisão de texto após 15 minutos de inatividade"
+    ]
+  },
+  "unloadPolishModel.fiveMinutes": {
+    "language": "pt",
+    "title": "após 5 minutos",
+    "words": [
+      "revisão de texto 5 min",
+      "AI Polish 5 minutos"
+    ],
+    "phrases": [
+      "liberar da memória o modelo de revisão de texto após 5 minutos de inatividade"
+    ]
+  },
+  "unloadPolishModel.immediately": {
+    "language": "pt",
+    "title": "imediatamente (cerca de 10 segundos)",
+    "words": [
+      "revisão de texto 10 s",
+      "AI Polish 10 segundos"
+    ],
+    "phrases": [
+      "liberar da memória o modelo de revisão de texto cerca de 10 segundos após o último uso"
+    ]
+  },
+  "unloadPolishModel.never": {
+    "language": "pt",
+    "title": "nunca",
+    "words": [
+      "revisão de texto sempre na memória",
+      "modelo do AI Polish sempre carregado"
+    ],
+    "phrases": [
+      "manter o modelo de revisão de texto sempre carregado na memória"
+    ]
+  },
+  "unloadPolishModel.oneHour": {
+    "language": "pt",
+    "title": "após 1 hora",
+    "words": [
+      "revisão de texto 1 h",
+      "AI Polish 60 min"
+    ],
+    "phrases": [
+      "liberar da memória o modelo de revisão de texto após uma hora de inatividade"
+    ]
+  },
+  "unloadPolishModel.tenMinutes": {
+    "language": "pt",
+    "title": "após 10 minutos",
+    "words": [
+      "revisão de texto 10 min",
+      "AI Polish 10 minutos"
+    ],
+    "phrases": [
+      "liberar da memória o modelo de revisão de texto após 10 minutos de inatividade"
+    ]
+  },
+  "unloadPolishModel.twoMinutes": {
+    "language": "pt",
+    "title": "após 2 minutos",
+    "words": [
+      "revisão de texto 2 min",
+      "AI Polish 2 minutos"
+    ],
+    "phrases": [
+      "liberar da memória o modelo de revisão de texto após 2 minutos de inatividade"
+    ]
+  }
+}

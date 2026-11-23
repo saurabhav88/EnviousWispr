@@ -1,0 +1,76 @@
+{
+  "unloadPolishModel.fifteenMinutes": {
+    "language": "ja",
+    "title": "15分後",
+    "words": [
+      "文章整形 15分"
+    ],
+    "phrases": [
+      "15分間音声入力しなかったら文章整形モデルのメモリを解放したい"
+    ]
+  },
+  "unloadPolishModel.fiveMinutes": {
+    "language": "ja",
+    "title": "5分後",
+    "words": [
+      "文章整形 5分"
+    ],
+    "phrases": [
+      "5分間音声入力しなかったら文章整形モデルのメモリを解放したい"
+    ]
+  },
+  "unloadPolishModel.immediately": {
+    "language": "ja",
+    "title": "すぐに（約10秒後）",
+    "words": [
+      "文章整形 すぐに解放",
+      "文章整形 10秒"
+    ],
+    "phrases": [
+      "文章整形モデルを最後に使ってから約10秒後にメモリを解放したい"
+    ]
+  },
+  "unloadPolishModel.never": {
+    "language": "ja",
+    "title": "解放しない",
+    "words": [
+      "文章整形モデルの常駐",
+      "文章整形 メモリ解放なし"
+    ],
+    "phrases": [
+      "音声入力が終わっても文章整形モデルをずっとメモリに残したい"
+    ]
+  },
+  "unloadPolishModel.oneHour": {
+    "language": "ja",
+    "title": "1時間後",
+    "words": [
+      "文章整形 1時間",
+      "文章整形 60分"
+    ],
+    "phrases": [
+      "1時間音声入力しなかったら文章整形モデルのメモリを解放したい"
+    ]
+  },
+  "unloadPolishModel.tenMinutes": {
+    "language": "ja",
+    "title": "10分後",
+    "words": [
+      "文章整形 10分"
+    ],
+    "phrases": [
+      "10分間音声入力しなかったら文章整形モデルのメモリを解放したい"
+    ]
+  },
+  "unloadPolishModel.twoMinutes": {
+    "language": "ja",
+    "title": "2分後",
+    "words": [
+      "文章整形 2分",
+      "文章整形 120秒"
+    ],
+    "phrases": [
+      "2分間音声入力しなかったら文章整形モデルのメモリを解放したい"
+    ]
+  }
+}

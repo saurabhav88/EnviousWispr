@@ -1,0 +1,80 @@
+{
+  "unloadPolishModel.fifteenMinutes": {
+    "language": "en",
+    "words": [
+      "15 min"
+    ],
+    "phrases": [
+      "unload the polish model after 15 min without dictating",
+      "keep the polish model loaded for a quarter of an hour after dictation"
+    ]
+  },
+  "unloadPolishModel.fiveMinutes": {
+    "language": "en",
+    "words": [
+      "5 min",
+      "five minutes"
+    ],
+    "phrases": [
+      "unload the polish model after 5 minutes of inactivity",
+      "free up the polish model’s memory after 5 minutes without dictating"
+    ]
+  },
+  "unloadPolishModel.immediately": {
+    "language": "en",
+    "words": [
+      "10 seconds",
+      "10 sec"
+    ],
+    "phrases": [
+      "unload the polish model after about 10 seconds of inactivity",
+      "free up memory used by AI Polish about 10 seconds after i stop dictating"
+    ]
+  },
+  "unloadPolishModel.never": {
+    "language": "en",
+    "words": [
+      "always loaded",
+      "keep in memory",
+      "stay in ram"
+    ],
+    "phrases": [
+      "keep the polish model loaded when i'm not dictating",
+      "don't unload the polish model after dictation"
+    ]
+  },
+  "unloadPolishModel.oneHour": {
+    "language": "en",
+    "words": [
+      "60 minutes",
+      "1 hr"
+    ],
+    "phrases": [
+      "free up polish model memory after an hour without dictating",
+      "keep the polish model in memory for an hour after dictation"
+    ]
+  },
+  "unloadPolishModel.tenMinutes": {
+    "language": "en",
+    "words": [
+      "10 min",
+      "ten minutes"
+    ],
+    "phrases": [
+      "unload the polish model after 10 minutes of inactivity",
+      "free up polish model memory after 10 minutes without dictating"
+    ]
+  },
+  "unloadPolishModel.twoMinutes": {
+    "language": "en",
+    "words": [
+      "2 min",
+      "two minutes",
+      "120 seconds"
+    ],
+    "phrases": [
+      "unload the polish model after 2 minutes without dictating",
+      "free up memory used by AI Polish after 2 minutes of inactivity"
+    ]
+  }
+}

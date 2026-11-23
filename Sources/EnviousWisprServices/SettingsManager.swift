@@ -79,6 +79,7 @@ public final class SettingsManager {
     case pushToTalkKeyCode
     case pushToTalkModifiers
     case modelUnloadPolicy
+    case localPolishUnloadPolicy
     case restoreClipboardAfterPaste
     case keepDictationsOutOfClipboardHistory
     case quickAddClipboardFallback
@@ -178,7 +179,7 @@ public final class SettingsManager {
     "cancelKeyCode", "cancelModifiersRaw", "toggleKeyCode", "toggleModifiersRaw",
     "quickAddKeyCode", "quickAddModifiersRaw",
     "pasteLastKeyCode", "pasteLastModifiersRaw", "copyLastKeyCode", "copyLastModifiersRaw",
-    "pushToTalkKeyCode", "pushToTalkModifiersRaw", "modelUnloadPolicy",
+    "pushToTalkKeyCode", "pushToTalkModifiersRaw", "modelUnloadPolicy", "localPolishUnloadPolicy",
     "restoreClipboardAfterPaste", "keepDictationsOutOfClipboardHistory", "quickAddClipboardFallback",
     "smartInsertion", "escapeRecoveryEnabled",
     "wordCorrectionEnabled",
@@ -1284,6 +1285,15 @@ public final class SettingsManager {
     }
   }
 
+  /// #3853: how long the bundled on-Mac polish helper (EG-1, S1-mini) may sit unused before it
+  /// frees its model memory. Same choices as `modelUnloadPolicy`; Never keeps the model loaded.
+  public var localPolishUnloadPolicy: ModelUnloadPolicy {
+    didSet {
+      defaults.set(localPolishUnloadPolicy.rawValue, forKey: "localPolishUnloadPolicy")
+      onChange?(.localPolishUnloadPolicy)
+    }
+  }
+
   public var restoreClipboardAfterPaste: Bool {
     didSet {
       defaults.set(restoreClipboardAfterPaste, forKey: "restoreClipboardAfterPaste")
@@ -2251,6 +2261,10 @@ public final class SettingsManager {
       ModelUnloadPolicy(
         rawValue: defaults.string(forKey: "modelUnloadPolicy") ?? ""
       ) ?? SettingsDefaultValues.modelUnloadPolicy
+    localPolishUnloadPolicy =
+      ModelUnloadPolicy(
+        rawValue: defaults.string(forKey: "localPolishUnloadPolicy") ?? ""
+      ) ?? SettingsDefaultValues.localPolishUnloadPolicy
     restoreClipboardAfterPaste =
       defaults.object(forKey: "restoreClipboardAfterPaste") as? Bool
       ?? SettingsDefaultValues.restoreClipboardAfterPaste

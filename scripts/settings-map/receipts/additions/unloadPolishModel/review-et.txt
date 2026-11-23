@@ -1,0 +1,12 @@
+{
+  "language": "et",
+  "title": "viimistlusmudeli mälust vabastamise aeg",
+  "words": [
+    "viimistlusmudeli mälukasutus",
+    "viimistlusmudeli mälust vabastamine"
+  ],
+  "phrases": [
+    "kui kaua viimistlusmudel pärast dikteerimist mälus püsib",
+    "vabasta viimistlusmudel mälust, kui ma ei dikteeri"
+  ]
+}

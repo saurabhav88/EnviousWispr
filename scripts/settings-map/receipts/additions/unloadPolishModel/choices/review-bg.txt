@@ -1,0 +1,79 @@
+{
+  "unloadPolishModel.fifteenMinutes": {
+    "language": "bg",
+    "title": "след 15 минути",
+    "words": [
+      "15 мин",
+      "AI Polish 15 минути",
+      "AI Polish четвърт час"
+    ],
+    "phrases": [
+      "освободи модела за подобряване на текста от паметта след четвърт час без диктовка"
+    ]
+  },
+  "unloadPolishModel.fiveMinutes": {
+    "language": "bg",
+    "title": "след 5 минути",
+    "words": [
+      "5 мин",
+      "AI Polish 5 минути"
+    ],
+    "phrases": [
+      "освободи модела за подобряване на текста от паметта след 5 минути без диктовка"
+    ]
+  },
+  "unloadPolishModel.immediately": {
+    "language": "bg",
+    "title": "веднага (около 10 секунди)",
+    "words": [
+      "10 сек",
+      "AI Polish 10 секунди"
+    ],
+    "phrases": [
+      "освободи модела за подобряване на текста от паметта около 10 секунди след края на диктовката"
+    ]
+  },
+  "unloadPolishModel.never": {
+    "language": "bg",
+    "title": "никога",
+    "words": [
+      "AI Polish винаги в паметта"
+    ],
+    "phrases": [
+      "моделът за подобряване на текста да остава зареден в паметта и когато не диктувам"
+    ]
+  },
+  "unloadPolishModel.oneHour": {
+    "language": "bg",
+    "title": "след 1 час",
+    "words": [
+      "AI Polish 1 час",
+      "AI Polish 60 минути"
+    ],
+    "phrases": [
+      "освободи модела за подобряване на текста от паметта след един час без диктовка"
+    ]
+  },
+  "unloadPolishModel.tenMinutes": {
+    "language": "bg",
+    "title": "след 10 минути",
+    "words": [
+      "10 мин",
+      "AI Polish 10 минути"
+    ],
+    "phrases": [
+      "освободи модела за подобряване на текста от паметта след 10 минути без диктовка"
+    ]
+  },
+  "unloadPolishModel.twoMinutes": {
+    "language": "bg",
+    "title": "след 2 минути",
+    "words": [
+      "2 мин",
+      "AI Polish 2 минути"
+    ],
+    "phrases": [
+      "освободи модела за подобряване на текста от паметта след 2 минути без диктовка"
+    ]
+  }
+}

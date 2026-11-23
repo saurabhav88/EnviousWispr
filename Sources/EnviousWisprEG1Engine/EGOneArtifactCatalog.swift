@@ -149,17 +149,23 @@ public enum EGOneArtifactCatalog {
   /// The engine for one size's registered model. The draft model is the `helper` folder of the
   /// same package, so its identity is the model registration's own: the two are admitted
   /// together.
-  public static func engine(for registration: DeliveryRegistration) -> EnviousDecodeEngine {
+  public static func engine(
+    for registration: DeliveryRegistration,
+    sleepIdleSeconds: @escaping @Sendable () -> Int? = { nil }
+  ) -> EnviousDecodeEngine {
     EnviousDecodeEngine(
       draftModelURL: registration.installDirectory.appendingPathComponent(
         draftComponent, isDirectory: true),
-      draftArtifactIdentity: registration.manifest.identity, cacheLimitBytes: cacheLimitBytes)
+      draftArtifactIdentity: registration.manifest.identity, cacheLimitBytes: cacheLimitBytes,
+      sleepIdleSeconds: sleepIdleSeconds)
   }
 
   /// The engine of a size whose manifest could not be read (a damaged app bundle). Its runtime
   /// has no delivery, so it never launches anything; this only gives that runtime an engine of
   /// the right kind, with the size's own folder and no revision.
-  public static func unregisteredEngine(_ size: EGOneSize, appSupport: URL) -> EnviousDecodeEngine {
+  public static func unregisteredEngine(
+    _ size: EGOneSize, appSupport: URL, sleepIdleSeconds: @escaping @Sendable () -> Int? = { nil }
+  ) -> EnviousDecodeEngine {
     let artifact = model(size)
     return EnviousDecodeEngine(
       draftModelURL: appSupport.appendingPathComponent("EnviousWispr/Models", isDirectory: true)
@@ -168,7 +174,7 @@ public enum EGOneArtifactCatalog {
       draftArtifactIdentity: ModelIdentity(
         family: artifact.family, name: artifact.name, revision: "", variant: artifact.variant,
         runtimeABI: runtimeABI),
-      cacheLimitBytes: cacheLimitBytes)
+      cacheLimitBytes: cacheLimitBytes, sleepIdleSeconds: sleepIdleSeconds)
   }
 
   // MARK: - Private

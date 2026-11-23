@@ -1,0 +1,84 @@
+{
+  "unloadPolishModel.fifteenMinutes": {
+    "language": "et",
+    "title": "15 minuti pärast",
+    "words": [
+      "veerand tundi",
+      "15 min",
+      "viimistlusmudel 15 minutit"
+    ],
+    "phrases": [
+      "vabasta viimistlusmudel mälust, kui ma pole veerand tundi dikteerinud"
+    ]
+  },
+  "unloadPolishModel.fiveMinutes": {
+    "language": "et",
+    "title": "5 minuti pärast",
+    "words": [
+      "5 min",
+      "viis minutit",
+      "viimistlusmudel 5 minutit"
+    ],
+    "phrases": [
+      "vabasta viimistlusmudel mälust, kui ma pole viis minutit dikteerinud"
+    ]
+  },
+  "unloadPolishModel.immediately": {
+    "language": "et",
+    "title": "kohe (umbes 10 sekundit)",
+    "words": [
+      "10 s",
+      "viimistlusmudel 10 sekundit"
+    ],
+    "phrases": [
+      "vabasta viimistlusmudel mälust umbes 10 sekundit pärast viimast kasutust"
+    ]
+  },
+  "unloadPolishModel.never": {
+    "language": "et",
+    "title": "mitte kunagi",
+    "words": [
+      "viimistlusmudel alati mälus"
+    ],
+    "phrases": [
+      "hoia viimistlusmudel mälus ka siis, kui ma ei dikteeri"
+    ]
+  },
+  "unloadPolishModel.oneHour": {
+    "language": "et",
+    "title": "1 tunni pärast",
+    "words": [
+      "60 minutit",
+      "üks tund",
+      "viimistlusmudel 1 tund"
+    ],
+    "phrases": [
+      "vabasta viimistlusmudel mälust, kui ma pole tund aega dikteerinud"
+    ]
+  },
+  "unloadPolishModel.tenMinutes": {
+    "language": "et",
+    "title": "10 minuti pärast",
+    "words": [
+      "10 min",
+      "kümme minutit",
+      "viimistlusmudel 10 minutit"
+    ],
+    "phrases": [
+      "vabasta viimistlusmudel mälust, kui ma pole kümme minutit dikteerinud"
+    ]
+  },
+  "unloadPolishModel.twoMinutes": {
+    "language": "et",
+    "title": "2 minuti pärast",
+    "words": [
+      "2 min",
+      "kaks minutit",
+      "120 sekundit",
+      "viimistlusmudel 2 minutit"
+    ],
+    "phrases": [
+      "vabasta viimistlusmudel mälust, kui ma pole kaks minutit dikteerinud"
+    ]
+  }
+}

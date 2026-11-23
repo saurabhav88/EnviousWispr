@@ -1,0 +1,11 @@
+{
+  "language": "en",
+  "words": [
+    "polish model timeout",
+    "unload polish model"
+  ],
+  "phrases": [
+    "free up ram used by ai polish when i stop dictating",
+    "how long does the local polish model stay in memory"
+  ]
+}

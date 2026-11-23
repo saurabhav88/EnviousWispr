@@ -26249,6 +26249,52 @@
         }
       }
     },
+    "Frees the on-Mac polish model's memory after the time you choose. Your next dictation wakes it; the first one may take a moment longer." : {
+      "comment" : "AI Polish settings: help behind the question mark on the unload polish model row.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Gibt den Speicher des Polish-Modells auf diesem Mac nach der gewählten Zeit frei. Dein nächstes Diktat weckt es wieder auf; das erste kann etwas länger dauern."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Libera la memoria del modelo de Pulido de este Mac tras el tiempo que elijas. Tu próximo dictado lo reactiva; el primero puede tardar un poco más."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Libère la mémoire du modèle de retouche de ce Mac après le délai choisi. Votre prochaine dictée le réveille ; la première peut prendre un peu plus de temps."
+          }
+        }
+      }
+    },
+    "Frees the polish model's memory when you are not dictating." : {
+      "comment" : "AI Polish settings: short line under the unload polish model row.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Gibt den Speicher des Polish-Modells frei, wenn du nicht diktierst."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Libera la memoria del modelo de Pulido cuando no estás dictando."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Libère la mémoire du modèle de retouche quand vous ne dictez pas."
+          }
+        }
+      }
+    },
     "French" : {
       "comment" : "A language name (dictation language picker).",
       "localizations" : {
@@ -57939,6 +57985,29 @@
         }
       }
     },
+    "The polish model is freed after about 10 seconds without a request. Expect a short wait on the next dictation." : {
+      "comment" : "AI Polish settings: warning under the unload polish model row when Immediately is chosen.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Das Polish-Modell wird nach etwa 10 Sekunden ohne Anfrage freigegeben. Beim nächsten Diktat musst du kurz warten."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "El modelo de Pulido se libera tras unos 10 segundos sin ninguna solicitud. Habrá una breve espera en el próximo dictado."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Le modèle de retouche est libéré après environ 10 secondes sans requête. Prévoyez une courte attente à la prochaine dictée."
+          }
+        }
+      }
+    },
     "The polished version" : {
       "comment" : "History dictation card: hint beside the Polished view.",
       "localizations" : {
@@ -62626,6 +62695,29 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Quitar modelo de RAM tras"
+          }
+        }
+      }
+    },
+    "Unload polish model after" : {
+      "comment" : "AI Polish settings, EG-1 and S1-mini: title of the choice that frees the on-Mac polish model's memory after a time without dictation.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Polish-Modell entladen nach"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Quitar modelo de Pulido de la RAM tras"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Décharger le modèle de retouche après"
           }
         }
       }

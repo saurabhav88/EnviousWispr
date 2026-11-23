@@ -1,0 +1,11 @@
+{
+  "language": "de",
+  "words": [
+    "Nachbearbeitungsmodell entladen",
+    "Leerlaufzeit für das Nachbearbeitungsmodell"
+  ],
+  "phrases": [
+    "wie lange bleibt das Modell für die KI-Nachbearbeitung nach dem Diktieren im Arbeitsspeicher",
+    "stell ein, wann EG-1 oder S1-mini bei Nichtbenutzung den Arbeitsspeicher freigibt"
+  ]
+}

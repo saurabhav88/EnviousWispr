@@ -972,6 +972,13 @@ enum SettingsMap {
       parent: .aiPolishProviderSection, destination: .aiPolish, dictionaryTab: nil,
       visibility: .providerSelected, target: .s1Context, fallbacks: [.aiPolishProvider, .enableAIPolish]),
     SettingsMapNode(
+      id: .unloadPolishModelAfter, structure: .item, item: .setting,
+      title: .resource(LocalPolishUnloadCopy.title),
+      description: .resource(LocalPolishUnloadCopy.short),
+      parent: .aiPolishProviderSection, destination: .aiPolish, dictionaryTab: nil,
+      visibility: .providerSelected, target: .unloadPolishModelAfter,
+      fallbacks: [.aiPolishProvider, .enableAIPolish]),
+    SettingsMapNode(
       id: .appleIntelligenceStatus, structure: .item, item: .feature,
       title: .dynamic(.appleIntelligenceStatus),
       description: .runtime,
@@ -1558,6 +1565,12 @@ enum SettingsMap {
       of: .unloadModelAfter, destination: .dictation(.engine), dictionaryTab: nil,
       visibility: .always, fallbacks: [],
       ModelUnloadPolicy.allCases.map { ($0.settingsMapID, .resource($0.displayNameResource), nil) })
+    + choices(
+      of: .unloadPolishModelAfter, destination: .aiPolish, dictionaryTab: nil,
+      visibility: .providerSelected, fallbacks: [.aiPolishProvider, .enableAIPolish],
+      ModelUnloadPolicy.allCases.map {
+        ($0.polishSettingsMapID, .resource($0.displayNameResource), nil)
+      })
     + choices(
       of: .mediaDuringDictation, destination: .dictation(.microphone), dictionaryTab: nil,
       visibility: .always, fallbacks: [],

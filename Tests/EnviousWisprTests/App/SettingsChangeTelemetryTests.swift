@@ -1287,6 +1287,23 @@ import Testing
       }
     }
 
+    @Test("#3853: the polish helper unload choice is its own telemetry setting, default never")
+    func localPolishUnloadPolicyIsReported() {
+      let (settings, telemetry, box, _) = makeHarness()
+      defer { TelemetryService.shared.testEventHook = nil }
+      #expect(settings.localPolishUnloadPolicy == .never)
+      telemetry.flush()
+      box.clear()
+      settings.localPolishUnloadPolicy = .fiveMinutes
+      telemetry.flush()
+      let d = deltas(box, setting: "local_polish_unload_policy")
+      #expect(d.count == 1)
+      #expect(d.first?.stringProps["from"] == "never")
+      #expect(d.first?.stringProps["to"] == "fiveMinutes")
+      // The speech model's setting is a different row and did not move.
+      #expect(deltas(box, setting: "model_unload_policy").isEmpty)
+    }
+
     @Test("last writer wins: a user write after a door write in one window is user")
     func doorThenUserIsUser() {
       let (settings, telemetry, box) = harnessAtNever()

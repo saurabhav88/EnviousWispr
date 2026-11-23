@@ -1,0 +1,79 @@
+{
+  "unloadPolishModel.fifteenMinutes": {
+    "language": "fr",
+    "words": [
+      "15 min",
+      "correction de texte 15 minutes",
+      "modèle de correction quart d’heure"
+    ],
+    "phrases": [
+      "libérer la mémoire du modèle de correction de texte après un quart d’heure d’inactivité"
+    ]
+  },
+  "unloadPolishModel.fiveMinutes": {
+    "language": "fr",
+    "words": [
+      "5 min",
+      "correction de texte 5 minutes",
+      "modèle de correction cinq minutes"
+    ],
+    "phrases": [
+      "libérer la mémoire du modèle de correction de texte après 5 minutes d’inactivité"
+    ]
+  },
+  "unloadPolishModel.immediately": {
+    "language": "fr",
+    "words": [
+      "10 secondes",
+      "correction de texte 10 s",
+      "déchargement rapide du modèle de correction"
+    ],
+    "phrases": [
+      "libérer la mémoire du modèle de correction de texte environ 10 secondes après sa dernière utilisation"
+    ]
+  },
+  "unloadPolishModel.never": {
+    "language": "fr",
+    "words": [
+      "jamais",
+      "modèle de correction toujours en mémoire",
+      "ne jamais décharger le modèle de correction"
+    ],
+    "phrases": [
+      "garder le modèle de correction de texte en mémoire même quand je ne dicte pas"
+    ]
+  },
+  "unloadPolishModel.oneHour": {
+    "language": "fr",
+    "words": [
+      "1 h",
+      "correction de texte 1 heure",
+      "modèle de correction 60 minutes"
+    ],
+    "phrases": [
+      "libérer la mémoire du modèle de correction de texte après une heure d’inactivité"
+    ]
+  },
+  "unloadPolishModel.tenMinutes": {
+    "language": "fr",
+    "words": [
+      "10 min",
+      "correction de texte 10 minutes",
+      "modèle de correction dix minutes"
+    ],
+    "phrases": [
+      "libérer la mémoire du modèle de correction de texte après 10 minutes d’inactivité"
+    ]
+  },
+  "unloadPolishModel.twoMinutes": {
+    "language": "fr",
+    "words": [
+      "2 min",
+      "correction de texte 2 minutes",
+      "modèle de correction deux minutes"
+    ],
+    "phrases": [
+      "libérer la mémoire du modèle de correction de texte après 2 minutes d’inactivité"
+    ]
+  }
+}

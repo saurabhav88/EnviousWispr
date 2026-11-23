@@ -104,13 +104,13 @@ struct EnviousDecodeHelperIntegrationTests {
 
     convenience init(
       size: String, contextTokens: Int = 8192, wordCheckAdapter: String? = nil,
-      inputEndsAtStart: Bool = false
+      inputEndsAtStart: Bool = false, sleepIdleSeconds: Int? = nil
     ) throws {
       try self.init(
         model: try #require(Fixtures.targetFolders[size] ?? nil),
         draft: try #require(Fixtures.helperFolders[size] ?? nil),
         contextTokens: contextTokens, wordCheckAdapter: wordCheckAdapter,
-        inputEndsAtStart: inputEndsAtStart)
+        inputEndsAtStart: inputEndsAtStart, sleepIdleSeconds: sleepIdleSeconds)
     }
 
     /// A helper started from the folders given (a polish model, its draft model and, when
@@ -119,7 +119,7 @@ struct EnviousDecodeHelperIntegrationTests {
     /// it can load any model (#4493).
     init(
       model: String, draft: String, contextTokens: Int = 8192, wordCheckAdapter: String? = nil,
-      inputEndsAtStart: Bool = false
+      inputEndsAtStart: Bool = false, sleepIdleSeconds: Int? = nil
     ) throws {
       self.contextTokens = contextTokens
       hasWordCheck = wordCheckAdapter != nil
@@ -134,6 +134,9 @@ struct EnviousDecodeHelperIntegrationTests {
       ]
       if let wordCheckAdapter {
         process.arguments? += ["--word-check-adapter", wordCheckAdapter]
+      }
+      if let sleepIdleSeconds {
+        process.arguments? += ["--sleep-idle-seconds", String(sleepIdleSeconds)]
       }
       let pipe = Pipe()
       process.standardError = pipe
@@ -399,6 +402,73 @@ struct EnviousDecodeHelperIntegrationTests {
   static func errorType(_ data: Data) -> String? {
     ((try? JSONSerialization.jsonObject(with: data)) as? [String: Any])
       .flatMap { $0["error"] as? [String: Any] }?["type"] as? String
+  }
+
+  // MARK: - 0b. #3853 the helper frees its models when idle and wakes on demand
+
+  @Test(
+    "#3853: an idle helper frees its models and keeps serving; health never wakes it, a wake or a request does",
+    .tags(.realBoundary), .realBoundaryRun, .enabled(if: EnviousDecodeHelperIntegrationTests.canRun))
+  func anIdleHelperSleepsAndWakes() async throws {
+    let helper = try Helper(size: "mini", sleepIdleSeconds: 2)
+    defer { helper.stop() }
+    try await helper.untilReady()
+    let reference = try await Reference.load(size: "mini")
+    let body = try Self.polishBody(try reference.named("dist-14DE212C"))
+    let sleeps: @Sendable () -> Int = { helper.lines.filter { $0.contains("sleeping idle_seconds=2") }.count }
+    let wakes: @Sendable () -> Int = { helper.lines.filter { $0.contains("waking ms=") }.count }
+
+    // Idle: the helper frees its models, and health checks neither wake it nor count as use.
+    try await helper.signal("the helper to sleep", within: 30) { sleeps() == 1 }
+    for _ in 0..<3 {
+      #expect(try await helper.request("/health", bearer: helper.token).status == 200)
+    }
+    // A refused request (no bearer, bad body) validates before it wakes anything.
+    #expect(
+      try await helper.request("/v1/chat/completions", method: "POST", bearer: nil, body: body)
+        .status == 401)
+    #expect(
+      try await helper.request(
+        "/v1/chat/completions", method: "POST", bearer: helper.token, body: Data("{".utf8)
+      ).status == 400)
+    #expect(wakes() == 0, "a health check or a refused request woke the helper")
+    #expect(sleeps() == 1, "health checks must not restart the idle clock")
+
+    // The wake endpoint needs the bearer, then loads the models and answers when ready.
+    #expect(
+      try await helper.request("/wake", method: "POST", bearer: "wrong", body: Data("{}".utf8))
+        .status == 401)
+    #expect(wakes() == 0)
+    // A malformed wake body is refused while the helper sleeps, and loads nothing.
+    #expect(
+      try await helper.request("/wake", method: "POST", bearer: helper.token, body: Data("[1]".utf8))
+        .status == 400)
+    try await helper.signal("the malformed wake rejection log", within: 10) {
+      helper.lines.contains { $0.contains("POST /wake status=400 type=invalid_request_error") }
+    }
+    #expect(wakes() == 0, "a malformed wake must leave the helper asleep")
+    #expect(await LocalPolishWake.send(to: helper.endpoint))
+    try await helper.signal("the first reload log", within: 10) { wakes() >= 1 }
+    #expect(wakes() == 1)
+    // An awake helper answers a second wake at once and does not load again.
+    #expect(await LocalPolishWake.send(to: helper.endpoint))
+    #expect(wakes() == 1)
+    // A wake with a wrong bearer is refused and the helper stays as it was.
+    #expect(
+      !(await LocalPolishWake.send(
+        to: LocalPolishEndpoint(
+          socketPath: helper.socketPath, authToken: "wrong", contextTokens: helper.contextTokens))))
+
+    // A woken helper that is not used sleeps again; the next real request wakes it and is answered.
+    try await helper.signal("the helper to sleep again", within: 30) { sleeps() == 2 }
+    let answer = try Self.fields(
+      try await LocalPolishTransport.send(endpoint: helper.endpoint, body: body))
+    let expected = try reference.expected(body)
+    #expect(answer.content == expected.content, "helper after a sleep: \(answer.content)")
+    #expect(answer.finish == expected.finish)
+    try await helper.signal("the second reload log", within: 10) { wakes() >= 2 }
+    #expect(wakes() == 2)
+    #expect(helper.process.isRunning)
   }
 
   // MARK: - 0. #4493 the private socket at the real boundary (R1)

@@ -1,0 +1,82 @@
+{
+  "unloadPolishModel.fifteenMinutes": {
+    "language": "vi",
+    "title": "sau 15 phút",
+    "words": [
+      "AI Polish 15 phút",
+      "AI Polish 15p"
+    ],
+    "phrases": [
+      "giải phóng bộ nhớ của mô hình chỉnh văn bản sau 15 phút không dùng đến"
+    ]
+  },
+  "unloadPolishModel.fiveMinutes": {
+    "language": "vi",
+    "title": "sau 5 phút",
+    "words": [
+      "AI Polish 5 phút",
+      "AI Polish năm phút"
+    ],
+    "phrases": [
+      "giải phóng bộ nhớ của mô hình chỉnh văn bản sau 5 phút không dùng đến"
+    ]
+  },
+  "unloadPolishModel.immediately": {
+    "language": "vi",
+    "title": "ngay (khoảng 10 giây)",
+    "words": [
+      "AI Polish 10 giây",
+      "giải phóng RAM AI Polish sau 10 giây"
+    ],
+    "phrases": [
+      "giải phóng bộ nhớ của mô hình chỉnh văn bản khoảng 10 giây sau lần dùng cuối"
+    ]
+  },
+  "unloadPolishModel.never": {
+    "language": "vi",
+    "title": "không bao giờ",
+    "words": [
+      "giữ mô hình AI Polish trong RAM"
+    ],
+    "phrases": [
+      "luôn giữ mô hình chỉnh văn bản trong bộ nhớ, kể cả khi không dùng đến"
+    ]
+  },
+  "unloadPolishModel.oneHour": {
+    "language": "vi",
+    "title": "sau 1 giờ",
+    "words": [
+      "AI Polish 1 giờ",
+      "AI Polish 60 phút",
+      "AI Polish một tiếng"
+    ],
+    "phrases": [
+      "giải phóng bộ nhớ của mô hình chỉnh văn bản sau 1 giờ không dùng đến"
+    ]
+  },
+  "unloadPolishModel.tenMinutes": {
+    "language": "vi",
+    "title": "sau 10 phút",
+    "words": [
+      "AI Polish 10 phút",
+      "AI Polish 10p",
+      "AI Polish mười phút"
+    ],
+    "phrases": [
+      "giải phóng bộ nhớ của mô hình chỉnh văn bản sau 10 phút không dùng đến"
+    ]
+  },
+  "unloadPolishModel.twoMinutes": {
+    "language": "vi",
+    "title": "sau 2 phút",
+    "words": [
+      "AI Polish 2 phút",
+      "AI Polish 2p",
+      "AI Polish hai phút",
+      "AI Polish 120 giây"
+    ],
+    "phrases": [
+      "giải phóng bộ nhớ của mô hình chỉnh văn bản sau 2 phút không dùng đến"
+    ]
+  }
+}

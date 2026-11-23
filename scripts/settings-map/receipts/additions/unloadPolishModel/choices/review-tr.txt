@@ -1,0 +1,79 @@
+{
+  "unloadPolishModel.fifteenMinutes": {
+    "language": "tr",
+    "title": "15 dakika sonra",
+    "words": [
+      "metin düzenleme 15 dk",
+      "AI Polish çeyrek saat"
+    ],
+    "phrases": [
+      "metin düzenleme modeli 15 dakika boşta kalınca bellekten çıkarılsın"
+    ]
+  },
+  "unloadPolishModel.fiveMinutes": {
+    "language": "tr",
+    "title": "5 dakika sonra",
+    "words": [
+      "metin düzenleme 5 dk",
+      "AI Polish beş dakika"
+    ],
+    "phrases": [
+      "metin düzenleme modeli 5 dakika boşta kalınca bellekten çıkarılsın"
+    ]
+  },
+  "unloadPolishModel.immediately": {
+    "language": "tr",
+    "title": "hemen (yaklaşık 10 saniye)",
+    "words": [
+      "metin düzenleme 10 sn",
+      "AI Polish 10 saniye"
+    ],
+    "phrases": [
+      "metin düzenleme modeli son kullanımdan yaklaşık 10 saniye sonra bellekten çıkarılsın"
+    ]
+  },
+  "unloadPolishModel.never": {
+    "language": "tr",
+    "title": "hiçbir zaman",
+    "words": [
+      "düzenleme modeli hep yüklü",
+      "AI Polish modeli bellekte kalsın"
+    ],
+    "phrases": [
+      "metin düzenleme modeli kullanılmadığında da bellekte kalsın"
+    ]
+  },
+  "unloadPolishModel.oneHour": {
+    "language": "tr",
+    "title": "1 saat sonra",
+    "words": [
+      "metin düzenleme bir saat",
+      "AI Polish 60 dakika"
+    ],
+    "phrases": [
+      "metin düzenleme modeli 1 saat boşta kalınca bellekten çıkarılsın"
+    ]
+  },
+  "unloadPolishModel.tenMinutes": {
+    "language": "tr",
+    "title": "10 dakika sonra",
+    "words": [
+      "metin düzenleme 10 dk",
+      "AI Polish on dakika"
+    ],
+    "phrases": [
+      "metin düzenleme modeli 10 dakika boşta kalınca bellekten çıkarılsın"
+    ]
+  },
+  "unloadPolishModel.twoMinutes": {
+    "language": "tr",
+    "title": "2 dakika sonra",
+    "words": [
+      "metin düzenleme 2 dk",
+      "AI Polish iki dakika"
+    ],
+    "phrases": [
+      "metin düzenleme modeli 2 dakika boşta kalınca bellekten çıkarılsın"
+    ]
+  }
+}

@@ -1,0 +1,78 @@
+{
+  "unloadPolishModel.fifteenMinutes": {
+    "language": "hr",
+    "title": "nakon 15 minuta",
+    "words": [
+      "dorada teksta 15 min",
+      "AI Polish četvrt sata"
+    ],
+    "phrases": [
+      "oslobodi memoriju modela za doradu teksta nakon četvrt sata bez diktiranja"
+    ]
+  },
+  "unloadPolishModel.fiveMinutes": {
+    "language": "hr",
+    "title": "nakon 5 minuta",
+    "words": [
+      "dorada teksta 5 min",
+      "AI Polish pet minuta"
+    ],
+    "phrases": [
+      "oslobodi memoriju modela za doradu teksta nakon 5 minuta bez diktiranja"
+    ]
+  },
+  "unloadPolishModel.immediately": {
+    "language": "hr",
+    "title": "odmah (oko 10 sekundi)",
+    "words": [
+      "dorada teksta 10 sekundi",
+      "AI Polish odmah"
+    ],
+    "phrases": [
+      "oslobodi memoriju modela za doradu teksta otprilike 10 sekundi nakon zadnje upotrebe"
+    ]
+  },
+  "unloadPolishModel.never": {
+    "language": "hr",
+    "title": "nikad",
+    "words": [
+      "model za doradu stalno učitan"
+    ],
+    "phrases": [
+      "neka model za doradu teksta ostane u memoriji i kad ne diktiram"
+    ]
+  },
+  "unloadPolishModel.oneHour": {
+    "language": "hr",
+    "title": "nakon 1 sata",
+    "words": [
+      "dorada teksta 60 min",
+      "AI Polish sat vremena"
+    ],
+    "phrases": [
+      "oslobodi memoriju modela za doradu teksta nakon sat vremena bez diktiranja"
+    ]
+  },
+  "unloadPolishModel.tenMinutes": {
+    "language": "hr",
+    "title": "nakon 10 minuta",
+    "words": [
+      "dorada teksta 10 min",
+      "AI Polish deset minuta"
+    ],
+    "phrases": [
+      "oslobodi memoriju modela za doradu teksta nakon 10 minuta bez diktiranja"
+    ]
+  },
+  "unloadPolishModel.twoMinutes": {
+    "language": "hr",
+    "title": "nakon 2 minute",
+    "words": [
+      "dorada teksta 2 min",
+      "AI Polish dvije minute"
+    ],
+    "phrases": [
+      "oslobodi memoriju modela za doradu teksta nakon 2 minute bez diktiranja"
+    ]
+  }
+}

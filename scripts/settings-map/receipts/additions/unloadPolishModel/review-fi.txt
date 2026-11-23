@@ -1,0 +1,10 @@
+{
+  "language": "fi",
+  "title": "viive ennen viimeistelymallin poistamista muistista",
+  "words": [
+    "viimeistelymallin muistin vapautus"
+  ],
+  "phrases": [
+    "kuinka kauan viimeistelymalli pysyy muistissa sanelun jälkeen"
+  ]
+}

@@ -1,0 +1,81 @@
+{
+  "unloadPolishModel.never": {
+    "language": "hu",
+    "title": "soha",
+    "words": [
+      "szövegjavító modell mindig betöltve",
+      "AI Polish modell a memóriában"
+    ],
+    "phrases": [
+      "maradjon a szövegjavító modell a memóriában akkor is, ha nem diktálok"
+    ]
+  },
+  "unloadPolishModel.immediately": {
+    "language": "hu",
+    "title": "azonnal (kb. 10 másodperc)",
+    "words": [
+      "szövegjavító modell 10 mp",
+      "AI Polish azonnal"
+    ],
+    "phrases": [
+      "az utolsó használat után kb. 10 másodperccel szabaduljon fel a szövegjavító modell által foglalt memória"
+    ]
+  },
+  "unloadPolishModel.twoMinutes": {
+    "language": "hu",
+    "title": "2 perc után",
+    "words": [
+      "szövegjavító modell két perc",
+      "AI Polish 2 perc",
+      "szövegjavító modell 120 másodperc"
+    ],
+    "phrases": [
+      "a szövegjavító modell 2 perc tétlenség után kerüljön ki a memóriából"
+    ]
+  },
+  "unloadPolishModel.fiveMinutes": {
+    "language": "hu",
+    "title": "5 perc után",
+    "words": [
+      "szövegjavító modell öt perc",
+      "AI Polish 5 perc"
+    ],
+    "phrases": [
+      "a szövegjavító modell 5 perc tétlenség után kerüljön ki a memóriából"
+    ]
+  },
+  "unloadPolishModel.tenMinutes": {
+    "language": "hu",
+    "title": "10 perc után",
+    "words": [
+      "szövegjavító modell tíz perc",
+      "AI Polish 10 perc"
+    ],
+    "phrases": [
+      "a szövegjavító modell 10 perc tétlenség után kerüljön ki a memóriából"
+    ]
+  },
+  "unloadPolishModel.fifteenMinutes": {
+    "language": "hu",
+    "title": "15 perc után",
+    "words": [
+      "szövegjavító modell negyedóra",
+      "AI Polish 15 perc"
+    ],
+    "phrases": [
+      "a szövegjavító modell 15 perc tétlenség után kerüljön ki a memóriából"
+    ]
+  },
+  "unloadPolishModel.oneHour": {
+    "language": "hu",
+    "title": "1 óra után",
+    "words": [
+      "szövegjavító modell egy óra",
+      "szövegjavító modell 60 perc",
+      "AI Polish 1 óra"
+    ],
+    "phrases": [
+      "a szövegjavító modell egy óra tétlenség után kerüljön ki a memóriából"
+    ]
+  }
+}

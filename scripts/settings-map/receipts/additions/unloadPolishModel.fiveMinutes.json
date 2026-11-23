@@ -1,0 +1,328 @@
+{
+ "id": "unloadPolishModel.fiveMinutes",
+ "blocks": {
+  "ar": {
+   "title": "بعد ٥ دقائق",
+   "words": [
+    "تفريغ نموذج تحسين النص بعد 5 دقايق",
+    "خمول نموذج التنقيح لمدة خمس دقائق"
+   ],
+   "phrases": [
+    "حرّر ذاكرة نموذج تحسين النص بعد ٥ دقائق من دون استخدام"
+   ]
+  },
+  "bg": {
+   "title": "след 5 минути",
+   "words": [
+    "5 мин",
+    "AI Polish 5 минути"
+   ],
+   "phrases": [
+    "освободи модела за подобряване на текста от паметта след 5 минути без диктовка"
+   ]
+  },
+  "cs": {
+   "title": "po 5 minutách",
+   "words": [
+    "AI Polish 5 min",
+    "úprava textu pět minut"
+   ],
+   "phrases": [
+    "uvolnit model pro úpravu textu z paměti po 5 minutách bez diktování"
+   ]
+  },
+  "da": {
+   "title": "efter 5 minutter",
+   "words": [
+    "tekstforbedring 5 min",
+    "AI Polish fem minutter"
+   ],
+   "phrases": [
+    "frigør RAM, når tekstforbedringsmodellen har været inaktiv i 5 minutter"
+   ]
+  },
+  "de": {
+   "words": [
+    "AI Polish 5 Min.",
+    "KI-Nachbearbeitung fünf Minuten"
+   ],
+   "phrases": [
+    "das Nachbearbeitungsmodell nach 5 Minuten Leerlauf entladen",
+    "den Arbeitsspeicher des Modells für die KI-Nachbearbeitung fünf Minuten nach der letzten Nutzung freigeben"
+   ]
+  },
+  "el": {
+   "title": "μετά από 5 λεπτά",
+   "words": [
+    "βελτίωση κειμένου 5 λεπτά",
+    "AI Polish πέντε λεπτά"
+   ],
+   "phrases": [
+    "να ελευθερώνεται η μνήμη του μοντέλου βελτίωσης κειμένου μετά από 5 λεπτά χωρίς υπαγόρευση"
+   ]
+  },
+  "en": {
+   "words": [
+    "5 min",
+    "five minutes"
+   ],
+   "phrases": [
+    "unload the polish model after 5 minutes of inactivity",
+    "free up the polish model’s memory after 5 minutes without dictating"
+   ]
+  },
+  "es": {
+   "words": [
+    "5 min",
+    "modelo de corrección tras cinco minutos"
+   ],
+   "phrases": [
+    "liberar la memoria del modelo de corrección tras 5 minutos sin dictar"
+   ]
+  },
+  "et": {
+   "title": "5 minuti pärast",
+   "words": [
+    "5 min",
+    "viis minutit",
+    "viimistlusmudel 5 minutit"
+   ],
+   "phrases": [
+    "vabasta viimistlusmudel mälust, kui ma pole viis minutit dikteerinud"
+   ]
+  },
+  "fi": {
+   "title": "5 minuutin kuluttua",
+   "words": [
+    "viimeistelymalli 5 min",
+    "viimeistelymalli viisi minuuttia"
+   ],
+   "phrases": [
+    "vapauta viimeistelymallin käyttämä muisti, kun mallia ei ole käytetty viiteen minuuttiin"
+   ]
+  },
+  "fr": {
+   "words": [
+    "5 min",
+    "correction de texte 5 minutes",
+    "modèle de correction cinq minutes"
+   ],
+   "phrases": [
+    "libérer la mémoire du modèle de correction de texte après 5 minutes d’inactivité"
+   ]
+  },
+  "hi": {
+   "title": "5 मिनट बाद",
+   "words": [
+    "AI Polish 5 मिनट",
+    "टेक्स्ट सुधार मॉडल पाँच मिनट",
+    "AI Polish ५ मिनट"
+   ],
+   "phrases": [
+    "5 मिनट तक डिक्टेशन न करने पर टेक्स्ट सुधार मॉडल की मेमोरी खाली करें"
+   ]
+  },
+  "hr": {
+   "title": "nakon 5 minuta",
+   "words": [
+    "dorada teksta 5 min",
+    "AI Polish pet minuta"
+   ],
+   "phrases": [
+    "oslobodi memoriju modela za doradu teksta nakon 5 minuta bez diktiranja"
+   ]
+  },
+  "hu": {
+   "title": "5 perc után",
+   "words": [
+    "szövegjavító modell öt perc",
+    "AI Polish 5 perc"
+   ],
+   "phrases": [
+    "a szövegjavító modell 5 perc tétlenség után kerüljön ki a memóriából"
+   ]
+  },
+  "it": {
+   "title": "dopo 5 minuti",
+   "words": [
+    "AI Polish 5 min",
+    "correzione del testo cinque minuti"
+   ],
+   "phrases": [
+    "libera la memoria del modello di correzione del testo dopo 5 minuti di inattività"
+   ]
+  },
+  "ja": {
+   "title": "5分後",
+   "words": [
+    "文章整形 5分"
+   ],
+   "phrases": [
+    "5分間音声入力しなかったら文章整形モデルのメモリを解放したい"
+   ]
+  },
+  "ko": {
+   "title": "5분 후",
+   "words": [
+    "다듬기 모델 5분",
+    "AI Polish 5분 뒤"
+   ],
+   "phrases": [
+    "텍스트 다듬기 모델을 5분 동안 사용하지 않으면 메모리에서 해제"
+   ]
+  },
+  "lt": {
+   "title": "po 5 minučių",
+   "words": [
+    "teksto tvarkymo modelis 5 min",
+    "teksto tvarkymo modelis penkios minutės"
+   ],
+   "phrases": [
+    "pašalinti teksto tvarkymo modelį iš atminties, kai jis nenaudojamas 5 minutes"
+   ]
+  },
+  "lv": {
+   "title": "pēc 5 minūtēm",
+   "words": [
+    "5 min",
+    "piecas minūtes",
+    "teksta uzlabošanas modelis 5 min"
+   ],
+   "phrases": [
+    "atbrīvot teksta uzlabošanas modeļa aizņemto atmiņu pēc 5 minūtēm bez diktēšanas"
+   ]
+  },
+  "mt": {
+   "title": "wara 5 minuti",
+   "words": [
+    "5 min",
+    "AI Polish 5 minuti"
+   ],
+   "phrases": [
+    "illibera l-memorja li juża l-mudell tal-irfinar wara 5 minuti bla dettatura"
+   ]
+  },
+  "nl": {
+   "title": "na 5 minuten",
+   "words": [
+    "opschoonmodel 5 min",
+    "AI Polish vijf minuten"
+   ],
+   "phrases": [
+    "haal het opschoonmodel uit het geheugen als het 5 minuten niet is gebruikt"
+   ]
+  },
+  "pl": {
+   "title": "po 5 minutach",
+   "words": [
+    "korekta tekstu 5 min",
+    "model korekty po pięciu minutach"
+   ],
+   "phrases": [
+    "zwolnij pamięć modelu korekty tekstu po 5 minutach bez dyktowania"
+   ]
+  },
+  "pt": {
+   "title": "após 5 minutos",
+   "words": [
+    "revisão de texto 5 min",
+    "AI Polish 5 minutos"
+   ],
+   "phrases": [
+    "liberar da memória o modelo de revisão de texto após 5 minutos de inatividade"
+   ]
+  },
+  "ro": {
+   "title": "după 5 minute",
+   "words": [
+    "AI Polish 5 min",
+    "corectare text cinci minute"
+   ],
+   "phrases": [
+    "eliberează memoria modelului de corectare a textului după 5 minute fără dictare"
+   ]
+  },
+  "ru": {
+   "title": "через 5 минут",
+   "words": [
+    "правка текста 5 мин",
+    "правка текста пять минут"
+   ],
+   "phrases": [
+    "выгружать модель правки текста из памяти через 5 минут простоя"
+   ]
+  },
+  "sk": {
+   "title": "po 5 minútach",
+   "words": [
+    "AI Polish 5 min",
+    "úprava textu päť minút"
+   ],
+   "phrases": [
+    "uvoľniť model na úpravu textu z pamäte po 5 minútach nečinnosti"
+   ]
+  },
+  "sl": {
+   "title": "po 5 minutah",
+   "words": [
+    "AI Polish 5 min",
+    "izboljšanje besedila 5 minut",
+    "izboljšanje besedila pet minut"
+   ],
+   "phrases": [
+    "sprosti pomnilnik modela za izboljšanje besedila po 5 minutah neuporabe"
+   ]
+  },
+  "sv": {
+   "title": "efter 5 minuter",
+   "words": [
+    "AI Polish efter 5 min",
+    "frigör minne för textbearbetning efter fem minuter"
+   ],
+   "phrases": [
+    "frigör minnet som modellen för textbearbetning använder när den inte har använts på fem minuter"
+   ]
+  },
+  "tr": {
+   "title": "5 dakika sonra",
+   "words": [
+    "metin düzenleme 5 dk",
+    "AI Polish beş dakika"
+   ],
+   "phrases": [
+    "metin düzenleme modeli 5 dakika boşta kalınca bellekten çıkarılsın"
+   ]
+  },
+  "uk": {
+   "title": "через 5 хвилин",
+   "words": [
+    "5 хв",
+    "AI Polish 5 хвилин"
+   ],
+   "phrases": [
+    "вивантажувати модель редагування тексту з пам’яті після п’яти хвилин без диктування"
+   ]
+  },
+  "vi": {
+   "title": "sau 5 phút",
+   "words": [
+    "AI Polish 5 phút",
+    "AI Polish năm phút"
+   ],
+   "phrases": [
+    "giải phóng bộ nhớ của mô hình chỉnh văn bản sau 5 phút không dùng đến"
+   ]
+  },
+  "zh": {
+   "title": "5 分钟后",
+   "words": [
+    "润色闲置5分钟",
+    "润色闲置五分钟"
+   ],
+   "phrases": [
+    "润色模型闲置5分钟后释放内存",
+    "潤飾模型閒置5分鐘後釋放記憶體"
+   ]
+  }
+ }
+}
