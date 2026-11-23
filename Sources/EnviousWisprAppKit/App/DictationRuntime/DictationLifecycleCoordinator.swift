@@ -110,6 +110,20 @@ final class DictationLifecycleCoordinator {
   /// because both drivers now share `PipelineState` vocabulary.
   private var postCompletionWarningTask: Task<Void, Never>?
 
+  /// #4841: the silent-mic notice for the take now recording. One instance, shared by both
+  /// engines; it binds to one take at a time (see `updateSilentMicTracker`).
+  lazy var silentMicTracker: SilentMicNoticeTracker = {
+    let audioCapture = self.audioCapture
+    return SilentMicNoticeTracker(
+      readRun: { audioCapture.exactZeroRun },
+      currentCaptureSessionID: { audioCapture.currentCaptureSessionID },
+      overlay: recordingOverlay,
+      recordNotice: { takeID, strong in
+        TelemetryService.shared.recordSilentMicNotice(takeID: takeID, strong: strong)
+      },
+      recordCleared: { takeID in TelemetryService.shared.recordSilentMicCleared(takeID: takeID) })
+  }()
+
   /// AppDelegate sets this to update the menu-bar icon + drive update-banner
   /// suppression. Setter-injected post-init, the same precedent as PR4's
   /// `var languageSuggestionPresenter`.
@@ -373,6 +387,21 @@ final class DictationLifecycleCoordinator {
       takeID: takeID)
   }
 
+  /// #4841: start the silent-mic tracker at ACTUAL recording entry (the published
+  /// `.recording` state, after arming; a pill shown during prewarm never starts it) with the
+  /// take's frozen config, and stop it when that same take leaves recording. Keyed by the
+  /// driver's take identity, so one engine's idle state never stops the other's take.
+  private func updateSilentMicTracker(_ newState: PipelineState, driver: KernelDictationDriver) {
+    let takeID = driver.practiceTakeID
+    if case .recording = newState {
+      silentMicTracker.start(
+        takeID: takeID,
+        warningsEnabled: driver.currentSessionConfig?.silentMicWarningsEnabled ?? false)
+    } else if silentMicTracker.binding?.takeID == takeID {
+      silentMicTracker.stop()
+    }
+  }
+
   // MARK: - Per-pipeline state-change handling
 
   private func handleParakeet(newState: PipelineState) {
@@ -431,6 +460,9 @@ final class DictationLifecycleCoordinator {
     // The argument assembly lives in `PipelineStateChangeDispatch` so this path
     // and the Whisper one below cannot drift apart (#2087).
     PipelineStateChangeDispatch.run(parakeetStateHandler, driver: kernelDriver, to: newState)
+    // #4841: AFTER the dispatch, which draws the recording pill for this state; the tracker
+    // binds to that pill.
+    updateSilentMicTracker(newState, driver: kernelDriver)
     // #1707 Phase 3 (GitHub cloud review, PR #1732 round 6): a `.complete`
     // whose History save failed retains its spool, but `onSessionEndedWithoutSave`
     // never fires for `.complete` — protect it from THIS SAME transition's own
@@ -497,6 +529,8 @@ final class DictationLifecycleCoordinator {
     prevWhisperActive = nowActive
     PipelineStateChangeDispatch.run(
       whisperStateHandler, driver: whisperKernelDriver, to: newState)
+    // #4841: after the dispatch, as in the Parakeet handler.
+    updateSilentMicTracker(newState, driver: whisperKernelDriver)
     // #1707 Phase 3 (GitHub cloud review, PR #1732 round 6) — see the Parakeet
     // handler above for why this must run before the kernel's own wake-up.
     if case .complete = newState, !whisperKernelDriver.lastHistorySaved,

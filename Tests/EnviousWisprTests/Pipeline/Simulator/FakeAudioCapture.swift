@@ -115,6 +115,10 @@ final class FakeAudioCapture: AudioCaptureInterface {
   // MARK: AudioCaptureInterface — observable state (inert constants)
 
   private(set) var isCapturing = false
+  /// #4841: what `exactZeroRun` reports while capturing. Like `AudioCaptureManager`, the
+  /// reading exists only while capture runs (nil otherwise); the default is "no silence yet".
+  var exactZeroRunWhileCapturing = ExactZeroRun(sampleCount: 0, sinceTakeStart: false)
+  var exactZeroRun: ExactZeroRun? { isCapturing ? exactZeroRunWhileCapturing : nil }
   var audioLevel: Float { 0 }
   var capturedSamples: [Float] { accumulatedSamples }
   /// #1780: tests mutate this to prove the record-start markers carry the

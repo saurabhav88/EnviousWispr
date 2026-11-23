@@ -232,6 +232,57 @@ import Testing
       #expect(events.filter { $0.name == "dictation.terminal" }.count == 2, "no extra rows")
     }
 
+    // MARK: - #4841 silent-mic notice
+
+    @Test("#4841 the highest accepted silent-mic level and a recovery clear ride the take's own terminal")
+    func silentMicNoticeFoldsOntoItsTake() throws {
+      let events = capture {
+        TelemetryService.shared.dictationStarted(
+          takeID: Self.takeA, backend: "parakeet", model: nil)
+        TelemetryService.shared.dictationStarted(
+          takeID: Self.takeB, backend: "whisper", model: nil)
+        TelemetryService.shared.recordSilentMicNotice(takeID: Self.takeA, strong: false)
+        TelemetryService.shared.recordSilentMicNotice(takeID: Self.takeA, strong: true)
+        // A later calm (after recovery) never lowers the recorded highest level.
+        TelemetryService.shared.recordSilentMicNotice(takeID: Self.takeA, strong: false)
+        TelemetryService.shared.recordSilentMicCleared(takeID: Self.takeA)
+        TelemetryService.shared.recordSilentMicNotice(takeID: Self.takeB, strong: true)
+        TelemetryService.shared.dictationTerminal(
+          takeID: Self.takeB, backend: "whisper", result: "completed", reason: nil, model: nil)
+        TelemetryService.shared.dictationTerminal(
+          takeID: Self.takeA, backend: "parakeet", result: "completed", reason: nil, model: nil)
+      }
+      let a = try terminal(events, take: Self.takeA)
+      let b = try terminal(events, take: Self.takeB)
+      #expect(a.stringProps["silent_mic_notice"] == "strong")
+      #expect(a.boolProps["silent_mic_cleared"] == true)
+      // Strong at stop: shown, never cleared by sound.
+      #expect(b.stringProps["silent_mic_notice"] == "strong")
+      #expect(b.boolProps["silent_mic_cleared"] == false)
+      #expect(events.filter { $0.name == "dictation.terminal" }.count == 2, "no extra rows")
+    }
+
+    @Test("#4841 a take with no notice reads none; a write with no open entry records nothing")
+    func silentMicNoticeAbsentAndMissingEntry() throws {
+      let events = capture {
+        TelemetryService.shared.dictationStarted(
+          takeID: Self.takeA, backend: "parakeet", model: nil)
+        // Never opened: the write lands nowhere and creates no row.
+        TelemetryService.shared.recordSilentMicNotice(takeID: Self.takeB, strong: true)
+        TelemetryService.shared.dictationTerminal(
+          takeID: Self.takeA, backend: "parakeet", result: "completed", reason: nil, model: nil)
+        TelemetryService.shared.dictationTerminal(
+          takeID: Self.takeB, backend: "parakeet", result: "completed", reason: nil, model: nil)
+      }
+      let a = try terminal(events, take: Self.takeA)
+      let b = try terminal(events, take: Self.takeB)
+      #expect(a.stringProps["silent_mic_notice"] == "none")
+      #expect(a.boolProps["silent_mic_cleared"] == false)
+      // No summary for B (never accepted): both fields are omitted, not fabricated.
+      #expect(b.stringProps["silent_mic_notice"] == nil)
+      #expect(b.boolProps["silent_mic_cleared"] == nil)
+    }
+
     @Test("#3988 a recovery take's terminal names the stop and its own polish result; others carry none")
     func outsideStopRecoveryFoldsOntoItsTake() throws {
       let takeC = "5B1E2C3D-4F50-4617-8A9B-0C1D2E3F4A55"
@@ -371,14 +422,21 @@ struct TakeStageLedgerTests {
     #expect(ledger.close(takeID: "A")?.stageReached == TakeStageSummary.Stage.none)
   }
 
+  /// #4841: the silent-mic pair is always present on a summary (`none` / false when nothing
+  /// was shown), so a take with no warning still reports that it had none.
   @Test("the terminal projection always names the stage and omits unreached boundaries")
   func projectionOmitsUnreached() {
     var summary = TakeStageSummary()
-    #expect(summary.terminalProperties.keys.sorted() == ["vad_stage_reached"])
+    #expect(
+      summary.terminalProperties.keys.sorted()
+        == ["silent_mic_cleared", "silent_mic_notice", "vad_stage_reached"])
     summary.stageReached = .prepared
     summary.backend = "parakeet"
     summary.ready = true
     let keys = summary.terminalProperties.keys.sorted()
-    #expect(keys == ["vad_backend", "vad_ready", "vad_stage_reached"])
+    #expect(
+      keys == [
+        "silent_mic_cleared", "silent_mic_notice", "vad_backend", "vad_ready", "vad_stage_reached",
+      ])
   }
 }

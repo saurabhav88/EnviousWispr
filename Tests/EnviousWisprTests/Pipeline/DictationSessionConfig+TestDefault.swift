@@ -36,7 +36,9 @@ extension DictationSessionConfig {
     recoverySessionID: String? = nil,
     s1Control: S1ControlSettings = .default,
     englishSpelling: EnglishSpelling = .american,
-    translationTarget: DictationTranslationTarget? = nil
+    translationTarget: DictationTranslationTarget? = nil,
+    // #4841: on, like production, so a suite that never mentions it keeps the shipped value.
+    silentMicWarningsEnabled: Bool = true
   ) -> DictationSessionConfig {
     DictationSessionConfig(
       autoCopyToClipboard: autoCopyToClipboard,
@@ -51,6 +53,7 @@ extension DictationSessionConfig {
       vadSilenceTimeout: vadSilenceTimeout,
       vadSensitivity: vadSensitivity,
       vadEnergyGate: vadEnergyGate,
+      silentMicWarningsEnabled: silentMicWarningsEnabled,
       languageMode: languageMode,
       englishSpelling: englishSpelling,
       useStreamingASR: useStreamingASR,
