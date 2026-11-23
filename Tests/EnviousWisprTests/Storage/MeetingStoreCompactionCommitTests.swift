@@ -582,8 +582,14 @@ struct MeetingStoreCompactionCommitTests {
       JSONSerialization.jsonObject(with: Data(contentsOf: partialURL)) as? [String: Any])
     partialJSON.removeValue(forKey: "compressedAudio")
     try JSONSerialization.data(withJSONObject: partialJSON).write(to: partialURL)
-    #expect(try partial.store.removeAbandonedCompactedAudio(meeting: partial.id) == 0)
-    for name in partial.outputNames { #expect(partial.exists(name), "\(name) must stay") }
+    let rawCount = partial.inventory.segments.filter { $0.variant == .raw }.count
+    // Only the raw compacted files, whose raw originals are still there, are redundant.
+    #expect(try partial.store.removeAbandonedCompactedAudio(meeting: partial.id) == rawCount)
+    for entry in partial.inventory.segments {
+      #expect(
+        partial.exists(entry.compressed.fileName) == (entry.variant == .cleaned),
+        "\(entry.compressed.fileName)")
+    }
 
     // A meeting whose originals are all still there does have abandoned candidates to remove.
     let fresh = try Self.fixture()
