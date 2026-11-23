@@ -574,7 +574,7 @@ struct ASRManagerLoadGenerationTests {
     await manager.awaitInFlightLoad()
     #expect(await parakeet.prepareCount == 0, "an empty manager starts no load")
 
-    // A finished load whose owner has not cleared its handle yet must not spin the loop.
+    // With a resident model and no load running there is nothing to wait for.
     try await manager.loadModel()
     await manager.awaitInFlightLoad()
     #expect(await parakeet.prepareCount == 1, "a resident model is not loaded again")
