@@ -27,7 +27,7 @@ final class HistoryAudioExport {
   /// What the source owner admitted: a finished file to copy, or tracks to mix.
   enum Source: Sendable {
     case file(URL)
-    case meeting(files: MeetingPlaybackController.TrackFiles, durationMs: Int)
+    case meeting(media: PlaybackMedia, durationMs: Int)
   }
 
   /// The source owner's answer at commit.
@@ -287,16 +287,10 @@ final class HistoryAudioExport {
       switch source {
       case .file(let url):
         try fm.copyItem(at: url, to: file)
-      case .meeting(let files, let durationMs):
-        let tracks = try MeetingPlaybackController.load(files)
-        partlySilent = tracks.contains { track in
-          track.problems.contains {
-            switch $0 {
-            case .unreadable, .incompatibleFormat, .empty: return true
-            case .overlap: return false
-            }
-          }
-        }
+      case .meeting(let media, let durationMs):
+        let opened = try MeetingPlaybackController.openMeetingTracksReport(media)
+        let tracks = opened.tracks
+        partlySilent = opened.damaged
         let frames = Int64(durationMs) * Int64(MeetingPlaybackController.samplesPerMs)
         _ = try SpeechAudioEncoder.encode(frames: frames, purpose: .meeting, to: file) {
           offset, count in
@@ -499,7 +493,7 @@ extension HistoryAudioExport {
       key: .meeting(meetingID), defaultName: defaultName,
       admit: {
         held.value = meetings.audioExportSnapshot(meetingID: meetingID)
-        return held.value.map { .meeting(files: $0.trackFiles, durationMs: $0.durationMs) }
+        return held.value.map { .meeting(media: $0.source.media, durationMs: $0.source.durationMs) }
       },
       check: {
         guard let snapshot = held.value else { return .deleted }

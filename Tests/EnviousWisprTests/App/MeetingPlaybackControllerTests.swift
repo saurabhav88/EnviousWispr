@@ -157,7 +157,8 @@ struct MeetingPlaybackControllerTests {
     let call = try MeetingAudioFixture.writeSegment(
       in: folder, track: .callSound, index: 1, startMs: 0, frames: 16_000, seed: 1)
     let tracks = try MeetingPlaybackController.load([
-      .microphone: [(mic, 0)], .callSound: [(call, 0)],
+      .microphone: [.init(url: mic, startMs: 0, logicalFrames: nil)],
+      .callSound: [.init(url: call, startMs: 0, logicalFrames: nil)],
     ])
 
     // An offset that falls between milliseconds, across the end of the microphone file.
@@ -184,7 +185,8 @@ struct MeetingPlaybackControllerTests {
     let mic = try Self.writeLevel(0.75, in: folder, track: .microphone, frames: 4_000)
     let call = try Self.writeLevel(0.75, in: folder, track: .callSound, frames: 4_000)
     let tracks = try MeetingPlaybackController.load([
-      .microphone: [(mic, 0)], .callSound: [(call, 0)],
+      .microphone: [.init(url: mic, startMs: 0, logicalFrames: nil)],
+      .callSound: [.init(url: call, startMs: 0, logicalFrames: nil)],
     ])
 
     // 0.75 + 0.75 = 1.5, clipped to 1, through both entry points at a millisecond boundary.

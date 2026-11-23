@@ -35,11 +35,55 @@ package enum MeetingDamagedAudio {
     }
   }
 
+  /// One file that bounds the timeline: where a segment file starts, by name.
+  package struct Bound: Sendable, Equatable {
+    package let track: MeetingTrackKind
+    package let variant: MeetingSegmentVariant
+    package let startMs: Int
+    package let fileName: String
+
+    package init(
+      track: MeetingTrackKind, variant: MeetingSegmentVariant, startMs: Int, fileName: String
+    ) {
+      self.track = track
+      self.variant = variant
+      self.startMs = startMs
+      self.fileName = fileName
+    }
+  }
+
+  /// Per track, the stretches only a damaged file claims (milliseconds), bounded by the files on
+  /// disk (the recorder's own listing).
+  package static func missingAudio(
+    damaged: Set<String>, onDisk: [MeetingStore.SegmentFile],
+    readable: [MeetingTrackKind: MeetingTrackAudio]
+  ) -> [MeetingTrackKind: [MeetingTranscriptionJob.MissingAudio]] {
+    missingAudio(
+      damaged: damaged,
+      bounds: onDisk.map {
+        Bound(
+          track: $0.track, variant: $0.variant, startMs: $0.startMs,
+          fileName: $0.url.lastPathComponent)
+      },
+      readable: readable)
+  }
+
+  /// #3147 PR4B: the bounds of a committed compacted inventory: every file it names, at the
+  /// recorder's start, present on disk or not, so a missing committed file still claims its own
+  /// stretch (from its start to the next file's) rather than an unknown end.
+  package static func bounds(of inventory: MeetingCompressedInventory) -> [Bound] {
+    inventory.segments.map {
+      Bound(
+        track: $0.track, variant: $0.variant, startMs: $0.source.startMs,
+        fileName: $0.compressed.fileName)
+    }
+  }
+
   /// Per track, the stretches only a damaged file claims (milliseconds). A damaged file's
   /// claim runs from its own start to the next file's start on that track; with no next file
   /// its end is unknown (nil), never a guess. Audio a readable file covers is removed from it.
   package static func missingAudio(
-    damaged: Set<String>, onDisk: [MeetingStore.SegmentFile],
+    damaged: Set<String>, bounds: [Bound],
     readable: [MeetingTrackKind: MeetingTrackAudio]
   ) -> [MeetingTrackKind: [MeetingTranscriptionJob.MissingAudio]] {
     var result: [MeetingTrackKind: [MeetingTranscriptionJob.MissingAudio]] = [:]
@@ -47,12 +91,12 @@ package enum MeetingDamagedAudio {
     for kind in MeetingTrackKind.allCases {
       // Raw files only: the cleaned copy (#4355 PR B) is a derivative, and its twin starts where
       // its raw segment does, so it would never bound a damaged raw file's claim.
-      let files = onDisk.filter { $0.track == kind && $0.variant == .raw }
+      let files = bounds.filter { $0.track == kind && $0.variant == .raw }
         .sorted { $0.startMs < $1.startMs }
       let covered = (readable[kind]?.segments ?? []).map {
         ms($0.readStartSample)..<ms($0.endSample)
       }.filter { !$0.isEmpty }.sorted { $0.lowerBound < $1.lowerBound }
-      for (i, file) in files.enumerated() where damaged.contains(file.url.lastPathComponent) {
+      for (i, file) in files.enumerated() where damaged.contains(file.fileName) {
         let next = files[(i + 1)...].first { $0.startMs > file.startMs }?.startMs
         var pieces = [file.startMs..<(next ?? unbounded)]
         for cover in covered {

@@ -545,12 +545,13 @@ struct MeetingCoordinatorTests {
           return NSObject()
         },
         endActivity: { [self] _ in activitiesEnded += 1 },
-        recoverFolder: { [recoveryHold, recoveryEntered] folder in
+        recoverFolder: { [recoveryHold, recoveryEntered] folder, inventory in
           if let recoveryHold {
             recoveryEntered.signal()
             _ = recoveryHold.wait(timeout: .now() + 10)
           }
-          return MeetingTrackRecovery.recover(folder: folder)
+          return MeetingTrackRecovery.recover(
+            folder: folder, inventory: inventory, identity: MeetingStore.audioFileIdentity(at:))
         },
         saveCheckpoint: { [checkpointHold, checkpointEntered] store, checkpoint in
           if let checkpointHold {
@@ -1810,10 +1811,11 @@ struct MeetingCoordinatorTests {
 
     let record = try #require(coordinator.record(id: meetingID))
     let snapshot = try #require(coordinator.audioExportSnapshot(meetingID: meetingID))
-    #expect(snapshot.segments == record.segments)
-    #expect(snapshot.durationMs == record.recordedDurationMs)
-    #expect(snapshot.durationMs > 0)
-    #expect(snapshot.folder == harness.store.folder(for: meetingID))
+    #expect(
+      snapshot.source
+        == MeetingPlaybackSource(record: record, folder: harness.store.folder(for: meetingID)))
+    #expect(snapshot.source.durationMs == record.recordedDurationMs)
+    #expect(snapshot.source.durationMs > 0)
     #expect(coordinator.audioExportSnapshot(meetingID: meetingID) == snapshot, "stable")
 
     // Delete audio claims the meeting before its save lands: no snapshot from that moment.
@@ -1963,18 +1965,20 @@ struct MeetingCoordinatorTests {
     let id = UUID()
     let folder = URL(filePath: "/tmp/meeting")
     func snapshot(frames: Int) -> MeetingAudioExportSnapshot {
-      MeetingAudioExportSnapshot(
-        meetingID: id, folder: folder,
-        segments: [
-          .microphone: [
-            MeetingSegmentInfo(index: 1, fileName: "mic-00001-s000000000.caf", startMs: 0, frameCount: frames)
-          ]
-        ], durationMs: 1_000)
+      var record = MeetingRecord(engine: .parakeet, trackStatus: [.microphone: .captured])
+      record.segments = [
+        .microphone: [
+          MeetingSegmentInfo(index: 1, fileName: "mic-00001-s000000000.caf", startMs: 0, frameCount: frames)
+        ]
+      ]
+      return MeetingAudioExportSnapshot(
+        meetingID: id, segments: record.segments,
+        source: MeetingPlaybackSource(record: record, folder: folder))
     }
     #expect(snapshot(frames: 16_000) == snapshot(frames: 16_000))
     #expect(snapshot(frames: 16_000) != snapshot(frames: 15_999))
     #expect(
-      snapshot(frames: 16_000).trackFiles[.microphone]?.map(\.url)
+      snapshot(frames: 16_000).source.files[.microphone]?.map(\.url)
         == [folder.appendingPathComponent("mic-00001-s000000000.caf")])
   }
 

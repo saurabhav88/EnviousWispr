@@ -33,6 +33,11 @@ final class MeetingRecordPersistence {
   /// included), so two steps in flight never lose each other's change.
   private(set) var live: [UUID: MeetingRecord] = [:]
 
+  /// Committed compacted-audio inventories this session knows (loaded at launch or committed
+  /// here). Every record copy and write carries a meeting's entry, so no later save drops the
+  /// meeting's audio authority (#3147 PR4B).
+  private(set) var committedAudio: [UUID: MeetingCompressedInventory] = [:]
+
   /// Per meeting, the number of the latest write asked for, and of the newest one shown.
   @ObservationIgnored private var writeSequence: [UUID: Int] = [:]
   @ObservationIgnored private var durableSequence: [UUID: Int] = [:]
@@ -63,6 +68,7 @@ final class MeetingRecordPersistence {
   func adopt(_ record: MeetingRecord) {
     live[record.id] = record
     records[record.id] = record
+    if let inventory = record.compressedAudio { committedAudio[record.id] = inventory }
   }
 
   /// A commit settled from disk (barrier recovery): the shown copy is set first, then the
@@ -82,6 +88,32 @@ final class MeetingRecordPersistence {
   func remove(_ meetingID: UUID) {
     live.removeValue(forKey: meetingID)
     records.removeValue(forKey: meetingID)
+    committedAudio.removeValue(forKey: meetingID)
+  }
+
+  /// A committed inventory becomes part of every copy of the record held here, pending writes
+  /// included. The caller publishes.
+  func adoptCommittedAudio(_ inventory: MeetingCompressedInventory, for meetingID: UUID) {
+    committedAudio[meetingID] = inventory
+    if let record = live[meetingID] { live[meetingID] = withCommittedAudio(record) }
+    if let record = records[meetingID] { records[meetingID] = withCommittedAudio(record) }
+    if var pending = unansweredWrites[meetingID] {
+      for i in pending.indices { pending[i].record = withCommittedAudio(pending[i].record) }
+      unansweredWrites[meetingID] = pending
+    }
+  }
+
+  /// Whether a write for this meeting is asked for and not yet answered.
+  func hasUnansweredWrites(_ meetingID: UUID) -> Bool { unansweredWrites[meetingID] != nil }
+
+  /// `record` with the meeting's committed inventory when it lacks one.
+  func withCommittedAudio(_ record: MeetingRecord) -> MeetingRecord {
+    guard record.compressedAudio == nil, let inventory = committedAudio[record.id] else {
+      return record
+    }
+    var carried = record
+    carried.commitCompressedAudio(inventory)
+    return carried
   }
 
   // MARK: - Writes
@@ -174,6 +206,7 @@ final class MeetingRecordPersistence {
   }
 
   private func beginWrite(_ record: MeetingRecord) -> Int {
+    let record = withCommittedAudio(record)
     live[record.id] = record
     let sequence = (writeSequence[record.id] ?? 0) + 1
     writeSequence[record.id] = sequence
@@ -195,9 +228,9 @@ final class MeetingRecordPersistence {
     if let pending = unansweredWrites[meetingID]?.last,
       pending.sequence > (durableSequence[meetingID] ?? 0)
     {
-      live[meetingID] = pending.record
+      live[meetingID] = withCommittedAudio(pending.record)
     } else {
-      live[meetingID] = records[meetingID]
+      live[meetingID] = records[meetingID].map(withCommittedAudio)
     }
   }
 
@@ -208,7 +241,7 @@ final class MeetingRecordPersistence {
     // A meeting removed meanwhile (its folder deleted) is not brought back.
     if live[record.id] != nil, sequence > (durableSequence[record.id] ?? 0) {
       durableSequence[record.id] = sequence
-      records[record.id] = record
+      records[record.id] = withCommittedAudio(record)
       events.published()
     }
     answered(record.id, sequence: sequence)

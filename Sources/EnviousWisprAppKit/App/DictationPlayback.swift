@@ -78,6 +78,15 @@ final class PlaybackArbiter {
     players[id] = entries
   }
 
+  /// #3147 PR4B: recordings whose files are being switched (a meeting's compacted copy being
+  /// committed): their players may not start until the switch ends.
+  private var heldStarts: Set<PlaybackSourceID> = []
+
+  func holdStarts(_ id: PlaybackSourceID) { heldStarts.insert(id) }
+  func releaseStarts(_ id: PlaybackSourceID) { heldStarts.remove(id) }
+  /// Whether a player of `id` may start playing now.
+  func mayStart(_ id: PlaybackSourceID) -> Bool { !heldStarts.contains(id) }
+
   func didStartPlaying(_ player: MeetingPlaybackController) {
     if let previous = nowPlaying, previous !== player { previous.pause() }
     nowPlaying = player
@@ -85,6 +94,12 @@ final class PlaybackArbiter {
 
   /// Whether a player of `id` is the one playing now. Retention never removes a recording
   /// someone is listening to; the next sweep takes it.
+  /// #3147 PR4B: whether any player of `id` is open (playing, paused or idle), so background
+  /// compaction never changes a recording under a page that is showing it.
+  func hasPlayer(_ id: PlaybackSourceID) -> Bool {
+    players[id]?.contains { $0.player != nil } ?? false
+  }
+
   func isPlaying(_ id: PlaybackSourceID) -> Bool {
     guard let nowPlaying, nowPlaying.state == .playing else { return false }
     return players[id]?.contains { $0.player === nowPlaying } ?? false

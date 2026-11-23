@@ -1,6 +1,7 @@
 @preconcurrency import AVFoundation
 import EnviousWisprAudio
 import EnviousWisprCore
+import EnviousWisprStorage
 import Foundation
 
 /// Where meeting playback sends its audio (#3972 §3.8). One output per open meeting, separate
@@ -23,7 +24,12 @@ protocol MeetingPlaybackOutput: AnyObject {
 /// What a player reads (#3147): a meeting's track files on the meeting timeline, or one saved
 /// dictation recording (AAC, 16 kHz mono).
 enum PlaybackMedia: Sendable {
-  case meeting(MeetingPlaybackController.TrackFiles)
+  case meeting(MeetingPlaybackController.TrackSources)
+  /// #3147 PR4B: a meeting whose compacted copy is committed, opened through recovery's own
+  /// authority (`MeetingTrackRecovery.recover(folder:inventory:identity:)`) off the main actor:
+  /// the verified compacted files, or the complete verified originals when the copy is
+  /// unusable. Never a per-file mix of the two.
+  case compactedMeeting(folder: URL, inventory: MeetingCompressedInventory)
   case dictation(URL)
   /// #3147 PR3: an imported file's original, already opened by its owner (`ImportedSources`).
   case transcript(any PlaybackWindowAudio)
@@ -74,6 +80,9 @@ final class MeetingPlaybackController {
 
   /// Each track's segment files and their start times on the meeting timeline.
   typealias TrackFiles = [MeetingTrackKind: [(url: URL, startMs: Int)]]
+  /// #3147 PR4B: each track's files as a reader opens them (a compacted file with the
+  /// recorder's frame count).
+  typealias TrackSources = [MeetingTrackKind: [MeetingTrackAudio.SourceFile]]
 
   /// The recording this player plays, when it is known to the shared now-playing owner.
   let sourceID: PlaybackSourceID?
@@ -123,8 +132,10 @@ final class MeetingPlaybackController {
     read: @escaping Reader = MeetingPlaybackController.readWindow
   ) {
     self.init(
-      media: .meeting(files), durationMs: durationMs, output: output, windowMs: windowMs,
-      read: read)
+      media: .meeting(
+        files.mapValues { list in
+          list.map { MeetingTrackAudio.SourceFile(url: $0.url, startMs: $0.startMs, logicalFrames: nil) }
+        }), durationMs: durationMs, output: output, windowMs: windowMs, read: read)
   }
 
   /// A player for `source`'s files and length, known to the shared now-playing owner.
@@ -133,7 +144,7 @@ final class MeetingPlaybackController {
     arbiter: PlaybackArbiter? = nil
   ) {
     self.init(
-      media: .meeting(source.trackFiles), durationMs: source.durationMs, output: output,
+      media: source.media, durationMs: source.durationMs, output: output,
       sourceID: meetingID.map { .meeting($0) }, arbiter: arbiter)
   }
 
@@ -153,6 +164,8 @@ final class MeetingPlaybackController {
 
   func play() {
     guard state != .playing, state != .unavailable, durationMs > 0 else { return }
+    // #3147 PR4B: no start while the recording's files are being switched.
+    if let sourceID, arbiter?.mayStart(sourceID) == false { return }
     if state == .finished { positionMs = 0 }
     hasPosition = true
     do {
@@ -371,19 +384,59 @@ final class MeetingPlaybackController {
   /// Opens the audio for the first window: the meeting's tracks, or the dictation's file.
   nonisolated static func open(_ media: PlaybackMedia) throws -> any PlaybackWindowAudio {
     switch media {
-    case .meeting(let files): return MeetingMixedAudio(tracks: try load(files))
+    case .meeting, .compactedMeeting:
+      return MeetingMixedAudio(tracks: try openMeetingTracksReport(media).tracks)
     case .dictation(let url): return try DictationPlaybackAudio(url: url)
     case .transcript(let audio): return audio
+    }
+  }
+
+  /// A track that skipped a file it could not use (an overlap is not a loss).
+  private nonisolated static func hasUnreadableFile(_ track: MeetingTrackAudio) -> Bool {
+    track.problems.contains {
+      switch $0 {
+      case .unreadable, .incompatibleFormat, .empty: return true
+      case .overlap: return false
+      }
+    }
+  }
+
+  /// A meeting's readable tracks for `media` (playback and History's Save audio share it, so a
+  /// compacted meeting is read through recovery's authority whichever way it is opened), plus
+  /// whether recording audio is missing: a recorder file a track could
+  /// not read, or (for a compacted meeting) a segment recovery left out as damaged. Save audio
+  /// tells the user when the saved file holds silence for such a stretch.
+  nonisolated static func openMeetingTracksReport(_ media: PlaybackMedia) throws
+    -> (tracks: [MeetingTrackAudio], damaged: Bool)
+  {
+    switch media {
+    case .meeting(let files):
+      let tracks = try load(files)
+      return (tracks, tracks.contains(where: hasUnreadableFile))
+    case .compactedMeeting(let folder, let inventory):
+      let report = MeetingTrackRecovery.recover(
+        folder: folder, inventory: inventory, identity: MeetingStore.audioFileIdentity(at:))
+      let tracks = MeetingTrackKind.allCases.compactMap { kind -> MeetingTrackAudio? in
+        let segments = report.segments[kind] ?? []
+        guard !segments.isEmpty else { return nil }
+        let audio = MeetingTrackAudio(segments: segments, in: folder)
+        return audio.isEmpty ? nil : audio
+      }
+      guard !tracks.isEmpty else { throw PlaybackError.noReadableAudio }
+      // `report.problems` are the recording's own files (a segment left out as damaged shows
+      // there and nowhere in the tracks); cleaned-copy and compaction notes are not audio loss.
+      return (tracks, !report.problems.isEmpty || tracks.contains(where: hasUnreadableFile))
+    case .dictation, .transcript: throw PlaybackError.noReadableAudio
     }
   }
 
   /// Opens the tracks once, on the first window. A damaged file is left out by
   /// `MeetingTrackAudio` and its stretch plays as silence, as the transcript marks it; only a
   /// meeting with no readable file at all is unavailable.
-  nonisolated static func load(_ files: TrackFiles) throws -> [MeetingTrackAudio] {
+  nonisolated static func load(_ files: TrackSources) throws -> [MeetingTrackAudio] {
     let tracks = MeetingTrackKind.allCases.compactMap { kind -> MeetingTrackAudio? in
       guard let list = files[kind], !list.isEmpty else { return nil }
-      return MeetingTrackAudio(files: list)
+      return MeetingTrackAudio(sources: list)
     }
     guard tracks.contains(where: { !$0.isEmpty }) else { throw PlaybackError.noReadableAudio }
     return tracks
@@ -425,24 +478,98 @@ final class MeetingMixedAudio: PlaybackWindowAudio, @unchecked Sendable {
 /// What one meeting's playback reads: its kept files and its length, from the saved record
 /// (#3972 C5). The detail view keeps a player only while this is unchanged, so a recovery that
 /// rewrote the inventory, a deletion or a lost file ends or replaces the player.
+///
+/// #3147 PR4B: with a committed compacted inventory the files are the ones
+/// `MeetingAudioSelection` chooses for the recorder's raw segments (asked with the complete
+/// logical set, the inventory's cleaned twins included, then filtered to raw: playback is raw),
+/// read at the recorder's frame counts. The inventory's id is part of the source, so committing
+/// a compacted copy is a different source and rebuilds the player instead of changing files under
+/// an unchanged one. An inventory the selector refuses plays the recorder files as listed, whole,
+/// never a mix.
 struct MeetingPlaybackSource: Hashable, Sendable {
   struct File: Hashable, Sendable {
     let url: URL
     let startMs: Int
+    /// The recorder's frame count for a compacted file; nil for a recorder CAF.
+    var logicalFrames: Int? = nil
   }
 
   let files: [MeetingTrackKind: [File]]
   let durationMs: Int
+  /// The committed compacted inventory the files come from; nil for the recorder's files.
+  let inventoryID: UUID?
+  /// #3147 PR4B: the folder and committed inventory a compacted meeting opens through recovery
+  /// (`PlaybackMedia.compactedMeeting`); nil for the recorder's files.
+  let compacted: Compacted?
 
-  init(record: MeetingRecord, folder: URL) {
-    files = record.segments.mapValues { segments in
-      segments.map { File(url: folder.appendingPathComponent($0.fileName), startMs: $0.startMs) }
+  /// A committed inventory and its folder. Equal by the whole inventory; hashed by its id.
+  struct Compacted: Hashable, Sendable {
+    let folder: URL
+    let inventory: MeetingCompressedInventory
+
+    static func == (a: Compacted, b: Compacted) -> Bool {
+      a.folder == b.folder && a.inventory == b.inventory
     }
-    durationMs = record.recordedDurationMs
+
+    func hash(into hasher: inout Hasher) {
+      hasher.combine(folder)
+      hasher.combine(inventory.id)
+    }
   }
 
-  var trackFiles: MeetingPlaybackController.TrackFiles {
-    files.mapValues { $0.map { (url: $0.url, startMs: $0.startMs) } }
+  init(record: MeetingRecord, folder: URL) {
+    durationMs = record.recordedDurationMs
+    let recorderFiles = record.segments.mapValues { segments in
+      segments.map { File(url: folder.appendingPathComponent($0.fileName), startMs: $0.startMs) }
+    }
+    guard let inventory = record.compressedAudio else {
+      files = recorderFiles
+      inventoryID = nil
+      compacted = nil
+      return
+    }
+    var logical: [MeetingLogicalSegment] = []
+    for track in MeetingTrackKind.allCases {
+      for segment in record.segments[track] ?? [] {
+        logical.append(MeetingLogicalSegment(track: track, variant: .raw, segment: segment))
+      }
+    }
+    for entry in inventory.segments where entry.variant == .cleaned {
+      logical.append(
+        MeetingLogicalSegment(track: entry.track, variant: .cleaned, segment: entry.source))
+    }
+    guard let selected = try? MeetingAudioSelection.select(logical: logical, inventory: inventory)
+    else {
+      files = recorderFiles
+      inventoryID = nil
+      compacted = nil
+      return
+    }
+    var chosen: [MeetingTrackKind: [File]] = [:]
+    for item in selected where item.key.variant == .raw {
+      chosen[item.key.track, default: []].append(
+        File(
+          url: folder.appendingPathComponent(item.fileName), startMs: item.logical.startMs,
+          logicalFrames: item.encoding == .aacM4A ? item.logical.frameCount : nil))
+    }
+    files = chosen
+    inventoryID = inventory.id
+    compacted = Compacted(folder: folder, inventory: inventory)
+  }
+
+  /// What a player opens: a compacted meeting through recovery, else the listed files.
+  var media: PlaybackMedia {
+    if let compacted {
+      return .compactedMeeting(folder: compacted.folder, inventory: compacted.inventory)
+    }
+    return .meeting(trackSources)
+  }
+
+  /// What a reader opens (`MeetingTrackAudio(sources:)`).
+  var trackSources: MeetingPlaybackController.TrackSources {
+    files.mapValues {
+      $0.map { MeetingTrackAudio.SourceFile(url: $0.url, startMs: $0.startMs, logicalFrames: $0.logicalFrames) }
+    }
   }
 
   /// What the detail view does with its player when the source changes.
