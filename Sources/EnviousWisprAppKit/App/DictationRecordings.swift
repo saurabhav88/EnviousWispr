@@ -153,25 +153,6 @@ import Foundation
     if removed > 0 { log("removed \(removed) recordings whose text row is gone") }
   }
 
-  /// A saved recording requires both committed audio and its permanent History row.
-  func hasSavedRecording() async -> Bool {
-    await waitForStartup()
-    guard !Task.isCancelled, let ids = try? await archive.index() else { return false }
-    for id in ids {
-      guard !Task.isCancelled else { return false }
-      do {
-        if try await permanentRowExists(id), !Task.isCancelled,
-          await archive.url(for: id) != nil
-        {
-          return !Task.isCancelled
-        }
-      } catch {
-        return false
-      }
-    }
-    return false
-  }
-
   // MARK: - Keeping a recording
 
   /// Encodes and publishes recordings that are still being worked on, so a test (or quit) can
