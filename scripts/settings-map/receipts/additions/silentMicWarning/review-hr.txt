@@ -1,0 +1,12 @@
+{
+  "language": "hr",
+  "title": "upozori kad iz mikrofona ne dolazi zvuk",
+  "words": [
+    "upozorenje za mikrofon",
+    "mikrofon bez zvuka"
+  ],
+  "phrases": [
+    "kako uključiti upozorenje kad mikrofon ne hvata zvuk dok diktiram",
+    "upozorenje na zaslonu kad mikrofon ne prima zvuk tijekom diktiranja"
+  ]
+}

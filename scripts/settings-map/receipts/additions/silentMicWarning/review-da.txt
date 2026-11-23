@@ -1,0 +1,10 @@
+{
+  "language": "da",
+  "title": "advar, når mikrofonen ikke opfanger lyd",
+  "words": [
+    "mikrofonadvarsel"
+  ],
+  "phrases": [
+    "giv mig besked, hvis der ikke kommer lyd fra mikrofonen, mens jeg dikterer"
+  ]
+}

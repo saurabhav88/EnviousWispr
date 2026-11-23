@@ -2,6 +2,75 @@
   "sourceLanguage" : "en",
   "strings" : {
     "" : {},
+    "If your microphone sends only silence while you dictate, the pill shows a notice after a few seconds, and a stronger one after 15 seconds. Dictation keeps recording either way; to stop recording when you pause, use Stop recording on silence." : {
+      "comment" : "Microphone settings: explains the silent-microphone notice. Names the separate auto-stop setting by its English title; translate that title exactly as the app's own label for it.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Wenn dein Mikrofon beim Diktieren nur Stille liefert, zeigt die Aufnahmeanzeige nach ein paar Sekunden einen Hinweis und nach 15 Sekunden einen deutlicheren. Die Aufnahme läuft in beiden Fällen weiter; um sie bei einer Pause zu beenden, nutze „Aufnahme bei Stille stoppen“."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Si votre micro n’envoie que du silence pendant la dictée, la pastille d’enregistrement affiche un avis après quelques secondes, puis un autre plus visible après 15 secondes. L’enregistrement continue dans les deux cas ; pour l’arrêter quand vous faites une pause, utilisez « Arrêter l’enregistrement en cas de silence »."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Si tu micrófono solo envía silencio mientras dictas, la píldora de grabación muestra un aviso tras unos segundos y otro más visible a los 15 segundos. La grabación continúa en ambos casos; para detenerla cuando haces una pausa, usa «Detener la grabación al detectar silencio»."
+          }
+        }
+      }
+    },
+    "Shows a notice on the pill when no sound arrives." : {
+      "comment" : "Microphone settings: short line under Warn when the microphone is silent.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Zeigt einen Hinweis an der Aufnahmeanzeige, wenn kein Ton ankommt."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Affiche un avis sur la pastille d’enregistrement quand aucun son n’arrive."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Muestra un aviso en la píldora de grabación cuando no llega sonido."
+          }
+        }
+      }
+    },
+    "Warn when the microphone is silent" : {
+      "comment" : "Microphone settings: title of the switch that shows a notice on the recording pill when the microphone sends no sound.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bei Mikrofonstille warnen"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Avertir en cas de silence du micro"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Avisar si el micrófono está en silencio"
+          }
+        }
+      }
+    },
     "\"%@\" added to %@" : {
       "comment" : "Quick Add panel: confirmation after adding a spelling. The first %@ is the misheard text, the second the word; use this language's quotation marks.",
       "localizations" : {

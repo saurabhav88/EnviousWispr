@@ -831,7 +831,8 @@
    "inputDevice",
    "mediaDuringDictation",
    "micReadiness",
-   "section.microphone"
+   "section.microphone",
+   "silentMicWarning"
   ]
  },
  "dictation.microphone.multiInput": {
@@ -849,7 +850,8 @@
    "inputSocket",
    "mediaDuringDictation",
    "micReadiness",
-   "section.microphone"
+   "section.microphone",
+   "silentMicWarning"
   ]
  },
  "dictation.pill": {

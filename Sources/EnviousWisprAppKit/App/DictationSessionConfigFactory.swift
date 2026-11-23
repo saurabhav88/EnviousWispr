@@ -60,6 +60,7 @@ enum DictationSessionConfigFactory {
       vadSilenceTimeout: settings.vadSilenceTimeout,
       vadSensitivity: settings.vadSensitivity,
       vadEnergyGate: settings.vadEnergyGate,
+      silentMicWarningsEnabled: settings.silentMicWarnings,
       languageMode: languageMode,
       // #3124: the EFFECTIVE value, decided once here and frozen for the take.
       englishSpelling: EnglishSpelling.effective(

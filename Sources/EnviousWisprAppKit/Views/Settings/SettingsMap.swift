@@ -445,6 +445,12 @@ enum SettingsMap {
       parent: .sectionMicrophone, destination: .dictation(.microphone), dictionaryTab: nil,
       visibility: .always, target: .micReadiness, fallbacks: []),
     SettingsMapNode(
+      id: .silentMicWarning, structure: .item, item: .setting,
+      title: .resource(DictationSettingsCopy.Microphone.silentMicTitle),
+      description: .resource(DictationSettingsCopy.Microphone.silentMicShort),
+      parent: .sectionMicrophone, destination: .dictation(.microphone), dictionaryTab: nil,
+      visibility: .always, target: .silentMicWarning, fallbacks: []),
+    SettingsMapNode(
       id: .bluetoothGuide, structure: .item, item: .feature,
       title: .resource(BluetoothTipsCopy.settingsHeaderResource),
       description: .resource(DictationSettingsCopy.Microphone.bluetoothShort),

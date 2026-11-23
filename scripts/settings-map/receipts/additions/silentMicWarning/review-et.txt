@@ -1,0 +1,11 @@
+{
+  "language": "et",
+  "title": "hoiata, kui mikrofonist ei tule heli",
+  "words": [
+    "mikrofoni hoiatus"
+  ],
+  "phrases": [
+    "anna märku, kui dikteerimise ajal mikrofonist heli ei tule",
+    "miks dikteerimise ajal kuvatakse mikrofoni hoiatus"
+  ]
+}

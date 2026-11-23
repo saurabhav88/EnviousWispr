@@ -1,0 +1,6 @@
+{
+  "language": "hu",
+  "title": "figyelmeztetés, ha a mikrofon nem vesz fel hangot",
+  "words": ["néma mikrofon"],
+  "phrases": ["jelezzen, ha diktálás közben nem jön hang a mikrofonból"]
+}

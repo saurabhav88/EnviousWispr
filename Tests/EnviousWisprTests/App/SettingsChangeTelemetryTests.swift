@@ -160,6 +160,24 @@ import Testing
       #expect(SettingsProjection.value(for: .smartInsertion, settings: settings, list: CloudModelListSeed.current) == "off")
     }
 
+    @Test("#4841: the silent-mic warning switch emits one privacy-safe on-to-off delta")
+    func silentMicWarningsDelta() {
+      let (settings, telemetry, box, _) = makeHarness()
+      defer { TelemetryService.shared.testEventHook = nil }
+
+      settings.silentMicWarnings = false
+      telemetry.flush()
+
+      let d = deltas(box, setting: "silent_mic_warnings")
+      #expect(d.count == 1)
+      #expect(d.first?.stringProps["from"] == "on", "ships on — that is the baseline")
+      #expect(d.first?.stringProps["to"] == "off")
+      #expect(d.first?.stringProps["source"] == "user")
+      #expect(
+        SettingsProjection.value(
+          for: .silentMicWarnings, settings: settings, list: CloudModelListSeed.current) == "off")
+    }
+
     /// #3269: the privacy switches are never reported, so turning metrics off sends no final
     /// "opted out" row (founder 2026-09-28). Smart insertion in the same flush is the positive
     /// control: it proves the harness captured deltas, so an empty privacy result is not a

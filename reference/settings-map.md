@@ -12,9 +12,9 @@ Generated from the compiled Settings Map and the validated search vocabulary. Do
 
 The interface ships in English, German, Spanish and French. The other 28 languages (ar, bg, cs, da, el, et, fi, hi, hr, hu, it, ja, ko, lt, lv, mt, nl, pl, pt, ro, ru, sk, sl, sv, tr, uk, vi, zh) are search metadata only: words and titles people may type, matched against the same places. Titles below read English / German / Spanish / French.
 
-327 nodes, 298 searchable, 9536 vocabulary blocks.
+328 nodes, 299 searchable, 9568 vocabulary blocks.
 
-Fingerprints: mapSHA256 `78a18c41df65c26ed3b3c1f8d219269d225d89b384af535f7d407c704b7945a1`, uiCatalogSHA256 `6a0ccb69244fcbab6ca07fd93f0f6188d56b7113add4105e855985186176df31`, vocabularyCanonicalization `length-prefixed-v1`, vocabularySHA256 `77e7d3272fba639d1dd73807953d4b91c9a9273a4b5d8832ef9d6f49b5018995`
+Fingerprints: mapSHA256 `b0a757e8b509c67ed717e19e702e8e03e8dac37a64d2e148c6a65f0bf3253ef3`, uiCatalogSHA256 `f39062ba4961c3597c09912bedb0bf83fe9b40b9602ac91e84e40ee155d5c860`, vocabularyCanonicalization `length-prefixed-v1`, vocabularySHA256 `3569cfeeade30b6ccc4da09c7096abb6f25ee75e69455e8ccce7d86b5dd40394`
 
 ## Structure
 
@@ -193,6 +193,7 @@ Fingerprints: mapSHA256 `78a18c41df65c26ed3b3c1f8d219269d225d89b384af535f7d407c7
           - [30 sec / 30 Sek. / 30 s / 30 s](#node-micReadiness-30s) `micReadiness.30s` (choice)
           - [60 sec / 60 Sek. / 60 s / 60 s](#node-micReadiness-60s) `micReadiness.60s` (choice)
           - [Always / Immer / Siempre / Toujours](#node-micReadiness-always) `micReadiness.always` (choice)
+        - [Warn when the microphone is silent / Bei Mikrofonstille warnen / Avisar si el micrófono está en silencio / Avertir en cas de silence du micro](#node-silentMicWarning) `silentMicWarning` (setting)
         - [Using a Bluetooth microphone? / Verwendest du ein Bluetooth-Mikrofon? / ¿Usas un micrófono Bluetooth? / Vous utilisez un micro Bluetooth ?](#node-bluetoothGuide) `bluetoothGuide` (feature)
           - [Learn more / Mehr erfahren / Más información / En savoir plus](#node-bluetoothGuide-learnMore) `bluetoothGuide.learnMore` (action)
     - [Live Preview / Live-Vorschau / Vista previa en tiempo real / Aperçu en direct](#node-dictation-tab-livePreview) `dictation.tab.livePreview` (feature)
@@ -1871,6 +1872,30 @@ Fingerprints: mapSHA256 `78a18c41df65c26ed3b3c1f8d219269d225d89b384af535f7d407c7
 | Search (de) | words: Standby, Bereitschaft, warmhalten<br>phrases: wie lange soll das Mikro nach der Aufnahme bereit bleiben; halte das Mikrofon zwischen Aufnahmen bereit; ändere die Bereitschaftszeit des Mikrofons |
 | Search (es) | words: micro en espera, standby del micro, tiempo del micro, Mantener el micrófono listo<br>phrases: elegir cuánto tiempo queda listo el micro entre grabaciones |
 | Search (fr) | words: micro prêt, disponibilité du micro, standby micro<br>phrases: choisir combien de temps le micro reste prêt après un enregistrement |
+| Search (other 28 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
+
+<a id="node-silentMicWarning"></a>
+
+### Warn when the microphone is silent / Bei Mikrofonstille warnen / Avisar si el micrófono está en silencio / Avertir en cas de silence du micro (`silentMicWarning`)
+
+| Field | Value |
+|---|---|
+| Structure | item |
+| Kind | setting |
+| Parent | [`section.microphone`](#node-section-microphone) |
+| Title source | catalog key `Warn when the microphone is silent` |
+| Description | Shows a notice on the pill when no sound arrives. / Zeigt einen Hinweis an der Aufnahmeanzeige, wenn kein Ton ankommt. / Muestra un aviso en la píldora de grabación cuando no llega sonido. / Affiche un avis sur la pastille d’enregistrement quand aucun son n’arrive. |
+| Description source | catalog key `Shows a notice on the pill when no sound arrives.` |
+| Destination | `dictation` › `microphone` |
+| Dictionary tab | none |
+| Shown when | `always` |
+| Arrival target | [`silentMicWarning`](#node-silentMicWarning) |
+| Fallbacks, in order | none |
+| Declared in | [Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift](../Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift) |
+| Search (en) | words: silent mic warning, no mic input alert<br>phrases: warn me if my mic goes silent while dictating; stop the silent microphone warning on the recording pill |
+| Search (de) | words: Mikrofonwarnung, Warnung bei Mikrofonstille, Hinweis bei stummem Mikrofon<br>phrases: warne mich, wenn beim Diktieren kein Ton vom Mikrofon ankommt; schalte die Warnung aus, wenn das Mikro beim Diktieren keinen Ton liefert |
+| Search (es) | words: aviso de micrófono sin sonido, alerta de micrófono en silencio<br>phrases: cómo activar el aviso si el micro no capta sonido al dictar; cómo quitar el aviso de micrófono en silencio |
+| Search (fr) | words: alerte micro, avertissement micro, alerte micro muet<br>phrases: me prévenir si mon micro ne capte rien pendant la dictée; désactiver l’alerte quand aucun son ne vient du micro |
 | Search (other 28 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
 
 <a id="node-bluetoothGuide"></a>

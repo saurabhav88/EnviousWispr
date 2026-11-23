@@ -1308,6 +1308,24 @@
    }
   },
   {
+   "id": "silentMicWarning",
+   "kind": "setting",
+   "destination": {
+    "page": "dictation",
+    "tab": "microphone"
+   },
+   "disposition": "mapped",
+   "parent": "section.microphone",
+   "target": "silentMicWarning",
+   "fallbacks": [],
+   "dynamicTitle": false,
+   "seedParent": null,
+   "description": {
+    "kind": "static",
+    "english": "Shows a notice on the pill when no sound arrives."
+   }
+  },
+  {
    "id": "bluetoothGuide",
    "kind": "feature",
    "destination": {

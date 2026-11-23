@@ -83,6 +83,39 @@ struct DictationSessionConfigFactoryTests {
     #expect(next.smartInsertion == false, "the next recording observes the new value")
   }
 
+  @Test("#4841: the silent-mic warning switch is frozen at recording start by the production factory")
+  func silentMicWarningsFrozenAtRecordingStart() async throws {
+    let harness = try Harness.make(backend: .parakeet)
+    #expect(harness.settings.silentMicWarnings == true, "precondition: ships on")
+
+    let captured = DictationSessionConfigFactory.make(
+      asrManager: harness.asrManager,
+      kernelDriver: harness.kernelDriver,
+      whisperKernelDriver: harness.whisperKernelDriver,
+      settings: harness.settings,
+      polishModel: harness.settings.polishModelID(for: harness.settings.llmProvider),
+      polishWireModel: harness.settings.effectiveLLMModel,
+      fixLearnedWords: harness.settings.fixLearnedWords,
+      triggerSource: .pttHotkey
+    )
+
+    // The user turns the warning off mid-dictation.
+    harness.settings.silentMicWarnings = false
+    let next = DictationSessionConfigFactory.make(
+      asrManager: harness.asrManager,
+      kernelDriver: harness.kernelDriver,
+      whisperKernelDriver: harness.whisperKernelDriver,
+      settings: harness.settings,
+      polishModel: harness.settings.polishModelID(for: harness.settings.llmProvider),
+      polishWireModel: harness.settings.effectiveLLMModel,
+      fixLearnedWords: harness.settings.fixLearnedWords,
+      triggerSource: .pttHotkey
+    )
+
+    #expect(captured.silentMicWarningsEnabled == true, "the in-flight config must not follow the setting")
+    #expect(next.silentMicWarningsEnabled == false, "the next recording observes the new value")
+  }
+
   /// #3124: the factory freezes the EFFECTIVE spelling. British needs an English lock; the same
   /// stored preference under another language is American; a change after `make` belongs to the
   /// next recording.

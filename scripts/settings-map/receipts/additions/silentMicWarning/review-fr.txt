@@ -1,0 +1,13 @@
+{
+  "language": "fr",
+  "title": "Avertir si le micro ne capte aucun son",
+  "words": [
+    "alerte micro",
+    "avertissement micro",
+    "alerte micro muet"
+  ],
+  "phrases": [
+    "me prévenir si mon micro ne capte rien pendant la dictée",
+    "désactiver l’alerte quand aucun son ne vient du micro"
+  ]
+}
