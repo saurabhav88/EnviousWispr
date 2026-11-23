@@ -19,7 +19,13 @@ struct GuidedTourCard: View {
   let open: (GuidedTourStop) -> Void
   let end: () -> Void
 
-  @State private var announced: GuidedTourStop?
+  private struct Announced: Equatable {
+    let run: Int
+    let stop: GuidedTourStop
+  }
+
+  /// The last stop announced, by run, so each of the three callbacks can announce without a repeat.
+  @State private var announced: Announced?
 
   var body: some View {
     BrandedPanel(icon: "waveform", header: title, description: description) {
@@ -58,20 +64,17 @@ struct GuidedTourCard: View {
     .onAppear { announce() }
     .onChange(of: phase) { _, _ in announce() }
     .onChange(of: showing) { _, _ in announce() }
-    .onChange(of: run) { _, _ in
-      announced = nil
-      announce()
-    }
+    .onChange(of: run) { _, _ in announce() }
   }
 
   /// One announcement per stop, made once the stop's page is actually showing: a stop blocked by
   /// the Setup leave question is not announced while that question is the only thing on screen.
   /// It covers a card that mounts on a stop (a replay) and every later stop. Focus is never moved.
   private func announce() {
-    guard case .stop(let stop) = phase, showing, announced != stop,
+    guard case .stop(let stop) = phase, showing, announced != Announced(run: run, stop: stop),
       let position = plan.position(of: stop)
     else { return }
-    announced = stop
+    announced = Announced(run: run, stop: stop)
     let name = String(localized: stop.pageTitle)
     AccessibilityNotification.Announcement(
       String(localized: "\(name), \(position) of \(plan.count)")
