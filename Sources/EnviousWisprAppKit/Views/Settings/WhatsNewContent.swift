@@ -83,6 +83,22 @@ enum WhatsNewContent {
       version: "2.6.2"
     ),
 
+    // #4841: exact digital silence from the microphone never ends a dictation; the pill warns at
+    // 5 s mid-take (6 s silent since the start) and more strongly at 15 s. Claims checked: the
+    // take keeps recording (no exact-zero exit in RecordingSessionKernel); 5 / 6 s are
+    // AudioConstants.silentMicCalmMidTakeSamples / silentMicCalmSinceStartSamples; zeros carry
+    // no speech; auto-stop still ends on the chosen Pause duration (SilenceDetector path
+    // unchanged); the switch is on by default (SettingsDefaultValues.silentMicWarnings) and lives
+    // on the Microphone tab (DictationSettingsCopy.Microphone.silentMicTitle). de/fr/es reviewed
+    // by GPT and Gemini in two rounds (council session ew-4841-whatsnew-l10n-2026-11-22).
+    Entry(
+      id: "silent-microphone-keeps-recording",
+      icon: "mic.slash",
+      title: "Dictation keeps going when your microphone goes silent",
+      description: "If your microphone sends only digital silence, EnviousWispr keeps recording, and the pill warns you after 5 seconds (6 if it was silent from the start). Words you say during the silence are not captured. If you use Stop recording on silence, your dictation still ends once a pause reaches the length you chose. Turn the warning off in Settings > Dictation Settings > Microphone.",
+      version: "2.6.2"
+    ),
+
     // MARK: - v2.6.1
 
     // Founder-approved group, 2026-11-20 (Claude Doc "EnviousWispr 2.6.1 Release Notes"). The

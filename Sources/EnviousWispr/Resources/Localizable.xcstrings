@@ -73705,6 +73705,66 @@
         }
       }
     },
+    "whatsNew.silent-microphone-keeps-recording.title" : {
+      "comment" : "Settings > What's New: the title of one feature announcement (entry silent-microphone-keeps-recording).",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Dictation keeps going when your microphone goes silent"
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Das Diktat läuft weiter, wenn dein Mikrofon verstummt"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "La dictée continue même si votre micro reste silencieux"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "El dictado continúa cuando tu micrófono se queda en silencio"
+          }
+        }
+      }
+    },
+    "whatsNew.silent-microphone-keeps-recording.description" : {
+      "comment" : "Settings > What's New: the paragraph under one feature announcement's title (entry silent-microphone-keeps-recording).",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "If your microphone sends only digital silence, EnviousWispr keeps recording, and the pill warns you after 5 seconds (6 if it was silent from the start). Words you say during the silence are not captured. If you use Stop recording on silence, your dictation still ends once a pause reaches the length you chose. Turn the warning off in Settings > Dictation Settings > Microphone."
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Wenn dein Mikrofon nur digitale Stille liefert, nimmt EnviousWispr weiter auf, und die Aufnahmeanzeige warnt dich nach 5 Sekunden (nach 6, wenn die Stille schon seit Beginn der Aufnahme besteht). Was du sagst, solange das Mikrofon nur Stille liefert, wird nicht aufgenommen. Wenn du „Aufnahme bei Stille stoppen“ nutzt, endet dein Diktat wie bisher, sobald eine Pause so lang ist wie unter „Pausendauer“ eingestellt. Schalte die Warnung unter Einstellungen > Diktateinstellungen > Mikrofon aus."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Si votre micro n’envoie que du silence numérique, EnviousWispr continue d’enregistrer et la pastille d’enregistrement vous avertit après 5 secondes (6 secondes si ce silence dure depuis le début de l’enregistrement). Les mots prononcés pendant ce silence ne sont pas enregistrés. Si vous utilisez « Arrêter l’enregistrement en cas de silence », la dictée s’arrête comme avant dès qu’une pause atteint la durée choisie dans « Durée de la pause ». Désactivez l’avertissement dans Réglages > Réglages de dictée > Micro."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Si tu micrófono solo envía silencio digital, EnviousWispr sigue grabando y la píldora de grabación te avisa a los 5 segundos (a los 6 si el silencio dura desde el inicio de la grabación). Las palabras que digas durante ese silencio no se graban. Si usas «Detener la grabación al detectar silencio», el dictado se detiene como antes en cuanto una pausa alcanza la duración que elegiste en «Duración de la pausa». Desactiva el aviso en Ajustes > Ajustes del dictado > Micrófono."
+          }
+        }
+      }
+    },
     "whatsNew.brand-new-history-tab-experience.title" : {
       "comment" : "Settings > What's New: the title of one feature announcement (entry brand-new-history-tab-experience).",
       "extractionState" : "manual",
