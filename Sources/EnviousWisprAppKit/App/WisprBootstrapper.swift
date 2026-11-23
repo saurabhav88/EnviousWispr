@@ -3443,6 +3443,11 @@ package final class WisprBootstrapper {
           !record.deletionRequested, MeetingWiring.isCommittedRow(row, of: record)
         else { return nil }
         return MeetingHistoryInfo.paired(with: record)
+      },
+      // #3853 (#4851): a Polish again with run may leave its Ollama model resident; the release
+      // retry after the run (`historyCleanup.release`) pays the owed unload.
+      ollamaModelUsed: { [weak settingsSync] model in
+        settingsSync?.recordOllamaModelUsedByOneOffWork(model)
       })
     historyRepolishForGates = historyRepolish
     self.historyRepolish = historyRepolish
@@ -3472,10 +3477,10 @@ package final class WisprBootstrapper {
     meetingCoordinator.summaries?.onOllamaSummaryWorkChanged = {
       [weak settingsSync, settings] model in
       if let model {
-        settingsSync?.summaryUsedOllamaModel(model, settings: settings)
-      } else {
-        settingsSync?.retryDeferredOllamaEviction(settings: settings)
+        if model.isEmpty { return }
+        settingsSync?.recordOllamaModelUsedByOneOffWork(model)
       }
+      settingsSync?.retryDeferredOllamaEviction(settings: settings)
     }
     // #4287 PR 3: both live dictation polish steps skip polish while a summary call runs on
     // the same local engine. File import, re-polish and recovery build their own steps and
