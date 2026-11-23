@@ -13,4 +13,15 @@ enum LaunchEngineWarm {
   static func allowed(selectedBackend: ASRBackendType, onboardingState: OnboardingState) -> Bool {
     selectedBackend == .parakeet && onboardingState == .completed
   }
+
+  /// #4837: whether an admitted Parakeet download loads the engine now. Only for a Mac whose
+  /// Setup has finished (Setup warms for itself before that) and only while Parakeet is both
+  /// selected and the active engine, so a Whisper user's background Parakeet fetch loads nothing.
+  static func allowedAfterDownload(
+    selectedBackend: ASRBackendType, activeBackend: ASRBackendType,
+    onboardingState: OnboardingState
+  ) -> Bool {
+    allowed(selectedBackend: selectedBackend, onboardingState: onboardingState)
+      && activeBackend == .parakeet
+  }
 }

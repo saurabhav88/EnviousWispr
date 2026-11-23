@@ -37,6 +37,9 @@ public enum EngineWarmupReason: Sendable {
   /// #3546 row T: Settings' Try again after the Parakeet upgrade policy
   /// stopped loading.
   case explicitRetry
+  /// #4837: the load that follows an admitted Parakeet download (Settings' Set up model and
+  /// Resume, the dev door), while the app keeps running.
+  case afterDownload
 
   var telemetryToken: String {
     switch self {
@@ -45,6 +48,7 @@ public enum EngineWarmupReason: Sendable {
     case .engineSwap: return "engine_swap"
     case .coldPress: return "cold_press"
     case .explicitRetry: return "explicit_retry"
+    case .afterDownload: return "after_download"
     }
   }
 }

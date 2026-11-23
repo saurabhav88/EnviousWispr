@@ -1602,6 +1602,17 @@ package final class WisprBootstrapper {
       _ = await kernelDriver?.ensureEngineWarm(reason: .explicitRetry)
     }
 
+    // #4837: a Parakeet download admitted while the app runs loads the engine now. Setup warms
+    // itself and launch skips the warm until Setup ends, so this runs only after Setup finished.
+    modelDelivery.warmParakeetAfterAdmission = { [weak kernelDriver, asrManager] in
+      guard
+        LaunchEngineWarm.allowedAfterDownload(
+          selectedBackend: settings.selectedBackend, activeBackend: asrManager.activeBackendType,
+          onboardingState: settings.onboardingState)
+      else { return }
+      _ = await kernelDriver?.ensureEngineWarm(reason: .afterDownload)
+    }
+
     if LaunchEngineWarm.allowed(
       selectedBackend: settings.selectedBackend, onboardingState: settings.onboardingState)
     {

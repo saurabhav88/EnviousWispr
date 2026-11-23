@@ -20,4 +20,23 @@ struct LaunchEngineWarmTests {
     }
     #expect(!LaunchEngineWarm.allowed(selectedBackend: .whisper, onboardingState: .completed))
   }
+
+  /// #4837: a Parakeet download that finishes while the app runs loads the engine, but never
+  /// during Setup and never for a person on Whisper.
+  @Test("an admitted download loads Parakeet only after Setup, with Parakeet selected and active")
+  func downloadWarmNeedsSetupDoneAndParakeetActive() {
+    let states: [OnboardingState] = [.notStarted, .settingUp, .needsPermissions, .completed]
+    for state in states {
+      #expect(
+        LaunchEngineWarm.allowedAfterDownload(
+          selectedBackend: .parakeet, activeBackend: .parakeet, onboardingState: state)
+          == (state == .completed), "\(state)")
+    }
+    #expect(
+      !LaunchEngineWarm.allowedAfterDownload(
+        selectedBackend: .whisper, activeBackend: .parakeet, onboardingState: .completed))
+    #expect(
+      !LaunchEngineWarm.allowedAfterDownload(
+        selectedBackend: .parakeet, activeBackend: .whisper, onboardingState: .completed))
+  }
 }
