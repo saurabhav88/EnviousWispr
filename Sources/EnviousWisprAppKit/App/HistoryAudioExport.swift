@@ -288,15 +288,9 @@ final class HistoryAudioExport {
       case .file(let url):
         try fm.copyItem(at: url, to: file)
       case .meeting(let media, let durationMs):
-        let tracks = try MeetingPlaybackController.openMeetingTracks(media)
-        partlySilent = tracks.contains { track in
-          track.problems.contains {
-            switch $0 {
-            case .unreadable, .incompatibleFormat, .empty: return true
-            case .overlap: return false
-            }
-          }
-        }
+        let opened = try MeetingPlaybackController.openMeetingTracksReport(media)
+        let tracks = opened.tracks
+        partlySilent = opened.damaged
         let frames = Int64(durationMs) * Int64(MeetingPlaybackController.samplesPerMs)
         _ = try SpeechAudioEncoder.encode(frames: frames, purpose: .meeting, to: file) {
           offset, count in

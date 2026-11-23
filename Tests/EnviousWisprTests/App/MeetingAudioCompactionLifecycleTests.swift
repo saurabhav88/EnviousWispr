@@ -564,6 +564,33 @@ struct MeetingAudioCompactionLifecycleTests {
         == .committed)
   }
 
+  @Test("a compacted meeting with one damaged segment reports the damage, so Save audio warns")
+  func damagedCompactedSegmentIsReported() async throws {
+    let harness = try Harness()
+    let record = try Self.readyMeeting(harness)
+    let coordinator = harness.coordinator
+    await Self.launched(harness, record.id)
+    #expect(
+      await coordinator.compactAudio(meetingID: record.id, with: MeetingAudioCompactor())
+        == .committed)
+    guard case .removed = await coordinator.retireSupersededAudio(meetingID: record.id) else {
+      Issue.record("originals must be retired for the copy to be the only audio")
+      return
+    }
+    let media = try #require(coordinator.playbackSource(meetingID: record.id)).media
+    let whole = try MeetingPlaybackController.openMeetingTracksReport(media)
+    #expect(whole.damaged == false)
+
+    let inventory = try #require(coordinator.record(id: record.id)?.compressedAudio)
+    let target = try #require(
+      inventory.segments.first { $0.track == .microphone && $0.variant == .raw && $0.source.index == 2 })
+    try Data("damaged".utf8).write(
+      to: harness.store.folder(for: record.id).appendingPathComponent(target.compressed.fileName))
+    let damaged = try MeetingPlaybackController.openMeetingTracksReport(media)
+    #expect(damaged.damaged, "a segment left out as damaged must reach the export's warning")
+    #expect(damaged.tracks.isEmpty == false, "the readable rest is still saved")
+  }
+
   @Test("retirement waits for an open player (even paused) and for a running Save audio")
   func retirementWaitsForPlayerAndExport() async throws {
     final class Exporting { var ids: Set<UUID> = [] }

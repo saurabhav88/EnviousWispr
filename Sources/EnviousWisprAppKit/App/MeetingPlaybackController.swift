@@ -393,8 +393,29 @@ final class MeetingPlaybackController {
   /// A meeting's readable tracks for `media` (playback and History's Save audio share it, so a
   /// compacted meeting is read through recovery's authority whichever way it is opened).
   nonisolated static func openMeetingTracks(_ media: PlaybackMedia) throws -> [MeetingTrackAudio] {
+    try openMeetingTracksReport(media).tracks
+  }
+
+  /// A track that skipped a file it could not use (an overlap is not a loss).
+  private nonisolated static func hasUnreadableFile(_ track: MeetingTrackAudio) -> Bool {
+    track.problems.contains {
+      switch $0 {
+      case .unreadable, .incompatibleFormat, .empty: return true
+      case .overlap: return false
+      }
+    }
+  }
+
+  /// `openMeetingTracks` plus whether recording audio is missing: a recorder file a track could
+  /// not read, or (for a compacted meeting) a segment recovery left out as damaged. Save audio
+  /// tells the user when the saved file holds silence for such a stretch.
+  nonisolated static func openMeetingTracksReport(_ media: PlaybackMedia) throws
+    -> (tracks: [MeetingTrackAudio], damaged: Bool)
+  {
     switch media {
-    case .meeting(let files): return try load(files)
+    case .meeting(let files):
+      let tracks = try load(files)
+      return (tracks, tracks.contains(where: hasUnreadableFile))
     case .compactedMeeting(let folder, let inventory):
       let report = MeetingTrackRecovery.recover(
         folder: folder, inventory: inventory, identity: MeetingStore.audioFileIdentity(at:))
@@ -405,7 +426,9 @@ final class MeetingPlaybackController {
         return audio.isEmpty ? nil : audio
       }
       guard !tracks.isEmpty else { throw PlaybackError.noReadableAudio }
-      return tracks
+      // `report.problems` are the recording's own files (a segment left out as damaged shows
+      // there and nowhere in the tracks); cleaned-copy and compaction notes are not audio loss.
+      return (tracks, !report.problems.isEmpty || tracks.contains(where: hasUnreadableFile))
     case .dictation, .transcript: throw PlaybackError.noReadableAudio
     }
   }
