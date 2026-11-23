@@ -851,6 +851,22 @@ public final class ASRManager: ASRManagerInterface {
     await task.value
   }
 
+  /// #4859: Parakeet Remove waits here, BEFORE it records the removal, for a load that is
+  /// running (the same single-flight join `loadModel()` gives a second caller). A load started
+  /// while it waited is joined too; a handle already joined once is not joined again, so a
+  /// finished load whose owner has not yet cleared its handle cannot spin this loop. It never
+  /// starts a load and never touches the load generation. Only Remove asks for this wait: the
+  /// idle unload and the Ultra activation keep `unloadModel()`, since a vendor call that never
+  /// returns must not stall them. A wedge release (`cancelInFlightLoad()`) resumes the joined
+  /// task early; its error is ignored here.
+  package func awaitInFlightLoad() async {
+    var last: Task<Void, any Error>?
+    while let load = inFlightLoadTask, load != last {
+      last = load
+      _ = try? await load.value
+    }
+  }
+
   private var inFlightUnloadTask: Task<Void, Never>?
 
   /// #4052: whether this manager's own load or unload of the Parakeet backend is running now.

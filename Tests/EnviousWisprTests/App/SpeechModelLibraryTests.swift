@@ -260,15 +260,20 @@ struct SpeechModelLibraryTests {
     #expect(upgrade.isInstallWanted)
   }
 
-  /// When this fails, Remove deletes a model still loaded in memory, leaves it to download
-  /// again, or changes the engine the person picked.
-  @Test("Parakeet Remove records first, unloads before deleting, reopens after; a refused unload deletes nothing and keeps the record")
+  /// When this fails, Remove waits for a load, records, unloads or reopens out of order, or a
+  /// refused unload drops the record. The fixture seeds no model files, so this proves the order
+  /// of the steps and the record, not that bytes are deleted or kept.
+  @Test("Parakeet Remove settles a running load, then records, unloads and reopens in that order; a refused unload keeps the record")
   func parakeetRemoveOrder() async throws {
     for freed in [true, false] {
       let (library, upgrade, root) = try parakeetLibrary()
       defer { try? FileManager.default.removeItem(at: root) }
       var steps: [String] = []
       library.parakeetRemoval.refusal = { nil }
+      // #4859: a running load finishes BEFORE the removal is recorded.
+      library.parakeetRemoval.settleLoad = {
+        steps.append("settle:wanted=\(upgrade.isInstallWanted)")
+      }
       library.parakeetRemoval.unloadForRemoval = {
         steps.append("unload:wanted=\(upgrade.isInstallWanted)")
         // No job may start on Parakeet while it is being removed.
@@ -281,7 +286,9 @@ struct SpeechModelLibraryTests {
       #expect(library.removeParakeet() == nil, "one Remove at a time")
       #expect(library.installParakeet() == nil, "no Set up model during a Remove")
       await task.value
-      #expect(steps == ["unload:wanted=false", "snapshot:false", "finish"])
+      #expect(
+        steps == ["settle:wanted=true", "unload:wanted=false", "snapshot:false", "finish"],
+        "settle runs before the record; unload and the snapshot come after it")
       #expect(!library.isRemovingParakeet)
       #expect(library.parakeetRemoveNotice == (freed ? nil : .failed))
       #expect(upgrade.isInstallWanted == false, "only Set up model records wanted again")

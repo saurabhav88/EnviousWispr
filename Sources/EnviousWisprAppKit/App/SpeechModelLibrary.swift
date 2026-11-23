@@ -328,6 +328,7 @@ final class SpeechModelLibrary {
     guard modelDelivery.parakeetHandle != nil || modelDelivery.parakeetRetiredV3Handle != nil,
       let upgrade = modelDelivery.parakeetUpgrade
     else { return false }
+    await parakeetRemoval.settleLoad()
     do {
       try await upgrade.recordRemovalByUser()
     } catch {
@@ -382,6 +383,10 @@ final class SpeechModelLibrary {
 @MainActor final class ParakeetRemovalHook {
   /// Why Remove must not run now, or nil. Synchronous, before any work.
   var refusal: @MainActor () -> WhisperRemoveNotice? = { .failed }
+  /// #4859: awaited FIRST, before the removal is recorded, so a load that is running finishes
+  /// before anything is recorded or deleted; a quit during the wait leaves nothing recorded and
+  /// the model intact. Nothing may suspend between its return and the record step.
+  var settleLoad: @MainActor () async -> Void = {}
   /// Frees every in-memory Parakeet copy; true when none stays loaded. Awaited BEFORE the
   /// deletion; false stops the removal before any byte is deleted.
   var unloadForRemoval: @MainActor () async -> Bool = { true }
