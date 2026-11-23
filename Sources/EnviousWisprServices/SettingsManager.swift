@@ -201,7 +201,7 @@ public final class SettingsManager {
     "recordingStorageWarningThreshold", "recordingThresholdBehavior",
     WhatsNewConstants.lastSeenVersionDefaultsKey,
     globeGuidanceClaimKey,
-    recordingDisclosureCohortKey, recordingDisclosureAcknowledgedKey,
+    recordingDisclosureCohortKey, recordingDisclosureAcknowledgedKey, guidedTourOfferStateKey,
     lastHistoryTabKey,
   ]
 
@@ -263,6 +263,38 @@ public final class SettingsManager {
     guard !recordingDisclosureAcknowledged else { return }
     recordingDisclosureAcknowledged = true
     defaults.set(true, forKey: Self.recordingDisclosureAcknowledgedKey)
+  }
+
+  /// #4565: whether the automatic guided-tour offer is still due, kept apart from the recording
+  /// disclosure above so the upgrade History banner keeps its own meaning. Decided ONCE at the
+  /// first launch of a build that has it, from the durable onboarding history: an install that
+  /// had finished Setup by then is `earlier` (replay only), anything else is `eligible`. The
+  /// offer (or a replay by an eligible install) makes it `consumed`. Not a user setting: no
+  /// `SettingKey`, no settings delta, no snapshot.
+  private nonisolated static let guidedTourOfferStateKey = "guidedTourOfferState"
+
+  public private(set) var guidedTourOfferState: GuidedTourOfferState = .earlier
+
+  /// Records that the tour has been shown to an eligible install. Any other state is left alone.
+  public func consumeGuidedTourOffer() {
+    guard guidedTourOfferState == .eligible else { return }
+    guidedTourOfferState = .consumed
+    defaults.set(GuidedTourOfferState.consumed.rawValue, forKey: Self.guidedTourOfferStateKey)
+  }
+
+  /// Seeds the state once. Runs in `init` after the onboarding-history backfill and before any
+  /// Setup screen can finish, in the same slot as `loadRecordingDisclosure()`.
+  private func loadGuidedTourOfferState() {
+    if let stored = defaults.string(forKey: Self.guidedTourOfferStateKey),
+      let state = GuidedTourOfferState(rawValue: stored)
+    {
+      guidedTourOfferState = state
+      return
+    }
+    let seeded: GuidedTourOfferState =
+      defaults.bool(forKey: Self.onboardingEverCompletedKey) ? .earlier : .eligible
+    defaults.set(seeded.rawValue, forKey: Self.guidedTourOfferStateKey)
+    guidedTourOfferState = seeded
   }
 
   /// Decides the cohort once and loads both values. Runs in `init`, after the durable
@@ -2540,6 +2572,8 @@ public final class SettingsManager {
     canonicalizeMeetingSummaryLLMModelForProvider()
     // #3147 C9: decide the recording disclosure cohort once, before onboarding can complete.
     loadRecordingDisclosure()
+    // #4565: the guided-tour offer state, seeded once from the same onboarding history.
+    loadGuidedTourOfferState()
     // Initial assignments bypass didSet; repair old incompatible ON values once loaded.
     normalizeStreamingPreference()
   }
@@ -2803,4 +2837,14 @@ public final class SettingsManager {
       fileImportOllamaModel = newOllama
     }
   }
+}
+
+/// #4565: where an install stands on the automatic guided-tour offer.
+public enum GuidedTourOfferState: String, Sendable, Equatable {
+  /// Finished Setup before the tour existed: no automatic offer, replay from the menus only.
+  case earlier
+  /// Finishes Setup on a build with the tour: one automatic offer is due.
+  case eligible
+  /// The tour was shown (offer or replay): no further automatic offer.
+  case consumed
 }

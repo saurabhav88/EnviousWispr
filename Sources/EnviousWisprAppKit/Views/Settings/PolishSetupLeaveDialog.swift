@@ -16,6 +16,8 @@ enum SettingsNavigationIntent: Equatable {
   case sharedMedia(URL)
   case search(SettingsSearchRequest)
   case externalReveal(SettingsSearchRequest)
+  /// #4565: the guided tour's Dictionary stop, which names a control on the Your Words tab.
+  case dictionaryTab(DictionaryTab)
 
   var page: SettingsPage {
     switch self {
@@ -23,13 +25,14 @@ enum SettingsNavigationIntent: Equatable {
     case .destination(let destination): destination.page
     case .sharedMedia: .transcribeFile
     case .search(let request), .externalReveal(let request): request.destination.page
+    case .dictionaryTab: .dictionary
     }
   }
 
   var requiresOpenWindow: Bool {
     switch self {
     case .sharedMedia, .externalReveal: true
-    case .sidebar, .destination, .search: false
+    case .sidebar, .destination, .search, .dictionaryTab: false
     }
   }
 }
@@ -41,6 +44,9 @@ extension SettingsNavigationState {
     case .destination(let destination): apply(destination)
     case .sharedMedia: apply(.transcribeFile)
     case .search(let request), .externalReveal(let request): apply(request)
+    case .dictionaryTab(let tab):
+      apply(.dictionary)
+      dictionaryTab = tab
     }
   }
 }
