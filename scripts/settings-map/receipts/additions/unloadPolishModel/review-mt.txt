@@ -1,0 +1,11 @@
+{
+  "language": "mt",
+  "title": "neħħi l-mudell tal-irfinar mill-memorja wara",
+  "words": [
+    "memorja tal-irfinar"
+  ],
+  "phrases": [
+    "kemm idum il-mudell tal-irfinar fil-memorja wara li nieqaf niddetta",
+    "illibera l-memorja li juża l-mudell li jirfina t-test meta ma nkunx qed niddetta"
+  ]
+}

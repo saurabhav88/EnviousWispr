@@ -1,0 +1,12 @@
+{
+  "language": "sl",
+  "title": "sprosti pomnilnik modela za izboljšanje besedila po",
+  "words": [
+    "pomnilnik EG-1",
+    "pomnilnik S1-mini"
+  ],
+  "phrases": [
+    "kdaj se sprosti pomnilnik modela za izboljšanje besedila",
+    "koliko časa po nareku ostane model za izboljšanje besedila v pomnilniku"
+  ]
+}

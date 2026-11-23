@@ -22,15 +22,23 @@ public struct EnviousDecodeEngine: LocalPolishEngine {
   private let draftModelURL: URL
   private let draftArtifactIdentity: ModelIdentity
   private let cacheLimitBytes: Int
+  /// #3853: idle seconds for the helper's own sleep flag, read at each launch so a setting change
+  /// reaches the next spec the runtime builds. Nil (the default) means never sleep.
+  private let sleepIdleSeconds: @Sendable () -> Int?
 
   /// - Parameters:
   ///   - draftModelURL: The installed draft model folder of the size this engine serves.
   ///   - draftArtifactIdentity: The registration whose admitted bytes that folder holds.
   ///   - cacheLimitBytes: MLX's buffer cache limit for the helper process, in bytes.
-  public init(draftModelURL: URL, draftArtifactIdentity: ModelIdentity, cacheLimitBytes: Int) {
+  ///   - sleepIdleSeconds: read at each launch; nil means the helper never frees its models.
+  public init(
+    draftModelURL: URL, draftArtifactIdentity: ModelIdentity, cacheLimitBytes: Int,
+    sleepIdleSeconds: @escaping @Sendable () -> Int? = { nil }
+  ) {
     self.draftModelURL = draftModelURL
     self.draftArtifactIdentity = draftArtifactIdentity
     self.cacheLimitBytes = cacheLimitBytes
+    self.sleepIdleSeconds = sleepIdleSeconds
   }
 
   /// The checker adapter the runtime offers (the last argument) is the adapter's installed
@@ -43,7 +51,8 @@ public struct EnviousDecodeEngine: LocalPolishEngine {
       LocalPolishProcessManager.Configuration(
         spec: engine.makeSpec(
           modelID: modelID, artifactIdentity: artifactIdentity, helperURL: helperURL,
-          modelURL: modelURL, contextTokens: contextTokens, learnedWordAdapterURL: adapterURL),
+          modelURL: modelURL, contextTokens: contextTokens, learnedWordAdapterURL: adapterURL,
+          sleepIdleSeconds: engine.sleepIdleSeconds()),
         makeLaunch: Self.launch)
     }
   }
@@ -84,14 +93,15 @@ public struct EnviousDecodeEngine: LocalPolishEngine {
   /// launch the process manager runs when the adapter fails) has no adapter and no argument.
   func makeSpec(
     modelID: LocalPolishModelID, artifactIdentity: ModelIdentity, helperURL: URL,
-    modelURL: URL, contextTokens: Int, learnedWordAdapterURL: URL?
+    modelURL: URL, contextTokens: Int, learnedWordAdapterURL: URL?, sleepIdleSeconds: Int? = nil
   ) -> LocalPolishLaunchSpec {
     Self.requireEGOne(modelID)
     return LocalPolishLaunchSpec(
       engineKind: .enviousDecode, modelID: modelID, artifactIdentity: artifactIdentity,
       serverBinaryURL: helperURL, modelURL: modelURL, contextTokens: contextTokens,
       learnedWordAdapterURL: learnedWordAdapterURL,
-      extraArguments: [Self.cacheLimitArgument, String(cacheLimitBytes)],
+      extraArguments: [Self.cacheLimitArgument, String(cacheLimitBytes)]
+        + LocalPolishSleepIdle.arguments(seconds: sleepIdleSeconds),
       learnedWordAdapterArguments: learnedWordAdapterURL.map {
         [Self.wordCheckAdapterArgument, $0.deletingLastPathComponent().path]
       } ?? [], draftModelURL: draftModelURL,

@@ -104,6 +104,8 @@ enum SettingsDefaultValues {
   static let pushToTalkModifiersRaw: UInt = NSEvent.ModifierFlags.option.rawValue
 
   static let modelUnloadPolicy: ModelUnloadPolicy = .never
+  /// #3853: the on-Mac polish helper stays loaded unless the user picks a time.
+  static let localPolishUnloadPolicy: ModelUnloadPolicy = .never
   static let restoreClipboardAfterPaste = true
   /// #3672: OFF, the released behavior; ON adds the nspasteboard.org transient marker.
   static let keepDictationsOutOfClipboardHistory = false

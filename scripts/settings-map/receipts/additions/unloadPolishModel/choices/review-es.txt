@@ -1,0 +1,72 @@
+{
+  "unloadPolishModel.fifteenMinutes": {
+    "language": "es",
+    "words": [
+      "15 min",
+      "corrección de texto tras un cuarto de hora"
+    ],
+    "phrases": [
+      "liberar la memoria del modelo de corrección tras 15 minutos sin dictar"
+    ]
+  },
+  "unloadPolishModel.fiveMinutes": {
+    "language": "es",
+    "words": [
+      "5 min",
+      "modelo de corrección tras cinco minutos"
+    ],
+    "phrases": [
+      "liberar la memoria del modelo de corrección tras 5 minutos sin dictar"
+    ]
+  },
+  "unloadPolishModel.immediately": {
+    "language": "es",
+    "words": [
+      "enseguida",
+      "unos 10 segundos",
+      "modelo de corrección tras 10 segundos"
+    ],
+    "phrases": [
+      "liberar la memoria del modelo de corrección unos 10 segundos después de dejar de dictar"
+    ]
+  },
+  "unloadPolishModel.never": {
+    "language": "es",
+    "words": [
+      "modelo de corrección siempre cargado"
+    ],
+    "phrases": [
+      "mantener el modelo de corrección en memoria aunque no esté dictando"
+    ]
+  },
+  "unloadPolishModel.oneHour": {
+    "language": "es",
+    "words": [
+      "1 h",
+      "modelo de corrección tras 60 minutos"
+    ],
+    "phrases": [
+      "liberar la memoria del modelo de corrección tras una hora sin dictar"
+    ]
+  },
+  "unloadPolishModel.tenMinutes": {
+    "language": "es",
+    "words": [
+      "10 min",
+      "modelo de corrección tras diez minutos"
+    ],
+    "phrases": [
+      "liberar la memoria del modelo de corrección tras 10 minutos sin dictar"
+    ]
+  },
+  "unloadPolishModel.twoMinutes": {
+    "language": "es",
+    "words": [
+      "2 min",
+      "modelo de corrección tras dos minutos"
+    ],
+    "phrases": [
+      "liberar la memoria del modelo de corrección tras 2 minutos sin dictar"
+    ]
+  }
+}

@@ -1,0 +1,77 @@
+{
+  "unloadPolishModel.fifteenMinutes": {
+    "language": "de",
+    "words": [
+      "AI Polish 15 Min.",
+      "Nachbearbeitungsmodell Viertelstunde"
+    ],
+    "phrases": [
+      "das Nachbearbeitungsmodell nach 15 Minuten Leerlauf entladen",
+      "das Modell für die KI-Nachbearbeitung nach einer Viertelstunde ohne Nutzung entladen"
+    ]
+  },
+  "unloadPolishModel.fiveMinutes": {
+    "language": "de",
+    "words": [
+      "AI Polish 5 Min.",
+      "KI-Nachbearbeitung fünf Minuten"
+    ],
+    "phrases": [
+      "das Nachbearbeitungsmodell nach 5 Minuten Leerlauf entladen",
+      "den Arbeitsspeicher des Modells für die KI-Nachbearbeitung fünf Minuten nach der letzten Nutzung freigeben"
+    ]
+  },
+  "unloadPolishModel.immediately": {
+    "language": "de",
+    "words": [
+      "AI Polish ca. 10 Sek.",
+      "Nachbearbeitungsmodell kurz nach Gebrauch entladen"
+    ],
+    "phrases": [
+      "das Nachbearbeitungsmodell etwa 10 Sekunden nach der letzten Nutzung entladen",
+      "den Arbeitsspeicher des Modells für die KI-Nachbearbeitung nach rund zehn Sekunden Leerlauf freigeben"
+    ]
+  },
+  "unloadPolishModel.never": {
+    "language": "de",
+    "words": [
+      "Nachbearbeitungsmodell nie entladen",
+      "AI Polish dauerhaft geladen"
+    ],
+    "phrases": [
+      "das Nachbearbeitungsmodell auch in Diktierpausen im Arbeitsspeicher behalten",
+      "das Modell für die KI-Nachbearbeitung dauerhaft geladen lassen"
+    ]
+  },
+  "unloadPolishModel.oneHour": {
+    "language": "de",
+    "words": [
+      "AI Polish 1 Std.",
+      "KI-Nachbearbeitung 60 Minuten"
+    ],
+    "phrases": [
+      "das Nachbearbeitungsmodell nach einer Stunde Leerlauf entladen",
+      "den Arbeitsspeicher des Modells für die KI-Nachbearbeitung nach 60 Minuten ohne Nutzung freigeben"
+    ]
+  },
+  "unloadPolishModel.tenMinutes": {
+    "language": "de",
+    "words": [
+      "AI Polish 10 Min.",
+      "KI-Nachbearbeitung zehn Minuten"
+    ],
+    "phrases": [
+      "das Nachbearbeitungsmodell nach 10 Minuten Leerlauf entladen"
+    ]
+  },
+  "unloadPolishModel.twoMinutes": {
+    "language": "de",
+    "words": [
+      "AI Polish 2 Min.",
+      "KI-Nachbearbeitung zwei Minuten"
+    ],
+    "phrases": [
+      "das Nachbearbeitungsmodell nach 2 Minuten Leerlauf entladen"
+    ]
+  }
+}

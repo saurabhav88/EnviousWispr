@@ -1,0 +1,79 @@
+{
+  "unloadPolishModel.fifteenMinutes": {
+    "language": "pl",
+    "title": "po 15 minutach",
+    "words": [
+      "korekta tekstu 15 min",
+      "model korekty po kwadransie"
+    ],
+    "phrases": [
+      "zwolnij pamięć modelu korekty tekstu po kwadransie bez dyktowania"
+    ]
+  },
+  "unloadPolishModel.fiveMinutes": {
+    "language": "pl",
+    "title": "po 5 minutach",
+    "words": [
+      "korekta tekstu 5 min",
+      "model korekty po pięciu minutach"
+    ],
+    "phrases": [
+      "zwolnij pamięć modelu korekty tekstu po 5 minutach bez dyktowania"
+    ]
+  },
+  "unloadPolishModel.immediately": {
+    "language": "pl",
+    "title": "natychmiast (po ok. 10 sekundach)",
+    "words": [
+      "korekta tekstu 10 s",
+      "szybkie zwalnianie pamięci modelu korekty"
+    ],
+    "phrases": [
+      "zwolnij pamięć modelu korekty tekstu około 10 sekund po ostatnim użyciu"
+    ]
+  },
+  "unloadPolishModel.never": {
+    "language": "pl",
+    "title": "nigdy",
+    "words": [
+      "model korekty zawsze w pamięci",
+      "stale załadowany model korekty"
+    ],
+    "phrases": [
+      "zawsze trzymaj model korekty tekstu w pamięci, także między dyktowaniami"
+    ]
+  },
+  "unloadPolishModel.oneHour": {
+    "language": "pl",
+    "title": "po 1 godzinie",
+    "words": [
+      "korekta tekstu 60 minut",
+      "model korekty po godzinie"
+    ],
+    "phrases": [
+      "zwolnij pamięć modelu korekty tekstu po godzinie bez dyktowania"
+    ]
+  },
+  "unloadPolishModel.tenMinutes": {
+    "language": "pl",
+    "title": "po 10 minutach",
+    "words": [
+      "korekta tekstu 10 min",
+      "model korekty po dziesięciu minutach"
+    ],
+    "phrases": [
+      "zwolnij pamięć modelu korekty tekstu po 10 minutach bez dyktowania"
+    ]
+  },
+  "unloadPolishModel.twoMinutes": {
+    "language": "pl",
+    "title": "po 2 minutach",
+    "words": [
+      "korekta tekstu 2 min",
+      "model korekty po dwóch minutach"
+    ],
+    "phrases": [
+      "zwolnij pamięć modelu korekty tekstu po 2 minutach bez dyktowania"
+    ]
+  }
+}

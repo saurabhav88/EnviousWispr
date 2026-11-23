@@ -1,0 +1,79 @@
+{
+  "unloadPolishModel.never": {
+    "language": "sv",
+    "title": "aldrig",
+    "words": [
+      "behåll AI Polish i minnet",
+      "alltid inläst modell för textbearbetning"
+    ],
+    "phrases": [
+      "låt modellen för textförbättring ligga kvar i minnet när jag inte dikterar"
+    ]
+  },
+  "unloadPolishModel.immediately": {
+    "language": "sv",
+    "title": "direkt (efter cirka 10 sekunder)",
+    "words": [
+      "AI Polish efter 10 sek",
+      "frigör minne för textbearbetning efter tio sekunder"
+    ],
+    "phrases": [
+      "frigör minnet som modellen för textbearbetning använder cirka 10 sekunder efter att modellen senast användes"
+    ]
+  },
+  "unloadPolishModel.twoMinutes": {
+    "language": "sv",
+    "title": "efter 2 minuter",
+    "words": [
+      "AI Polish efter 2 min",
+      "frigör minne för textbearbetning efter två minuter"
+    ],
+    "phrases": [
+      "frigör minnet som modellen för textbearbetning använder när den inte har använts på två minuter"
+    ]
+  },
+  "unloadPolishModel.fiveMinutes": {
+    "language": "sv",
+    "title": "efter 5 minuter",
+    "words": [
+      "AI Polish efter 5 min",
+      "frigör minne för textbearbetning efter fem minuter"
+    ],
+    "phrases": [
+      "frigör minnet som modellen för textbearbetning använder när den inte har använts på fem minuter"
+    ]
+  },
+  "unloadPolishModel.tenMinutes": {
+    "language": "sv",
+    "title": "efter 10 minuter",
+    "words": [
+      "AI Polish efter 10 min",
+      "frigör minne för textbearbetning efter tio minuter"
+    ],
+    "phrases": [
+      "frigör minnet som modellen för textbearbetning använder när den inte har använts på tio minuter"
+    ]
+  },
+  "unloadPolishModel.fifteenMinutes": {
+    "language": "sv",
+    "title": "efter 15 minuter",
+    "words": [
+      "AI Polish efter 15 min",
+      "frigör minne för textbearbetning efter en kvart"
+    ],
+    "phrases": [
+      "frigör minnet som modellen för textbearbetning använder när den inte har använts på en kvart"
+    ]
+  },
+  "unloadPolishModel.oneHour": {
+    "language": "sv",
+    "title": "efter 1 timme",
+    "words": [
+      "AI Polish efter 1 tim",
+      "frigör minne för textbearbetning efter 60 minuter"
+    ],
+    "phrases": [
+      "frigör minnet som modellen för textbearbetning använder när den inte har använts på en timme"
+    ]
+  }
+}

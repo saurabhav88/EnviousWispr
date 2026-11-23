@@ -1,0 +1,350 @@
+{
+ "id": "unloadPolishModel.tenMinutes",
+ "blocks": [
+  {
+   "language": "ar",
+   "title": "بعد 10 دقائق",
+   "words": [
+    "عشر دقائق",
+    "١٠ دق"
+   ],
+   "phrases": [
+    "تحرير ذاكرة نموذج تنقيح النص بعد ١٠ دقائق من دون إملاء"
+   ]
+  },
+  {
+   "language": "bg",
+   "title": "след 10 минути",
+   "words": [
+    "10 мин",
+    "десет минути"
+   ],
+   "phrases": [
+    "освобождаване на паметта на модела за редакция след 10 мин без диктуване"
+   ]
+  },
+  {
+   "language": "cs",
+   "title": "po 10 minutách",
+   "words": [
+    "10 min",
+    "deset minut"
+   ],
+   "phrases": [
+    "uvolnit model pro úpravu textu z paměti po 10 min bez diktování"
+   ]
+  },
+  {
+   "language": "da",
+   "title": "efter 10 minutter",
+   "words": [
+    "10 min",
+    "ti minutter"
+   ],
+   "phrases": [
+    "frigør hukommelsen til modellen for tekstforbedring efter 10 min uden diktering"
+   ]
+  },
+  {
+   "language": "de",
+   "words": [
+    "10 Min",
+    "zehn Minuten"
+   ],
+   "phrases": [
+    "Polish-Modell entladen, wenn du 10 Min. nicht diktierst"
+   ]
+  },
+  {
+   "language": "el",
+   "title": "μετά από 10 λεπτά",
+   "words": [
+    "10 λ.",
+    "δέκα λεπτά"
+   ],
+   "phrases": [
+    "αποδέσμευση μνήμης του μοντέλου επιμέλειας μετά από 10 λεπτά χωρίς υπαγόρευση"
+   ]
+  },
+  {
+   "language": "en",
+   "words": [
+    "10 min",
+    "ten minutes"
+   ],
+   "phrases": [
+    "unload the polish model after 10 min idle",
+    "free up polish model memory after 10 minutes without dictating"
+   ]
+  },
+  {
+   "language": "es",
+   "words": [
+    "10 min",
+    "diez minutos"
+   ],
+   "phrases": [
+    "liberar la memoria del modelo de pulido si llevas 10 min sin dictar"
+   ]
+  },
+  {
+   "language": "et",
+   "title": "10 minuti pärast",
+   "words": [
+    "10 min",
+    "kümme minutit"
+   ],
+   "phrases": [
+    "eemalda teksti viimistlemise mudel mälust pärast 10 min pausi dikteerimises"
+   ]
+  },
+  {
+   "language": "fi",
+   "title": "10 minuutin kuluttua",
+   "words": [
+    "10 min",
+    "kymmenen minuuttia"
+   ],
+   "phrases": [
+    "poista tekstin viimeistelymalli muistista 10 min sanelutauon jälkeen"
+   ]
+  },
+  {
+   "language": "fr",
+   "words": [
+    "10 min",
+    "dix minutes"
+   ],
+   "phrases": [
+    "libérer la mémoire du modèle de retouche si vous ne dictez pas pendant 10 min"
+   ]
+  },
+  {
+   "language": "hi",
+   "title": "10 मिनट बाद",
+   "words": [
+    "दस मिनट",
+    "१० मिनट"
+   ],
+   "phrases": [
+    "10 मिनट तक डिक्टेशन न करने पर टेक्स्ट सुधारने वाले मॉडल की मेमोरी खाली करना"
+   ]
+  },
+  {
+   "language": "hr",
+   "title": "nakon 10 minuta",
+   "words": [
+    "10 min",
+    "deset minuta"
+   ],
+   "phrases": [
+    "ukloniti model za doradu teksta iz memorije nakon 10 min bez diktiranja"
+   ]
+  },
+  {
+   "language": "hu",
+   "title": "10 perc múlva",
+   "words": [
+    "10p",
+    "tíz perc"
+   ],
+   "phrases": [
+    "szövegjavító modell törlése a memóriából 10 perc diktálási szünet után"
+   ]
+  },
+  {
+   "language": "it",
+   "title": "dopo 10 minuti",
+   "words": [
+    "10 min",
+    "dieci minuti"
+   ],
+   "phrases": [
+    "liberare la memoria del modello di revisione dopo 10 min senza dettare"
+   ]
+  },
+  {
+   "language": "ja",
+   "title": "10分後",
+   "words": [
+    "十分後"
+   ],
+   "phrases": [
+    "音声入力を10分使わなかったら文章整形モデルをメモリから解放"
+   ]
+  },
+  {
+   "language": "ko",
+   "title": "10분 후",
+   "words": [],
+   "phrases": [
+    "10분 동안 받아쓰기 안 하면 텍스트 다듬기 모델 메모리 해제"
+   ]
+  },
+  {
+   "language": "lt",
+   "title": "po 10 minučių",
+   "words": [
+    "10 min",
+    "dešimt minučių"
+   ],
+   "phrases": [
+    "pašalinti teksto tobulinimo modelį iš atminties po 10 min. be diktavimo"
+   ]
+  },
+  {
+   "language": "lv",
+   "title": "pēc 10 minūtēm",
+   "words": [
+    "10 min",
+    "desmit minūtes"
+   ],
+   "phrases": [
+    "izņemt teksta uzlabošanas modeli no atmiņas pēc 10 min bez diktēšanas"
+   ]
+  },
+  {
+   "language": "mt",
+   "title": "wara 10 minuti",
+   "words": [
+    "10 min",
+    "għaxar minuti"
+   ],
+   "phrases": [
+    "neħħi l-mudell li jtejjeb it-test mill-memorja wara 10 min bla dettatura"
+   ]
+  },
+  {
+   "language": "nl",
+   "title": "na 10 minuten",
+   "words": [
+    "10 min",
+    "tien minuten"
+   ],
+   "phrases": [
+    "model voor tekstverbetering na 10 min zonder dicteren uit het geheugen halen"
+   ]
+  },
+  {
+   "language": "pl",
+   "title": "po 10 minutach",
+   "words": [
+    "10 min",
+    "dziesięć minut"
+   ],
+   "phrases": [
+    "zwolnij pamięć modelu do poprawiania tekstu po 10 min bez dyktowania"
+   ]
+  },
+  {
+   "language": "pt",
+   "title": "após 10 minutos",
+   "words": [
+    "10 min",
+    "dez minutos"
+   ],
+   "phrases": [
+    "liberar a memória do modelo de revisão após 10 min sem ditar"
+   ]
+  },
+  {
+   "language": "ro",
+   "title": "după 10 minute",
+   "words": [
+    "10 min",
+    "zece minute"
+   ],
+   "phrases": [
+    "eliberează memoria modelului de retușare după 10 min fără dictare"
+   ]
+  },
+  {
+   "language": "ru",
+   "title": "через 10 минут",
+   "words": [
+    "10 мин",
+    "десять минут"
+   ],
+   "phrases": [
+    "выгрузить модель правки текста из памяти через 10 мин без диктовки"
+   ]
+  },
+  {
+   "language": "sk",
+   "title": "po 10 minútach",
+   "words": [
+    "10 min",
+    "desať minút"
+   ],
+   "phrases": [
+    "uvoľniť pamäť modelu na úpravu textu po 10 min bez diktovania"
+   ]
+  },
+  {
+   "language": "sl",
+   "title": "po 10 minutah",
+   "words": [
+    "10 min",
+    "deset minut"
+   ],
+   "phrases": [
+    "odstrani model za izboljšanje besedila iz pomnilnika po 10 min brez narekovanja"
+   ]
+  },
+  {
+   "language": "sv",
+   "title": "efter 10 minuter",
+   "words": [
+    "10 min",
+    "tio minuter"
+   ],
+   "phrases": [
+    "frigör minnet för textförbättringsmodellen efter 10 min utan diktering"
+   ]
+  },
+  {
+   "language": "tr",
+   "title": "10 dakika sonra",
+   "words": [
+    "10 dk",
+    "on dakika"
+   ],
+   "phrases": [
+    "10 dk dikte etmeyince metin düzeltme modelini bellekten kaldır"
+   ]
+  },
+  {
+   "language": "uk",
+   "title": "через 10 хвилин",
+   "words": [
+    "10 хв",
+    "десять хвилин"
+   ],
+   "phrases": [
+    "вивантажити модель редагування тексту з пам’яті через 10 хв без диктування"
+   ]
+  },
+  {
+   "language": "vi",
+   "title": "sau 10 phút",
+   "words": [
+    "10p",
+    "mười phút"
+   ],
+   "phrases": [
+    "giải phóng bộ nhớ của mô hình chỉnh văn bản sau 10 phút không đọc chính tả"
+   ]
+  },
+  {
+   "language": "zh",
+   "title": "10 分钟后",
+   "words": [
+    "十分钟"
+   ],
+   "phrases": [
+    "10分钟不听写就卸载文本润色模型",
+    "润色模型闲置10分钟后释放内存"
+   ]
+  }
+ ]
+}

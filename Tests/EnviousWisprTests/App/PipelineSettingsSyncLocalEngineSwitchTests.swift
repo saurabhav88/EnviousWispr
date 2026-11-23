@@ -124,6 +124,50 @@ struct PipelineSettingsSyncLocalEngineSwitchTests {
     #expect(released == 2, "after the summary both engines are stopped, one stamp each")
   }
 
+  /// #3853: when this fails, a user who picks "Unload polish model after" keeps the old idle time
+  /// until the next relaunch (the helpers are launched with the stale value), or a user who goes
+  /// back to Never keeps a helper that still sleeps.
+  @Test("a change of the polish unload choice reaches the value both engines launch with")
+  func polishUnloadChoiceUpdatesTheLaunchValue() async {
+    let (sync, settings, _, _, _) = makeSync()
+    let launchValue = LocalPolishSleepIdleSetting(seconds: nil)
+    sync.localPolishSleepIdle = launchValue
+    settings.llmProvider = .egOne
+    sync.applyInitialSettings(settings)
+    for (policy, seconds) in LocalPolishSleepIdleTests.expectedSeconds {
+      settings.localPolishUnloadPolicy = policy
+      sync.handleSettingChanged(.localPolishUnloadPolicy, settings: settings)
+      // The value moves after the engine's lifecycle is read, so wait for it.
+      #expect(await waitUntil { launchValue.seconds == seconds }, "\(policy)")
+    }
+    // The speech model's choice is a different setting and leaves the launch value alone.
+    settings.localPolishUnloadPolicy = .fiveMinutes
+    sync.handleSettingChanged(.localPolishUnloadPolicy, settings: settings)
+    settings.modelUnloadPolicy = .never
+    sync.handleSettingChanged(.modelUnloadPolicy, settings: settings)
+    #expect(await waitUntil { launchValue.seconds == 300 })
+    #expect(launchValue.seconds == 300)
+  }
+
+  /// #3853 (Codex review): the idle time is part of the launch. Changing it while a take, import
+  /// or summary holds the SELECTED engine must wait, or the relaunch skips that take's polish.
+  @Test("a change of the polish unload choice under a pin on the selected model waits for the pin")
+  func polishUnloadChoiceWaitsForAPin() async {
+    var summary: LocalPolishModelID? = .egOne
+    let (sync, settings, _, _, _) = makeSync(summaryPin: { summary })
+    let launchValue = LocalPolishSleepIdleSetting(seconds: nil)
+    sync.localPolishSleepIdle = launchValue
+    settings.llmProvider = .egOne
+    sync.applyInitialSettings(settings)
+    settings.localPolishUnloadPolicy = .fiveMinutes
+    sync.handleSettingChanged(.localPolishUnloadPolicy, settings: settings)
+    #expect(launchValue.seconds == nil, "the launch value must not move under a pin")
+    // The pin ends: the deferred reconciliation applies the choice.
+    summary = nil
+    sync.retryDeferredEGOneDeactivation(settings: settings)
+    #expect(await waitUntil { launchValue.seconds == 300 })
+  }
+
   @Test("switching S1-mini to EG-1 stops S1-mini exactly once")
   func switchClaimsOneStop() {
     let (sync, settings, coordinator, _, _) = makeSync()

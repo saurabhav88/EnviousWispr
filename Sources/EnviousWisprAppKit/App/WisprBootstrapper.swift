@@ -641,6 +641,11 @@ package final class WisprBootstrapper {
       let debugS1LearnedWordAdapter: (url: URL, threshold: Double)? = nil
     #endif
 
+    // #3853: the bundled polish helpers' idle time. One value both engines read at each launch;
+    // the settings-change route (`PipelineSettingsSync`) keeps it in step with the setting.
+    let localPolishSleepIdle = LocalPolishSleepIdleSetting(
+      seconds: LocalPolishSleepIdle.seconds(for: settings.localPolishUnloadPolicy))
+
     // #4473: one EG-1 size on the EnviousDecode engine. Each size is its own model: its own
     // runtime facts, delivery registration (model folder plus draft model), engine, checker
     // adapter and persisted keys. Only the server coordinator is shared.
@@ -670,8 +675,11 @@ package final class WisprBootstrapper {
         manifest: facts?.runtimeFacts(
           expectedModelName: LLMProvider.localModel(for: .egOne, ollamaModel: "") ?? ""),
         serverBinaryURL: egOneHelperURL, delivery: adapter,
-        engine: registration.map { EGOneArtifactCatalog.engine(for: $0) }
-          ?? EGOneArtifactCatalog.unregisteredEngine(size, appSupport: egOneAppSupport),
+        engine: registration.map {
+          EGOneArtifactCatalog.engine(for: $0, sleepIdleSeconds: localPolishSleepIdle.reader)
+        }
+          ?? EGOneArtifactCatalog.unregisteredEngine(
+            size, appSupport: egOneAppSupport, sleepIdleSeconds: localPolishSleepIdle.reader),
         coordinator: localPolishCoordinator, modelID: .egOne(size),
         launchLocation: { folders?.model },
         learnedWordAdapterProvider: {
@@ -797,7 +805,7 @@ package final class WisprBootstrapper {
       manifest: s1Manifest?.runtimeFacts(
         expectedModelName: LLMProvider.localModel(for: .s1Mini, ollamaModel: "") ?? ""),
       serverBinaryURL: llamaServerBinaryURL, delivery: s1Adapter,
-      engine: LlamaServerEngine(),
+      engine: LlamaServerEngine(sleepIdleSeconds: localPolishSleepIdle.reader),
       coordinator: localPolishCoordinator, modelID: .singleModel(for: .s1Mini),
       learnedWordAdapterProvider: s1LearnedWordAdapterProvider)
     s1MiniRuntime.removeLearnedWordAdapter = { await modelDelivery.removeCheckerAdapter(.s1Mini) }
@@ -1179,6 +1187,7 @@ package final class WisprBootstrapper {
         return fileImportRunnerForGates?.frozenLLMProvider
       }
     )
+    settingsSync.localPolishSleepIdle = localPolishSleepIdle
     settingsSync.applyInitialSettings(settings)
     // #3242: the word check for polish engines without their own. Held by the eligibility
     // owner (its only reader); driven by the Dictionary switch and both engine choices.
@@ -2410,7 +2419,7 @@ package final class WisprBootstrapper {
       onRecordingStarted: {
         [
           weak learnFromEdits, weak checkerEligibility, weak kernelDriver,
-          weak whisperKernelDriver, localPolishRuntimes
+          weak whisperKernelDriver, localPolishRuntimes, localPolishSleepIdle
         ] in
         learnFromEdits?.recordingStarted()
         // The take's frozen provider (set at arming), never the mutable setting.
@@ -2422,7 +2431,21 @@ package final class WisprBootstrapper {
           needsWordCheckForRecording: config.fixLearnedWords && settings.wordCorrectionEnabled
             && !LearnedWordCheckerEngine.hasOwnChecker(config.llmProvider))
         // #4473: the take's exact model. A size no runtime serves gets none, never another's.
-        localPolishRuntimes.runtime(for: config.polishModelID)?.recordingStarted()
+        let runtime = localPolishRuntimes.runtime(for: config.polishModelID)
+        runtime?.recordingStarted()
+        // #3853: EG-1 with an unload time chosen: ask a sleeping helper to load its model now, so
+        // the take's polish and learned-word check find it ready. Fire and forget: the recording
+        // never waits, a helper that is not running or already awake costs one quick answer, and
+        // every failure is silent (the polish request wakes the helper by itself, only later).
+        if config.polishModelID.provider == .egOne, localPolishSleepIdle.seconds != nil,
+          let runtime
+        {
+          Task {
+            if let endpoint = await runtime.activeEndpoint() {
+              await LocalPolishWake.send(to: endpoint)
+            }
+          }
+        }
       }
     )
 

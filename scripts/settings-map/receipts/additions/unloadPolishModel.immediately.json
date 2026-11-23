@@ -1,0 +1,325 @@
+{
+ "id": "unloadPolishModel.immediately",
+ "blocks": {
+  "ar": {
+   "title": "فورًا (بعد نحو ١٠ ثوانٍ)",
+   "words": [
+    "تفريغ نموذج تحسين النص بعد حوالي 10 ثواني"
+   ],
+   "phrases": [
+    "حرّر ذاكرة نموذج تحسين النص بعد حوالي ١٠ ثوانٍ من آخر استخدام له"
+   ]
+  },
+  "bg": {
+   "title": "веднага (около 10 секунди)",
+   "words": [
+    "10 сек",
+    "AI Polish 10 секунди"
+   ],
+   "phrases": [
+    "освободи модела за подобряване на текста от паметта около 10 секунди след края на диктовката"
+   ]
+  },
+  "cs": {
+   "title": "ihned (asi po 10 sekundách)",
+   "words": [
+    "AI Polish hned",
+    "AI Polish 10 sekund"
+   ],
+   "phrases": [
+    "uvolnit model pro úpravu textu z paměti asi 10 sekund po posledním použití"
+   ]
+  },
+  "da": {
+   "title": "straks (ca. 10 sekunder)",
+   "words": [
+    "tekstforbedring 10 sek",
+    "AI Polish ca. 10 sekunder"
+   ],
+   "phrases": [
+    "frigør den RAM, tekstforbedringsmodellen bruger, ca. 10 sekunder efter sidste brug"
+   ]
+  },
+  "de": {
+   "words": [
+    "AI Polish ca. 10 Sek.",
+    "Nachbearbeitungsmodell kurz nach Gebrauch entladen"
+   ],
+   "phrases": [
+    "das Nachbearbeitungsmodell etwa 10 Sekunden nach der letzten Nutzung entladen",
+    "den Arbeitsspeicher des Modells für die KI-Nachbearbeitung nach rund zehn Sekunden Leerlauf freigeben"
+   ]
+  },
+  "el": {
+   "title": "αμέσως (περίπου 10 δευτερόλεπτα)",
+   "words": [
+    "βελτίωση κειμένου 10 δευτερόλεπτα",
+    "AI Polish άμεση αποδέσμευση"
+   ],
+   "phrases": [
+    "να βγαίνει το μοντέλο βελτίωσης κειμένου από τη μνήμη περίπου 10 δευτερόλεπτα μετά την τελευταία χρήση του"
+   ]
+  },
+  "en": {
+   "words": [
+    "10 seconds",
+    "10 sec"
+   ],
+   "phrases": [
+    "unload the polish model after about 10 seconds of inactivity",
+    "free up memory used by AI Polish about 10 seconds after i stop dictating"
+   ]
+  },
+  "es": {
+   "words": [
+    "enseguida",
+    "unos 10 segundos",
+    "modelo de corrección tras 10 segundos"
+   ],
+   "phrases": [
+    "liberar la memoria del modelo de corrección unos 10 segundos después de dejar de dictar"
+   ]
+  },
+  "et": {
+   "title": "kohe (umbes 10 sekundit)",
+   "words": [
+    "10 s",
+    "viimistlusmudel 10 sekundit"
+   ],
+   "phrases": [
+    "vabasta viimistlusmudel mälust umbes 10 sekundit pärast viimast kasutust"
+   ]
+  },
+  "fi": {
+   "title": "heti (noin 10 sekuntia)",
+   "words": [
+    "viimeistelymalli 10 s",
+    "viimeistelymalli 10 sekuntia"
+   ],
+   "phrases": [
+    "vapauta viimeistelymallin käyttämä muisti noin 10 sekuntia viimeisen käyttökerran jälkeen"
+   ]
+  },
+  "fr": {
+   "words": [
+    "10 secondes",
+    "correction de texte 10 s",
+    "déchargement rapide du modèle de correction"
+   ],
+   "phrases": [
+    "libérer la mémoire du modèle de correction de texte environ 10 secondes après sa dernière utilisation"
+   ]
+  },
+  "hi": {
+   "title": "तुरंत (लगभग 10 सेकंड)",
+   "words": [
+    "AI Polish 10 सेकंड",
+    "टेक्स्ट सुधार मॉडल दस सेकंड बाद अनलोड"
+   ],
+   "phrases": [
+    "टेक्स्ट सुधार मॉडल के आखिरी इस्तेमाल के लगभग 10 सेकंड बाद उसकी मेमोरी खाली करें"
+   ]
+  },
+  "hr": {
+   "title": "odmah (oko 10 sekundi)",
+   "words": [
+    "dorada teksta 10 sekundi",
+    "AI Polish odmah"
+   ],
+   "phrases": [
+    "oslobodi memoriju modela za doradu teksta otprilike 10 sekundi nakon zadnje upotrebe"
+   ]
+  },
+  "hu": {
+   "title": "azonnal (kb. 10 másodperc)",
+   "words": [
+    "szövegjavító modell 10 mp",
+    "AI Polish azonnal"
+   ],
+   "phrases": [
+    "az utolsó használat után kb. 10 másodperccel szabaduljon fel a szövegjavító modell által foglalt memória"
+   ]
+  },
+  "it": {
+   "title": "subito (circa 10 secondi)",
+   "words": [
+    "AI Polish subito",
+    "AI Polish 10 secondi"
+   ],
+   "phrases": [
+    "libera la RAM del modello di correzione del testo circa 10 secondi dopo l'ultimo utilizzo"
+   ]
+  },
+  "ja": {
+   "title": "すぐに（約10秒後）",
+   "words": [
+    "文章整形 すぐに解放",
+    "文章整形 10秒"
+   ],
+   "phrases": [
+    "文章整形モデルを最後に使ってから約10秒後にメモリを解放したい"
+   ]
+  },
+  "ko": {
+   "title": "즉시(약 10초 후)",
+   "words": [
+    "다듬기 모델 10초",
+    "AI Polish 즉시 해제"
+   ],
+   "phrases": [
+    "텍스트 다듬기 모델을 마지막으로 사용한 뒤 약 10초 후에 메모리에서 해제"
+   ]
+  },
+  "lt": {
+   "title": "iškart (po maždaug 10 sek.)",
+   "words": [
+    "teksto tvarkymo modelis 10 sek.",
+    "teksto tvarkymo modelis 10 sekundžių"
+   ],
+   "phrases": [
+    "pašalinti teksto tvarkymo modelį iš atminties praėjus maždaug 10 sekundžių nuo paskutinio naudojimo"
+   ]
+  },
+  "lv": {
+   "title": "uzreiz (pēc aptuveni 10 sekundēm)",
+   "words": [
+    "10 sekundes",
+    "teksta uzlabošanas modelis 10 sek"
+   ],
+   "phrases": [
+    "atbrīvot teksta uzlabošanas modeļa aizņemto atmiņu aptuveni 10 sekundes pēc modeļa pēdējās lietošanas"
+   ]
+  },
+  "mt": {
+   "title": "minnufih (madwar 10 sekondi)",
+   "words": [
+    "10 sekondi",
+    "AI Polish 10 sekondi"
+   ],
+   "phrases": [
+    "neħħi l-mudell tal-irfinar mill-memorja madwar 10 sekondi wara li nieqaf niddetta"
+   ]
+  },
+  "nl": {
+   "title": "direct (na ongeveer 10 seconden)",
+   "words": [
+    "opschoonmodel 10 sec",
+    "AI Polish 10 seconden"
+   ],
+   "phrases": [
+    "haal het opschoonmodel ongeveer 10 seconden na het laatste gebruik uit het geheugen"
+   ]
+  },
+  "pl": {
+   "title": "natychmiast (po ok. 10 sekundach)",
+   "words": [
+    "korekta tekstu 10 s",
+    "szybkie zwalnianie pamięci modelu korekty"
+   ],
+   "phrases": [
+    "zwolnij pamięć modelu korekty tekstu około 10 sekund po ostatnim użyciu"
+   ]
+  },
+  "pt": {
+   "title": "imediatamente (cerca de 10 segundos)",
+   "words": [
+    "revisão de texto 10 s",
+    "AI Polish 10 segundos"
+   ],
+   "phrases": [
+    "liberar da memória o modelo de revisão de texto cerca de 10 segundos após o último uso"
+   ]
+  },
+  "ro": {
+   "title": "imediat (aprox. 10 secunde)",
+   "words": [
+    "AI Polish imediat",
+    "corectare text 10 secunde"
+   ],
+   "phrases": [
+    "scoate modelul de corectare a textului din memorie la aproximativ 10 secunde de la ultima utilizare"
+   ]
+  },
+  "ru": {
+   "title": "сразу (примерно через 10 секунд)",
+   "words": [
+    "правка текста 10 сек",
+    "AI Polish 10 секунд"
+   ],
+   "phrases": [
+    "выгружать модель правки текста из памяти примерно через 10 секунд после последнего использования"
+   ]
+  },
+  "sk": {
+   "title": "ihneď (asi po 10 sekundách)",
+   "words": [
+    "AI Polish 10 s",
+    "úprava textu 10 sekúnd"
+   ],
+   "phrases": [
+    "uvoľniť model na úpravu textu z pamäte asi 10 sekúnd po poslednom použití"
+   ]
+  },
+  "sl": {
+   "title": "takoj (po približno 10 sekundah)",
+   "words": [
+    "AI Polish takoj",
+    "izboljšanje besedila 10 sekund"
+   ],
+   "phrases": [
+    "sprosti pomnilnik modela za izboljšanje besedila po približno 10 sekundah neuporabe"
+   ]
+  },
+  "sv": {
+   "title": "direkt (efter cirka 10 sekunder)",
+   "words": [
+    "AI Polish efter 10 sek",
+    "frigör minne för textbearbetning efter tio sekunder"
+   ],
+   "phrases": [
+    "frigör minnet som modellen för textbearbetning använder cirka 10 sekunder efter att modellen senast användes"
+   ]
+  },
+  "tr": {
+   "title": "hemen (yaklaşık 10 saniye)",
+   "words": [
+    "metin düzenleme 10 sn",
+    "AI Polish 10 saniye"
+   ],
+   "phrases": [
+    "metin düzenleme modeli son kullanımdan yaklaşık 10 saniye sonra bellekten çıkarılsın"
+   ]
+  },
+  "uk": {
+   "title": "одразу (приблизно через 10 секунд)",
+   "words": [
+    "10 с",
+    "AI Polish 10 секунд"
+   ],
+   "phrases": [
+    "вивантажувати модель редагування тексту з пам’яті приблизно через 10 секунд після останнього використання"
+   ]
+  },
+  "vi": {
+   "title": "ngay (khoảng 10 giây)",
+   "words": [
+    "AI Polish 10 giây",
+    "giải phóng RAM AI Polish sau 10 giây"
+   ],
+   "phrases": [
+    "giải phóng bộ nhớ của mô hình chỉnh văn bản khoảng 10 giây sau lần dùng cuối"
+   ]
+  },
+  "zh": {
+   "title": "立即（约 10 秒）",
+   "words": [
+    "立即释放润色模型内存",
+    "润色闲置10秒",
+    "润色闲置十秒"
+   ],
+   "phrases": [
+    "润色模型闲置约10秒后释放内存"
+   ]
+  }
+ }
+}

@@ -12,9 +12,9 @@ Generated from the compiled Settings Map and the validated search vocabulary. Do
 
 The interface ships in English, German, Spanish and French. The other 28 languages (ar, bg, cs, da, el, et, fi, hi, hr, hu, it, ja, ko, lt, lv, mt, nl, pl, pt, ro, ru, sk, sl, sv, tr, uk, vi, zh) are search metadata only: words and titles people may type, matched against the same places. Titles below read English / German / Spanish / French.
 
-328 nodes, 299 searchable, 9568 vocabulary blocks.
+336 nodes, 307 searchable, 9824 vocabulary blocks.
 
-Fingerprints: mapSHA256 `b0a757e8b509c67ed717e19e702e8e03e8dac37a64d2e148c6a65f0bf3253ef3`, uiCatalogSHA256 `25b04f92c8ec93360db5a968e2752df06ce4f1b508aeaf785eb1763f565f1155`, vocabularyCanonicalization `length-prefixed-v1`, vocabularySHA256 `21b7283f5e6f0349ca95375366d35ca8dc38128d47c96acb068fb81b9ee943c1`
+Fingerprints: mapSHA256 `63f6ecabfce1ce90fea97a979e94b9a257196f62c689ceb5d49a21ba40d3e504`, uiCatalogSHA256 `c867df4403089f1beafa13342b4ef1d69ed37d45cb226418964e8b2aa7cd8392`, vocabularyCanonicalization `length-prefixed-v1`, vocabularySHA256 `be8c74f8bb8765c6c8625fa7f9c2ff2e84ebe08aae4fd1ca66ee38af808ee608`
 
 ## Structure
 
@@ -42,6 +42,14 @@ Fingerprints: mapSHA256 `b0a757e8b509c67ed717e19e702e8e03e8dac37a64d2e148c6a65f0
           - [Context / Kontext / Contexto / Contexte](#node-s1Context) `s1Context` (setting)
             - [General / Allgemein / General / Général](#node-s1Context-general) `s1Context.general` (choice)
             - [Email / E-Mail / Correo electrónico / E-mail](#node-s1Context-email) `s1Context.email` (choice)
+          - [Unload polish model after / Polish-Modell entladen nach / Quitar modelo de Pulido de la RAM tras / Décharger le modèle de retouche après](#node-unloadPolishModel) `unloadPolishModel` (setting)
+            - [Never / Nie / Nunca / Jamais](#node-unloadPolishModel-never) `unloadPolishModel.never` (choice)
+            - [Immediately / Sofort / Inmediatamente / Immédiatement](#node-unloadPolishModel-immediately) `unloadPolishModel.immediately` (choice)
+            - [After 2 minutes / Nach 2 Minuten / Después de 2 minutos / Après 2 minutes](#node-unloadPolishModel-twoMinutes) `unloadPolishModel.twoMinutes` (choice)
+            - [After 5 minutes / Nach 5 Minuten / Después de 5 minutos / Après 5 minutes](#node-unloadPolishModel-fiveMinutes) `unloadPolishModel.fiveMinutes` (choice)
+            - [After 10 minutes / Nach 10 Minuten / Después de 10 minutos / Après 10 minutes](#node-unloadPolishModel-tenMinutes) `unloadPolishModel.tenMinutes` (choice)
+            - [After 15 minutes / Nach 15 Minuten / Después de 15 minutos / Après 15 minutes](#node-unloadPolishModel-fifteenMinutes) `unloadPolishModel.fifteenMinutes` (choice)
+            - [After 1 hour / Nach 1 Stunde / Después de 1 hora / Après 1 heure](#node-unloadPolishModel-oneHour) `unloadPolishModel.oneHour` (choice)
           - [OpenAI API Key / OpenAI-API-Schlüssel / Clave de API de OpenAI / Clé d’API OpenAI](#node-apiKey-openAI) `apiKey.openAI` (setting)
           - [Google Gemini API Key / Google Gemini-API-Schlüssel / Clave de API de Google Gemini / Clé API Google Gemini](#node-apiKey-gemini) `apiKey.gemini` (setting)
           - [Claude API Key / Claude-API-Schlüssel / Clave de API de Claude / Clé API Claude](#node-apiKey-claude) `apiKey.claude` (setting)
@@ -3846,6 +3854,30 @@ Fingerprints: mapSHA256 `b0a757e8b509c67ed717e19e702e8e03e8dac37a64d2e148c6a65f0
 | Search (fr) | words: contexte S1-mini, format S1-mini<br>phrases: choisir entre une mise en forme générale et une mise en forme de mail avec S1-mini |
 | Search (other 28 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
 
+<a id="node-unloadPolishModel"></a>
+
+### Unload polish model after / Polish-Modell entladen nach / Quitar modelo de Pulido de la RAM tras / Décharger le modèle de retouche après (`unloadPolishModel`)
+
+| Field | Value |
+|---|---|
+| Structure | item |
+| Kind | setting |
+| Parent | [`aiPolish.providerSection`](#node-aiPolish-providerSection) |
+| Title source | catalog key `Unload polish model after` |
+| Description | Frees the polish model's memory when you are not dictating. / Gibt den Speicher des Polish-Modells frei, wenn du nicht diktierst. / Libera la memoria del modelo de Pulido cuando no estás dictando. / Libère la mémoire du modèle de retouche quand vous ne dictez pas. |
+| Description source | catalog key `Frees the polish model's memory when you are not dictating.` |
+| Destination | `aiPolish` |
+| Dictionary tab | none |
+| Shown when | `providerSelected` |
+| Arrival target | [`unloadPolishModel`](#node-unloadPolishModel) |
+| Fallbacks, in order | [`aiPolishProvider`](#node-aiPolishProvider), [`enableAIPolish`](#node-enableAIPolish) |
+| Declared in | [Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift](../Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift) |
+| Search (en) | words: polish model timeout, unload polish model<br>phrases: free up ram used by ai polish when i stop dictating; how long does the local polish model stay in memory |
+| Search (de) | words: Nachbearbeitungsmodell entladen, Leerlaufzeit für das Nachbearbeitungsmodell<br>phrases: wie lange bleibt das Modell für die KI-Nachbearbeitung nach dem Diktieren im Arbeitsspeicher; stell ein, wann EG-1 oder S1-mini bei Nichtbenutzung den Arbeitsspeicher freigibt |
+| Search (es) | words: memoria del modelo de corrección, inactividad del modelo de corrección<br>phrases: cuándo se libera la memoria del modelo que corrige el texto si no dicto; cuánto tiempo sigue cargado el modelo de corrección después de dejar de dictar |
+| Search (fr) | words: mémoire du modèle de correction, inactivité du modèle de correction<br>phrases: combien de temps le modèle de correction reste en mémoire quand je ne dicte plus; libérer la mémoire utilisée par la correction de texte sur mon Mac quand je ne dicte pas |
+| Search (other 28 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
+
 <a id="node-appleIntelligence-status"></a>
 
 ### (named at runtime by `appleIntelligenceStatus`) (`appleIntelligence.status`)
@@ -6572,6 +6604,167 @@ Fingerprints: mapSHA256 `b0a757e8b509c67ed717e19e702e8e03e8dac37a64d2e148c6a65f0
 | Search (de) | words: Stunde<br>phrases: entlade das Diktiermodell nach einer Stunde ohne Diktat; lass das Diktiermodell 60 Minuten im Speicher |
 | Search (es) | words: 1 hora, una hora, 60 minutos<br>phrases: liberar el modelo tras una hora sin dictar |
 | Search (fr) | words: mémoire 1 heure, modèle 60 minutes<br>phrases: libérer le modèle après une heure sans dictée |
+| Search (other 28 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
+
+<a id="node-unloadPolishModel-never"></a>
+
+### Never / Nie / Nunca / Jamais (`unloadPolishModel.never`)
+
+| Field | Value |
+|---|---|
+| Structure | item |
+| Kind | choice |
+| Parent | [`unloadPolishModel`](#node-unloadPolishModel) |
+| Title source | catalog key `Never` |
+| Description | none |
+| Destination | `aiPolish` |
+| Dictionary tab | none |
+| Shown when | `providerSelected` |
+| Arrival target | [`unloadPolishModel`](#node-unloadPolishModel) |
+| Fallbacks, in order | [`aiPolishProvider`](#node-aiPolishProvider), [`enableAIPolish`](#node-enableAIPolish) |
+| Declared in | [Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift](../Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift) |
+| Search (en) | words: always loaded, keep in memory, stay in ram<br>phrases: keep the polish model loaded when i'm not dictating; don't unload the polish model after dictation |
+| Search (de) | words: Nachbearbeitungsmodell nie entladen, AI Polish dauerhaft geladen<br>phrases: das Nachbearbeitungsmodell auch in Diktierpausen im Arbeitsspeicher behalten; das Modell für die KI-Nachbearbeitung dauerhaft geladen lassen |
+| Search (es) | words: modelo de corrección siempre cargado<br>phrases: mantener el modelo de corrección en memoria aunque no esté dictando |
+| Search (fr) | words: jamais, modèle de correction toujours en mémoire, ne jamais décharger le modèle de correction<br>phrases: garder le modèle de correction de texte en mémoire même quand je ne dicte pas |
+| Search (other 28 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
+
+<a id="node-unloadPolishModel-immediately"></a>
+
+### Immediately / Sofort / Inmediatamente / Immédiatement (`unloadPolishModel.immediately`)
+
+| Field | Value |
+|---|---|
+| Structure | item |
+| Kind | choice |
+| Parent | [`unloadPolishModel`](#node-unloadPolishModel) |
+| Title source | catalog key `Immediately` |
+| Description | none |
+| Destination | `aiPolish` |
+| Dictionary tab | none |
+| Shown when | `providerSelected` |
+| Arrival target | [`unloadPolishModel`](#node-unloadPolishModel) |
+| Fallbacks, in order | [`aiPolishProvider`](#node-aiPolishProvider), [`enableAIPolish`](#node-enableAIPolish) |
+| Declared in | [Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift](../Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift) |
+| Search (en) | words: 10 seconds, 10 sec<br>phrases: unload the polish model after about 10 seconds of inactivity; free up memory used by AI Polish about 10 seconds after i stop dictating |
+| Search (de) | words: AI Polish ca. 10 Sek., Nachbearbeitungsmodell kurz nach Gebrauch entladen<br>phrases: das Nachbearbeitungsmodell etwa 10 Sekunden nach der letzten Nutzung entladen; den Arbeitsspeicher des Modells für die KI-Nachbearbeitung nach rund zehn Sekunden Leerlauf freigeben |
+| Search (es) | words: enseguida, unos 10 segundos, modelo de corrección tras 10 segundos<br>phrases: liberar la memoria del modelo de corrección unos 10 segundos después de dejar de dictar |
+| Search (fr) | words: 10 secondes, correction de texte 10 s, déchargement rapide du modèle de correction<br>phrases: libérer la mémoire du modèle de correction de texte environ 10 secondes après sa dernière utilisation |
+| Search (other 28 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
+
+<a id="node-unloadPolishModel-twoMinutes"></a>
+
+### After 2 minutes / Nach 2 Minuten / Después de 2 minutos / Après 2 minutes (`unloadPolishModel.twoMinutes`)
+
+| Field | Value |
+|---|---|
+| Structure | item |
+| Kind | choice |
+| Parent | [`unloadPolishModel`](#node-unloadPolishModel) |
+| Title source | catalog key `After 2 minutes` |
+| Description | none |
+| Destination | `aiPolish` |
+| Dictionary tab | none |
+| Shown when | `providerSelected` |
+| Arrival target | [`unloadPolishModel`](#node-unloadPolishModel) |
+| Fallbacks, in order | [`aiPolishProvider`](#node-aiPolishProvider), [`enableAIPolish`](#node-enableAIPolish) |
+| Declared in | [Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift](../Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift) |
+| Search (en) | words: 2 min, two minutes, 120 seconds<br>phrases: unload the polish model after 2 minutes without dictating; free up memory used by AI Polish after 2 minutes of inactivity |
+| Search (de) | words: AI Polish 2 Min., KI-Nachbearbeitung zwei Minuten<br>phrases: das Nachbearbeitungsmodell nach 2 Minuten Leerlauf entladen |
+| Search (es) | words: 2 min, modelo de corrección tras dos minutos<br>phrases: liberar la memoria del modelo de corrección tras 2 minutos sin dictar |
+| Search (fr) | words: 2 min, correction de texte 2 minutes, modèle de correction deux minutes<br>phrases: libérer la mémoire du modèle de correction de texte après 2 minutes d’inactivité |
+| Search (other 28 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
+
+<a id="node-unloadPolishModel-fiveMinutes"></a>
+
+### After 5 minutes / Nach 5 Minuten / Después de 5 minutos / Après 5 minutes (`unloadPolishModel.fiveMinutes`)
+
+| Field | Value |
+|---|---|
+| Structure | item |
+| Kind | choice |
+| Parent | [`unloadPolishModel`](#node-unloadPolishModel) |
+| Title source | catalog key `After 5 minutes` |
+| Description | none |
+| Destination | `aiPolish` |
+| Dictionary tab | none |
+| Shown when | `providerSelected` |
+| Arrival target | [`unloadPolishModel`](#node-unloadPolishModel) |
+| Fallbacks, in order | [`aiPolishProvider`](#node-aiPolishProvider), [`enableAIPolish`](#node-enableAIPolish) |
+| Declared in | [Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift](../Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift) |
+| Search (en) | words: 5 min, five minutes<br>phrases: unload the polish model after 5 minutes of inactivity; free up the polish model’s memory after 5 minutes without dictating |
+| Search (de) | words: AI Polish 5 Min., KI-Nachbearbeitung fünf Minuten<br>phrases: das Nachbearbeitungsmodell nach 5 Minuten Leerlauf entladen; den Arbeitsspeicher des Modells für die KI-Nachbearbeitung fünf Minuten nach der letzten Nutzung freigeben |
+| Search (es) | words: 5 min, modelo de corrección tras cinco minutos<br>phrases: liberar la memoria del modelo de corrección tras 5 minutos sin dictar |
+| Search (fr) | words: 5 min, correction de texte 5 minutes, modèle de correction cinq minutes<br>phrases: libérer la mémoire du modèle de correction de texte après 5 minutes d’inactivité |
+| Search (other 28 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
+
+<a id="node-unloadPolishModel-tenMinutes"></a>
+
+### After 10 minutes / Nach 10 Minuten / Después de 10 minutos / Après 10 minutes (`unloadPolishModel.tenMinutes`)
+
+| Field | Value |
+|---|---|
+| Structure | item |
+| Kind | choice |
+| Parent | [`unloadPolishModel`](#node-unloadPolishModel) |
+| Title source | catalog key `After 10 minutes` |
+| Description | none |
+| Destination | `aiPolish` |
+| Dictionary tab | none |
+| Shown when | `providerSelected` |
+| Arrival target | [`unloadPolishModel`](#node-unloadPolishModel) |
+| Fallbacks, in order | [`aiPolishProvider`](#node-aiPolishProvider), [`enableAIPolish`](#node-enableAIPolish) |
+| Declared in | [Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift](../Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift) |
+| Search (en) | words: 10 min, ten minutes<br>phrases: unload the polish model after 10 minutes of inactivity; free up polish model memory after 10 minutes without dictating |
+| Search (de) | words: AI Polish 10 Min., KI-Nachbearbeitung zehn Minuten<br>phrases: das Nachbearbeitungsmodell nach 10 Minuten Leerlauf entladen |
+| Search (es) | words: 10 min, modelo de corrección tras diez minutos<br>phrases: liberar la memoria del modelo de corrección tras 10 minutos sin dictar |
+| Search (fr) | words: 10 min, correction de texte 10 minutes, modèle de correction dix minutes<br>phrases: libérer la mémoire du modèle de correction de texte après 10 minutes d’inactivité |
+| Search (other 28 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
+
+<a id="node-unloadPolishModel-fifteenMinutes"></a>
+
+### After 15 minutes / Nach 15 Minuten / Después de 15 minutos / Après 15 minutes (`unloadPolishModel.fifteenMinutes`)
+
+| Field | Value |
+|---|---|
+| Structure | item |
+| Kind | choice |
+| Parent | [`unloadPolishModel`](#node-unloadPolishModel) |
+| Title source | catalog key `After 15 minutes` |
+| Description | none |
+| Destination | `aiPolish` |
+| Dictionary tab | none |
+| Shown when | `providerSelected` |
+| Arrival target | [`unloadPolishModel`](#node-unloadPolishModel) |
+| Fallbacks, in order | [`aiPolishProvider`](#node-aiPolishProvider), [`enableAIPolish`](#node-enableAIPolish) |
+| Declared in | [Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift](../Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift) |
+| Search (en) | words: 15 min<br>phrases: unload the polish model after 15 min without dictating; keep the polish model loaded for a quarter of an hour after dictation |
+| Search (de) | words: AI Polish 15 Min., Nachbearbeitungsmodell Viertelstunde<br>phrases: das Nachbearbeitungsmodell nach 15 Minuten Leerlauf entladen; das Modell für die KI-Nachbearbeitung nach einer Viertelstunde ohne Nutzung entladen |
+| Search (es) | words: 15 min, corrección de texto tras un cuarto de hora<br>phrases: liberar la memoria del modelo de corrección tras 15 minutos sin dictar |
+| Search (fr) | words: 15 min, correction de texte 15 minutes, modèle de correction quart d’heure<br>phrases: libérer la mémoire du modèle de correction de texte après un quart d’heure d’inactivité |
+| Search (other 28 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
+
+<a id="node-unloadPolishModel-oneHour"></a>
+
+### After 1 hour / Nach 1 Stunde / Después de 1 hora / Après 1 heure (`unloadPolishModel.oneHour`)
+
+| Field | Value |
+|---|---|
+| Structure | item |
+| Kind | choice |
+| Parent | [`unloadPolishModel`](#node-unloadPolishModel) |
+| Title source | catalog key `After 1 hour` |
+| Description | none |
+| Destination | `aiPolish` |
+| Dictionary tab | none |
+| Shown when | `providerSelected` |
+| Arrival target | [`unloadPolishModel`](#node-unloadPolishModel) |
+| Fallbacks, in order | [`aiPolishProvider`](#node-aiPolishProvider), [`enableAIPolish`](#node-enableAIPolish) |
+| Declared in | [Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift](../Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift) |
+| Search (en) | words: 60 minutes, 1 hr<br>phrases: free up polish model memory after an hour without dictating; keep the polish model in memory for an hour after dictation |
+| Search (de) | words: AI Polish 1 Std., KI-Nachbearbeitung 60 Minuten<br>phrases: das Nachbearbeitungsmodell nach einer Stunde Leerlauf entladen; den Arbeitsspeicher des Modells für die KI-Nachbearbeitung nach 60 Minuten ohne Nutzung freigeben |
+| Search (es) | words: 1 h, modelo de corrección tras 60 minutos<br>phrases: liberar la memoria del modelo de corrección tras una hora sin dictar |
+| Search (fr) | words: 1 h, correction de texte 1 heure, modèle de correction 60 minutes<br>phrases: libérer la mémoire du modèle de correction de texte après une heure d’inactivité |
 | Search (other 28 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |
 
 <a id="node-mediaDuringDictation-continue"></a>

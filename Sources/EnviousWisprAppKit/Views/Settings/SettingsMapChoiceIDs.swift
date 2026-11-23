@@ -21,6 +21,21 @@ extension ModelUnloadPolicy {
   }
 }
 
+extension ModelUnloadPolicy {
+  /// #3853: the same choices on the AI Polish page's own "Unload polish model after" row.
+  var polishSettingsMapID: SettingsMapID {
+    switch self {
+    case .never: .unloadPolishModelNever
+    case .immediately: .unloadPolishModelImmediately
+    case .twoMinutes: .unloadPolishModelTwoMinutes
+    case .fiveMinutes: .unloadPolishModelFiveMinutes
+    case .tenMinutes: .unloadPolishModelTenMinutes
+    case .fifteenMinutes: .unloadPolishModelFifteenMinutes
+    case .sixtyMinutes: .unloadPolishModelOneHour
+    }
+  }
+}
+
 extension RecordingPillDesign {
   var settingsMapID: SettingsMapID {
     switch self {

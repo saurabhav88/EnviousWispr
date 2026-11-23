@@ -350,4 +350,27 @@ struct MeetingAfterPresentationTests {
         record: Self.record(.failed), processing: false, queueWaitsForSpace: false,
         writingSummary: false, hasSummary: true) == .none)
   }
+
+  @Test("#4726: a summary that waits its turn says waiting, never writing")
+  func stripSummaryWaitsForTurn() {
+    let ready = Self.record(.ready)
+    #expect(
+      P.strip(
+        record: ready, processing: false, queueWaitsForSpace: false, writingSummary: true,
+        summaryWaitsForTurn: true, hasSummary: false) == .summaryWaitsForTurn)
+    #expect(
+      P.stripLine(.summaryWaitsForTurn)
+        == "Waiting for your dictation and other meeting work to finish.")
+    #expect(P.stripLine(.summaryWaitsForTurn) != P.stripLine(.writingSummary))
+    // Waiting needs an active attempt: without one the strip is quiet or ready.
+    #expect(
+      P.strip(
+        record: ready, processing: false, queueWaitsForSpace: false, writingSummary: false,
+        summaryWaitsForTurn: true, hasSummary: true) == .summaryReady)
+    // A transcript still queueing outranks a summary wait.
+    #expect(
+      P.strip(
+        record: Self.record(.queued), processing: false, queueWaitsForSpace: false,
+        writingSummary: true, summaryWaitsForTurn: true, hasSummary: false) == .waiting)
+  }
 }

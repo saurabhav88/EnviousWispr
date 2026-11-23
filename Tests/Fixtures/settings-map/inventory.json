@@ -3829,6 +3829,142 @@
    "seedParent": "s1Context"
   },
   {
+   "id": "unloadPolishModel",
+   "kind": "setting",
+   "destination": {
+    "page": "aiPolish"
+   },
+   "disposition": "mapped",
+   "parent": "aiPolish.providerSection",
+   "target": "unloadPolishModel",
+   "fallbacks": [
+    "aiPolishProvider",
+    "enableAIPolish"
+   ],
+   "dynamicTitle": false,
+   "seedParent": null,
+   "description": {
+    "kind": "static",
+    "english": "Frees the polish model's memory when you are not dictating."
+   }
+  },
+  {
+   "id": "unloadPolishModel.never",
+   "kind": "choice",
+   "destination": {
+    "page": "aiPolish"
+   },
+   "disposition": "mapped",
+   "parent": "unloadPolishModel",
+   "target": "unloadPolishModel",
+   "fallbacks": [
+    "aiPolishProvider",
+    "enableAIPolish"
+   ],
+   "dynamicTitle": false,
+   "seedParent": "unloadPolishModel"
+  },
+  {
+   "id": "unloadPolishModel.immediately",
+   "kind": "choice",
+   "destination": {
+    "page": "aiPolish"
+   },
+   "disposition": "mapped",
+   "parent": "unloadPolishModel",
+   "target": "unloadPolishModel",
+   "fallbacks": [
+    "aiPolishProvider",
+    "enableAIPolish"
+   ],
+   "dynamicTitle": false,
+   "seedParent": "unloadPolishModel",
+   "description": {
+    "kind": "none",
+    "why": "notice shown only while that option is chosen"
+   }
+  },
+  {
+   "id": "unloadPolishModel.twoMinutes",
+   "kind": "choice",
+   "destination": {
+    "page": "aiPolish"
+   },
+   "disposition": "mapped",
+   "parent": "unloadPolishModel",
+   "target": "unloadPolishModel",
+   "fallbacks": [
+    "aiPolishProvider",
+    "enableAIPolish"
+   ],
+   "dynamicTitle": false,
+   "seedParent": "unloadPolishModel"
+  },
+  {
+   "id": "unloadPolishModel.fiveMinutes",
+   "kind": "choice",
+   "destination": {
+    "page": "aiPolish"
+   },
+   "disposition": "mapped",
+   "parent": "unloadPolishModel",
+   "target": "unloadPolishModel",
+   "fallbacks": [
+    "aiPolishProvider",
+    "enableAIPolish"
+   ],
+   "dynamicTitle": false,
+   "seedParent": "unloadPolishModel"
+  },
+  {
+   "id": "unloadPolishModel.tenMinutes",
+   "kind": "choice",
+   "destination": {
+    "page": "aiPolish"
+   },
+   "disposition": "mapped",
+   "parent": "unloadPolishModel",
+   "target": "unloadPolishModel",
+   "fallbacks": [
+    "aiPolishProvider",
+    "enableAIPolish"
+   ],
+   "dynamicTitle": false,
+   "seedParent": "unloadPolishModel"
+  },
+  {
+   "id": "unloadPolishModel.fifteenMinutes",
+   "kind": "choice",
+   "destination": {
+    "page": "aiPolish"
+   },
+   "disposition": "mapped",
+   "parent": "unloadPolishModel",
+   "target": "unloadPolishModel",
+   "fallbacks": [
+    "aiPolishProvider",
+    "enableAIPolish"
+   ],
+   "dynamicTitle": false,
+   "seedParent": "unloadPolishModel"
+  },
+  {
+   "id": "unloadPolishModel.oneHour",
+   "kind": "choice",
+   "destination": {
+    "page": "aiPolish"
+   },
+   "disposition": "mapped",
+   "parent": "unloadPolishModel",
+   "target": "unloadPolishModel",
+   "fallbacks": [
+    "aiPolishProvider",
+    "enableAIPolish"
+   ],
+   "dynamicTitle": false,
+   "seedParent": "unloadPolishModel"
+  },
+  {
    "id": "appleIntelligence.status",
    "kind": "feature",
    "destination": {

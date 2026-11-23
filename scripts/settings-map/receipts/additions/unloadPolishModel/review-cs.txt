@@ -1,0 +1,12 @@
+{
+  "language": "cs",
+  "title": "uvolnit model pro úpravu textu z paměti po",
+  "words": [
+    "uvolnění paměti AI Polish",
+    "EG-1 v paměti",
+    "S1-mini v paměti"
+  ],
+  "phrases": [
+    "jak dlouho zůstane model pro úpravu textu v paměti, když přestanu diktovat"
+  ]
+}

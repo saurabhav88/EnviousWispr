@@ -402,18 +402,20 @@ enum MeetingAfterPresentation {
     case waiting
     case waitingForSpace
     case writingSummary
+    /// #4726: the summary is queued for a model on this Mac and still waits for its turn.
+    case summaryWaitsForTurn
     case summaryReady
   }
 
   static func strip(
     record: MeetingRecord?, processing: Bool, queueWaitsForSpace: Bool, writingSummary: Bool,
-    hasSummary: Bool
+    summaryWaitsForTurn: Bool = false, hasSummary: Bool
   ) -> StripState {
     guard let record else { return .none }
     if processing { return .finishingTranscript }
     if record.state == .queued { return queueWaitsForSpace ? .waitingForSpace : .waiting }
     guard record.committedTranscriptGeneration != nil else { return .none }
-    if writingSummary { return .writingSummary }
+    if writingSummary { return summaryWaitsForTurn ? .summaryWaitsForTurn : .writingSummary }
     return hasSummary ? .summaryReady : .none
   }
 
@@ -430,11 +432,20 @@ enum MeetingAfterPresentation {
       return String(
         localized: "Writing the summary…",
         comment: "Meeting after view: the meeting summary is being written.")
+    case .summaryWaitsForTurn: return summaryWaitsForTurnLine
     case .summaryReady:
       return String(
         localized: "Saved · Summary ready",
         comment: "Meeting after view: the meeting is saved and its summary is written.")
     }
+  }
+
+  /// #4724 / #4726: one wording for a summary that waits its turn, on the header strip, the AI
+  /// summary tab hint and the preview, so a waiting summary never reads as writing.
+  static var summaryWaitsForTurnLine: String {
+    String(
+      localized: "Waiting for your dictation and other meeting work to finish.",
+      comment: "History, a meeting: the summary waits before a model on this Mac is used.")
   }
 
   // MARK: - Copy

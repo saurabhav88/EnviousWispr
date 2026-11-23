@@ -20,6 +20,10 @@ struct HelperArguments: Equatable {
   /// The folder of the learned-word adapter for this polish model (`adapter_config.json` and
   /// `adapters.safetensors`), or nil when the helper serves no word check.
   let wordCheckAdapterFolder: URL?
+  /// Seconds without any use of the models after which the helper frees them and keeps
+  /// running (#3853), or nil to keep them loaded. Same name and meaning as `llama-server`'s
+  /// `--sleep-idle-seconds`.
+  let sleepIdleSeconds: Int?
 
   enum ParseError: Error, Equatable, CustomStringConvertible {
     case unknownArgument(String)
@@ -42,13 +46,14 @@ struct HelperArguments: Equatable {
   static let usage =
     "usage: envious-decode --model <folder> --draft-model <folder> --model-name <name> "
     + "--socket <path> --ctx-size <tokens> --cache-limit-bytes <bytes> "
-    + "[--word-check-adapter <folder>] (the bearer is the first line of standard input)"
+    + "[--word-check-adapter <folder>] [--sleep-idle-seconds <seconds>] (the bearer is the first line of standard input)"
 
   static let names: Set<String> = [
     "--model", "--draft-model", "--model-name", "--socket", "--ctx-size",
-    "--cache-limit-bytes", wordCheckAdapterName,
+    "--cache-limit-bytes", wordCheckAdapterName, sleepIdleSecondsName,
   ]
   static let wordCheckAdapterName = "--word-check-adapter"
+  static let sleepIdleSecondsName = "--sleep-idle-seconds"
 
   static func parse(_ arguments: [String]) throws -> HelperArguments {
     var values: [String: String] = [:]
@@ -103,6 +108,8 @@ struct HelperArguments: Equatable {
       contextTokens: try number("--ctx-size", in: 1...1_048_576),
       cacheLimitBytes: try number("--cache-limit-bytes", in: 0...Int.max),
       wordCheckAdapterFolder: values[wordCheckAdapterName] == nil
-        ? nil : try folder(wordCheckAdapterName))
+        ? nil : try folder(wordCheckAdapterName),
+      sleepIdleSeconds: values[sleepIdleSecondsName] == nil
+        ? nil : try number(sleepIdleSecondsName, in: 1...86_400))
   }
 }

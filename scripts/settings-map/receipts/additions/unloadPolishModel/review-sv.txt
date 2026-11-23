@@ -1,0 +1,13 @@
+{
+  "language": "sv",
+  "title": "frigör textbearbetningsmodellens minne efter",
+  "words": [
+    "minne för textbearbetning",
+    "frigör minne för EG-1",
+    "frigör minne för S1-mini"
+  ],
+  "phrases": [
+    "hur länge ligger modellen för textbearbetning kvar i minnet",
+    "frigör minnet som modellen för textbearbetning använder när jag inte dikterar"
+  ]
+}

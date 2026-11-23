@@ -1,0 +1,12 @@
+{
+  "language": "fr",
+  "title": "délai avant de libérer la mémoire du modèle de correction",
+  "words": [
+    "mémoire du modèle de correction",
+    "inactivité du modèle de correction"
+  ],
+  "phrases": [
+    "combien de temps le modèle de correction reste en mémoire quand je ne dicte plus",
+    "libérer la mémoire utilisée par la correction de texte sur mon Mac quand je ne dicte pas"
+  ]
+}

@@ -1,0 +1,84 @@
+{
+  "unloadPolishModel.never": {
+    "language": "hi",
+    "title": "कभी नहीं",
+    "words": [
+      "AI Polish कभी अनलोड न करें",
+      "टेक्स्ट सुधार मॉडल हमेशा लोड रहे"
+    ],
+    "phrases": [
+      "टेक्स्ट सुधार मॉडल को हमेशा मेमोरी में रखें"
+    ]
+  },
+  "unloadPolishModel.immediately": {
+    "language": "hi",
+    "title": "तुरंत (लगभग 10 सेकंड)",
+    "words": [
+      "AI Polish 10 सेकंड",
+      "टेक्स्ट सुधार मॉडल दस सेकंड बाद अनलोड"
+    ],
+    "phrases": [
+      "टेक्स्ट सुधार मॉडल के आखिरी इस्तेमाल के लगभग 10 सेकंड बाद उसकी मेमोरी खाली करें"
+    ]
+  },
+  "unloadPolishModel.twoMinutes": {
+    "language": "hi",
+    "title": "2 मिनट बाद",
+    "words": [
+      "AI Polish 2 मिनट",
+      "टेक्स्ट सुधार मॉडल दो मिनट",
+      "AI Polish 120 सेकंड",
+      "AI Polish २ मिनट"
+    ],
+    "phrases": [
+      "2 मिनट तक डिक्टेशन न करने पर टेक्स्ट सुधार मॉडल की मेमोरी खाली करें"
+    ]
+  },
+  "unloadPolishModel.fiveMinutes": {
+    "language": "hi",
+    "title": "5 मिनट बाद",
+    "words": [
+      "AI Polish 5 मिनट",
+      "टेक्स्ट सुधार मॉडल पाँच मिनट",
+      "AI Polish ५ मिनट"
+    ],
+    "phrases": [
+      "5 मिनट तक डिक्टेशन न करने पर टेक्स्ट सुधार मॉडल की मेमोरी खाली करें"
+    ]
+  },
+  "unloadPolishModel.tenMinutes": {
+    "language": "hi",
+    "title": "10 मिनट बाद",
+    "words": [
+      "AI Polish 10 मिनट",
+      "टेक्स्ट सुधार मॉडल दस मिनट",
+      "AI Polish १० मिनट"
+    ],
+    "phrases": [
+      "10 मिनट तक डिक्टेशन न करने पर टेक्स्ट सुधार मॉडल की मेमोरी खाली करें"
+    ]
+  },
+  "unloadPolishModel.fifteenMinutes": {
+    "language": "hi",
+    "title": "15 मिनट बाद",
+    "words": [
+      "AI Polish 15 मिनट",
+      "टेक्स्ट सुधार मॉडल पंद्रह मिनट"
+    ],
+    "phrases": [
+      "15 मिनट तक डिक्टेशन न करने पर टेक्स्ट सुधार मॉडल की मेमोरी खाली करें"
+    ]
+  },
+  "unloadPolishModel.oneHour": {
+    "language": "hi",
+    "title": "1 घंटे बाद",
+    "words": [
+      "AI Polish 1 घंटा",
+      "टेक्स्ट सुधार मॉडल एक घंटा",
+      "AI Polish 60 मिनट"
+    ],
+    "phrases": [
+      "एक घंटे तक डिक्टेशन न करने पर टेक्स्ट सुधार मॉडल की मेमोरी खाली करें"
+    ]
+  }
+}

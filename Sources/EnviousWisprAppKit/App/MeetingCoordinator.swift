@@ -527,18 +527,23 @@ final class MeetingCoordinator {
   /// #4105: a meeting is starting, recording, stopping, or its final pass runs or is draining
   /// the queue. A live words download is refused meanwhile (`MeetingDownloadAdmission`).
   var isMeetingActive: Bool { phase != .idle || hasFinalPassWork }
+  /// #4008 F11: the owner of each meeting's two copies and of every record write.
+  @ObservationIgnored private lazy var persistence = MeetingRecordPersistence(
+    writer: writer,
+    events: .init(
+      published: { [weak self] in self?.publish() },
+      failed: { [weak self] error in
+        self?.deps.log("meeting save failed error=\(type(of: error))")
+        self?.notice = .storageFailed
+      },
+      stillRunning: { [weak self] in self?.deps.log("meeting save still running at its deadline") }
+    ))
   /// Each meeting as last written successfully: what `meetings` and `record(id:)` show, so a
   /// lifecycle step is visible only once it is durable.
-  private var records: [UUID: MeetingRecord] = [:]
+  private var records: [UUID: MeetingRecord] { persistence.records }
   /// Each meeting's latest intended state: what every next change is built on (a pending write
   /// included), so two steps in flight never lose each other's change.
-  private var live: [UUID: MeetingRecord] = [:]
-  /// Per meeting, the number of the latest write asked for, and of the newest one shown.
-  private var writeSequence: [UUID: Int] = [:]
-  private var durableSequence: [UUID: Int] = [:]
-  /// Per meeting, writes asked for and not yet answered, oldest first: what a failed newer
-  /// write rolls the live copy back to, so an earlier change still on its way is kept.
-  private var unansweredWrites: [UUID: [(sequence: Int, record: MeetingRecord)]] = [:]
+  private var live: [UUID: MeetingRecord] { persistence.live }
   /// #4118: each recording meeting's segment list, kept in memory until Stop or quit; while it
   /// exists, every save of that meeting writes only its checkpoint.
   @ObservationIgnored private var segmentSaves: [UUID: MeetingSegmentSaves] = [:]
@@ -917,8 +922,7 @@ final class MeetingCoordinator {
       case .meeting(let record):
         // A meeting started while the listing ran is newer in memory.
         guard live[record.id] == nil else { continue }
-        live[record.id] = record
-        records[record.id] = record
+        persistence.adopt(record)
         loaded.append(record)
       case .newerFormat(let header):
         if !newerFormatMeetings.contains(where: { $0.id == header.id }) {
@@ -1062,7 +1066,10 @@ final class MeetingCoordinator {
     @ObservationIgnored private(set) var deleteAllMarkDeadlinesForTesting: [DispatchTime] = []
     /// Runs after an ordinary write landed and before its answer is applied, so a test can
     /// hold that answer behind later writes in a chosen order (#4102).
-    @ObservationIgnored var writeWillAnswerForTesting: (@MainActor (MeetingRecord) async -> Void)?
+    var writeWillAnswerForTesting: (@MainActor (MeetingRecord) async -> Void)? {
+      get { persistence.writeWillAnswerForTesting }
+      set { persistence.writeWillAnswerForTesting = newValue }
+    }
     /// The live copy and an open deletion, so a test can see a change has reached the
     /// coordinator before it releases a held write (#4102).
     func liveRecordForTesting(_ id: UUID) -> MeetingRecord? { live[id] }
@@ -1183,8 +1190,7 @@ final class MeetingCoordinator {
     }
     // Created durably above. The attempt begins: its facts are frozen here, so a later Start
     // never changes them.
-    live[meetingID] = record
-    records[meetingID] = record
+    persistence.adopt(record)
     openAttempts[meetingID] = AttemptFacts(entryPoint: entryPoint, diskStopped: false)
     if let attempt = record.pendingAttempt, let lookups = liveVocabulary.lookups {
       wordSnapshots[meetingID] = (attempt.attemptID, lookups)
@@ -1422,8 +1428,7 @@ final class MeetingCoordinator {
           endAttempt(current, outcome: .startFailed)
           do {
             try await writer.run { try $0.deleteFolder(meeting: meetingID) }
-            live.removeValue(forKey: meetingID)
-            records.removeValue(forKey: meetingID)
+            persistence.remove(meetingID)
             publish()
           } catch {
             deps.log("meeting start cleanup failed error=\(type(of: error))")
@@ -1550,7 +1555,7 @@ final class MeetingCoordinator {
           record.wasInterrupted = true
           closeOwned.insert(meetingID)
           preserveEditsDuringStop(into: &record)
-          live[meetingID] = record
+          persistence.adoptLive(record)
         }
       }
     }
@@ -2128,8 +2133,7 @@ final class MeetingCoordinator {
       return false
     }
     if onDisk.committedTranscriptGeneration == receipt.candidate.generation {
-      records[meetingID] = onDisk
-      live[meetingID] = onDisk
+      persistence.adoptSettled(onDisk, for: meetingID)
       publish()
       return true
     }
@@ -2685,8 +2689,7 @@ final class MeetingCoordinator {
       unpublishedReceipts.removeValue(forKey: record.id)
       unresolvedReceipts.remove(record.id)
       unknownCommits.remove(record.id)
-      live.removeValue(forKey: record.id)
-      records.removeValue(forKey: record.id)
+      persistence.remove(record.id)
       publish()
       return true
     } catch {
@@ -2800,107 +2803,46 @@ final class MeetingCoordinator {
 
   // MARK: - Persistence and telemetry
 
-  /// Makes `record` the live copy, writes it off the main actor in order, and shows it only
-  /// once the write succeeded. False (and a visible notice) when it could not be saved; the
-  /// live copy then returns to what is on disk, unless a newer change was asked for since.
+  /// Writes `record` through the persistence owner (#4008 F11: it keeps the live and shown
+  /// copies, orders the answers and rolls back a failed write). True when it was saved; false
+  /// (and a visible notice) when it could not be, and the live copy then returns to what is on
+  /// disk, unless a newer change was asked for since.
   @discardableResult
   private func persist(_ record: MeetingRecord) async -> Bool {
     let record = recordingCheckpoint(record)
-    let sequence = beginWrite(record)
-    do {
-      try await writer.save(record)
-      #if DEBUG
-        await writeWillAnswerForTesting?(record)
-      #endif
-      writeSucceeded(record, sequence: sequence)
-      // A deletion mark this write carried is durable now, so the meeting must go. It may be
-      // one it copied from a Delete All mark still on its way that was then withdrawn or failed
-      // (#4102 second pass): left alone, History would hide a meeting whose audio stays, and a
-      // recording one would keep recording, until the next launch. A deletion already running
-      // (its own marking write included) is left to finish.
-      if record.deletionRequested, live[record.id]?.deletionRequested == true,
-        !deleting.contains(record.id), !quitting
-      {
-        let meetingID = record.id
-        Task { [weak self] in _ = await self?.delete(meetingID: meetingID) }
-      }
-      return true
-    } catch {
-      writeFailed(error, record: record, sequence: sequence)
-      return false
+    guard await persistence.save(record) else { return false }
+    // A deletion mark this write carried is durable now, so the meeting must go. It may be
+    // one it copied from a Delete All mark still on its way that was then withdrawn or failed
+    // (#4102 second pass): left alone, History would hide a meeting whose audio stays, and a
+    // recording one would keep recording, until the next launch. A deletion already running
+    // (its own marking write included) is left to finish.
+    if record.deletionRequested, live[record.id]?.deletionRequested == true,
+      !deleting.contains(record.id), !quitting
+    {
+      let meetingID = record.id
+      Task { [weak self] in _ = await self?.delete(meetingID: meetingID) }
     }
+    return true
   }
 
   /// `persist` bounded by `deadline` on the caller's thread, for the quit path, which cannot
-  /// suspend. True only when it landed in time. A write withdrawn before it started counts as
-  /// failed and rolls back. A write still running at the deadline keeps the live copy and
-  /// reports once when it ends: a success is then shown (and `lateSuccess` runs), a failure
-  /// rolls back.
+  /// suspend. See `MeetingRecordPersistence.saveBounded` for the answers.
   @discardableResult
   private func persistBounded(
     _ record: MeetingRecord, until deadline: DispatchTime,
     lateSuccess: (@MainActor () -> Void)? = nil
   ) -> Bool {
-    let record = recordingCheckpoint(record)
-    let sequence = beginWrite(record)
-    let outcome = writer.saveBounded(
-      record, until: deadline,
-      late: lateSettlement(record, sequence: sequence, lateSuccess: lateSuccess))
-    return settle(outcome, record: record, sequence: sequence)
+    persistence.saveBounded(
+      recordingCheckpoint(record), until: deadline, lateSuccess: lateSuccess)
   }
 
-  /// `persistBounded` for Delete All, which suspends instead of blocking (#4102): the same
-  /// deadline, answers and late report.
+  /// `persistBounded` for Delete All, which suspends instead of blocking (#4102).
   private func persistWithin(
     _ record: MeetingRecord, until deadline: DispatchTime,
     lateSuccess: (@MainActor () -> Void)? = nil
   ) async -> Bool {
-    let record = recordingCheckpoint(record)
-    let sequence = beginWrite(record)
-    let outcome = await writer.saveWithin(
-      record, until: deadline,
-      late: lateSettlement(record, sequence: sequence, lateSuccess: lateSuccess))
-    return settle(outcome, record: record, sequence: sequence)
-  }
-
-  /// The report of a bounded write that was still running at its deadline. It may reach the
-  /// main actor before or after the caller's own answer; `settle` leaves a still-running write
-  /// unanswered, so either order settles it once.
-  private func lateSettlement(
-    _ record: MeetingRecord, sequence: Int, lateSuccess: (@MainActor () -> Void)?
-  ) -> @Sendable (Result<Void, Error>) -> Void {
-    { [weak self] result in
-      Task { @MainActor in
-        guard let self else { return }
-        switch result {
-        case .success:
-          self.writeSucceeded(record, sequence: sequence)
-          lateSuccess?()
-        case .failure(let error):
-          self.writeFailed(error, record: record, sequence: sequence)
-        }
-      }
-    }
-  }
-
-  /// A bounded write's answer to its caller: true only when it landed in time.
-  private func settle(
-    _ outcome: MeetingFileWriter.BoundedOutcome, record: MeetingRecord, sequence: Int
-  ) -> Bool {
-    switch outcome {
-    case .finished(.success):
-      writeSucceeded(record, sequence: sequence)
-      return true
-    case .finished(.failure(let error)):
-      writeFailed(error, record: record, sequence: sequence)
-      return false
-    case .withdrawn:
-      writeFailed(MeetingFileWriter.WriterError.withdrawn, record: record, sequence: sequence)
-      return false
-    case .stillRunning:
-      deps.log("meeting save still running at its deadline")
-      return false
-    }
+    await persistence.saveWithin(
+      recordingCheckpoint(record), until: deadline, lateSuccess: lateSuccess)
   }
 
   /// #4118: a meeting still recording is saved with its checkpoint (the newest segment per
@@ -2920,53 +2862,6 @@ final class MeetingCoordinator {
 
   private func discardSegmentSaves(_ meetingID: UUID) {
     _ = segmentSaves.removeValue(forKey: meetingID)?.finish()
-  }
-
-  private func beginWrite(_ record: MeetingRecord) -> Int {
-    live[record.id] = record
-    let sequence = (writeSequence[record.id] ?? 0) + 1
-    writeSequence[record.id] = sequence
-    unansweredWrites[record.id, default: []].append((sequence, record))
-    return sequence
-  }
-
-  /// Settles one write's answer and recomputes the live copy from what is left: the newest
-  /// write still unanswered (its change is still on its way) when it is newer than the newest
-  /// durable success, else that durable success. Run on
-  /// every answer, success or failure, newest or not, so an earlier write that fails after a
-  /// newer one was withdrawn rolls back too. A meeting already removed is not brought back.
-  private func answered(_ meetingID: UUID, sequence: Int) {
-    unansweredWrites[meetingID]?.removeAll { $0.sequence == sequence }
-    if unansweredWrites[meetingID]?.isEmpty == true { unansweredWrites[meetingID] = nil }
-    guard live[meetingID] != nil else { return }
-    // The newer of the two: an unanswered intention older than what is already durable (a
-    // bounded write that succeeded first) must not replace it.
-    if let pending = unansweredWrites[meetingID]?.last,
-      pending.sequence > (durableSequence[meetingID] ?? 0)
-    {
-      live[meetingID] = pending.record
-    } else {
-      live[meetingID] = records[meetingID]
-    }
-  }
-
-  /// Acknowledgements can resume out of order (a bounded write answers on the main actor
-  /// before an earlier async write's continuation runs), so only a write newer than the one
-  /// already shown may replace it. The disk holds the newest anyway (FIFO).
-  private func writeSucceeded(_ record: MeetingRecord, sequence: Int) {
-    // A meeting removed meanwhile (its folder deleted) is not brought back.
-    if live[record.id] != nil, sequence > (durableSequence[record.id] ?? 0) {
-      durableSequence[record.id] = sequence
-      records[record.id] = record
-      publish()
-    }
-    answered(record.id, sequence: sequence)
-  }
-
-  private func writeFailed(_ error: Error, record: MeetingRecord, sequence: Int) {
-    deps.log("meeting save failed error=\(type(of: error))")
-    notice = .storageFailed
-    answered(record.id, sequence: sequence)
   }
 
   private func workChanged() { deps.workChanged() }

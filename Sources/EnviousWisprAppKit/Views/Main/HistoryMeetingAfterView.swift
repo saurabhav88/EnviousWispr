@@ -75,6 +75,8 @@ struct HistoryMeetingAfterView: View {
   @Environment(HistoryPaste.self) private var historyPaste
   @Environment(PreviousApplicationTracker.self) private var previousApplication
   @Environment(HistoryRepolishRunner.self) private var historyRepolish
+  /// #4545: jumps to a note or a cited turn still scroll there, without the glide, under Reduce Motion.
+  @Environment(\.accessibilityReduceMotion) private var reduceMotion
   @Environment(HistoryMenuPresenter.self) private var historyMenu
   @Environment(HistoryAudioExport.self) private var audioExport
   @State private var pagePlayer = MeetingPagePlayer()
@@ -353,7 +355,9 @@ struct HistoryMeetingAfterView: View {
             }
             Task { @MainActor in
               await Task.yield()
-              withAnimation { proxy.scrollTo(request.id, anchor: .center) }
+              withAnimation(reduceMotion ? nil : .default) {
+                proxy.scrollTo(request.id, anchor: .center)
+              }
             }
           }
           .background {
@@ -676,6 +680,8 @@ struct HistoryMeetingAfterView: View {
         // #4724: on the AI summary tab the summary's own line shows the progress.
         writingSummary: !previewing && notesPane.leftPane != .summary
           && (meetings.summaries?.isWriting(meetingID) ?? false),
+        // #4726: a summary queued for a model on this Mac says it waits, not that it writes.
+        summaryWaitsForTurn: meetings.summaries?.waitsForLocalTurn(meetingID) ?? false,
         hasSummary: meetings.documents.summary(meetingID) != nil)
       let writingProvider = meetings.summaries?.writingProvider(for: meetingID)
       let statusLine: String? =
@@ -690,7 +696,7 @@ struct HistoryMeetingAfterView: View {
       if let line = statusLine, state != .summaryReady {
         HStack(spacing: DesignSpacing.sm) {
           switch state {
-          case .writingSummary, .waiting:
+          case .writingSummary, .summaryWaitsForTurn, .waiting:
             ProgressView().controlSize(.small)
           case .summaryReady:
             Image(systemName: "checkmark.circle").foregroundStyle(.stSuccess)
@@ -935,9 +941,7 @@ struct HistoryMeetingAfterView: View {
           let waiting = summaries.waitsForLocalTurn(meetingID)
           InsetNotice(
             verbatim: waiting
-              ? String(
-                localized: "Waiting for your dictation and other meeting work to finish.",
-                comment: "History, a meeting: the summary waits before a model on this Mac is used.")
+              ? P.summaryWaitsForTurnLine
               : first
               ? String(
                 localized: "It shows here when it's ready.",
@@ -1247,7 +1251,10 @@ extension HistoryMeetingAfterView {
                 localized: "Your own notes for this meeting",
                 comment: "History meeting: hover hint on the Your notes tab.")
             case .summary:
-              summaryBusy
+              // #4726: a summary that waits its turn is not being written yet.
+              summaryBusy && meetings.summaries?.waitsForLocalTurn(meetingID) == true
+                ? P.summaryWaitsForTurnLine
+                : summaryBusy
                 ? String(
                   localized: "AI summary, writing a new version",
                   comment:
@@ -1543,7 +1550,9 @@ extension HistoryMeetingAfterView {
     switch target {
     case .turn(let id):
       followState.showTurn(id)
-      withAnimation { proxy.scrollTo(TurnRowKey(turnID: id, occurrence: 0), anchor: .center) }
+      withAnimation(reduceMotion ? nil : .default) {
+        proxy.scrollTo(TurnRowKey(turnID: id, occurrence: 0), anchor: .center)
+      }
     case .note(let id):
       // Cloud review P2: in the stacked layout the notes and transcript share one scroll view,
       // so following playback would scroll the cited note out of view.

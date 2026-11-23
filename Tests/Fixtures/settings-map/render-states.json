@@ -41,7 +41,8 @@
    "dictationOutputLanguage",
    "enableAIPolish",
    "localModel.download",
-   "section.aiPolishModel"
+   "section.aiPolishModel",
+   "unloadPolishModel"
   ]
  },
  "aiPolish.egOne.downloading": {
@@ -55,7 +56,8 @@
    "dictationOutputLanguage",
    "enableAIPolish",
    "localModel.cancel",
-   "section.aiPolishModel"
+   "section.aiPolishModel",
+   "unloadPolishModel"
   ]
  },
  "aiPolish.egOne.failed": {
@@ -69,7 +71,8 @@
    "dictationOutputLanguage",
    "enableAIPolish",
    "localModel.tryAgain",
-   "section.aiPolishModel"
+   "section.aiPolishModel",
+   "unloadPolishModel"
   ]
  },
  "aiPolish.egOne.installed": {
@@ -84,7 +87,8 @@
    "dictationOutputLanguage",
    "enableAIPolish",
    "localModel.testLive",
-   "section.aiPolishModel"
+   "section.aiPolishModel",
+   "unloadPolishModel"
   ]
  },
  "aiPolish.egOne.paused": {
@@ -98,7 +102,8 @@
    "dictationOutputLanguage",
    "enableAIPolish",
    "localModel.resume",
-   "section.aiPolishModel"
+   "section.aiPolishModel",
+   "unloadPolishModel"
   ]
  },
  "aiPolish.gemini": {
@@ -290,7 +295,8 @@
    "s1Context",
    "s1Structure",
    "s1Tone",
-   "section.aiPolishModel"
+   "section.aiPolishModel",
+   "unloadPolishModel"
   ]
  },
  "appSettings.appearance": {

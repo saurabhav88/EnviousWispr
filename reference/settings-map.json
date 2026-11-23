@@ -1,14 +1,14 @@
 {
   "counts" : {
-    "nodes" : 328,
-    "searchable" : 299,
-    "vocabularyBlocks" : 9568
+    "nodes" : 336,
+    "searchable" : 307,
+    "vocabularyBlocks" : 9824
   },
   "fingerprints" : {
-    "mapSHA256" : "b0a757e8b509c67ed717e19e702e8e03e8dac37a64d2e148c6a65f0bf3253ef3",
-    "uiCatalogSHA256" : "25b04f92c8ec93360db5a968e2752df06ce4f1b508aeaf785eb1763f565f1155",
+    "mapSHA256" : "63f6ecabfce1ce90fea97a979e94b9a257196f62c689ceb5d49a21ba40d3e504",
+    "uiCatalogSHA256" : "c867df4403089f1beafa13342b4ef1d69ed37d45cb226418964e8b2aa7cd8392",
     "vocabularyCanonicalization" : "length-prefixed-v1",
-    "vocabularySHA256" : "21b7283f5e6f0349ca95375366d35ca8dc38128d47c96acb068fb81b9ee943c1"
+    "vocabularySHA256" : "be8c74f8bb8765c6c8625fa7f9c2ff2e84ebe08aae4fd1ca66ee38af808ee608"
   },
   "interfaceLanguages" : [
     "en",
@@ -54515,6 +54515,403 @@
         "page.aiPolish",
         "section.aiPolishModel",
         "aiPolishProvider",
+        "aiPolish.providerSection"
+      ],
+      "declaredIn" : "Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift",
+      "description" : {
+        "catalog" : "Sources/EnviousWispr/Resources/Localizable.xcstrings",
+        "de" : "Gibt den Speicher des Polish-Modells frei, wenn du nicht diktierst.",
+        "en" : "Frees the polish model's memory when you are not dictating.",
+        "es" : "Libera la memoria del modelo de Pulido cuando no estás dictando.",
+        "fr" : "Libère la mémoire du modèle de retouche quand vous ne dictez pas.",
+        "key" : "Frees the polish model's memory when you are not dictating.",
+        "source" : "resource",
+        "table" : "Localizable"
+      },
+      "destination" : {
+        "page" : "aiPolish"
+      },
+      "dictionaryTab" : null,
+      "fallbacks" : [
+        "aiPolishProvider",
+        "enableAIPolish"
+      ],
+      "id" : "unloadPolishModel",
+      "kind" : "setting",
+      "parent" : "aiPolish.providerSection",
+      "searchable" : true,
+      "structure" : "item",
+      "target" : "unloadPolishModel",
+      "title" : {
+        "catalog" : "Sources/EnviousWispr/Resources/Localizable.xcstrings",
+        "de" : "Polish-Modell entladen nach",
+        "en" : "Unload polish model after",
+        "es" : "Quitar modelo de Pulido de la RAM tras",
+        "fr" : "Décharger le modèle de retouche après",
+        "key" : "Unload polish model after",
+        "source" : "resource",
+        "table" : "Localizable"
+      },
+      "visibility" : "providerSelected",
+      "vocabulary" : {
+        "ar" : {
+          "phrases" : [
+            "كيف أخلي نموذج تحسين النص يحرر الرام لما أوقف الإملاء؟"
+          ],
+          "title" : "إخراج نموذج تحسين النص من الذاكرة بعد",
+          "words" : [
+            "تحرير ذاكرة نموذج تحسين النص",
+            "مهلة خمول نموذج تحسين النص"
+          ]
+        },
+        "bg" : {
+          "phrases" : [
+            "колко време моделът за подобряване на текста да остава в паметта, след като спра да диктувам"
+          ],
+          "title" : "освобождаване на модела за AI Polish от паметта след",
+          "words" : [
+            "памет за AI Polish"
+          ]
+        },
+        "cs" : {
+          "phrases" : [
+            "jak dlouho zůstane model pro úpravu textu v paměti, když přestanu diktovat"
+          ],
+          "title" : "uvolnit model pro úpravu textu z paměti po",
+          "words" : [
+            "uvolnění paměti AI Polish",
+            "EG-1 v paměti",
+            "S1-mini v paměti"
+          ]
+        },
+        "da" : {
+          "phrases" : [
+            "hvor længe skal modellen til tekstforbedring blive i hukommelsen",
+            "spar RAM, når den lokale tekstforbedring ikke er i brug"
+          ],
+          "title" : "fjern tekstforbedringsmodellen fra hukommelsen efter",
+          "words" : [
+            "RAM til tekstforbedring",
+            "EG-1 hukommelse",
+            "S1-mini hukommelse"
+          ]
+        },
+        "de" : {
+          "phrases" : [
+            "wie lange bleibt das Modell für die KI-Nachbearbeitung nach dem Diktieren im Arbeitsspeicher",
+            "stell ein, wann EG-1 oder S1-mini bei Nichtbenutzung den Arbeitsspeicher freigibt"
+          ],
+          "words" : [
+            "Nachbearbeitungsmodell entladen",
+            "Leerlaufzeit für das Nachbearbeitungsmodell"
+          ]
+        },
+        "el" : {
+          "phrases" : [
+            "μετά από πόση ώρα χωρίς υπαγόρευση βγαίνει από τη μνήμη το μοντέλο βελτίωσης κειμένου",
+            "πώς να ελευθερώνεται η μνήμη του μοντέλου βελτίωσης κειμένου μόλις σταματήσω να υπαγορεύω"
+          ],
+          "title" : "αποδέσμευση του μοντέλου βελτίωσης κειμένου από τη μνήμη μετά από",
+          "words" : [
+            "μνήμη μοντέλου βελτίωσης",
+            "αδράνεια μοντέλου βελτίωσης",
+            "μνήμη EG-1",
+            "μνήμη S1-mini"
+          ]
+        },
+        "en" : {
+          "phrases" : [
+            "free up ram used by ai polish when i stop dictating",
+            "how long does the local polish model stay in memory"
+          ],
+          "words" : [
+            "polish model timeout",
+            "unload polish model"
+          ]
+        },
+        "es" : {
+          "phrases" : [
+            "cuándo se libera la memoria del modelo que corrige el texto si no dicto",
+            "cuánto tiempo sigue cargado el modelo de corrección después de dejar de dictar"
+          ],
+          "words" : [
+            "memoria del modelo de corrección",
+            "inactividad del modelo de corrección"
+          ]
+        },
+        "et" : {
+          "phrases" : [
+            "kui kaua viimistlusmudel pärast dikteerimist mälus püsib",
+            "vabasta viimistlusmudel mälust, kui ma ei dikteeri"
+          ],
+          "title" : "viimistlusmudeli mälust vabastamise aeg",
+          "words" : [
+            "viimistlusmudeli mälukasutus",
+            "viimistlusmudeli mälust vabastamine"
+          ]
+        },
+        "fi" : {
+          "phrases" : [
+            "kuinka kauan viimeistelymalli pysyy muistissa sanelun jälkeen"
+          ],
+          "title" : "viive ennen viimeistelymallin poistamista muistista",
+          "words" : [
+            "viimeistelymallin muistin vapautus"
+          ]
+        },
+        "fr" : {
+          "phrases" : [
+            "combien de temps le modèle de correction reste en mémoire quand je ne dicte plus",
+            "libérer la mémoire utilisée par la correction de texte sur mon Mac quand je ne dicte pas"
+          ],
+          "words" : [
+            "mémoire du modèle de correction",
+            "inactivité du modèle de correction"
+          ]
+        },
+        "hi" : {
+          "phrases" : [
+            "डिक्टेशन न करने पर टेक्स्ट सुधार मॉडल कितनी देर मेमोरी में रहे",
+            "EG-1 या S1-mini की मेमोरी कितनी देर बाद खाली होगी"
+          ],
+          "title" : "टेक्स्ट सुधार मॉडल को मेमोरी से कब हटाएँ",
+          "words" : [
+            "टेक्स्ट सुधार मॉडल अनलोड",
+            "पोलिश मॉडल की रैम"
+          ]
+        },
+        "hr" : {
+          "phrases" : [
+            "koliko dugo model za doradu teksta ostaje u memoriji kad ne diktiram",
+            "oslobodi RAM koji koristi model za doradu teksta"
+          ],
+          "title" : "kada osloboditi memoriju modela za doradu teksta",
+          "words" : [
+            "memorija modela za doradu"
+          ]
+        },
+        "hu" : {
+          "phrases" : [
+            "meddig maradjon a szövegjavító modell a memóriában, ha nem diktálok"
+          ],
+          "title" : "szövegjavító modell eltávolítása a memóriából tétlenség után",
+          "words" : [
+            "szövegjavító modell memóriája",
+            "EG-1 memóriája",
+            "S1-mini memóriája"
+          ]
+        },
+        "it" : {
+          "phrases" : [
+            "dopo quanto si libera la memoria del modello locale che corregge il testo",
+            "libera la RAM di EG-1 o S1-mini quando non sto dettando"
+          ],
+          "title" : "libera la memoria del modello di correzione dopo",
+          "words" : [
+            "RAM correzione",
+            "inattività EG-1",
+            "inattività S1-mini"
+          ]
+        },
+        "ja" : {
+          "phrases" : [
+            "音声入力をしばらく使わないときに文章整形モデルのメモリを解放したい",
+            "文章整形モデルをメモリに残す時間を変えたい"
+          ],
+          "title" : "文章整形モデルのメモリを解放するまでの時間",
+          "words" : [
+            "文章整形モデルのアンロード",
+            "EG-1のメモリ解放",
+            "S1-miniのメモリ解放"
+          ]
+        },
+        "ko" : {
+          "phrases" : [
+            "받아쓰기 안 할 때 다듬기 모델 메모리는 언제 비워지나요",
+            "다듬기 모델을 메모리에 얼마나 오래 둘지 설정"
+          ],
+          "title" : "텍스트 다듬기 모델 메모리 해제 시간",
+          "words" : [
+            "다듬기 모델 언로드"
+          ]
+        },
+        "lt" : {
+          "phrases" : [
+            "kiek laiko laikyti teksto tvarkymo modelį atmintyje, kai nediktuoju",
+            "kada atlaisvinama teksto tvarkymo modelio naudojama atmintis"
+          ],
+          "title" : "kada pašalinti teksto tvarkymo modelį iš atminties",
+          "words" : [
+            "EG-1 atmintis",
+            "S1-mini atmintis"
+          ]
+        },
+        "lv" : {
+          "phrases" : [
+            "atbrīvot teksta uzlabošanas modeļa atmiņu, kad nediktēju",
+            "cik ilgi teksta uzlabošanas modelis paliek atmiņā"
+          ],
+          "title" : "atbrīvot teksta uzlabošanas modeļa atmiņu pēc",
+          "words" : [
+            "EG-1 atmiņa",
+            "S1-mini atmiņa"
+          ]
+        },
+        "mt" : {
+          "phrases" : [
+            "kemm idum il-mudell tal-irfinar fil-memorja wara li nieqaf niddetta",
+            "illibera l-memorja li juża l-mudell li jirfina t-test meta ma nkunx qed niddetta"
+          ],
+          "title" : "neħħi l-mudell tal-irfinar mill-memorja wara",
+          "words" : [
+            "memorja tal-irfinar"
+          ]
+        },
+        "nl" : {
+          "phrases" : [
+            "hoelang blijft het opschoonmodel in het geheugen",
+            "geheugen vrijmaken als het opschoonmodel niet wordt gebruikt"
+          ],
+          "title" : "opschoonmodel uit het geheugen halen na",
+          "words" : [
+            "geheugen opschoonmodel",
+            "EG-1 uit geheugen",
+            "S1-mini uit geheugen"
+          ]
+        },
+        "pl" : {
+          "phrases" : [
+            "po jakim czasie bez dyktowania model poprawiania tekstu zwalnia pamięć",
+            "zwalniaj pamięć modelu korekty od razu po dyktowaniu"
+          ],
+          "title" : "czas do zwolnienia pamięci modelu korekty tekstu",
+          "words" : [
+            "pamięć modelu korekty",
+            "pamięć EG-1",
+            "pamięć S1-mini"
+          ]
+        },
+        "pt" : {
+          "phrases" : [
+            "quanto tempo o modelo de revisão de texto fica na memória",
+            "liberar a memória da revisão de texto quando paro de ditar"
+          ],
+          "title" : "liberar o modelo de revisão de texto da memória após",
+          "words" : [
+            "ram da revisão de texto",
+            "memória do EG-1",
+            "memória do S1-mini"
+          ]
+        },
+        "ro" : {
+          "phrases" : [
+            "după cât timp se eliberează memoria modelului de corectare dacă nu mai dictez",
+            "cum păstrez modelul de corectare mereu în memorie"
+          ],
+          "title" : "scoate modelul de corectare din memorie după",
+          "words" : [
+            "memorie EG-1",
+            "memorie S1-mini"
+          ]
+        },
+        "ru" : {
+          "phrases" : [
+            "через сколько модель правки текста выгружается из памяти, если я не диктую",
+            "как освободить память, занятую моделью правки текста"
+          ],
+          "title" : "время до выгрузки модели правки текста",
+          "words" : [
+            "выгрузка модели правки текста",
+            "выгрузка EG-1",
+            "выгрузка S1-mini"
+          ]
+        },
+        "sk" : {
+          "phrases" : [
+            "ako dlho zostane model na úpravu textu v pamäti, keď prestanem diktovať"
+          ],
+          "title" : "uvoľniť model na úpravu textu z pamäte po",
+          "words" : [
+            "EG-1 v pamäti",
+            "S1-mini v pamäti"
+          ]
+        },
+        "sl" : {
+          "phrases" : [
+            "kdaj se sprosti pomnilnik modela za izboljšanje besedila",
+            "koliko časa po nareku ostane model za izboljšanje besedila v pomnilniku"
+          ],
+          "title" : "sprosti pomnilnik modela za izboljšanje besedila po",
+          "words" : [
+            "pomnilnik EG-1",
+            "pomnilnik S1-mini"
+          ]
+        },
+        "sv" : {
+          "phrases" : [
+            "hur länge ligger modellen för textbearbetning kvar i minnet",
+            "frigör minnet som modellen för textbearbetning använder när jag inte dikterar"
+          ],
+          "title" : "frigör textbearbetningsmodellens minne efter",
+          "words" : [
+            "minne för textbearbetning",
+            "frigör minne för EG-1",
+            "frigör minne för S1-mini"
+          ]
+        },
+        "tr" : {
+          "phrases" : [
+            "dikte yapmadığımda metin düzenleme modeli bellekte ne kadar kalsın",
+            "yerel metin düzenleme modeli boşta kalınca ne zaman bellekten çıkarılsın"
+          ],
+          "title" : "metin düzenleme modelini bellekten çıkarma süresi",
+          "words" : [
+
+          ]
+        },
+        "uk" : {
+          "phrases" : [
+            "коли вивантажувати модель редагування тексту з пам’яті",
+            "через який час без диктування AI Polish звільняє пам’ять"
+          ],
+          "title" : "вивантажувати модель редагування тексту через",
+          "words" : [
+            "вивантаження EG-1",
+            "вивантаження S1-mini"
+          ]
+        },
+        "vi" : {
+          "phrases" : [
+            "giải phóng bộ nhớ của mô hình chỉnh văn bản khi không đọc chính tả",
+            "giữ mô hình chỉnh văn bản trong bộ nhớ bao lâu khi không dùng"
+          ],
+          "title" : "giải phóng bộ nhớ của mô hình chỉnh văn bản sau",
+          "words" : [
+            "giải phóng RAM của AI chỉnh văn bản",
+            "giải phóng RAM EG-1",
+            "giải phóng RAM S1-mini"
+          ]
+        },
+        "zh" : {
+          "phrases" : [
+            "本地润色模型多久不用会释放内存",
+            "不听写时润色模型在内存里保留多久"
+          ],
+          "title" : "润色模型闲置多久后释放内存",
+          "words" : [
+            "润色模型内存",
+            "润色模型闲置时间",
+            "卸载润色模型"
+          ]
+        }
+      }
+    },
+    {
+      "context" : [
+        "window.settings",
+        "page.aiPolish",
+        "section.aiPolishModel",
+        "aiPolishProvider",
         "aiPolishProvider.appleIntelligence"
       ],
       "declaredIn" : "Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift",
@@ -96400,6 +96797,2539 @@
           "words" : [
             "1小时释放",
             "60分钟释放"
+          ]
+        }
+      }
+    },
+    {
+      "context" : [
+        "window.settings",
+        "page.aiPolish",
+        "section.aiPolishModel",
+        "aiPolishProvider",
+        "aiPolish.providerSection",
+        "unloadPolishModel"
+      ],
+      "declaredIn" : "Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift",
+      "description" : null,
+      "destination" : {
+        "page" : "aiPolish"
+      },
+      "dictionaryTab" : null,
+      "fallbacks" : [
+        "aiPolishProvider",
+        "enableAIPolish"
+      ],
+      "id" : "unloadPolishModel.never",
+      "kind" : "choice",
+      "parent" : "unloadPolishModel",
+      "searchable" : true,
+      "structure" : "item",
+      "target" : "unloadPolishModel",
+      "title" : {
+        "catalog" : "Sources/EnviousWispr/Resources/Localizable.xcstrings",
+        "de" : "Nie",
+        "en" : "Never",
+        "es" : "Nunca",
+        "fr" : "Jamais",
+        "key" : "Never",
+        "source" : "resource",
+        "table" : "Localizable"
+      },
+      "visibility" : "providerSelected",
+      "vocabulary" : {
+        "ar" : {
+          "phrases" : [
+            "خلي نموذج تحسين النص في الذاكرة حتى لما أوقف الإملاء"
+          ],
+          "title" : "أبدًا",
+          "words" : [
+            "إبقاء نموذج تحسين النص في الذاكرة",
+            "عدم تفريغ نموذج التنقيح"
+          ]
+        },
+        "bg" : {
+          "phrases" : [
+            "моделът за подобряване на текста да остава зареден в паметта и когато не диктувам"
+          ],
+          "title" : "никога",
+          "words" : [
+            "AI Polish винаги в паметта"
+          ]
+        },
+        "cs" : {
+          "phrases" : [
+            "nechat model pro úpravu textu stále v paměti"
+          ],
+          "title" : "nikdy",
+          "words" : [
+            "AI Polish pořád v paměti",
+            "model pro úpravu textu stále načtený"
+          ]
+        },
+        "da" : {
+          "phrases" : [
+            "behold modellen til tekstforbedring i hukommelsen, også når jeg ikke dikterer"
+          ],
+          "title" : "aldrig",
+          "words" : [
+            "tekstforbedringsmodellen altid indlæst",
+            "behold AI Polish i RAM"
+          ]
+        },
+        "de" : {
+          "phrases" : [
+            "das Nachbearbeitungsmodell auch in Diktierpausen im Arbeitsspeicher behalten",
+            "das Modell für die KI-Nachbearbeitung dauerhaft geladen lassen"
+          ],
+          "words" : [
+            "Nachbearbeitungsmodell nie entladen",
+            "AI Polish dauerhaft geladen"
+          ]
+        },
+        "el" : {
+          "phrases" : [
+            "να μένει το μοντέλο βελτίωσης κειμένου στη μνήμη κι όταν δεν υπαγορεύω"
+          ],
+          "title" : "ποτέ",
+          "words" : [
+            "μοντέλο βελτίωσης κειμένου πάντα φορτωμένο",
+            "AI Polish πάντα στη μνήμη"
+          ]
+        },
+        "en" : {
+          "phrases" : [
+            "keep the polish model loaded when i'm not dictating",
+            "don't unload the polish model after dictation"
+          ],
+          "words" : [
+            "always loaded",
+            "keep in memory",
+            "stay in ram"
+          ]
+        },
+        "es" : {
+          "phrases" : [
+            "mantener el modelo de corrección en memoria aunque no esté dictando"
+          ],
+          "words" : [
+            "modelo de corrección siempre cargado"
+          ]
+        },
+        "et" : {
+          "phrases" : [
+            "hoia viimistlusmudel mälus ka siis, kui ma ei dikteeri"
+          ],
+          "title" : "mitte kunagi",
+          "words" : [
+            "viimistlusmudel alati mälus"
+          ]
+        },
+        "fi" : {
+          "phrases" : [
+            "pidä tekstin viimeistelymalli muistissa sanelun jälkeenkin"
+          ],
+          "title" : "ei koskaan",
+          "words" : [
+            "viimeistelymalli aina muistissa",
+            "pidä viimeistelymalli ladattuna"
+          ]
+        },
+        "fr" : {
+          "phrases" : [
+            "garder le modèle de correction de texte en mémoire même quand je ne dicte pas"
+          ],
+          "words" : [
+            "jamais",
+            "modèle de correction toujours en mémoire",
+            "ne jamais décharger le modèle de correction"
+          ]
+        },
+        "hi" : {
+          "phrases" : [
+            "टेक्स्ट सुधार मॉडल को हमेशा मेमोरी में रखें"
+          ],
+          "title" : "कभी नहीं",
+          "words" : [
+            "AI Polish कभी अनलोड न करें",
+            "टेक्स्ट सुधार मॉडल हमेशा लोड रहे"
+          ]
+        },
+        "hr" : {
+          "phrases" : [
+            "neka model za doradu teksta ostane u memoriji i kad ne diktiram"
+          ],
+          "title" : "nikad",
+          "words" : [
+            "model za doradu stalno učitan"
+          ]
+        },
+        "hu" : {
+          "phrases" : [
+            "maradjon a szövegjavító modell a memóriában akkor is, ha nem diktálok"
+          ],
+          "title" : "soha",
+          "words" : [
+            "szövegjavító modell mindig betöltve",
+            "AI Polish modell a memóriában"
+          ]
+        },
+        "it" : {
+          "phrases" : [
+            "tieni sempre in memoria il modello di correzione del testo, anche quando non detto"
+          ],
+          "title" : "mai",
+          "words" : [
+            "AI Polish sempre in memoria",
+            "modello di correzione sempre caricato"
+          ]
+        },
+        "ja" : {
+          "phrases" : [
+            "音声入力が終わっても文章整形モデルをずっとメモリに残したい"
+          ],
+          "title" : "解放しない",
+          "words" : [
+            "文章整形モデルの常駐",
+            "文章整形 メモリ解放なし"
+          ]
+        },
+        "ko" : {
+          "phrases" : [
+            "받아쓰기를 안 할 때도 텍스트 다듬기 모델을 메모리에 계속 두기"
+          ],
+          "title" : "메모리에 유지",
+          "words" : [
+            "다듬기 모델 해제 안 함",
+            "AI Polish 모델 계속 유지"
+          ]
+        },
+        "lt" : {
+          "phrases" : [
+            "visada laikyti teksto tvarkymo modelį atmintyje"
+          ],
+          "title" : "niekada",
+          "words" : [
+            "teksto tvarkymo modelis visada atmintyje"
+          ]
+        },
+        "lv" : {
+          "phrases" : [
+            "paturēt teksta uzlabošanas modeli atmiņā arī tad, kad nediktēju"
+          ],
+          "title" : "nekad",
+          "words" : [
+            "teksta uzlabošanas modelis vienmēr atmiņā",
+            "neizlādēt teksta uzlabošanas modeli"
+          ]
+        },
+        "mt" : {
+          "phrases" : [
+            "żomm il-mudell li jtejjeb it-test fil-memorja anki meta ma nkunx qed niddetta"
+          ],
+          "title" : "qatt",
+          "words" : [
+            "żomm il-mudell tal-irfinar fil-memorja"
+          ]
+        },
+        "nl" : {
+          "phrases" : [
+            "laat het opschoonmodel altijd in het geheugen staan"
+          ],
+          "title" : "nooit",
+          "words" : [
+            "opschoonmodel altijd geladen",
+            "AI Polish in het geheugen houden"
+          ]
+        },
+        "pl" : {
+          "phrases" : [
+            "zawsze trzymaj model korekty tekstu w pamięci, także między dyktowaniami"
+          ],
+          "title" : "nigdy",
+          "words" : [
+            "model korekty zawsze w pamięci",
+            "stale załadowany model korekty"
+          ]
+        },
+        "pt" : {
+          "phrases" : [
+            "manter o modelo de revisão de texto sempre carregado na memória"
+          ],
+          "title" : "nunca",
+          "words" : [
+            "revisão de texto sempre na memória",
+            "modelo do AI Polish sempre carregado"
+          ]
+        },
+        "ro" : {
+          "phrases" : [
+            "modelul de îmbunătățire a textului să rămână în memorie și când nu dictez"
+          ],
+          "title" : "niciodată",
+          "words" : [
+            "AI Polish mereu în memorie",
+            "model de corectare mereu încărcat"
+          ]
+        },
+        "ru" : {
+          "phrases" : [
+            "никогда не выгружать модель правки текста",
+            "всегда держать модель правки текста в памяти"
+          ],
+          "title" : "никогда",
+          "words" : [
+            "правка текста без выгрузки",
+            "AI Polish всегда в памяти"
+          ]
+        },
+        "sk" : {
+          "phrases" : [
+            "nechať model na úpravu textu stále načítaný v pamäti"
+          ],
+          "title" : "nikdy",
+          "words" : [
+            "AI Polish stále v pamäti",
+            "ponechať model na úpravu textu v pamäti"
+          ]
+        },
+        "sl" : {
+          "phrases" : [
+            "naj model za izboljšanje besedila ostane v pomnilniku tudi, ko ne narekujem"
+          ],
+          "title" : "nikoli",
+          "words" : [
+            "AI Polish nikoli",
+            "model za izboljšanje besedila vedno naložen"
+          ]
+        },
+        "sv" : {
+          "phrases" : [
+            "låt modellen för textförbättring ligga kvar i minnet när jag inte dikterar"
+          ],
+          "title" : "aldrig",
+          "words" : [
+            "behåll AI Polish i minnet",
+            "alltid inläst modell för textbearbetning"
+          ]
+        },
+        "tr" : {
+          "phrases" : [
+            "metin düzenleme modeli kullanılmadığında da bellekte kalsın"
+          ],
+          "title" : "hiçbir zaman",
+          "words" : [
+            "düzenleme modeli hep yüklü",
+            "AI Polish modeli bellekte kalsın"
+          ]
+        },
+        "uk" : {
+          "phrases" : [
+            "завжди тримати модель редагування тексту завантаженою в пам’яті"
+          ],
+          "title" : "ніколи",
+          "words" : [
+            "ніколи не вивантажувати AI Polish",
+            "модель редагування завжди в пам’яті"
+          ]
+        },
+        "vi" : {
+          "phrases" : [
+            "luôn giữ mô hình chỉnh văn bản trong bộ nhớ, kể cả khi không dùng đến"
+          ],
+          "title" : "không bao giờ",
+          "words" : [
+            "giữ mô hình AI Polish trong RAM"
+          ]
+        },
+        "zh" : {
+          "phrases" : [
+            "停止听写后也把润色模型留在内存里"
+          ],
+          "title" : "从不卸载",
+          "words" : [
+            "润色模型常驻内存",
+            "一直加载润色模型",
+            "永不卸载润色模型"
+          ]
+        }
+      }
+    },
+    {
+      "context" : [
+        "window.settings",
+        "page.aiPolish",
+        "section.aiPolishModel",
+        "aiPolishProvider",
+        "aiPolish.providerSection",
+        "unloadPolishModel"
+      ],
+      "declaredIn" : "Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift",
+      "description" : null,
+      "destination" : {
+        "page" : "aiPolish"
+      },
+      "dictionaryTab" : null,
+      "fallbacks" : [
+        "aiPolishProvider",
+        "enableAIPolish"
+      ],
+      "id" : "unloadPolishModel.immediately",
+      "kind" : "choice",
+      "parent" : "unloadPolishModel",
+      "searchable" : true,
+      "structure" : "item",
+      "target" : "unloadPolishModel",
+      "title" : {
+        "catalog" : "Sources/EnviousWispr/Resources/Localizable.xcstrings",
+        "de" : "Sofort",
+        "en" : "Immediately",
+        "es" : "Inmediatamente",
+        "fr" : "Immédiatement",
+        "key" : "Immediately",
+        "source" : "resource",
+        "table" : "Localizable"
+      },
+      "visibility" : "providerSelected",
+      "vocabulary" : {
+        "ar" : {
+          "phrases" : [
+            "حرّر ذاكرة نموذج تحسين النص بعد حوالي ١٠ ثوانٍ من آخر استخدام له"
+          ],
+          "title" : "فورًا (بعد نحو ١٠ ثوانٍ)",
+          "words" : [
+            "تفريغ نموذج تحسين النص بعد حوالي 10 ثواني"
+          ]
+        },
+        "bg" : {
+          "phrases" : [
+            "освободи модела за подобряване на текста от паметта около 10 секунди след края на диктовката"
+          ],
+          "title" : "веднага (около 10 секунди)",
+          "words" : [
+            "10 сек",
+            "AI Polish 10 секунди"
+          ]
+        },
+        "cs" : {
+          "phrases" : [
+            "uvolnit model pro úpravu textu z paměti asi 10 sekund po posledním použití"
+          ],
+          "title" : "ihned (asi po 10 sekundách)",
+          "words" : [
+            "AI Polish hned",
+            "AI Polish 10 sekund"
+          ]
+        },
+        "da" : {
+          "phrases" : [
+            "frigør den RAM, tekstforbedringsmodellen bruger, ca. 10 sekunder efter sidste brug"
+          ],
+          "title" : "straks (ca. 10 sekunder)",
+          "words" : [
+            "tekstforbedring 10 sek",
+            "AI Polish ca. 10 sekunder"
+          ]
+        },
+        "de" : {
+          "phrases" : [
+            "das Nachbearbeitungsmodell etwa 10 Sekunden nach der letzten Nutzung entladen",
+            "den Arbeitsspeicher des Modells für die KI-Nachbearbeitung nach rund zehn Sekunden Leerlauf freigeben"
+          ],
+          "words" : [
+            "AI Polish ca. 10 Sek.",
+            "Nachbearbeitungsmodell kurz nach Gebrauch entladen"
+          ]
+        },
+        "el" : {
+          "phrases" : [
+            "να βγαίνει το μοντέλο βελτίωσης κειμένου από τη μνήμη περίπου 10 δευτερόλεπτα μετά την τελευταία χρήση του"
+          ],
+          "title" : "αμέσως (περίπου 10 δευτερόλεπτα)",
+          "words" : [
+            "βελτίωση κειμένου 10 δευτερόλεπτα",
+            "AI Polish άμεση αποδέσμευση"
+          ]
+        },
+        "en" : {
+          "phrases" : [
+            "unload the polish model after about 10 seconds of inactivity",
+            "free up memory used by AI Polish about 10 seconds after i stop dictating"
+          ],
+          "words" : [
+            "10 seconds",
+            "10 sec"
+          ]
+        },
+        "es" : {
+          "phrases" : [
+            "liberar la memoria del modelo de corrección unos 10 segundos después de dejar de dictar"
+          ],
+          "words" : [
+            "enseguida",
+            "unos 10 segundos",
+            "modelo de corrección tras 10 segundos"
+          ]
+        },
+        "et" : {
+          "phrases" : [
+            "vabasta viimistlusmudel mälust umbes 10 sekundit pärast viimast kasutust"
+          ],
+          "title" : "kohe (umbes 10 sekundit)",
+          "words" : [
+            "10 s",
+            "viimistlusmudel 10 sekundit"
+          ]
+        },
+        "fi" : {
+          "phrases" : [
+            "vapauta viimeistelymallin käyttämä muisti noin 10 sekuntia viimeisen käyttökerran jälkeen"
+          ],
+          "title" : "heti (noin 10 sekuntia)",
+          "words" : [
+            "viimeistelymalli 10 s",
+            "viimeistelymalli 10 sekuntia"
+          ]
+        },
+        "fr" : {
+          "phrases" : [
+            "libérer la mémoire du modèle de correction de texte environ 10 secondes après sa dernière utilisation"
+          ],
+          "words" : [
+            "10 secondes",
+            "correction de texte 10 s",
+            "déchargement rapide du modèle de correction"
+          ]
+        },
+        "hi" : {
+          "phrases" : [
+            "टेक्स्ट सुधार मॉडल के आखिरी इस्तेमाल के लगभग 10 सेकंड बाद उसकी मेमोरी खाली करें"
+          ],
+          "title" : "तुरंत (लगभग 10 सेकंड)",
+          "words" : [
+            "AI Polish 10 सेकंड",
+            "टेक्स्ट सुधार मॉडल दस सेकंड बाद अनलोड"
+          ]
+        },
+        "hr" : {
+          "phrases" : [
+            "oslobodi memoriju modela za doradu teksta otprilike 10 sekundi nakon zadnje upotrebe"
+          ],
+          "title" : "odmah (oko 10 sekundi)",
+          "words" : [
+            "dorada teksta 10 sekundi",
+            "AI Polish odmah"
+          ]
+        },
+        "hu" : {
+          "phrases" : [
+            "az utolsó használat után kb. 10 másodperccel szabaduljon fel a szövegjavító modell által foglalt memória"
+          ],
+          "title" : "azonnal (kb. 10 másodperc)",
+          "words" : [
+            "szövegjavító modell 10 mp",
+            "AI Polish azonnal"
+          ]
+        },
+        "it" : {
+          "phrases" : [
+            "libera la RAM del modello di correzione del testo circa 10 secondi dopo l'ultimo utilizzo"
+          ],
+          "title" : "subito (circa 10 secondi)",
+          "words" : [
+            "AI Polish subito",
+            "AI Polish 10 secondi"
+          ]
+        },
+        "ja" : {
+          "phrases" : [
+            "文章整形モデルを最後に使ってから約10秒後にメモリを解放したい"
+          ],
+          "title" : "すぐに（約10秒後）",
+          "words" : [
+            "文章整形 すぐに解放",
+            "文章整形 10秒"
+          ]
+        },
+        "ko" : {
+          "phrases" : [
+            "텍스트 다듬기 모델을 마지막으로 사용한 뒤 약 10초 후에 메모리에서 해제"
+          ],
+          "title" : "즉시(약 10초 후)",
+          "words" : [
+            "다듬기 모델 10초",
+            "AI Polish 즉시 해제"
+          ]
+        },
+        "lt" : {
+          "phrases" : [
+            "pašalinti teksto tvarkymo modelį iš atminties praėjus maždaug 10 sekundžių nuo paskutinio naudojimo"
+          ],
+          "title" : "iškart (po maždaug 10 sek.)",
+          "words" : [
+            "teksto tvarkymo modelis 10 sek.",
+            "teksto tvarkymo modelis 10 sekundžių"
+          ]
+        },
+        "lv" : {
+          "phrases" : [
+            "atbrīvot teksta uzlabošanas modeļa aizņemto atmiņu aptuveni 10 sekundes pēc modeļa pēdējās lietošanas"
+          ],
+          "title" : "uzreiz (pēc aptuveni 10 sekundēm)",
+          "words" : [
+            "10 sekundes",
+            "teksta uzlabošanas modelis 10 sek"
+          ]
+        },
+        "mt" : {
+          "phrases" : [
+            "neħħi l-mudell tal-irfinar mill-memorja madwar 10 sekondi wara li nieqaf niddetta"
+          ],
+          "title" : "minnufih (madwar 10 sekondi)",
+          "words" : [
+            "10 sekondi",
+            "AI Polish 10 sekondi"
+          ]
+        },
+        "nl" : {
+          "phrases" : [
+            "haal het opschoonmodel ongeveer 10 seconden na het laatste gebruik uit het geheugen"
+          ],
+          "title" : "direct (na ongeveer 10 seconden)",
+          "words" : [
+            "opschoonmodel 10 sec",
+            "AI Polish 10 seconden"
+          ]
+        },
+        "pl" : {
+          "phrases" : [
+            "zwolnij pamięć modelu korekty tekstu około 10 sekund po ostatnim użyciu"
+          ],
+          "title" : "natychmiast (po ok. 10 sekundach)",
+          "words" : [
+            "korekta tekstu 10 s",
+            "szybkie zwalnianie pamięci modelu korekty"
+          ]
+        },
+        "pt" : {
+          "phrases" : [
+            "liberar da memória o modelo de revisão de texto cerca de 10 segundos após o último uso"
+          ],
+          "title" : "imediatamente (cerca de 10 segundos)",
+          "words" : [
+            "revisão de texto 10 s",
+            "AI Polish 10 segundos"
+          ]
+        },
+        "ro" : {
+          "phrases" : [
+            "scoate modelul de corectare a textului din memorie la aproximativ 10 secunde de la ultima utilizare"
+          ],
+          "title" : "imediat (aprox. 10 secunde)",
+          "words" : [
+            "AI Polish imediat",
+            "corectare text 10 secunde"
+          ]
+        },
+        "ru" : {
+          "phrases" : [
+            "выгружать модель правки текста из памяти примерно через 10 секунд после последнего использования"
+          ],
+          "title" : "сразу (примерно через 10 секунд)",
+          "words" : [
+            "правка текста 10 сек",
+            "AI Polish 10 секунд"
+          ]
+        },
+        "sk" : {
+          "phrases" : [
+            "uvoľniť model na úpravu textu z pamäte asi 10 sekúnd po poslednom použití"
+          ],
+          "title" : "ihneď (asi po 10 sekundách)",
+          "words" : [
+            "AI Polish 10 s",
+            "úprava textu 10 sekúnd"
+          ]
+        },
+        "sl" : {
+          "phrases" : [
+            "sprosti pomnilnik modela za izboljšanje besedila po približno 10 sekundah neuporabe"
+          ],
+          "title" : "takoj (po približno 10 sekundah)",
+          "words" : [
+            "AI Polish takoj",
+            "izboljšanje besedila 10 sekund"
+          ]
+        },
+        "sv" : {
+          "phrases" : [
+            "frigör minnet som modellen för textbearbetning använder cirka 10 sekunder efter att modellen senast användes"
+          ],
+          "title" : "direkt (efter cirka 10 sekunder)",
+          "words" : [
+            "AI Polish efter 10 sek",
+            "frigör minne för textbearbetning efter tio sekunder"
+          ]
+        },
+        "tr" : {
+          "phrases" : [
+            "metin düzenleme modeli son kullanımdan yaklaşık 10 saniye sonra bellekten çıkarılsın"
+          ],
+          "title" : "hemen (yaklaşık 10 saniye)",
+          "words" : [
+            "metin düzenleme 10 sn",
+            "AI Polish 10 saniye"
+          ]
+        },
+        "uk" : {
+          "phrases" : [
+            "вивантажувати модель редагування тексту з пам’яті приблизно через 10 секунд після останнього використання"
+          ],
+          "title" : "одразу (приблизно через 10 секунд)",
+          "words" : [
+            "10 с",
+            "AI Polish 10 секунд"
+          ]
+        },
+        "vi" : {
+          "phrases" : [
+            "giải phóng bộ nhớ của mô hình chỉnh văn bản khoảng 10 giây sau lần dùng cuối"
+          ],
+          "title" : "ngay (khoảng 10 giây)",
+          "words" : [
+            "AI Polish 10 giây",
+            "giải phóng RAM AI Polish sau 10 giây"
+          ]
+        },
+        "zh" : {
+          "phrases" : [
+            "润色模型闲置约10秒后释放内存"
+          ],
+          "title" : "立即（约 10 秒）",
+          "words" : [
+            "立即释放润色模型内存",
+            "润色闲置10秒",
+            "润色闲置十秒"
+          ]
+        }
+      }
+    },
+    {
+      "context" : [
+        "window.settings",
+        "page.aiPolish",
+        "section.aiPolishModel",
+        "aiPolishProvider",
+        "aiPolish.providerSection",
+        "unloadPolishModel"
+      ],
+      "declaredIn" : "Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift",
+      "description" : null,
+      "destination" : {
+        "page" : "aiPolish"
+      },
+      "dictionaryTab" : null,
+      "fallbacks" : [
+        "aiPolishProvider",
+        "enableAIPolish"
+      ],
+      "id" : "unloadPolishModel.twoMinutes",
+      "kind" : "choice",
+      "parent" : "unloadPolishModel",
+      "searchable" : true,
+      "structure" : "item",
+      "target" : "unloadPolishModel",
+      "title" : {
+        "catalog" : "Sources/EnviousWispr/Resources/Localizable.xcstrings",
+        "de" : "Nach 2 Minuten",
+        "en" : "After 2 minutes",
+        "es" : "Después de 2 minutos",
+        "fr" : "Après 2 minutes",
+        "key" : "After 2 minutes",
+        "source" : "resource",
+        "table" : "Localizable"
+      },
+      "visibility" : "providerSelected",
+      "vocabulary" : {
+        "ar" : {
+          "phrases" : [
+            "حرّر ذاكرة نموذج تحسين النص بعد دقيقتين من دون استخدام"
+          ],
+          "title" : "بعد دقيقتين",
+          "words" : [
+            "خمول نموذج تحسين النص لمدة ٢ د",
+            "تفريغ نموذج التنقيح بعد 120 ثانية"
+          ]
+        },
+        "bg" : {
+          "phrases" : [
+            "освободи модела за подобряване на текста от паметта след 2 минути без диктовка"
+          ],
+          "title" : "след 2 минути",
+          "words" : [
+            "2 мин",
+            "AI Polish 2 минути"
+          ]
+        },
+        "cs" : {
+          "phrases" : [
+            "uvolnit model pro úpravu textu z paměti po 2 minutách bez diktování"
+          ],
+          "title" : "po 2 minutách",
+          "words" : [
+            "AI Polish 2 min",
+            "úprava textu dvě minuty"
+          ]
+        },
+        "da" : {
+          "phrases" : [
+            "frigør RAM, når tekstforbedringsmodellen har været inaktiv i 2 minutter"
+          ],
+          "title" : "efter 2 minutter",
+          "words" : [
+            "tekstforbedring 2 min",
+            "AI Polish to minutter"
+          ]
+        },
+        "de" : {
+          "phrases" : [
+            "das Nachbearbeitungsmodell nach 2 Minuten Leerlauf entladen"
+          ],
+          "words" : [
+            "AI Polish 2 Min.",
+            "KI-Nachbearbeitung zwei Minuten"
+          ]
+        },
+        "el" : {
+          "phrases" : [
+            "βγάλε το μοντέλο βελτίωσης κειμένου από τη μνήμη μετά από 2 λεπτά χωρίς υπαγόρευση"
+          ],
+          "title" : "μετά από 2 λεπτά",
+          "words" : [
+            "βελτίωση κειμένου 2 λεπτά",
+            "AI Polish δύο λεπτά",
+            "AI Polish 120 δευτερόλεπτα"
+          ]
+        },
+        "en" : {
+          "phrases" : [
+            "unload the polish model after 2 minutes without dictating",
+            "free up memory used by AI Polish after 2 minutes of inactivity"
+          ],
+          "words" : [
+            "2 min",
+            "two minutes",
+            "120 seconds"
+          ]
+        },
+        "es" : {
+          "phrases" : [
+            "liberar la memoria del modelo de corrección tras 2 minutos sin dictar"
+          ],
+          "words" : [
+            "2 min",
+            "modelo de corrección tras dos minutos"
+          ]
+        },
+        "et" : {
+          "phrases" : [
+            "vabasta viimistlusmudel mälust, kui ma pole kaks minutit dikteerinud"
+          ],
+          "title" : "2 minuti pärast",
+          "words" : [
+            "2 min",
+            "kaks minutit",
+            "120 sekundit",
+            "viimistlusmudel 2 minutit"
+          ]
+        },
+        "fi" : {
+          "phrases" : [
+            "vapauta viimeistelymallin käyttämä muisti, kun mallia ei ole käytetty kahteen minuuttiin"
+          ],
+          "title" : "2 minuutin kuluttua",
+          "words" : [
+            "viimeistelymalli 2 min",
+            "viimeistelymalli kaksi minuuttia"
+          ]
+        },
+        "fr" : {
+          "phrases" : [
+            "libérer la mémoire du modèle de correction de texte après 2 minutes d’inactivité"
+          ],
+          "words" : [
+            "2 min",
+            "correction de texte 2 minutes",
+            "modèle de correction deux minutes"
+          ]
+        },
+        "hi" : {
+          "phrases" : [
+            "2 मिनट तक डिक्टेशन न करने पर टेक्स्ट सुधार मॉडल की मेमोरी खाली करें"
+          ],
+          "title" : "2 मिनट बाद",
+          "words" : [
+            "AI Polish 2 मिनट",
+            "टेक्स्ट सुधार मॉडल दो मिनट",
+            "AI Polish 120 सेकंड",
+            "AI Polish २ मिनट"
+          ]
+        },
+        "hr" : {
+          "phrases" : [
+            "oslobodi memoriju modela za doradu teksta nakon 2 minute bez diktiranja"
+          ],
+          "title" : "nakon 2 minute",
+          "words" : [
+            "dorada teksta 2 min",
+            "AI Polish dvije minute"
+          ]
+        },
+        "hu" : {
+          "phrases" : [
+            "a szövegjavító modell 2 perc tétlenség után kerüljön ki a memóriából"
+          ],
+          "title" : "2 perc után",
+          "words" : [
+            "szövegjavító modell két perc",
+            "AI Polish 2 perc",
+            "szövegjavító modell 120 másodperc"
+          ]
+        },
+        "it" : {
+          "phrases" : [
+            "libera la RAM del modello di correzione del testo dopo 2 minuti di inattività"
+          ],
+          "title" : "dopo 2 minuti",
+          "words" : [
+            "AI Polish 2 min",
+            "correzione del testo due minuti",
+            "AI Polish 120 secondi"
+          ]
+        },
+        "ja" : {
+          "phrases" : [
+            "2分間音声入力しなかったら文章整形モデルのメモリを解放したい"
+          ],
+          "title" : "2分後",
+          "words" : [
+            "文章整形 2分",
+            "文章整形 120秒"
+          ]
+        },
+        "ko" : {
+          "phrases" : [
+            "텍스트 다듬기 모델을 2분 동안 사용하지 않으면 메모리에서 해제"
+          ],
+          "title" : "2분 후",
+          "words" : [
+            "다듬기 모델 2분",
+            "AI Polish 120초"
+          ]
+        },
+        "lt" : {
+          "phrases" : [
+            "pašalinti teksto tvarkymo modelį iš atminties, kai jis nenaudojamas 2 minutes"
+          ],
+          "title" : "po 2 minučių",
+          "words" : [
+            "teksto tvarkymo modelis 2 min",
+            "teksto tvarkymo modelis dvi minutės",
+            "teksto tvarkymo modelis 120 sekundžių"
+          ]
+        },
+        "lv" : {
+          "phrases" : [
+            "atbrīvot teksta uzlabošanas modeļa aizņemto atmiņu pēc 2 minūtēm bez diktēšanas"
+          ],
+          "title" : "pēc 2 minūtēm",
+          "words" : [
+            "2 min",
+            "divas minūtes",
+            "teksta uzlabošanas modelis 2 min"
+          ]
+        },
+        "mt" : {
+          "phrases" : [
+            "neħħi l-mudell li jtejjeb it-test mill-memorja wara żewġ minuti bla dettatura"
+          ],
+          "title" : "wara 2 minuti",
+          "words" : [
+            "2 min",
+            "AI Polish 2 minuti"
+          ]
+        },
+        "nl" : {
+          "phrases" : [
+            "haal het opschoonmodel uit het geheugen als het 2 minuten niet is gebruikt"
+          ],
+          "title" : "na 2 minuten",
+          "words" : [
+            "opschoonmodel 2 min",
+            "AI Polish twee minuten"
+          ]
+        },
+        "pl" : {
+          "phrases" : [
+            "zwolnij pamięć modelu korekty tekstu po 2 minutach bez dyktowania"
+          ],
+          "title" : "po 2 minutach",
+          "words" : [
+            "korekta tekstu 2 min",
+            "model korekty po dwóch minutach"
+          ]
+        },
+        "pt" : {
+          "phrases" : [
+            "liberar da memória o modelo de revisão de texto após 2 minutos de inatividade"
+          ],
+          "title" : "após 2 minutos",
+          "words" : [
+            "revisão de texto 2 min",
+            "AI Polish 2 minutos"
+          ]
+        },
+        "ro" : {
+          "phrases" : [
+            "scoate modelul de corectare a textului din memorie după 2 minute fără dictare"
+          ],
+          "title" : "după 2 minute",
+          "words" : [
+            "AI Polish 2 min",
+            "corectare text două minute"
+          ]
+        },
+        "ru" : {
+          "phrases" : [
+            "выгружать модель правки текста из памяти через 2 минуты простоя"
+          ],
+          "title" : "через 2 минуты",
+          "words" : [
+            "правка текста 2 мин",
+            "правка текста две минуты"
+          ]
+        },
+        "sk" : {
+          "phrases" : [
+            "uvoľniť model na úpravu textu z pamäte po 2 minútach nečinnosti"
+          ],
+          "title" : "po 2 minútach",
+          "words" : [
+            "AI Polish 2 min",
+            "úprava textu dve minúty"
+          ]
+        },
+        "sl" : {
+          "phrases" : [
+            "sprosti pomnilnik modela za izboljšanje besedila po 2 minutah neuporabe"
+          ],
+          "title" : "po 2 minutah",
+          "words" : [
+            "AI Polish 2 min",
+            "izboljšanje besedila 2 minuti",
+            "izboljšanje besedila dve minuti"
+          ]
+        },
+        "sv" : {
+          "phrases" : [
+            "frigör minnet som modellen för textbearbetning använder när den inte har använts på två minuter"
+          ],
+          "title" : "efter 2 minuter",
+          "words" : [
+            "AI Polish efter 2 min",
+            "frigör minne för textbearbetning efter två minuter"
+          ]
+        },
+        "tr" : {
+          "phrases" : [
+            "metin düzenleme modeli 2 dakika boşta kalınca bellekten çıkarılsın"
+          ],
+          "title" : "2 dakika sonra",
+          "words" : [
+            "metin düzenleme 2 dk",
+            "AI Polish iki dakika"
+          ]
+        },
+        "uk" : {
+          "phrases" : [
+            "вивантажувати модель редагування тексту з пам’яті після двох хвилин без диктування"
+          ],
+          "title" : "через 2 хвилини",
+          "words" : [
+            "2 хв",
+            "AI Polish 2 хвилини",
+            "120 секунд"
+          ]
+        },
+        "vi" : {
+          "phrases" : [
+            "giải phóng bộ nhớ của mô hình chỉnh văn bản sau 2 phút không dùng đến"
+          ],
+          "title" : "sau 2 phút",
+          "words" : [
+            "AI Polish 2 phút",
+            "AI Polish 2p",
+            "AI Polish hai phút",
+            "AI Polish 120 giây"
+          ]
+        },
+        "zh" : {
+          "phrases" : [
+            "润色模型闲置两分钟后释放内存"
+          ],
+          "title" : "2 分钟后",
+          "words" : [
+            "润色闲置2分钟",
+            "润色闲置两分钟",
+            "润色闲置120秒"
+          ]
+        }
+      }
+    },
+    {
+      "context" : [
+        "window.settings",
+        "page.aiPolish",
+        "section.aiPolishModel",
+        "aiPolishProvider",
+        "aiPolish.providerSection",
+        "unloadPolishModel"
+      ],
+      "declaredIn" : "Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift",
+      "description" : null,
+      "destination" : {
+        "page" : "aiPolish"
+      },
+      "dictionaryTab" : null,
+      "fallbacks" : [
+        "aiPolishProvider",
+        "enableAIPolish"
+      ],
+      "id" : "unloadPolishModel.fiveMinutes",
+      "kind" : "choice",
+      "parent" : "unloadPolishModel",
+      "searchable" : true,
+      "structure" : "item",
+      "target" : "unloadPolishModel",
+      "title" : {
+        "catalog" : "Sources/EnviousWispr/Resources/Localizable.xcstrings",
+        "de" : "Nach 5 Minuten",
+        "en" : "After 5 minutes",
+        "es" : "Después de 5 minutos",
+        "fr" : "Après 5 minutes",
+        "key" : "After 5 minutes",
+        "source" : "resource",
+        "table" : "Localizable"
+      },
+      "visibility" : "providerSelected",
+      "vocabulary" : {
+        "ar" : {
+          "phrases" : [
+            "حرّر ذاكرة نموذج تحسين النص بعد ٥ دقائق من دون استخدام"
+          ],
+          "title" : "بعد ٥ دقائق",
+          "words" : [
+            "تفريغ نموذج تحسين النص بعد 5 دقايق",
+            "خمول نموذج التنقيح لمدة خمس دقائق"
+          ]
+        },
+        "bg" : {
+          "phrases" : [
+            "освободи модела за подобряване на текста от паметта след 5 минути без диктовка"
+          ],
+          "title" : "след 5 минути",
+          "words" : [
+            "5 мин",
+            "AI Polish 5 минути"
+          ]
+        },
+        "cs" : {
+          "phrases" : [
+            "uvolnit model pro úpravu textu z paměti po 5 minutách bez diktování"
+          ],
+          "title" : "po 5 minutách",
+          "words" : [
+            "AI Polish 5 min",
+            "úprava textu pět minut"
+          ]
+        },
+        "da" : {
+          "phrases" : [
+            "frigør RAM, når tekstforbedringsmodellen har været inaktiv i 5 minutter"
+          ],
+          "title" : "efter 5 minutter",
+          "words" : [
+            "tekstforbedring 5 min",
+            "AI Polish fem minutter"
+          ]
+        },
+        "de" : {
+          "phrases" : [
+            "das Nachbearbeitungsmodell nach 5 Minuten Leerlauf entladen",
+            "den Arbeitsspeicher des Modells für die KI-Nachbearbeitung fünf Minuten nach der letzten Nutzung freigeben"
+          ],
+          "words" : [
+            "AI Polish 5 Min.",
+            "KI-Nachbearbeitung fünf Minuten"
+          ]
+        },
+        "el" : {
+          "phrases" : [
+            "να ελευθερώνεται η μνήμη του μοντέλου βελτίωσης κειμένου μετά από 5 λεπτά χωρίς υπαγόρευση"
+          ],
+          "title" : "μετά από 5 λεπτά",
+          "words" : [
+            "βελτίωση κειμένου 5 λεπτά",
+            "AI Polish πέντε λεπτά"
+          ]
+        },
+        "en" : {
+          "phrases" : [
+            "unload the polish model after 5 minutes of inactivity",
+            "free up the polish model’s memory after 5 minutes without dictating"
+          ],
+          "words" : [
+            "5 min",
+            "five minutes"
+          ]
+        },
+        "es" : {
+          "phrases" : [
+            "liberar la memoria del modelo de corrección tras 5 minutos sin dictar"
+          ],
+          "words" : [
+            "5 min",
+            "modelo de corrección tras cinco minutos"
+          ]
+        },
+        "et" : {
+          "phrases" : [
+            "vabasta viimistlusmudel mälust, kui ma pole viis minutit dikteerinud"
+          ],
+          "title" : "5 minuti pärast",
+          "words" : [
+            "5 min",
+            "viis minutit",
+            "viimistlusmudel 5 minutit"
+          ]
+        },
+        "fi" : {
+          "phrases" : [
+            "vapauta viimeistelymallin käyttämä muisti, kun mallia ei ole käytetty viiteen minuuttiin"
+          ],
+          "title" : "5 minuutin kuluttua",
+          "words" : [
+            "viimeistelymalli 5 min",
+            "viimeistelymalli viisi minuuttia"
+          ]
+        },
+        "fr" : {
+          "phrases" : [
+            "libérer la mémoire du modèle de correction de texte après 5 minutes d’inactivité"
+          ],
+          "words" : [
+            "5 min",
+            "correction de texte 5 minutes",
+            "modèle de correction cinq minutes"
+          ]
+        },
+        "hi" : {
+          "phrases" : [
+            "5 मिनट तक डिक्टेशन न करने पर टेक्स्ट सुधार मॉडल की मेमोरी खाली करें"
+          ],
+          "title" : "5 मिनट बाद",
+          "words" : [
+            "AI Polish 5 मिनट",
+            "टेक्स्ट सुधार मॉडल पाँच मिनट",
+            "AI Polish ५ मिनट"
+          ]
+        },
+        "hr" : {
+          "phrases" : [
+            "oslobodi memoriju modela za doradu teksta nakon 5 minuta bez diktiranja"
+          ],
+          "title" : "nakon 5 minuta",
+          "words" : [
+            "dorada teksta 5 min",
+            "AI Polish pet minuta"
+          ]
+        },
+        "hu" : {
+          "phrases" : [
+            "a szövegjavító modell 5 perc tétlenség után kerüljön ki a memóriából"
+          ],
+          "title" : "5 perc után",
+          "words" : [
+            "szövegjavító modell öt perc",
+            "AI Polish 5 perc"
+          ]
+        },
+        "it" : {
+          "phrases" : [
+            "libera la memoria del modello di correzione del testo dopo 5 minuti di inattività"
+          ],
+          "title" : "dopo 5 minuti",
+          "words" : [
+            "AI Polish 5 min",
+            "correzione del testo cinque minuti"
+          ]
+        },
+        "ja" : {
+          "phrases" : [
+            "5分間音声入力しなかったら文章整形モデルのメモリを解放したい"
+          ],
+          "title" : "5分後",
+          "words" : [
+            "文章整形 5分"
+          ]
+        },
+        "ko" : {
+          "phrases" : [
+            "텍스트 다듬기 모델을 5분 동안 사용하지 않으면 메모리에서 해제"
+          ],
+          "title" : "5분 후",
+          "words" : [
+            "다듬기 모델 5분",
+            "AI Polish 5분 뒤"
+          ]
+        },
+        "lt" : {
+          "phrases" : [
+            "pašalinti teksto tvarkymo modelį iš atminties, kai jis nenaudojamas 5 minutes"
+          ],
+          "title" : "po 5 minučių",
+          "words" : [
+            "teksto tvarkymo modelis 5 min",
+            "teksto tvarkymo modelis penkios minutės"
+          ]
+        },
+        "lv" : {
+          "phrases" : [
+            "atbrīvot teksta uzlabošanas modeļa aizņemto atmiņu pēc 5 minūtēm bez diktēšanas"
+          ],
+          "title" : "pēc 5 minūtēm",
+          "words" : [
+            "5 min",
+            "piecas minūtes",
+            "teksta uzlabošanas modelis 5 min"
+          ]
+        },
+        "mt" : {
+          "phrases" : [
+            "illibera l-memorja li juża l-mudell tal-irfinar wara 5 minuti bla dettatura"
+          ],
+          "title" : "wara 5 minuti",
+          "words" : [
+            "5 min",
+            "AI Polish 5 minuti"
+          ]
+        },
+        "nl" : {
+          "phrases" : [
+            "haal het opschoonmodel uit het geheugen als het 5 minuten niet is gebruikt"
+          ],
+          "title" : "na 5 minuten",
+          "words" : [
+            "opschoonmodel 5 min",
+            "AI Polish vijf minuten"
+          ]
+        },
+        "pl" : {
+          "phrases" : [
+            "zwolnij pamięć modelu korekty tekstu po 5 minutach bez dyktowania"
+          ],
+          "title" : "po 5 minutach",
+          "words" : [
+            "korekta tekstu 5 min",
+            "model korekty po pięciu minutach"
+          ]
+        },
+        "pt" : {
+          "phrases" : [
+            "liberar da memória o modelo de revisão de texto após 5 minutos de inatividade"
+          ],
+          "title" : "após 5 minutos",
+          "words" : [
+            "revisão de texto 5 min",
+            "AI Polish 5 minutos"
+          ]
+        },
+        "ro" : {
+          "phrases" : [
+            "eliberează memoria modelului de corectare a textului după 5 minute fără dictare"
+          ],
+          "title" : "după 5 minute",
+          "words" : [
+            "AI Polish 5 min",
+            "corectare text cinci minute"
+          ]
+        },
+        "ru" : {
+          "phrases" : [
+            "выгружать модель правки текста из памяти через 5 минут простоя"
+          ],
+          "title" : "через 5 минут",
+          "words" : [
+            "правка текста 5 мин",
+            "правка текста пять минут"
+          ]
+        },
+        "sk" : {
+          "phrases" : [
+            "uvoľniť model na úpravu textu z pamäte po 5 minútach nečinnosti"
+          ],
+          "title" : "po 5 minútach",
+          "words" : [
+            "AI Polish 5 min",
+            "úprava textu päť minút"
+          ]
+        },
+        "sl" : {
+          "phrases" : [
+            "sprosti pomnilnik modela za izboljšanje besedila po 5 minutah neuporabe"
+          ],
+          "title" : "po 5 minutah",
+          "words" : [
+            "AI Polish 5 min",
+            "izboljšanje besedila 5 minut",
+            "izboljšanje besedila pet minut"
+          ]
+        },
+        "sv" : {
+          "phrases" : [
+            "frigör minnet som modellen för textbearbetning använder när den inte har använts på fem minuter"
+          ],
+          "title" : "efter 5 minuter",
+          "words" : [
+            "AI Polish efter 5 min",
+            "frigör minne för textbearbetning efter fem minuter"
+          ]
+        },
+        "tr" : {
+          "phrases" : [
+            "metin düzenleme modeli 5 dakika boşta kalınca bellekten çıkarılsın"
+          ],
+          "title" : "5 dakika sonra",
+          "words" : [
+            "metin düzenleme 5 dk",
+            "AI Polish beş dakika"
+          ]
+        },
+        "uk" : {
+          "phrases" : [
+            "вивантажувати модель редагування тексту з пам’яті після п’яти хвилин без диктування"
+          ],
+          "title" : "через 5 хвилин",
+          "words" : [
+            "5 хв",
+            "AI Polish 5 хвилин"
+          ]
+        },
+        "vi" : {
+          "phrases" : [
+            "giải phóng bộ nhớ của mô hình chỉnh văn bản sau 5 phút không dùng đến"
+          ],
+          "title" : "sau 5 phút",
+          "words" : [
+            "AI Polish 5 phút",
+            "AI Polish năm phút"
+          ]
+        },
+        "zh" : {
+          "phrases" : [
+            "润色模型闲置5分钟后释放内存",
+            "潤飾模型閒置5分鐘後釋放記憶體"
+          ],
+          "title" : "5 分钟后",
+          "words" : [
+            "润色闲置5分钟",
+            "润色闲置五分钟"
+          ]
+        }
+      }
+    },
+    {
+      "context" : [
+        "window.settings",
+        "page.aiPolish",
+        "section.aiPolishModel",
+        "aiPolishProvider",
+        "aiPolish.providerSection",
+        "unloadPolishModel"
+      ],
+      "declaredIn" : "Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift",
+      "description" : null,
+      "destination" : {
+        "page" : "aiPolish"
+      },
+      "dictionaryTab" : null,
+      "fallbacks" : [
+        "aiPolishProvider",
+        "enableAIPolish"
+      ],
+      "id" : "unloadPolishModel.tenMinutes",
+      "kind" : "choice",
+      "parent" : "unloadPolishModel",
+      "searchable" : true,
+      "structure" : "item",
+      "target" : "unloadPolishModel",
+      "title" : {
+        "catalog" : "Sources/EnviousWispr/Resources/Localizable.xcstrings",
+        "de" : "Nach 10 Minuten",
+        "en" : "After 10 minutes",
+        "es" : "Después de 10 minutos",
+        "fr" : "Après 10 minutes",
+        "key" : "After 10 minutes",
+        "source" : "resource",
+        "table" : "Localizable"
+      },
+      "visibility" : "providerSelected",
+      "vocabulary" : {
+        "ar" : {
+          "phrases" : [
+            "حرّر ذاكرة نموذج تحسين النص بعد ١٠ دقائق من دون استخدام"
+          ],
+          "title" : "بعد ١٠ دقائق",
+          "words" : [
+            "تفريغ نموذج تحسين النص بعد 10 دقايق",
+            "خمول نموذج التنقيح لمدة عشر دقائق"
+          ]
+        },
+        "bg" : {
+          "phrases" : [
+            "освободи модела за подобряване на текста от паметта след 10 минути без диктовка"
+          ],
+          "title" : "след 10 минути",
+          "words" : [
+            "10 мин",
+            "AI Polish 10 минути"
+          ]
+        },
+        "cs" : {
+          "phrases" : [
+            "uvolnit model pro úpravu textu z paměti po 10 minutách bez diktování"
+          ],
+          "title" : "po 10 minutách",
+          "words" : [
+            "AI Polish 10 min",
+            "úprava textu deset minut"
+          ]
+        },
+        "da" : {
+          "phrases" : [
+            "frigør RAM, når tekstforbedringsmodellen har været inaktiv i 10 minutter"
+          ],
+          "title" : "efter 10 minutter",
+          "words" : [
+            "tekstforbedring 10 min",
+            "AI Polish ti minutter"
+          ]
+        },
+        "de" : {
+          "phrases" : [
+            "das Nachbearbeitungsmodell nach 10 Minuten Leerlauf entladen"
+          ],
+          "words" : [
+            "AI Polish 10 Min.",
+            "KI-Nachbearbeitung zehn Minuten"
+          ]
+        },
+        "el" : {
+          "phrases" : [
+            "να ελευθερώνεται η μνήμη του μοντέλου βελτίωσης κειμένου μετά από 10 λεπτά χωρίς υπαγόρευση"
+          ],
+          "title" : "μετά από 10 λεπτά",
+          "words" : [
+            "βελτίωση κειμένου 10 λεπτά",
+            "AI Polish δέκα λεπτά"
+          ]
+        },
+        "en" : {
+          "phrases" : [
+            "unload the polish model after 10 minutes of inactivity",
+            "free up polish model memory after 10 minutes without dictating"
+          ],
+          "words" : [
+            "10 min",
+            "ten minutes"
+          ]
+        },
+        "es" : {
+          "phrases" : [
+            "liberar la memoria del modelo de corrección tras 10 minutos sin dictar"
+          ],
+          "words" : [
+            "10 min",
+            "modelo de corrección tras diez minutos"
+          ]
+        },
+        "et" : {
+          "phrases" : [
+            "vabasta viimistlusmudel mälust, kui ma pole kümme minutit dikteerinud"
+          ],
+          "title" : "10 minuti pärast",
+          "words" : [
+            "10 min",
+            "kümme minutit",
+            "viimistlusmudel 10 minutit"
+          ]
+        },
+        "fi" : {
+          "phrases" : [
+            "vapauta viimeistelymallin käyttämä muisti, kun mallia ei ole käytetty kymmeneen minuuttiin"
+          ],
+          "title" : "10 minuutin kuluttua",
+          "words" : [
+            "viimeistelymalli 10 min",
+            "viimeistelymalli kymmenen minuuttia"
+          ]
+        },
+        "fr" : {
+          "phrases" : [
+            "libérer la mémoire du modèle de correction de texte après 10 minutes d’inactivité"
+          ],
+          "words" : [
+            "10 min",
+            "correction de texte 10 minutes",
+            "modèle de correction dix minutes"
+          ]
+        },
+        "hi" : {
+          "phrases" : [
+            "10 मिनट तक डिक्टेशन न करने पर टेक्स्ट सुधार मॉडल की मेमोरी खाली करें"
+          ],
+          "title" : "10 मिनट बाद",
+          "words" : [
+            "AI Polish 10 मिनट",
+            "टेक्स्ट सुधार मॉडल दस मिनट",
+            "AI Polish १० मिनट"
+          ]
+        },
+        "hr" : {
+          "phrases" : [
+            "oslobodi memoriju modela za doradu teksta nakon 10 minuta bez diktiranja"
+          ],
+          "title" : "nakon 10 minuta",
+          "words" : [
+            "dorada teksta 10 min",
+            "AI Polish deset minuta"
+          ]
+        },
+        "hu" : {
+          "phrases" : [
+            "a szövegjavító modell 10 perc tétlenség után kerüljön ki a memóriából"
+          ],
+          "title" : "10 perc után",
+          "words" : [
+            "szövegjavító modell tíz perc",
+            "AI Polish 10 perc"
+          ]
+        },
+        "it" : {
+          "phrases" : [
+            "libera la memoria del modello di correzione del testo dopo 10 minuti di inattività"
+          ],
+          "title" : "dopo 10 minuti",
+          "words" : [
+            "AI Polish 10 min",
+            "correzione del testo dieci minuti"
+          ]
+        },
+        "ja" : {
+          "phrases" : [
+            "10分間音声入力しなかったら文章整形モデルのメモリを解放したい"
+          ],
+          "title" : "10分後",
+          "words" : [
+            "文章整形 10分"
+          ]
+        },
+        "ko" : {
+          "phrases" : [
+            "10분 동안 받아쓰기 안 하면 텍스트 다듬기 모델 메모리 해제"
+          ],
+          "title" : "10분 후",
+          "words" : [
+
+          ]
+        },
+        "lt" : {
+          "phrases" : [
+            "pašalinti teksto tvarkymo modelį iš atminties, kai jis nenaudojamas 10 minučių"
+          ],
+          "title" : "po 10 minučių",
+          "words" : [
+            "teksto tvarkymo modelis 10 min",
+            "teksto tvarkymo modelis dešimt minučių"
+          ]
+        },
+        "lv" : {
+          "phrases" : [
+            "atbrīvot teksta uzlabošanas modeļa aizņemto atmiņu pēc 10 minūtēm bez diktēšanas"
+          ],
+          "title" : "pēc 10 minūtēm",
+          "words" : [
+            "10 min",
+            "desmit minūtes",
+            "teksta uzlabošanas modelis 10 min"
+          ]
+        },
+        "mt" : {
+          "phrases" : [
+            "neħħi l-mudell li jtejjeb it-test mill-memorja wara għaxar minuti bla dettatura"
+          ],
+          "title" : "wara 10 minuti",
+          "words" : [
+            "10 min",
+            "AI Polish 10 minuti"
+          ]
+        },
+        "nl" : {
+          "phrases" : [
+            "haal het opschoonmodel uit het geheugen als het 10 minuten niet is gebruikt"
+          ],
+          "title" : "na 10 minuten",
+          "words" : [
+            "opschoonmodel 10 min",
+            "AI Polish tien minuten"
+          ]
+        },
+        "pl" : {
+          "phrases" : [
+            "zwolnij pamięć modelu korekty tekstu po 10 minutach bez dyktowania"
+          ],
+          "title" : "po 10 minutach",
+          "words" : [
+            "korekta tekstu 10 min",
+            "model korekty po dziesięciu minutach"
+          ]
+        },
+        "pt" : {
+          "phrases" : [
+            "liberar da memória o modelo de revisão de texto após 10 minutos de inatividade"
+          ],
+          "title" : "após 10 minutos",
+          "words" : [
+            "revisão de texto 10 min",
+            "AI Polish 10 minutos"
+          ]
+        },
+        "ro" : {
+          "phrases" : [
+            "eliberează memoria modelului de corectare a textului după 10 minute fără dictare"
+          ],
+          "title" : "după 10 minute",
+          "words" : [
+            "AI Polish 10 min",
+            "corectare text zece minute"
+          ]
+        },
+        "ru" : {
+          "phrases" : [
+            "выгружать модель правки текста из памяти через 10 минут простоя"
+          ],
+          "title" : "через 10 минут",
+          "words" : [
+            "правка текста 10 мин",
+            "правка текста десять минут"
+          ]
+        },
+        "sk" : {
+          "phrases" : [
+            "uvoľniť model na úpravu textu z pamäte po 10 minútach nečinnosti"
+          ],
+          "title" : "po 10 minútach",
+          "words" : [
+            "AI Polish 10 min",
+            "úprava textu desať minút"
+          ]
+        },
+        "sl" : {
+          "phrases" : [
+            "sprosti pomnilnik modela za izboljšanje besedila po 10 minutah neuporabe"
+          ],
+          "title" : "po 10 minutah",
+          "words" : [
+            "AI Polish 10 min",
+            "izboljšanje besedila 10 minut",
+            "izboljšanje besedila deset minut"
+          ]
+        },
+        "sv" : {
+          "phrases" : [
+            "frigör minnet som modellen för textbearbetning använder när den inte har använts på tio minuter"
+          ],
+          "title" : "efter 10 minuter",
+          "words" : [
+            "AI Polish efter 10 min",
+            "frigör minne för textbearbetning efter tio minuter"
+          ]
+        },
+        "tr" : {
+          "phrases" : [
+            "metin düzenleme modeli 10 dakika boşta kalınca bellekten çıkarılsın"
+          ],
+          "title" : "10 dakika sonra",
+          "words" : [
+            "metin düzenleme 10 dk",
+            "AI Polish on dakika"
+          ]
+        },
+        "uk" : {
+          "phrases" : [
+            "вивантажувати модель редагування тексту з пам’яті після десяти хвилин без диктування"
+          ],
+          "title" : "через 10 хвилин",
+          "words" : [
+            "10 хв",
+            "AI Polish 10 хвилин"
+          ]
+        },
+        "vi" : {
+          "phrases" : [
+            "giải phóng bộ nhớ của mô hình chỉnh văn bản sau 10 phút không dùng đến"
+          ],
+          "title" : "sau 10 phút",
+          "words" : [
+            "AI Polish 10 phút",
+            "AI Polish 10p",
+            "AI Polish mười phút"
+          ]
+        },
+        "zh" : {
+          "phrases" : [
+            "润色模型闲置10分钟后释放内存"
+          ],
+          "title" : "10 分钟后",
+          "words" : [
+            "润色闲置10分钟",
+            "润色闲置十分钟"
+          ]
+        }
+      }
+    },
+    {
+      "context" : [
+        "window.settings",
+        "page.aiPolish",
+        "section.aiPolishModel",
+        "aiPolishProvider",
+        "aiPolish.providerSection",
+        "unloadPolishModel"
+      ],
+      "declaredIn" : "Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift",
+      "description" : null,
+      "destination" : {
+        "page" : "aiPolish"
+      },
+      "dictionaryTab" : null,
+      "fallbacks" : [
+        "aiPolishProvider",
+        "enableAIPolish"
+      ],
+      "id" : "unloadPolishModel.fifteenMinutes",
+      "kind" : "choice",
+      "parent" : "unloadPolishModel",
+      "searchable" : true,
+      "structure" : "item",
+      "target" : "unloadPolishModel",
+      "title" : {
+        "catalog" : "Sources/EnviousWispr/Resources/Localizable.xcstrings",
+        "de" : "Nach 15 Minuten",
+        "en" : "After 15 minutes",
+        "es" : "Después de 15 minutos",
+        "fr" : "Après 15 minutes",
+        "key" : "After 15 minutes",
+        "source" : "resource",
+        "table" : "Localizable"
+      },
+      "visibility" : "providerSelected",
+      "vocabulary" : {
+        "ar" : {
+          "phrases" : [
+            "حرّر ذاكرة نموذج تحسين النص بعد ربع ساعة من دون استخدام"
+          ],
+          "title" : "بعد ١٥ دقيقة",
+          "words" : [
+            "تفريغ نموذج تحسين النص بعد 15 دقيقة",
+            "خمول نموذج التنقيح لمدة ربع ساعة"
+          ]
+        },
+        "bg" : {
+          "phrases" : [
+            "освободи модела за подобряване на текста от паметта след четвърт час без диктовка"
+          ],
+          "title" : "след 15 минути",
+          "words" : [
+            "15 мин",
+            "AI Polish 15 минути",
+            "AI Polish четвърт час"
+          ]
+        },
+        "cs" : {
+          "phrases" : [
+            "uvolnit model pro úpravu textu z paměti po 15 minutách bez diktování"
+          ],
+          "title" : "po 15 minutách",
+          "words" : [
+            "AI Polish 15 min",
+            "úprava textu čtvrt hodiny"
+          ]
+        },
+        "da" : {
+          "phrases" : [
+            "frigør RAM, når tekstforbedringsmodellen har været inaktiv i et kvarter"
+          ],
+          "title" : "efter 15 minutter",
+          "words" : [
+            "tekstforbedring 15 min",
+            "AI Polish et kvarter"
+          ]
+        },
+        "de" : {
+          "phrases" : [
+            "das Nachbearbeitungsmodell nach 15 Minuten Leerlauf entladen",
+            "das Modell für die KI-Nachbearbeitung nach einer Viertelstunde ohne Nutzung entladen"
+          ],
+          "words" : [
+            "AI Polish 15 Min.",
+            "Nachbearbeitungsmodell Viertelstunde"
+          ]
+        },
+        "el" : {
+          "phrases" : [
+            "ελευθέρωσε τη μνήμη του μοντέλου βελτίωσης κειμένου μετά από 15 λεπτά χωρίς υπαγόρευση"
+          ],
+          "title" : "μετά από 15 λεπτά",
+          "words" : [
+            "βελτίωση κειμένου 15 λεπτά",
+            "AI Polish ένα τέταρτο"
+          ]
+        },
+        "en" : {
+          "phrases" : [
+            "unload the polish model after 15 min without dictating",
+            "keep the polish model loaded for a quarter of an hour after dictation"
+          ],
+          "words" : [
+            "15 min"
+          ]
+        },
+        "es" : {
+          "phrases" : [
+            "liberar la memoria del modelo de corrección tras 15 minutos sin dictar"
+          ],
+          "words" : [
+            "15 min",
+            "corrección de texto tras un cuarto de hora"
+          ]
+        },
+        "et" : {
+          "phrases" : [
+            "vabasta viimistlusmudel mälust, kui ma pole veerand tundi dikteerinud"
+          ],
+          "title" : "15 minuti pärast",
+          "words" : [
+            "veerand tundi",
+            "15 min",
+            "viimistlusmudel 15 minutit"
+          ]
+        },
+        "fi" : {
+          "phrases" : [
+            "vapauta viimeistelymallin käyttämä muisti, kun mallia ei ole käytetty varttiin"
+          ],
+          "title" : "15 minuutin kuluttua",
+          "words" : [
+            "viimeistelymalli 15 min",
+            "viimeistelymalli vartti"
+          ]
+        },
+        "fr" : {
+          "phrases" : [
+            "libérer la mémoire du modèle de correction de texte après un quart d’heure d’inactivité"
+          ],
+          "words" : [
+            "15 min",
+            "correction de texte 15 minutes",
+            "modèle de correction quart d’heure"
+          ]
+        },
+        "hi" : {
+          "phrases" : [
+            "15 मिनट तक डिक्टेशन न करने पर टेक्स्ट सुधार मॉडल की मेमोरी खाली करें"
+          ],
+          "title" : "15 मिनट बाद",
+          "words" : [
+            "AI Polish 15 मिनट",
+            "टेक्स्ट सुधार मॉडल पंद्रह मिनट"
+          ]
+        },
+        "hr" : {
+          "phrases" : [
+            "oslobodi memoriju modela za doradu teksta nakon četvrt sata bez diktiranja"
+          ],
+          "title" : "nakon 15 minuta",
+          "words" : [
+            "dorada teksta 15 min",
+            "AI Polish četvrt sata"
+          ]
+        },
+        "hu" : {
+          "phrases" : [
+            "a szövegjavító modell 15 perc tétlenség után kerüljön ki a memóriából"
+          ],
+          "title" : "15 perc után",
+          "words" : [
+            "szövegjavító modell negyedóra",
+            "AI Polish 15 perc"
+          ]
+        },
+        "it" : {
+          "phrases" : [
+            "libera la RAM del modello di correzione del testo dopo un quarto d'ora di inattività"
+          ],
+          "title" : "dopo 15 minuti",
+          "words" : [
+            "AI Polish 15 min",
+            "correzione del testo un quarto d'ora"
+          ]
+        },
+        "ja" : {
+          "phrases" : [
+            "15分間音声入力しなかったら文章整形モデルのメモリを解放したい"
+          ],
+          "title" : "15分後",
+          "words" : [
+            "文章整形 15分"
+          ]
+        },
+        "ko" : {
+          "phrases" : [
+            "15분 동안 받아쓰기를 안 하면 문장 다듬기 모델을 메모리에서 내리기"
+          ],
+          "title" : "15분 후",
+          "words" : [
+
+          ]
+        },
+        "lt" : {
+          "phrases" : [
+            "pašalinti teksto tvarkymo modelį iš atminties, kai jis nenaudojamas 15 minučių"
+          ],
+          "title" : "po 15 minučių",
+          "words" : [
+            "teksto tvarkymo modelis 15 min",
+            "teksto tvarkymo modelis ketvirtis valandos"
+          ]
+        },
+        "lv" : {
+          "phrases" : [
+            "atbrīvot teksta uzlabošanas modeļa aizņemto atmiņu pēc 15 minūtēm bez diktēšanas"
+          ],
+          "title" : "pēc 15 minūtēm",
+          "words" : [
+            "15 min",
+            "ceturtdaļstunda",
+            "teksta uzlabošanas modelis 15 min"
+          ]
+        },
+        "mt" : {
+          "phrases" : [
+            "neħħi l-mudell għat-titjib tat-test mill-memorja wara 15-il minuta mingħajr ma tiddetta"
+          ],
+          "title" : "wara 15-il minuta",
+          "words" : [
+            "kwart ta’ siegħa",
+            "15 min"
+          ]
+        },
+        "nl" : {
+          "phrases" : [
+            "haal het opschoonmodel uit het geheugen als het een kwartier niet is gebruikt"
+          ],
+          "title" : "na 15 minuten",
+          "words" : [
+            "opschoonmodel 15 min",
+            "AI Polish een kwartier"
+          ]
+        },
+        "pl" : {
+          "phrases" : [
+            "zwolnij pamięć modelu korekty tekstu po kwadransie bez dyktowania"
+          ],
+          "title" : "po 15 minutach",
+          "words" : [
+            "korekta tekstu 15 min",
+            "model korekty po kwadransie"
+          ]
+        },
+        "pt" : {
+          "phrases" : [
+            "liberar da memória o modelo de revisão de texto após 15 minutos de inatividade"
+          ],
+          "title" : "após 15 minutos",
+          "words" : [
+            "revisão de texto 15 min",
+            "AI Polish 15 minutos"
+          ]
+        },
+        "ro" : {
+          "phrases" : [
+            "scoate modelul de corectare a textului din memorie după 15 minute fără dictare"
+          ],
+          "title" : "după 15 minute",
+          "words" : [
+            "AI Polish 15 min",
+            "corectare text un sfert de oră"
+          ]
+        },
+        "ru" : {
+          "phrases" : [
+            "выгружать модель правки текста из памяти через 15 минут простоя"
+          ],
+          "title" : "через 15 минут",
+          "words" : [
+            "правка текста 15 мин",
+            "правка текста четверть часа"
+          ]
+        },
+        "sk" : {
+          "phrases" : [
+            "uvoľniť model na úpravu textu z pamäte po 15 minútach nečinnosti"
+          ],
+          "title" : "po 15 minútach",
+          "words" : [
+            "AI Polish 15 min",
+            "úprava textu štvrťhodina"
+          ]
+        },
+        "sl" : {
+          "phrases" : [
+            "sprosti pomnilnik modela za izboljšanje besedila po 15 minutah neuporabe"
+          ],
+          "title" : "po 15 minutah",
+          "words" : [
+            "AI Polish 15 min",
+            "izboljšanje besedila 15 minut",
+            "izboljšanje besedila petnajst minut",
+            "izboljšanje besedila četrt ure"
+          ]
+        },
+        "sv" : {
+          "phrases" : [
+            "frigör minnet som modellen för textbearbetning använder när den inte har använts på en kvart"
+          ],
+          "title" : "efter 15 minuter",
+          "words" : [
+            "AI Polish efter 15 min",
+            "frigör minne för textbearbetning efter en kvart"
+          ]
+        },
+        "tr" : {
+          "phrases" : [
+            "metin düzenleme modeli 15 dakika boşta kalınca bellekten çıkarılsın"
+          ],
+          "title" : "15 dakika sonra",
+          "words" : [
+            "metin düzenleme 15 dk",
+            "AI Polish çeyrek saat"
+          ]
+        },
+        "uk" : {
+          "phrases" : [
+            "вивантажувати модель редагування тексту після чверті години без диктування"
+          ],
+          "title" : "через 15 хвилин",
+          "words" : [
+            "15 хв",
+            "AI Polish 15 хвилин"
+          ]
+        },
+        "vi" : {
+          "phrases" : [
+            "giải phóng bộ nhớ của mô hình chỉnh văn bản sau 15 phút không dùng đến"
+          ],
+          "title" : "sau 15 phút",
+          "words" : [
+            "AI Polish 15 phút",
+            "AI Polish 15p"
+          ]
+        },
+        "zh" : {
+          "phrases" : [
+            "润色模型闲置15分钟后释放内存"
+          ],
+          "title" : "15 分钟后",
+          "words" : [
+            "润色闲置15分钟",
+            "润色闲置一刻钟"
+          ]
+        }
+      }
+    },
+    {
+      "context" : [
+        "window.settings",
+        "page.aiPolish",
+        "section.aiPolishModel",
+        "aiPolishProvider",
+        "aiPolish.providerSection",
+        "unloadPolishModel"
+      ],
+      "declaredIn" : "Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift",
+      "description" : null,
+      "destination" : {
+        "page" : "aiPolish"
+      },
+      "dictionaryTab" : null,
+      "fallbacks" : [
+        "aiPolishProvider",
+        "enableAIPolish"
+      ],
+      "id" : "unloadPolishModel.oneHour",
+      "kind" : "choice",
+      "parent" : "unloadPolishModel",
+      "searchable" : true,
+      "structure" : "item",
+      "target" : "unloadPolishModel",
+      "title" : {
+        "catalog" : "Sources/EnviousWispr/Resources/Localizable.xcstrings",
+        "de" : "Nach 1 Stunde",
+        "en" : "After 1 hour",
+        "es" : "Después de 1 hora",
+        "fr" : "Après 1 heure",
+        "key" : "After 1 hour",
+        "source" : "resource",
+        "table" : "Localizable"
+      },
+      "visibility" : "providerSelected",
+      "vocabulary" : {
+        "ar" : {
+          "phrases" : [
+            "حرّر ذاكرة نموذج تحسين النص بعد ساعة من دون استخدام"
+          ],
+          "title" : "بعد ساعة",
+          "words" : [
+            "تفريغ نموذج تحسين النص بعد ٦٠ دقيقة",
+            "خمول نموذج التنقيح لمدة ساعة"
+          ]
+        },
+        "bg" : {
+          "phrases" : [
+            "освободи модела за подобряване на текста от паметта след един час без диктовка"
+          ],
+          "title" : "след 1 час",
+          "words" : [
+            "AI Polish 1 час",
+            "AI Polish 60 минути"
+          ]
+        },
+        "cs" : {
+          "phrases" : [
+            "uvolnit model pro úpravu textu z paměti po hodině bez diktování"
+          ],
+          "title" : "po 1 hodině",
+          "words" : [
+            "AI Polish 1 hodina",
+            "AI Polish 60 minut",
+            "úprava textu po hodině"
+          ]
+        },
+        "da" : {
+          "phrases" : [
+            "frigør RAM, når tekstforbedringsmodellen har været inaktiv i en time"
+          ],
+          "title" : "efter 1 time",
+          "words" : [
+            "tekstforbedring 60 min",
+            "AI Polish en time"
+          ]
+        },
+        "de" : {
+          "phrases" : [
+            "das Nachbearbeitungsmodell nach einer Stunde Leerlauf entladen",
+            "den Arbeitsspeicher des Modells für die KI-Nachbearbeitung nach 60 Minuten ohne Nutzung freigeben"
+          ],
+          "words" : [
+            "AI Polish 1 Std.",
+            "KI-Nachbearbeitung 60 Minuten"
+          ]
+        },
+        "el" : {
+          "phrases" : [
+            "να ελευθερώνεται η μνήμη του μοντέλου βελτίωσης κειμένου μετά από μία ώρα χωρίς υπαγόρευση"
+          ],
+          "title" : "μετά από 1 ώρα",
+          "words" : [
+            "βελτίωση κειμένου 60 λεπτά",
+            "AI Polish μία ώρα"
+          ]
+        },
+        "en" : {
+          "phrases" : [
+            "free up polish model memory after an hour without dictating",
+            "keep the polish model in memory for an hour after dictation"
+          ],
+          "words" : [
+            "60 minutes",
+            "1 hr"
+          ]
+        },
+        "es" : {
+          "phrases" : [
+            "liberar la memoria del modelo de corrección tras una hora sin dictar"
+          ],
+          "words" : [
+            "1 h",
+            "modelo de corrección tras 60 minutos"
+          ]
+        },
+        "et" : {
+          "phrases" : [
+            "vabasta viimistlusmudel mälust, kui ma pole tund aega dikteerinud"
+          ],
+          "title" : "1 tunni pärast",
+          "words" : [
+            "60 minutit",
+            "üks tund",
+            "viimistlusmudel 1 tund"
+          ]
+        },
+        "fi" : {
+          "phrases" : [
+            "vapauta viimeistelymallin käyttämä muisti, kun mallia ei ole käytetty tuntiin"
+          ],
+          "title" : "1 tunnin kuluttua",
+          "words" : [
+            "viimeistelymalli 1 h",
+            "viimeistelymalli 60 minuuttia"
+          ]
+        },
+        "fr" : {
+          "phrases" : [
+            "libérer la mémoire du modèle de correction de texte après une heure d’inactivité"
+          ],
+          "words" : [
+            "1 h",
+            "correction de texte 1 heure",
+            "modèle de correction 60 minutes"
+          ]
+        },
+        "hi" : {
+          "phrases" : [
+            "एक घंटे तक डिक्टेशन न करने पर टेक्स्ट सुधार मॉडल की मेमोरी खाली करें"
+          ],
+          "title" : "1 घंटे बाद",
+          "words" : [
+            "AI Polish 1 घंटा",
+            "टेक्स्ट सुधार मॉडल एक घंटा",
+            "AI Polish 60 मिनट"
+          ]
+        },
+        "hr" : {
+          "phrases" : [
+            "oslobodi memoriju modela za doradu teksta nakon sat vremena bez diktiranja"
+          ],
+          "title" : "nakon 1 sata",
+          "words" : [
+            "dorada teksta 60 min",
+            "AI Polish sat vremena"
+          ]
+        },
+        "hu" : {
+          "phrases" : [
+            "a szövegjavító modell egy óra tétlenség után kerüljön ki a memóriából"
+          ],
+          "title" : "1 óra után",
+          "words" : [
+            "szövegjavító modell egy óra",
+            "szövegjavító modell 60 perc",
+            "AI Polish 1 óra"
+          ]
+        },
+        "it" : {
+          "phrases" : [
+            "libera la memoria del modello di correzione del testo dopo un'ora di inattività"
+          ],
+          "title" : "dopo 1 ora",
+          "words" : [
+            "AI Polish 60 minuti",
+            "AI Polish 1 h",
+            "correzione del testo un'ora"
+          ]
+        },
+        "ja" : {
+          "phrases" : [
+            "1時間音声入力しなかったら文章整形モデルのメモリを解放したい"
+          ],
+          "title" : "1時間後",
+          "words" : [
+            "文章整形 1時間",
+            "文章整形 60分"
+          ]
+        },
+        "ko" : {
+          "phrases" : [
+            "한 시간 동안 받아쓰기를 안 하면 텍스트 다듬기 모델을 메모리에서 해제"
+          ],
+          "title" : "1시간 후",
+          "words" : [
+            "다듬기 모델 60분",
+            "AI Polish 한 시간"
+          ]
+        },
+        "lt" : {
+          "phrases" : [
+            "pašalinti teksto tvarkymo modelį iš atminties, kai jis nenaudojamas valandą"
+          ],
+          "title" : "po 1 valandos",
+          "words" : [
+            "teksto tvarkymo modelis 1 val.",
+            "teksto tvarkymo modelis 60 minučių"
+          ]
+        },
+        "lv" : {
+          "phrases" : [
+            "atbrīvot teksta uzlabošanas modeļa aizņemto atmiņu pēc stundas bez diktēšanas"
+          ],
+          "title" : "pēc 1 stundas",
+          "words" : [
+            "1 stunda",
+            "60 minūtes",
+            "teksta uzlabošanas modelis 1 stunda"
+          ]
+        },
+        "mt" : {
+          "phrases" : [
+            "illibera l-memorja li juża l-mudell tal-irfinar wara siegħa bla dettatura"
+          ],
+          "title" : "wara siegħa",
+          "words" : [
+            "AI Polish 60 minuta"
+          ]
+        },
+        "nl" : {
+          "phrases" : [
+            "haal het opschoonmodel uit het geheugen als het een uur niet is gebruikt"
+          ],
+          "title" : "na 1 uur",
+          "words" : [
+            "opschoonmodel 60 minuten",
+            "AI Polish een uur"
+          ]
+        },
+        "pl" : {
+          "phrases" : [
+            "zwolnij pamięć modelu korekty tekstu po godzinie bez dyktowania"
+          ],
+          "title" : "po 1 godzinie",
+          "words" : [
+            "korekta tekstu 60 minut",
+            "model korekty po godzinie"
+          ]
+        },
+        "pt" : {
+          "phrases" : [
+            "liberar da memória o modelo de revisão de texto após uma hora de inatividade"
+          ],
+          "title" : "após 1 hora",
+          "words" : [
+            "revisão de texto 1 h",
+            "AI Polish 60 min"
+          ]
+        },
+        "ro" : {
+          "phrases" : [
+            "eliberează memoria modelului de îmbunătățire a textului după o oră fără dictare"
+          ],
+          "title" : "după o oră",
+          "words" : [
+            "AI Polish 1 h",
+            "corectare text 60 de minute"
+          ]
+        },
+        "ru" : {
+          "phrases" : [
+            "выгружать модель правки текста из памяти через час простоя"
+          ],
+          "title" : "через 1 час",
+          "words" : [
+            "правка текста 60 минут",
+            "правка текста 1 ч"
+          ]
+        },
+        "sk" : {
+          "phrases" : [
+            "uvoľniť model na úpravu textu z pamäte po hodine nečinnosti"
+          ],
+          "title" : "po 1 hodine",
+          "words" : [
+            "AI Polish 60 min",
+            "úprava textu 1 hodina"
+          ]
+        },
+        "sl" : {
+          "phrases" : [
+            "sprosti pomnilnik modela za izboljšanje besedila po eni uri neuporabe"
+          ],
+          "title" : "po 1 uri",
+          "words" : [
+            "AI Polish 1 ura",
+            "izboljšanje besedila ena ura",
+            "izboljšanje besedila 60 minut"
+          ]
+        },
+        "sv" : {
+          "phrases" : [
+            "frigör minnet som modellen för textbearbetning använder när den inte har använts på en timme"
+          ],
+          "title" : "efter 1 timme",
+          "words" : [
+            "AI Polish efter 1 tim",
+            "frigör minne för textbearbetning efter 60 minuter"
+          ]
+        },
+        "tr" : {
+          "phrases" : [
+            "metin düzenleme modeli 1 saat boşta kalınca bellekten çıkarılsın"
+          ],
+          "title" : "1 saat sonra",
+          "words" : [
+            "metin düzenleme bir saat",
+            "AI Polish 60 dakika"
+          ]
+        },
+        "uk" : {
+          "phrases" : [
+            "вивантажувати модель редагування тексту з пам’яті після години без диктування"
+          ],
+          "title" : "через 1 годину",
+          "words" : [
+            "1 год",
+            "AI Polish 60 хвилин"
+          ]
+        },
+        "vi" : {
+          "phrases" : [
+            "giải phóng bộ nhớ của mô hình chỉnh văn bản sau 1 giờ không dùng đến"
+          ],
+          "title" : "sau 1 giờ",
+          "words" : [
+            "AI Polish 1 giờ",
+            "AI Polish 60 phút",
+            "AI Polish một tiếng"
+          ]
+        },
+        "zh" : {
+          "phrases" : [
+            "润色模型闲置一小时后释放内存"
+          ],
+          "title" : "1 小时后",
+          "words" : [
+            "润色闲置1小时",
+            "润色闲置一小时",
+            "润色闲置60分钟"
           ]
         }
       }

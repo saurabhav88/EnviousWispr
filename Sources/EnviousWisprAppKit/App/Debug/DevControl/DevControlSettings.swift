@@ -58,7 +58,7 @@
       .hasCompletedOnboarding, .cancelKeyCode, .cancelModifiers, .quickAddKeyCode,
       .quickAddModifiers, .pasteLastKeyCode, .pasteLastModifiers, .copyLastKeyCode,
       .copyLastModifiers, .toggleKeyCode, .toggleModifiers, .pushToTalkKeyCode,
-      .pushToTalkModifiers, .modelUnloadPolicy, .restoreClipboardAfterPaste,
+      .pushToTalkModifiers, .modelUnloadPolicy, .localPolishUnloadPolicy, .restoreClipboardAfterPaste,
       .keepDictationsOutOfClipboardHistory, .quickAddClipboardFallback, .smartInsertion,
       .escapeRecoveryEnabled, .wordCorrectionEnabled, .fillerRemovalEnabled,
       .emojiFormatterEnabled, .spokenPunctuation, .casualModeEnabled, .crashRecoveryEnabled,
@@ -95,7 +95,7 @@
         .meetingFollowsCallMute, .meetingOnboardingComplete,
         .meetingUseCalendarForNames, .meetingCallDetection, .meetingCallAppsOff,
         .meetingCallNoCounts, .meetingCallFirstTipShown, .meetingLanguageMode,
-        .meetingTranscriptEngine, .meetingLiveWordsEngine, .meetingLiveWordsLanguage, .vadAutoStop, .silentMicWarnings, .modelUnloadPolicy,
+        .meetingTranscriptEngine, .meetingLiveWordsEngine, .meetingLiveWordsLanguage, .vadAutoStop, .silentMicWarnings, .modelUnloadPolicy, .localPolishUnloadPolicy,
         .restoreClipboardAfterPaste, .keepDictationsOutOfClipboardHistory,
         .quickAddClipboardFallback, .smartInsertion, .escapeRecoveryEnabled,
         .wordCorrectionEnabled, .fillerRemovalEnabled, .emojiFormatterEnabled,
@@ -185,6 +185,7 @@
       case .pushToTalkKeyCode: return Int(settings.pushToTalkKeyCode)
       case .pushToTalkModifiers: return settings.pushToTalkModifiers.rawValue
       case .modelUnloadPolicy: return settings.modelUnloadPolicy.rawValue
+      case .localPolishUnloadPolicy: return settings.localPolishUnloadPolicy.rawValue
       case .restoreClipboardAfterPaste: return settings.restoreClipboardAfterPaste
       case .keepDictationsOutOfClipboardHistory: return settings.keepDictationsOutOfClipboardHistory
       case .quickAddClipboardFallback: return settings.quickAddClipboardFallback
@@ -390,6 +391,8 @@
         return set(Codec.modifiers(value)) { settings.pushToTalkModifiers = $0 }
       case .modelUnloadPolicy:
         return set(Codec.raw(value, ModelUnloadPolicy.self)) { settings.modelUnloadPolicy = $0 }
+      case .localPolishUnloadPolicy:
+        return set(Codec.raw(value, ModelUnloadPolicy.self)) { settings.localPolishUnloadPolicy = $0 }
       case .restoreClipboardAfterPaste:
         return set(Codec.bool(value)) { settings.restoreClipboardAfterPaste = $0 }
       case .keepDictationsOutOfClipboardHistory:
@@ -653,7 +656,7 @@
         .meetingLanguageMode, .meetingTranscriptEngine, .meetingLiveWordsEngine, .meetingLiveWordsLanguage, .hotkeyEnabled,
         .vadAutoStop, .silentMicWarnings, .vadSensitivity,
         .vadEnergyGate, .onboardingState, .hasCompletedOnboarding, .pushToTalkKeyCode,
-        .pushToTalkModifiers, .modelUnloadPolicy, .restoreClipboardAfterPaste,
+        .pushToTalkModifiers, .modelUnloadPolicy, .localPolishUnloadPolicy, .restoreClipboardAfterPaste,
         .keepDictationsOutOfClipboardHistory, .quickAddClipboardFallback, .smartInsertion,
         .escapeRecoveryEnabled, .wordCorrectionEnabled, .fillerRemovalEnabled,
         .emojiFormatterEnabled, .casualModeEnabled, .crashRecoveryEnabled, .shareUsageMetrics,

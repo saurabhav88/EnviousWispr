@@ -271,13 +271,53 @@
    "id": "silentMicWarning",
    "review": "additions/silentMicWarning.json",
    "reviewSHA256": "dfae26900c3594114ba05ae2b22c59ae7d1706eb31669988400daca84d180c60"
+  },
+  {
+   "id": "unloadPolishModel",
+   "review": "additions/unloadPolishModel.json",
+   "reviewSHA256": "3a3deff424c67fde8ac3d025c552ab451e0be416adee08cdd394c572e8586982"
+  },
+  {
+   "id": "unloadPolishModel.never",
+   "review": "additions/unloadPolishModel.never.json",
+   "reviewSHA256": "187a4714b67c54de1855409aa4a5a8404b4edaa82fe128e20a20800859e3529a"
+  },
+  {
+   "id": "unloadPolishModel.immediately",
+   "review": "additions/unloadPolishModel.immediately.json",
+   "reviewSHA256": "3959f6f19303413b10929e7ef86da5d673915ce252463321a973408d7f2de338"
+  },
+  {
+   "id": "unloadPolishModel.twoMinutes",
+   "review": "additions/unloadPolishModel.twoMinutes.json",
+   "reviewSHA256": "bcf40a026a71f09de5d65d503422d2a7a6469703e6d16755873c8567d0c44497"
+  },
+  {
+   "id": "unloadPolishModel.fiveMinutes",
+   "review": "additions/unloadPolishModel.fiveMinutes.json",
+   "reviewSHA256": "4ebcadffc43e02f897ccd904f55069751be02a3ee1945d65fde6d84a364058a6"
+  },
+  {
+   "id": "unloadPolishModel.tenMinutes",
+   "review": "additions/unloadPolishModel.tenMinutes.json",
+   "reviewSHA256": "0db947399b1650ef984914639fec6bdaf06279bb0cfc32c33b5f087b92e85af4"
+  },
+  {
+   "id": "unloadPolishModel.fifteenMinutes",
+   "review": "additions/unloadPolishModel.fifteenMinutes.json",
+   "reviewSHA256": "1151ab061ab5e56a46c1a9492d26689fe328c61e78307f9be5c2af78d22bb013"
+  },
+  {
+   "id": "unloadPolishModel.oneHour",
+   "review": "additions/unloadPolishModel.oneHour.json",
+   "reviewSHA256": "9559389f18280b4d90d7f41e4261edf7336732904cc80ee77c7d923e95628c16"
   }
  ],
  "retiredIDs": [],
  "resource": {
   "path": "Sources/EnviousWisprAppKit/Resources/SettingsSearchVocabulary.json",
-  "sha256": "21b7283f5e6f0349ca95375366d35ca8dc38128d47c96acb068fb81b9ee943c1",
-  "bytes": 1904945
+  "sha256": "be8c74f8bb8765c6c8625fa7f9c2ff2e84ebe08aae4fd1ca66ee38af808ee608",
+  "bytes": 1965347
  },
  "sources": [
   {
@@ -561,7 +601,7 @@
  "languages": [
   {
    "language": "ar",
-   "contentSHA256": "b51b0fcb592e0fd3328859269e6f52ee9d0f88c298aefe99438f9b6e29acbf97",
+   "contentSHA256": "a12f17bd8917b3a4136b28dc62b04641502d196bcbd085f877c522e95888d92b",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -1800,13 +1840,37 @@
       "sha256": "fb1dc9fe896a8f7af3c20e39137de2950e80d65e6a4ddb9e6e0a6c9af60849e7"
      },
      "disposition": "adopted in full"
+    },
+    {
+     "kind": "addition-content",
+     "id": "unloadPolishModel",
+     "issue": 3853,
+     "date": "2026-11-22",
+     "method": "One fresh isolated Codex session reviewed this language for accuracy, naturalness and overlap with the speech model's unload setting (the unload polish model row).",
+     "output": {
+      "path": "additions/unloadPolishModel/review-ar.txt",
+      "sha256": "56d376df0167f9bb16843867f12c99704159e28e58347372a595b29ea2d3e0d5"
+     },
+     "disposition": "Adopted as reviewed."
+    },
+    {
+     "kind": "addition-content",
+     "id": "unloadPolishModel.*",
+     "issue": 3853,
+     "date": "2026-11-22",
+     "method": "One fresh isolated Codex session reviewed this language for accuracy, naturalness and overlap with the speech model's unload setting (its seven choices).",
+     "output": {
+      "path": "additions/unloadPolishModel/choices/review-ar.txt",
+      "sha256": "b8978f40a500960ac3b53cc57f56988588e1903c8e3aea87573bf6550ae56c6e"
+     },
+     "disposition": "Adopted as reviewed."
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "bg",
-   "contentSHA256": "c142d7a8bf9f6161fa5982e43e7cf1772077b039b004bffd98e2d6393922d8b7",
+   "contentSHA256": "063409fbc64d940402e1e5b0e806b372fffae9454f1dd45b14fe7f4b6c178a73",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -3036,13 +3100,37 @@
       "sha256": "eb3d92a92385563e4968d575d29140d3c2ac49abe7ed1c4c1cba5e84125b185c"
      },
      "disposition": "adopted in full"
+    },
+    {
+     "kind": "addition-content",
+     "id": "unloadPolishModel",
+     "issue": 3853,
+     "date": "2026-11-22",
+     "method": "One fresh isolated Codex session reviewed this language for accuracy, naturalness and overlap with the speech model's unload setting (the unload polish model row).",
+     "output": {
+      "path": "additions/unloadPolishModel/review-bg.txt",
+      "sha256": "1bf83a2276b6f29a744ded48f04453fcb42b3cc02d074a0f2316ee6c2099a363"
+     },
+     "disposition": "Adopted as reviewed."
+    },
+    {
+     "kind": "addition-content",
+     "id": "unloadPolishModel.*",
+     "issue": 3853,
+     "date": "2026-11-22",
+     "method": "One fresh isolated Codex session reviewed this language for accuracy, naturalness and overlap with the speech model's unload setting (its seven choices).",
+     "output": {
+      "path": "additions/unloadPolishModel/choices/review-bg.txt",
+      "sha256": "42c9df221c6c317358163cc613bd0850b6dc1f577edcde783f047ecc6603b994"
+     },
+     "disposition": "Adopted as reviewed."
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "cs",
-   "contentSHA256": "25f8132bde89437f7fc7ce23218923b08269d2726241aaad9076c0bed0586ecd",
+   "contentSHA256": "1e8d3508b92ae4a43f6fcedb0db4439fcf5d5da7616394662f170d0d721ad7e7",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -4272,13 +4360,37 @@
       "sha256": "5c7c1b54ac16fdc5d227a5796cff537fe05d9c9b4caf1263a09646b25e78ed75"
      },
      "disposition": "adopted in full"
+    },
+    {
+     "kind": "addition-content",
+     "id": "unloadPolishModel",
+     "issue": 3853,
+     "date": "2026-11-22",
+     "method": "One fresh isolated Codex session reviewed this language for accuracy, naturalness and overlap with the speech model's unload setting (the unload polish model row).",
+     "output": {
+      "path": "additions/unloadPolishModel/review-cs.txt",
+      "sha256": "9121d92c51741843a924a20df4660aed68e31e0cf1a8150154f60516ff1914f3"
+     },
+     "disposition": "Adopted as reviewed."
+    },
+    {
+     "kind": "addition-content",
+     "id": "unloadPolishModel.*",
+     "issue": 3853,
+     "date": "2026-11-22",
+     "method": "One fresh isolated Codex session reviewed this language for accuracy, naturalness and overlap with the speech model's unload setting (its seven choices).",
+     "output": {
+      "path": "additions/unloadPolishModel/choices/review-cs.txt",
+      "sha256": "4cbdd8dc7c6339ffc6eabb5089774e3a45d81f1f1e9c32196e42ad88727554dd"
+     },
+     "disposition": "Adopted as reviewed."
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "da",
-   "contentSHA256": "9e8292e7fc992fb8fee568b5e1fd3020f1e62f98cadd9f07d80c91973002e169",
+   "contentSHA256": "2646ac894af9d6b7816d1a8aac283429ed1c58802f13af5295540f65a9d5bbc0",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -5508,13 +5620,37 @@
       "sha256": "3468ec216fc5a6af5c365709a35cb8ecd628b4e74a26b7eb63384dd69276cc03"
      },
      "disposition": "adopted in full"
+    },
+    {
+     "kind": "addition-content",
+     "id": "unloadPolishModel",
+     "issue": 3853,
+     "date": "2026-11-22",
+     "method": "One fresh isolated Codex session reviewed this language for accuracy, naturalness and overlap with the speech model's unload setting (the unload polish model row).",
+     "output": {
+      "path": "additions/unloadPolishModel/review-da.txt",
+      "sha256": "4e4bb1a20b91c1c829fb0f41226e04c35a7176ede5297024ea255fd464ed409f"
+     },
+     "disposition": "Adopted as reviewed."
+    },
+    {
+     "kind": "addition-content",
+     "id": "unloadPolishModel.*",
+     "issue": 3853,
+     "date": "2026-11-22",
+     "method": "One fresh isolated Codex session reviewed this language for accuracy, naturalness and overlap with the speech model's unload setting (its seven choices).",
+     "output": {
+      "path": "additions/unloadPolishModel/choices/review-da.txt",
+      "sha256": "88e40d4f81ee004402abebe11b616867a23cb62ab38f2932214437442208b797"
+     },
+     "disposition": "Adopted as reviewed."
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "de",
-   "contentSHA256": "f82cc24c8dce608c0827bd9efa838a2ae93f72a7596d500f5ffa208a019ca1fa",
+   "contentSHA256": "83646444fa3a567c4eeb9d12c8cafe4275eee4d6bcd0fd8e5cc88d419b16e742",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -7044,13 +7180,37 @@
       "sha256": "102c0132e527832a5d00fe67bcc2501934b42f51d6cfb063d7fe5d8a4b5bbbbc"
      },
      "disposition": "GPT matched the Codex list; Gemini kept 'Hinweis bei fehlendem Ton' instead of 'Stillewarnung'; the majority list adopted as recorded in the digest"
+    },
+    {
+     "kind": "addition-content",
+     "id": "unloadPolishModel",
+     "issue": 3853,
+     "date": "2026-11-22",
+     "method": "One fresh isolated Codex session reviewed this language for accuracy, naturalness and overlap with the speech model's unload setting (the unload polish model row).",
+     "output": {
+      "path": "additions/unloadPolishModel/review-de.txt",
+      "sha256": "a8824cad6bed73fdfbdf79ac4d91ee2ddb46eb025146c95db6c6bd6ae1377e83"
+     },
+     "disposition": "Adopted as reviewed."
+    },
+    {
+     "kind": "addition-content",
+     "id": "unloadPolishModel.*",
+     "issue": 3853,
+     "date": "2026-11-22",
+     "method": "One fresh isolated Codex session reviewed this language for accuracy, naturalness and overlap with the speech model's unload setting (its seven choices).",
+     "output": {
+      "path": "additions/unloadPolishModel/choices/review-de.txt",
+      "sha256": "34dedc4b971419de2b8e4ec27560e7316371fed631e6da5841fceea74117353d"
+     },
+     "disposition": "Adopted as reviewed."
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "el",
-   "contentSHA256": "69331aab5add3873a65a7d75d07fc0c344e85c697f49d6d7f7c06b9860a6d1b9",
+   "contentSHA256": "1f34053cc769b9c5fa224e45733921d6ba90227decfb4b878f953e4b3bab109a",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -8289,13 +8449,37 @@
       "sha256": "570674158db63d286f5b12b6047c495750d7a66099f2c7c65fa5271e60ce043b"
      },
      "disposition": "adopted in full"
+    },
+    {
+     "kind": "addition-content",
+     "id": "unloadPolishModel",
+     "issue": 3853,
+     "date": "2026-11-22",
+     "method": "One fresh isolated Codex session reviewed this language for accuracy, naturalness and overlap with the speech model's unload setting (the unload polish model row).",
+     "output": {
+      "path": "additions/unloadPolishModel/review-el.txt",
+      "sha256": "2c3084cedd3d02004bb8f3e56659fc8f24376b1fa952d6d401fa0b8af71587a8"
+     },
+     "disposition": "Adopted as reviewed."
+    },
+    {
+     "kind": "addition-content",
+     "id": "unloadPolishModel.*",
+     "issue": 3853,
+     "date": "2026-11-22",
+     "method": "One fresh isolated Codex session reviewed this language for accuracy, naturalness and overlap with the speech model's unload setting (its seven choices).",
+     "output": {
+      "path": "additions/unloadPolishModel/choices/review-el.txt",
+      "sha256": "2c760824184ecc3f6d735d0099a58f2671f5a62d06881c1407f2c45b6d0a0305"
+     },
+     "disposition": "Adopted as reviewed."
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "en",
-   "contentSHA256": "4a7a726ae779f8211d2a2b0dcffcee534fca658e15ee68589be10af05f0e2ff8",
+   "contentSHA256": "1f9b644ea1d25d61b9e7628c0c87256c0c4b8d0a6b1a5cbf9c042ad6bce3cffb",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -9559,13 +9743,37 @@
       "sha256": "1da16a3fe0bbc1efe7a027f16d4ed0739aeb52d259b11c39a8389c5eb76b5c06"
      },
      "disposition": "the reviewer's FINAL LIST adopted in full ('stop' -> 'turn off' in the second phrase)"
+    },
+    {
+     "kind": "addition-content",
+     "id": "unloadPolishModel",
+     "issue": 3853,
+     "date": "2026-11-22",
+     "method": "One fresh isolated Codex session reviewed this language for accuracy, naturalness and overlap with the speech model's unload setting (the unload polish model row).",
+     "output": {
+      "path": "additions/unloadPolishModel/review-en.txt",
+      "sha256": "f1067c446958ba53243d21f73a991c8060f3e6f586153d278572a14f93820332"
+     },
+     "disposition": "Adopted as reviewed."
+    },
+    {
+     "kind": "addition-content",
+     "id": "unloadPolishModel.*",
+     "issue": 3853,
+     "date": "2026-11-22",
+     "method": "One fresh isolated Codex session reviewed this language for accuracy, naturalness and overlap with the speech model's unload setting (its seven choices).",
+     "output": {
+      "path": "additions/unloadPolishModel/choices/review-en.txt",
+      "sha256": "89dd1f5d70cc4dd2f05b941cc53bc0bfeb3615e46b10cf21dfc98bc7d6bce9f3"
+     },
+     "disposition": "Adopted as reviewed."
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "es",
-   "contentSHA256": "a2620b3ff5e8931f8e4323824878cf41647662ce7e2d19e758d34d0f8df2a63c",
+   "contentSHA256": "381978b115d833ce7a99935d9607d7ee92d36221c879e0013deb11677d6153f3",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -10829,13 +11037,37 @@
       "sha256": "789db319ddde8199dee10cbb4688572a3f6348d0397f011288866fe634a7de1a"
      },
      "disposition": "the reviewer's FINAL LIST adopted as recorded in reviewed-edits.json (existing words and phrases kept; size words and model-name phrases added); no council run, the wording follows the cards' own reviewed translations"
+    },
+    {
+     "kind": "addition-content",
+     "id": "unloadPolishModel",
+     "issue": 3853,
+     "date": "2026-11-22",
+     "method": "One fresh isolated Codex session reviewed this language for accuracy, naturalness and overlap with the speech model's unload setting (the unload polish model row).",
+     "output": {
+      "path": "additions/unloadPolishModel/review-es.txt",
+      "sha256": "57240196783f97977e90067b57e9e51911611673ad9d7ea18e4a7c2b4c19795a"
+     },
+     "disposition": "Adopted as reviewed."
+    },
+    {
+     "kind": "addition-content",
+     "id": "unloadPolishModel.*",
+     "issue": 3853,
+     "date": "2026-11-22",
+     "method": "One fresh isolated Codex session reviewed this language for accuracy, naturalness and overlap with the speech model's unload setting (its seven choices).",
+     "output": {
+      "path": "additions/unloadPolishModel/choices/review-es.txt",
+      "sha256": "a9bc3fb81127e08f2ea83b80d47dd9d7a87b417102404f1551a6d52f4c7556d2"
+     },
+     "disposition": "Adopted as reviewed."
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "et",
-   "contentSHA256": "74876566e39ab9a54de546dd9aae8e3a91fc7d7471b591b08a01c4e8539843a7",
+   "contentSHA256": "aae3b3ce6a482207c3394128c97a4af67a46376ac366de661a83d614f5b20582",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -12065,13 +12297,37 @@
       "sha256": "f29fab94402018c9b6dd574eb804a41c14f88907c55cd6a67292943948971f51"
      },
      "disposition": "adopted in full"
+    },
+    {
+     "kind": "addition-content",
+     "id": "unloadPolishModel",
+     "issue": 3853,
+     "date": "2026-11-22",
+     "method": "One fresh isolated Codex session reviewed this language for accuracy, naturalness and overlap with the speech model's unload setting (the unload polish model row).",
+     "output": {
+      "path": "additions/unloadPolishModel/review-et.txt",
+      "sha256": "66b0e5edd03772a487df76e68c187f4d4c26684bd092e3b039b5f7549683f189"
+     },
+     "disposition": "Adopted as reviewed."
+    },
+    {
+     "kind": "addition-content",
+     "id": "unloadPolishModel.*",
+     "issue": 3853,
+     "date": "2026-11-22",
+     "method": "One fresh isolated Codex session reviewed this language for accuracy, naturalness and overlap with the speech model's unload setting (its seven choices).",
+     "output": {
+      "path": "additions/unloadPolishModel/choices/review-et.txt",
+      "sha256": "660dafc9e5c0d8e0b3ecea57d8406aae0f78993931bfab1e17df1d6c0593e27b"
+     },
+     "disposition": "Adopted as reviewed."
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "fi",
-   "contentSHA256": "894bd8024ef12c707e889be0e2c9025fc5e952293e7dce5ab4fab3b19b1053d8",
+   "contentSHA256": "0e5b859938710aafe55eab82ec28e3424187558b373023089982cdb9565a50c7",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -13301,13 +13557,37 @@
       "sha256": "f1e952474545bda92341c185ccbd06b0d470faa61c3b794f15e6dc3dbd1d54c5"
      },
      "disposition": "adopted in full"
+    },
+    {
+     "kind": "addition-content",
+     "id": "unloadPolishModel",
+     "issue": 3853,
+     "date": "2026-11-22",
+     "method": "One fresh isolated Codex session reviewed this language for accuracy, naturalness and overlap with the speech model's unload setting (the unload polish model row).",
+     "output": {
+      "path": "additions/unloadPolishModel/review-fi.txt",
+      "sha256": "d3da834c54edaa269f18365f38140f57ab16ed9e3638f2b04d90eb8dfbc67cd8"
+     },
+     "disposition": "Adopted as reviewed."
+    },
+    {
+     "kind": "addition-content",
+     "id": "unloadPolishModel.*",
+     "issue": 3853,
+     "date": "2026-11-22",
+     "method": "One fresh isolated Codex session reviewed this language for accuracy, naturalness and overlap with the speech model's unload setting (its seven choices).",
+     "output": {
+      "path": "additions/unloadPolishModel/choices/review-fi.txt",
+      "sha256": "dcf877a19e987dbb246a417ac62a9b04654968402d302870a79f877e02bf4241"
+     },
+     "disposition": "Adopted as reviewed."
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "fr",
-   "contentSHA256": "757b026348258054f94318c1312195533acb067669ff663077b96d1f71f2d592",
+   "contentSHA256": "54bea507cc01d392eeafa3dc8ee1f75e381d8fe55f77c311f66e050d988b946c",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -14562,13 +14842,37 @@
       "sha256": "25c8af6f045d1ae80ad49b153a2076eba2848cb873f97c63af3e90ecf3a21d19"
      },
      "disposition": "the reviewer's FINAL LIST adopted as recorded in reviewed-edits.json (existing words and phrases kept; size words and model-name phrases added); no council run, the wording follows the cards' own reviewed translations"
+    },
+    {
+     "kind": "addition-content",
+     "id": "unloadPolishModel",
+     "issue": 3853,
+     "date": "2026-11-22",
+     "method": "One fresh isolated Codex session reviewed this language for accuracy, naturalness and overlap with the speech model's unload setting (the unload polish model row).",
+     "output": {
+      "path": "additions/unloadPolishModel/review-fr.txt",
+      "sha256": "240a2fd9ad25f37ebbdec7bb508391944b527a72f0842d87858b8dc224aa461c"
+     },
+     "disposition": "Adopted as reviewed."
+    },
+    {
+     "kind": "addition-content",
+     "id": "unloadPolishModel.*",
+     "issue": 3853,
+     "date": "2026-11-22",
+     "method": "One fresh isolated Codex session reviewed this language for accuracy, naturalness and overlap with the speech model's unload setting (its seven choices).",
+     "output": {
+      "path": "additions/unloadPolishModel/choices/review-fr.txt",
+      "sha256": "6795dc5b60b9c1ff45bd249164893839e3a7d484c9290917d257041eaeae61b6"
+     },
+     "disposition": "Adopted as reviewed."
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "hi",
-   "contentSHA256": "cf82997da8c33325c0fb492a8a3da32ead83867d8bdc9a8b1d76e6539ea9b0c3",
+   "contentSHA256": "44c53d14db8c0591e9aac84a0a84448e2740b7ab75af2cd7b350f21ba07d551c",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -15798,13 +16102,37 @@
       "sha256": "c68b8b6a95f0842a8c374c04b3ccb186dc47ada02d2be5d026dc057335160193"
      },
      "disposition": "adopted in full"
+    },
+    {
+     "kind": "addition-content",
+     "id": "unloadPolishModel",
+     "issue": 3853,
+     "date": "2026-11-22",
+     "method": "One fresh isolated Codex session reviewed this language for accuracy, naturalness and overlap with the speech model's unload setting (the unload polish model row).",
+     "output": {
+      "path": "additions/unloadPolishModel/review-hi.txt",
+      "sha256": "73c6ba5d3b07cb4a6d96c686fea74bf7f19915bbd21c20f9404ae108562f0e3f"
+     },
+     "disposition": "Adopted as reviewed."
+    },
+    {
+     "kind": "addition-content",
+     "id": "unloadPolishModel.*",
+     "issue": 3853,
+     "date": "2026-11-22",
+     "method": "One fresh isolated Codex session reviewed this language for accuracy, naturalness and overlap with the speech model's unload setting (its seven choices).",
+     "output": {
+      "path": "additions/unloadPolishModel/choices/review-hi.txt",
+      "sha256": "fe47aaf0db849eee7e38482e5fbf8971e36072c34ce500ff84fb91673fb93546"
+     },
+     "disposition": "Adopted as reviewed."
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "hr",
-   "contentSHA256": "90eaebc5af3653707de1fa6f563bc79289533ac01c5ac04a768dc0e2bf95e347",
+   "contentSHA256": "2a7fc4143dae5dd8d3adbcc8759901dcb3d2759555b52178935c2742907c8f87",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -17034,13 +17362,37 @@
       "sha256": "e7b8392c64267bd0d0aae1e7dbbb100cafd92b5ac23f60ad5b42988bb3374e65"
      },
      "disposition": "adopted in full"
+    },
+    {
+     "kind": "addition-content",
+     "id": "unloadPolishModel",
+     "issue": 3853,
+     "date": "2026-11-22",
+     "method": "One fresh isolated Codex session reviewed this language for accuracy, naturalness and overlap with the speech model's unload setting (the unload polish model row).",
+     "output": {
+      "path": "additions/unloadPolishModel/review-hr.txt",
+      "sha256": "a35e921b55049712f7ed11cd242dbc4800dfec04cd5874394efb91bc41905ceb"
+     },
+     "disposition": "Adopted as reviewed."
+    },
+    {
+     "kind": "addition-content",
+     "id": "unloadPolishModel.*",
+     "issue": 3853,
+     "date": "2026-11-22",
+     "method": "One fresh isolated Codex session reviewed this language for accuracy, naturalness and overlap with the speech model's unload setting (its seven choices).",
+     "output": {
+      "path": "additions/unloadPolishModel/choices/review-hr.txt",
+      "sha256": "8e0107c958ffe67560bd5660232a8f398d88d497f63e7cb8bae38126e566b9c8"
+     },
+     "disposition": "Adopted as reviewed."
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "hu",
-   "contentSHA256": "52b2dc7219c4f44f48e1f36e3670e8f48944b4fd6beef92a6e760f2630ed6508",
+   "contentSHA256": "23113b5061d29a1cd9ecf3ee356d85b6cc6182b35d57f257c44a0f192204dbd1",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -18270,13 +18622,37 @@
       "sha256": "2277e17f71a56ccb962e48cc8029a8e5692f11ccaa6e8737143f395c3eb76a9c"
      },
      "disposition": "adopted in full"
+    },
+    {
+     "kind": "addition-content",
+     "id": "unloadPolishModel",
+     "issue": 3853,
+     "date": "2026-11-22",
+     "method": "One fresh isolated Codex session reviewed this language for accuracy, naturalness and overlap with the speech model's unload setting (the unload polish model row).",
+     "output": {
+      "path": "additions/unloadPolishModel/review-hu.txt",
+      "sha256": "be9b6db935f091c175c45e047392c677b7beccd4b414faf0b78afe7561280796"
+     },
+     "disposition": "Adopted as reviewed."
+    },
+    {
+     "kind": "addition-content",
+     "id": "unloadPolishModel.*",
+     "issue": 3853,
+     "date": "2026-11-22",
+     "method": "One fresh isolated Codex session reviewed this language for accuracy, naturalness and overlap with the speech model's unload setting (its seven choices).",
+     "output": {
+      "path": "additions/unloadPolishModel/choices/review-hu.txt",
+      "sha256": "9e6c287fe7b70d9d13e849046f462a4796337f4685f690e70dbb50999b5d73bd"
+     },
+     "disposition": "Adopted as reviewed."
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "it",
-   "contentSHA256": "983e4963dec03c01e5df0dd11d83dafd83f4c164a405fb70ce9cb67262a2f80d",
+   "contentSHA256": "f15a3e75de9bc0844f15275846495b1511f5bf5e1a54d31b324a6fa9fcb1cea2",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -19515,13 +19891,37 @@
       "sha256": "90aa97e6cc6c1d5cb516d8e27ed906d768139dc80032663e3711ced5164636e0"
      },
      "disposition": "adopted in full"
+    },
+    {
+     "kind": "addition-content",
+     "id": "unloadPolishModel",
+     "issue": 3853,
+     "date": "2026-11-22",
+     "method": "One fresh isolated Codex session reviewed this language for accuracy, naturalness and overlap with the speech model's unload setting (the unload polish model row).",
+     "output": {
+      "path": "additions/unloadPolishModel/review-it.txt",
+      "sha256": "4be93544762512b6493cb8397ce3745f7c16ec7c1aa1c90d55fb384b1526e2f7"
+     },
+     "disposition": "Adopted as reviewed."
+    },
+    {
+     "kind": "addition-content",
+     "id": "unloadPolishModel.*",
+     "issue": 3853,
+     "date": "2026-11-22",
+     "method": "One fresh isolated Codex session reviewed this language for accuracy, naturalness and overlap with the speech model's unload setting (its seven choices).",
+     "output": {
+      "path": "additions/unloadPolishModel/choices/review-it.txt",
+      "sha256": "8f88489f581878a6c8e685f5179bd17cfa2397bb241bafea2849820b4e9ac507"
+     },
+     "disposition": "Adopted as reviewed."
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "ja",
-   "contentSHA256": "9f2122bacc81c01e64d0acedada127c4d86035f117b89a2da98be78316f54f72",
+   "contentSHA256": "2f06c35e850aa089f629972842416ad69bdcecc4874f3c166a4ac2709993f1d5",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -20751,13 +21151,37 @@
       "sha256": "86fc3cbec760abef29f74d1f80c9a432a261262d9fe764d774ba3fd3ebe565c0"
      },
      "disposition": "adopted in full"
+    },
+    {
+     "kind": "addition-content",
+     "id": "unloadPolishModel",
+     "issue": 3853,
+     "date": "2026-11-22",
+     "method": "One fresh isolated Codex session reviewed this language for accuracy, naturalness and overlap with the speech model's unload setting (the unload polish model row).",
+     "output": {
+      "path": "additions/unloadPolishModel/review-ja.txt",
+      "sha256": "3f0ee4d203798d206ee499cb02bfddcd7f36aab08a7399f643cf21107acabe83"
+     },
+     "disposition": "Adopted as reviewed."
+    },
+    {
+     "kind": "addition-content",
+     "id": "unloadPolishModel.*",
+     "issue": 3853,
+     "date": "2026-11-22",
+     "method": "One fresh isolated Codex session reviewed this language for accuracy, naturalness and overlap with the speech model's unload setting (its seven choices).",
+     "output": {
+      "path": "additions/unloadPolishModel/choices/review-ja.txt",
+      "sha256": "a2d702f31d703b6a8ba8c66949bd3b8b72df812cd5309e1b1e4f5880cf83edb8"
+     },
+     "disposition": "Adopted as reviewed."
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "ko",
-   "contentSHA256": "82eeddef514679d4aee8897d59c9de6e29d9ee5140955c9a8bc3f83a9e104931",
+   "contentSHA256": "a8e0e175cd673c035ca09b20e20504a6fa234c0f681df545e2e765835bc8462e",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -21987,13 +22411,37 @@
       "sha256": "2f4d85f23b077e484096ea13120025f13667b439814d85d94dda2d4d1a8b3f25"
      },
      "disposition": "adopted in full"
+    },
+    {
+     "kind": "addition-content",
+     "id": "unloadPolishModel",
+     "issue": 3853,
+     "date": "2026-11-22",
+     "method": "One fresh isolated Codex session reviewed this language for accuracy, naturalness and overlap with the speech model's unload setting (the unload polish model row).",
+     "output": {
+      "path": "additions/unloadPolishModel/review-ko.txt",
+      "sha256": "7d3fbf546865f422eb502a63504054af75d090dc9af5f7ccf325f27320ddca9c"
+     },
+     "disposition": "Adopted as reviewed."
+    },
+    {
+     "kind": "addition-content",
+     "id": "unloadPolishModel.*",
+     "issue": 3853,
+     "date": "2026-11-22",
+     "method": "One fresh isolated Codex session reviewed this language for accuracy, naturalness and overlap with the speech model's unload setting (its seven choices).",
+     "output": {
+      "path": "additions/unloadPolishModel/choices/review-ko.txt",
+      "sha256": "e52d4534fe2fe6c964a33fdb267d463ad8a76727b2014a36c107acb1f462159f"
+     },
+     "disposition": "Adopted as reviewed."
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "lt",
-   "contentSHA256": "7a34aabe7992e3f2a7bf64f327f2c97bc93d2dd0f42b819398def621137ebc87",
+   "contentSHA256": "37327aa1716b044eba4cd88cba640da857b529de4f05b659b0a0702ed798e49c",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -23232,13 +23680,37 @@
       "sha256": "5546da93ad4ab5485e2bbd3982c5e67f8ee70d59fdbc358a7f34eb5e8a28dd83"
      },
      "disposition": "adopted in full"
+    },
+    {
+     "kind": "addition-content",
+     "id": "unloadPolishModel",
+     "issue": 3853,
+     "date": "2026-11-22",
+     "method": "One fresh isolated Codex session reviewed this language for accuracy, naturalness and overlap with the speech model's unload setting (the unload polish model row).",
+     "output": {
+      "path": "additions/unloadPolishModel/review-lt.txt",
+      "sha256": "e1b7a4f6820d7b78885231ec6fce10c2851499709ae60f6b4c78fa3e0242d08f"
+     },
+     "disposition": "Adopted as reviewed."
+    },
+    {
+     "kind": "addition-content",
+     "id": "unloadPolishModel.*",
+     "issue": 3853,
+     "date": "2026-11-22",
+     "method": "One fresh isolated Codex session reviewed this language for accuracy, naturalness and overlap with the speech model's unload setting (its seven choices).",
+     "output": {
+      "path": "additions/unloadPolishModel/choices/review-lt.txt",
+      "sha256": "73a18f6a5d963c74033f99e5f145fdfaa660733a6146a0c91ea41b1345635c82"
+     },
+     "disposition": "Adopted as reviewed."
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "lv",
-   "contentSHA256": "3eb9160b1c0b7b17c1d6090ed399cdc75b6e81bc2243489a616550b75c7ae67a",
+   "contentSHA256": "a037e289efd8534a3cc121eadfc8e95d2e06d0762be61ae50b9f1851022be167",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -24468,13 +24940,37 @@
       "sha256": "4f6d8e0cfb9d19c8622522916655ebddcfd8adee7e093284803a1cecfab6ae37"
      },
      "disposition": "adopted in full"
+    },
+    {
+     "kind": "addition-content",
+     "id": "unloadPolishModel",
+     "issue": 3853,
+     "date": "2026-11-22",
+     "method": "One fresh isolated Codex session reviewed this language for accuracy, naturalness and overlap with the speech model's unload setting (the unload polish model row).",
+     "output": {
+      "path": "additions/unloadPolishModel/review-lv.txt",
+      "sha256": "53de128fc9ab7aba33664ec1172d8841fba70a957af9c48e380365359d0b6252"
+     },
+     "disposition": "Adopted as reviewed."
+    },
+    {
+     "kind": "addition-content",
+     "id": "unloadPolishModel.*",
+     "issue": 3853,
+     "date": "2026-11-22",
+     "method": "One fresh isolated Codex session reviewed this language for accuracy, naturalness and overlap with the speech model's unload setting (its seven choices).",
+     "output": {
+      "path": "additions/unloadPolishModel/choices/review-lv.txt",
+      "sha256": "f06af6f1a3dd10a71d7ca69365745dbefb4eb788e546eb42a7746e1e473dc586"
+     },
+     "disposition": "Adopted as reviewed."
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "mt",
-   "contentSHA256": "11ae8b7db43d1a129ae2f847f78e8002951959322f70a575d082aa7deeefb956",
+   "contentSHA256": "be893b0694c751d8600d8682e7989c064b81d04a0ff4ee2fd05659fab50e2cc5",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -25713,13 +26209,37 @@
       "sha256": "f1a8ad61b96c853b513b0326df9183ffa0853bd2c61749573bf476925b2339a6"
      },
      "disposition": "adopted in full"
+    },
+    {
+     "kind": "addition-content",
+     "id": "unloadPolishModel",
+     "issue": 3853,
+     "date": "2026-11-22",
+     "method": "One fresh isolated Codex session reviewed this language for accuracy, naturalness and overlap with the speech model's unload setting (the unload polish model row).",
+     "output": {
+      "path": "additions/unloadPolishModel/review-mt.txt",
+      "sha256": "8166d063e9558164283784eaf88a2bb676142704ee05818018e05e157a51fdef"
+     },
+     "disposition": "Adopted as reviewed."
+    },
+    {
+     "kind": "addition-content",
+     "id": "unloadPolishModel.*",
+     "issue": 3853,
+     "date": "2026-11-22",
+     "method": "One fresh isolated Codex session reviewed this language for accuracy, naturalness and overlap with the speech model's unload setting (its seven choices).",
+     "output": {
+      "path": "additions/unloadPolishModel/choices/review-mt.txt",
+      "sha256": "9df3b2a87cb60968a5d96834dbe6ca2e4bfea5963d9da392e2d6f3436e868c83"
+     },
+     "disposition": "Adopted as reviewed."
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "nl",
-   "contentSHA256": "6693f27dc39a8b362da23d97268fb216fafb492737779791709c5b4425895658",
+   "contentSHA256": "a2357afae667b69d16a6cbbde081d5a31811bf1dd626caad92e92c4731ed3718",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -26949,13 +27469,37 @@
       "sha256": "78ffc1ccc16449811cb3643cba7d93f2c57c447c532f43b2dd8f02f7903913e1"
      },
      "disposition": "adopted in full"
+    },
+    {
+     "kind": "addition-content",
+     "id": "unloadPolishModel",
+     "issue": 3853,
+     "date": "2026-11-22",
+     "method": "One fresh isolated Codex session reviewed this language for accuracy, naturalness and overlap with the speech model's unload setting (the unload polish model row).",
+     "output": {
+      "path": "additions/unloadPolishModel/review-nl.txt",
+      "sha256": "482d87957d337c8dc343097f49ae2788315d1ad9f60389e6d65be98746c94e2d"
+     },
+     "disposition": "Adopted as reviewed."
+    },
+    {
+     "kind": "addition-content",
+     "id": "unloadPolishModel.*",
+     "issue": 3853,
+     "date": "2026-11-22",
+     "method": "One fresh isolated Codex session reviewed this language for accuracy, naturalness and overlap with the speech model's unload setting (its seven choices).",
+     "output": {
+      "path": "additions/unloadPolishModel/choices/review-nl.txt",
+      "sha256": "2fa01565ee2b6fb2baa4fd9c9d67ec381a18ea6d80cb9ebb08a28e3b529e8651"
+     },
+     "disposition": "Adopted as reviewed."
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "pl",
-   "contentSHA256": "10b2d0e87a55ac3efdaad7523019a6d0aacab82739050ff53fb67daed5f25967",
+   "contentSHA256": "4f015d3d8d71e87d818d26e349abae64fc186c0699f9b5417dd54f11c81eacf1",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -28185,13 +28729,37 @@
       "sha256": "8dfc442a4cca100b2c9b7e20a085bd9eb984103666ed205be7dbd0864e4dabd0"
      },
      "disposition": "adopted in full"
+    },
+    {
+     "kind": "addition-content",
+     "id": "unloadPolishModel",
+     "issue": 3853,
+     "date": "2026-11-22",
+     "method": "One fresh isolated Codex session reviewed this language for accuracy, naturalness and overlap with the speech model's unload setting (the unload polish model row).",
+     "output": {
+      "path": "additions/unloadPolishModel/review-pl.txt",
+      "sha256": "4c6feeee13fca054447f3c80fdd924565be1399e134e51832c8bfb60b9df16dd"
+     },
+     "disposition": "Adopted as reviewed."
+    },
+    {
+     "kind": "addition-content",
+     "id": "unloadPolishModel.*",
+     "issue": 3853,
+     "date": "2026-11-22",
+     "method": "One fresh isolated Codex session reviewed this language for accuracy, naturalness and overlap with the speech model's unload setting (its seven choices).",
+     "output": {
+      "path": "additions/unloadPolishModel/choices/review-pl.txt",
+      "sha256": "b4015455fcc44dca6a956ff98d9f3cc1186d8cf52e09ce6035fcc4ca34653179"
+     },
+     "disposition": "Adopted as reviewed."
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "pt",
-   "contentSHA256": "6f8beb07ff6e3483c4dfacabf0418ac5c8d94df50c13e06c91d26dd293cdd322",
+   "contentSHA256": "8db5e0178f32c5d142a2e3fe88d9257714a8cf7fb7cf7442123cfbc889363bad",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -29429,13 +29997,37 @@
       "sha256": "ae1bbef65459dcef7caad6e0ddae78b82bd838b7ddfa136014a2e27752b7276a"
      },
      "disposition": "adopted in full"
+    },
+    {
+     "kind": "addition-content",
+     "id": "unloadPolishModel",
+     "issue": 3853,
+     "date": "2026-11-22",
+     "method": "One fresh isolated Codex session reviewed this language for accuracy, naturalness and overlap with the speech model's unload setting (the unload polish model row).",
+     "output": {
+      "path": "additions/unloadPolishModel/review-pt.txt",
+      "sha256": "abf9aef2265c8b41554932638e2e5b00968d017e19d0a538933023d79a4d580c"
+     },
+     "disposition": "Adopted as reviewed."
+    },
+    {
+     "kind": "addition-content",
+     "id": "unloadPolishModel.*",
+     "issue": 3853,
+     "date": "2026-11-22",
+     "method": "One fresh isolated Codex session reviewed this language for accuracy, naturalness and overlap with the speech model's unload setting (its seven choices).",
+     "output": {
+      "path": "additions/unloadPolishModel/choices/review-pt.txt",
+      "sha256": "50dcb213a75db1409974e1ce89d0dcdfd1656e4d76b224b7d064380e924eaa5c"
+     },
+     "disposition": "Adopted as reviewed."
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "ro",
-   "contentSHA256": "fe692968225ff1f2564d2907e3a02d2bec53ef7689d975340dc46a07c34a68be",
+   "contentSHA256": "d9a943753f7f6f06bbf671f3537e20a4c2c30e7087322de699af367850fdc168",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -30665,13 +31257,37 @@
       "sha256": "6224878b8c7d86e3af09c605c1997f0280c07cf33397a2a27203ea8af00ea6d9"
      },
      "disposition": "adopted in full"
+    },
+    {
+     "kind": "addition-content",
+     "id": "unloadPolishModel",
+     "issue": 3853,
+     "date": "2026-11-22",
+     "method": "One fresh isolated Codex session reviewed this language for accuracy, naturalness and overlap with the speech model's unload setting (the unload polish model row).",
+     "output": {
+      "path": "additions/unloadPolishModel/review-ro.txt",
+      "sha256": "e1c14a893de75a4b1a2474ae937275b56c802f6b912bd1560dbb855f95ee99d1"
+     },
+     "disposition": "Adopted as reviewed."
+    },
+    {
+     "kind": "addition-content",
+     "id": "unloadPolishModel.*",
+     "issue": 3853,
+     "date": "2026-11-22",
+     "method": "One fresh isolated Codex session reviewed this language for accuracy, naturalness and overlap with the speech model's unload setting (its seven choices).",
+     "output": {
+      "path": "additions/unloadPolishModel/choices/review-ro.txt",
+      "sha256": "1d4624af7ef6fcd09ad76df9ab421d76442b8c48a08f68db97b81a8091b09786"
+     },
+     "disposition": "Adopted as reviewed."
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "ru",
-   "contentSHA256": "264b9a107d09e7e65d2f6574e26ad2397b5097ae6d444afc5e683c5aa9991e9b",
+   "contentSHA256": "4da0891e826c11a9127d90abdd5d1205a766312381be60e06f288a476152b951",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -31901,13 +32517,37 @@
       "sha256": "b8aa4dfcffbd92413fdde7261b7356d05eb2c4310403df3bc062f6c5c8f54e28"
      },
      "disposition": "adopted in full"
+    },
+    {
+     "kind": "addition-content",
+     "id": "unloadPolishModel",
+     "issue": 3853,
+     "date": "2026-11-22",
+     "method": "One fresh isolated Codex session reviewed this language for accuracy, naturalness and overlap with the speech model's unload setting (the unload polish model row).",
+     "output": {
+      "path": "additions/unloadPolishModel/review-ru.txt",
+      "sha256": "577fa42b20e2c78949e0b3e1de7f4629973fc508f0a4f5e68258f63e66e339dc"
+     },
+     "disposition": "Adopted as reviewed."
+    },
+    {
+     "kind": "addition-content",
+     "id": "unloadPolishModel.*",
+     "issue": 3853,
+     "date": "2026-11-22",
+     "method": "One fresh isolated Codex session reviewed this language for accuracy, naturalness and overlap with the speech model's unload setting (its seven choices).",
+     "output": {
+      "path": "additions/unloadPolishModel/choices/review-ru.txt",
+      "sha256": "4f8c6a71fb63c481fcf794aabf5c4894fbecd256cf4a4fe691bcf3ff091fba3b"
+     },
+     "disposition": "Adopted as reviewed."
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "sk",
-   "contentSHA256": "3284bad6b7b5d243a334909833dbdfc8d8b3c10fbf24f44d12c292f1cfe9ee4e",
+   "contentSHA256": "19191f369723efe51fbe9bade8a220bcb9b709d86c4249a9bc66c8c49c7d8fd3",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -33137,13 +33777,37 @@
       "sha256": "ae6c1a07838fd2c361bd22e96225fde7614bb6c531c6079da0009a9203b5fde3"
      },
      "disposition": "adopted in full"
+    },
+    {
+     "kind": "addition-content",
+     "id": "unloadPolishModel",
+     "issue": 3853,
+     "date": "2026-11-22",
+     "method": "One fresh isolated Codex session reviewed this language for accuracy, naturalness and overlap with the speech model's unload setting (the unload polish model row).",
+     "output": {
+      "path": "additions/unloadPolishModel/review-sk.txt",
+      "sha256": "8a5b6bddfb8afbadb693db6e01ca585fcf3bbd3829f6cabefe1ac1d0cc327743"
+     },
+     "disposition": "Adopted as reviewed."
+    },
+    {
+     "kind": "addition-content",
+     "id": "unloadPolishModel.*",
+     "issue": 3853,
+     "date": "2026-11-22",
+     "method": "One fresh isolated Codex session reviewed this language for accuracy, naturalness and overlap with the speech model's unload setting (its seven choices).",
+     "output": {
+      "path": "additions/unloadPolishModel/choices/review-sk.txt",
+      "sha256": "8d398501419f860aaebdc1d6d0cb3acd71be621876656b7116dd1dcf88ef155d"
+     },
+     "disposition": "Adopted as reviewed."
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "sl",
-   "contentSHA256": "9deaccc0c2cc1d4c2512256193527b1794e0b4c68022f1d5d74d839bd2fc587d",
+   "contentSHA256": "418124b559d8e0083259212d88726051879061a2d42a0678a03b807648f4d1d2",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -34382,13 +35046,37 @@
       "sha256": "bea17d89f51cbec735496bee8b5001829bb9d0abe1fe66c55d48a7565c7ee14e"
      },
      "disposition": "adopted in full"
+    },
+    {
+     "kind": "addition-content",
+     "id": "unloadPolishModel",
+     "issue": 3853,
+     "date": "2026-11-22",
+     "method": "One fresh isolated Codex session reviewed this language for accuracy, naturalness and overlap with the speech model's unload setting (the unload polish model row).",
+     "output": {
+      "path": "additions/unloadPolishModel/review-sl.txt",
+      "sha256": "9bc13773a286141e4128821b7cef7eb7149a701b017d5606b2e840118fa5a9e2"
+     },
+     "disposition": "Adopted as reviewed."
+    },
+    {
+     "kind": "addition-content",
+     "id": "unloadPolishModel.*",
+     "issue": 3853,
+     "date": "2026-11-22",
+     "method": "One fresh isolated Codex session reviewed this language for accuracy, naturalness and overlap with the speech model's unload setting (its seven choices).",
+     "output": {
+      "path": "additions/unloadPolishModel/choices/review-sl.txt",
+      "sha256": "1d50c284e658668ae4bac23450ff35df06f4e4c598b2f878cfd74b31596bf38e"
+     },
+     "disposition": "Adopted as reviewed."
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "sv",
-   "contentSHA256": "4ca2f5a887862d5599c2adc5c95d71fee00406be8179046b8f9ba9df019aab82",
+   "contentSHA256": "b7be12d75f25c629d5e65d54cec38f0bbe20a1341dd500b54fb40d6ef42aea35",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -35618,13 +36306,37 @@
       "sha256": "9f7dbf711eaaa5f2dce7a4115f0b3427d876dc09267ce34c4d30a025fbbed0fc"
      },
      "disposition": "adopted in full"
+    },
+    {
+     "kind": "addition-content",
+     "id": "unloadPolishModel",
+     "issue": 3853,
+     "date": "2026-11-22",
+     "method": "One fresh isolated Codex session reviewed this language for accuracy, naturalness and overlap with the speech model's unload setting (the unload polish model row).",
+     "output": {
+      "path": "additions/unloadPolishModel/review-sv.txt",
+      "sha256": "9b93385a1ed3181683b03a57d78f90421fdc5fcbfd1a4b72239cf8b75f68a1a1"
+     },
+     "disposition": "Adopted as reviewed."
+    },
+    {
+     "kind": "addition-content",
+     "id": "unloadPolishModel.*",
+     "issue": 3853,
+     "date": "2026-11-22",
+     "method": "One fresh isolated Codex session reviewed this language for accuracy, naturalness and overlap with the speech model's unload setting (its seven choices).",
+     "output": {
+      "path": "additions/unloadPolishModel/choices/review-sv.txt",
+      "sha256": "7971001a4714cc9905068f7fd42ba700e7ef430433dc8444646ee86cd178ae26"
+     },
+     "disposition": "Adopted as reviewed."
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "tr",
-   "contentSHA256": "65fc1d9b577da3e3078e45a205e3bd27da6f2fc45d6c9b92b65404c2212916f8",
+   "contentSHA256": "b8e0e25af22469ae06f880e53adfaf5016d494478c8f37e948812a0c9de61063",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -36854,13 +37566,37 @@
       "sha256": "574e76a72e9e609ef457f9e4fc837a6d2f2fc8bb68769dcf57cd4125aaf247c3"
      },
      "disposition": "adopted in full"
+    },
+    {
+     "kind": "addition-content",
+     "id": "unloadPolishModel",
+     "issue": 3853,
+     "date": "2026-11-22",
+     "method": "One fresh isolated Codex session reviewed this language for accuracy, naturalness and overlap with the speech model's unload setting (the unload polish model row).",
+     "output": {
+      "path": "additions/unloadPolishModel/review-tr.txt",
+      "sha256": "d2d4c3f046627207d2581abd87e19fa7b58d11ae431e391e6c3585b2c75a505c"
+     },
+     "disposition": "Adopted as reviewed."
+    },
+    {
+     "kind": "addition-content",
+     "id": "unloadPolishModel.*",
+     "issue": 3853,
+     "date": "2026-11-22",
+     "method": "One fresh isolated Codex session reviewed this language for accuracy, naturalness and overlap with the speech model's unload setting (its seven choices).",
+     "output": {
+      "path": "additions/unloadPolishModel/choices/review-tr.txt",
+      "sha256": "d5552a31b04d35fa024ed4e1871ec52ff0f3fd23577d0726ef95b5c753a0f508"
+     },
+     "disposition": "Adopted as reviewed."
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "uk",
-   "contentSHA256": "9d5357cee7c59e68a6e2a1f1e2f45bdaeb7f0544b4188d41d9428b472d4cee0e",
+   "contentSHA256": "c7c9ca61fe81329fb2c40130d8a5ff31e0e8b020cc11bd94764bcce3e99f8c5c",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -38099,13 +38835,37 @@
       "sha256": "741279f8f789f73a07cc773131adb2931e6b14bf7d2789bfa989f8c1a42c9957"
      },
      "disposition": "adopted in full"
+    },
+    {
+     "kind": "addition-content",
+     "id": "unloadPolishModel",
+     "issue": 3853,
+     "date": "2026-11-22",
+     "method": "One fresh isolated Codex session reviewed this language for accuracy, naturalness and overlap with the speech model's unload setting (the unload polish model row).",
+     "output": {
+      "path": "additions/unloadPolishModel/review-uk.txt",
+      "sha256": "0998060fa12ad2179be7c943d0499487bf27012f50bce8b6fa2c00198369a831"
+     },
+     "disposition": "Adopted as reviewed."
+    },
+    {
+     "kind": "addition-content",
+     "id": "unloadPolishModel.*",
+     "issue": 3853,
+     "date": "2026-11-22",
+     "method": "One fresh isolated Codex session reviewed this language for accuracy, naturalness and overlap with the speech model's unload setting (its seven choices).",
+     "output": {
+      "path": "additions/unloadPolishModel/choices/review-uk.txt",
+      "sha256": "e8f38bc062393559913a0baca71ad8893f557351fb5000387f83f503ada3d347"
+     },
+     "disposition": "Adopted as reviewed."
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "vi",
-   "contentSHA256": "c4184c3b601f969e860a11bf103ace26eb85f22a832fb36ed9bcdef7e48a7f6d",
+   "contentSHA256": "87a252a0e8231eff51abdc0bcb72a312f4dafcf32923ac04a1102960485a0a9b",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -39335,13 +40095,37 @@
       "sha256": "0915c9d4251101e080daf0517c76682740c691a7aa5e29542a1f92a3b9482bf3"
      },
      "disposition": "adopted in full"
+    },
+    {
+     "kind": "addition-content",
+     "id": "unloadPolishModel",
+     "issue": 3853,
+     "date": "2026-11-22",
+     "method": "One fresh isolated Codex session reviewed this language for accuracy, naturalness and overlap with the speech model's unload setting (the unload polish model row).",
+     "output": {
+      "path": "additions/unloadPolishModel/review-vi.txt",
+      "sha256": "942477664adedc4f7273a1d1b3492d9a9737eaa634ef4cd4ffa3163491e0be72"
+     },
+     "disposition": "Adopted as reviewed."
+    },
+    {
+     "kind": "addition-content",
+     "id": "unloadPolishModel.*",
+     "issue": 3853,
+     "date": "2026-11-22",
+     "method": "One fresh isolated Codex session reviewed this language for accuracy, naturalness and overlap with the speech model's unload setting (its seven choices).",
+     "output": {
+      "path": "additions/unloadPolishModel/choices/review-vi.txt",
+      "sha256": "6c0ad497085f4de84cb738b08c28f5e8150d963a79eaba8e4cfcd7f34921c8d1"
+     },
+     "disposition": "Adopted as reviewed."
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "zh",
-   "contentSHA256": "9b77580ff27a51f0605da23695a4d7da09f63c80305a688a17242359a6b644d8",
+   "contentSHA256": "bb9cb0b030a8587c7c4cea2c14c86043c8378671dad424e7a593b4c804391895",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -40571,6 +41355,30 @@
       "sha256": "c0bb9b73889be317f66c48aa1fd9a20b437a14141e3c44a53b4303af78c0f111"
      },
      "disposition": "adopted in full"
+    },
+    {
+     "kind": "addition-content",
+     "id": "unloadPolishModel",
+     "issue": 3853,
+     "date": "2026-11-22",
+     "method": "One fresh isolated Codex session reviewed this language for accuracy, naturalness and overlap with the speech model's unload setting (the unload polish model row).",
+     "output": {
+      "path": "additions/unloadPolishModel/review-zh.txt",
+      "sha256": "443dc33cb38f11a2714bf83cddb2a12d39b2f7ffa580d60929946581257e9e74"
+     },
+     "disposition": "Adopted as reviewed."
+    },
+    {
+     "kind": "addition-content",
+     "id": "unloadPolishModel.*",
+     "issue": 3853,
+     "date": "2026-11-22",
+     "method": "One fresh isolated Codex session reviewed this language for accuracy, naturalness and overlap with the speech model's unload setting (its seven choices).",
+     "output": {
+      "path": "additions/unloadPolishModel/choices/review-zh.txt",
+      "sha256": "e99322a46769d287da1d75732f3d0fa94415fa1321113519292f7c476ba37afb"
+     },
+     "disposition": "Adopted as reviewed."
     }
    ],
    "phraseExemptions": []
@@ -40875,7 +41683,15 @@
   "fixLearnedWords": "974b844c17efb198324180a5e5fd890282108fbeaa0512d9077fa73694a9c0e3",
   "automaticDictationPaste": "b672f5f91a9715f212c55a07f5770fe119fcda154813dd9746e2abc04389e1c6",
   "dictationOutputLanguage": "9e149372fb352030a5d520bdd80b2f92c7f26d88bbcf87f385b6b9baf57de396",
-  "silentMicWarning": "1ca0df570a1b90116e23622263e988143f6c051d712e87662265ac1c5f4ee6db"
+  "silentMicWarning": "1ca0df570a1b90116e23622263e988143f6c051d712e87662265ac1c5f4ee6db",
+  "unloadPolishModel": "46834ff70c40d0e3476f9ce29c35b4c3b363412845730b1310fc3b5b2294bfcb",
+  "unloadPolishModel.fifteenMinutes": "2cb52811de2c70c38a9f0f9c8d6f2c1dd3ae81af44e105b57587777276d8cb17",
+  "unloadPolishModel.fiveMinutes": "b121e837b5608cf69ce624794373389f93664cde3bc81daa6c5bedc374014022",
+  "unloadPolishModel.immediately": "6e212d5e64693304c1a229ca47318dda098a9101729acec4dd51f5ff0abf234d",
+  "unloadPolishModel.never": "85a20521cb8350d88c3f74cf6b8ce0463dc31bc12974376bd7307427f0b56fac",
+  "unloadPolishModel.oneHour": "c11199edb99d5c1e76481169a9aa231aedcfda664f08deaa68a4b1fb88596afe",
+  "unloadPolishModel.tenMinutes": "b7a0941e864bff62da072c0a8af80ca8d5b418cc5ba5fb7922ed4693628ade2a",
+  "unloadPolishModel.twoMinutes": "290e7be3f9c1fc6b19c8f30f05019c078524be8bd23e09e65893812e89b0218a"
  },
  "reviewedSourceNote": "Per searchable id, the SHA-256 of the English title and description its translations were reviewed against (reference/settings-map.json; SettingsSearchVocabularyTests.sourceFingerprint). First recorded 2026-10-07 at be0086b6 from the export the Phase 0 and council reviews covered. When a test names an id here, re-review that id's translated blocks, then record the hash the test prints. Limit: dynamic titles are bound by resolver name, not template wording."
 }
