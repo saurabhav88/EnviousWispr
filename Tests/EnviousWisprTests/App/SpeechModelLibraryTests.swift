@@ -260,9 +260,10 @@ struct SpeechModelLibraryTests {
     #expect(upgrade.isInstallWanted)
   }
 
-  /// When this fails, Remove deletes a model still loaded in memory, leaves it to download
-  /// again, or changes the engine the person picked.
-  @Test("Parakeet Remove records first, unloads before deleting, reopens after; a refused unload deletes nothing and keeps the record")
+  /// When this fails, Remove waits for a load, records, unloads or reopens out of order, or a
+  /// refused unload drops the record. The fixture seeds no model files, so this proves the order
+  /// of the steps and the record, not that bytes are deleted or kept.
+  @Test("Parakeet Remove settles a running load, then records, unloads and reopens in that order; a refused unload keeps the record")
   func parakeetRemoveOrder() async throws {
     for freed in [true, false] {
       let (library, upgrade, root) = try parakeetLibrary()
