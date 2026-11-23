@@ -463,6 +463,16 @@
   "mac-ctl-polish-model": [
    "polishModel"
   ],
+  "mac-ctl-unload-polish-model": [
+   "unloadPolishModel",
+   "unloadPolishModel.never",
+   "unloadPolishModel.immediately",
+   "unloadPolishModel.twoMinutes",
+   "unloadPolishModel.fiveMinutes",
+   "unloadPolishModel.tenMinutes",
+   "unloadPolishModel.fifteenMinutes",
+   "unloadPolishModel.oneHour"
+  ],
   "mac-ctl-polish-model-refresh": [
    "polishModel.refresh"
   ],
@@ -977,6 +987,11 @@
    "kind": "control",
    "parent": "mac-page-ai-polish",
    "label": "Dictation output language"
+  },
+  "mac-ctl-unload-polish-model": {
+   "kind": "control",
+   "parent": "mac-sec-polish-setup",
+   "label": "Unload polish model after"
   }
  }
 }
