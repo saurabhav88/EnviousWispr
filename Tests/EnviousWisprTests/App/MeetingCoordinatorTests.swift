@@ -1972,7 +1972,8 @@ struct MeetingCoordinatorTests {
         ]
       ]
       return MeetingAudioExportSnapshot(
-        meetingID: id, source: MeetingPlaybackSource(record: record, folder: folder))
+        meetingID: id, segments: record.segments,
+        source: MeetingPlaybackSource(record: record, folder: folder))
     }
     #expect(snapshot(frames: 16_000) == snapshot(frames: 16_000))
     #expect(snapshot(frames: 16_000) != snapshot(frames: 15_999))

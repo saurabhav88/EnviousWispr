@@ -860,7 +860,7 @@ final class MeetingCoordinator {
       record.recordedDurationMs > 0, record.segments.values.contains(where: { !$0.isEmpty })
     else { return nil }
     return MeetingAudioExportSnapshot(
-      meetingID: meetingID,
+      meetingID: meetingID, segments: record.segments,
       source: MeetingPlaybackSource(record: record, folder: deps.store.folder(for: meetingID)))
   }
 
@@ -2856,7 +2856,8 @@ final class MeetingCoordinator {
   /// Meetings holding a committed compacted copy, whose superseded originals the scheduler may
   /// remove (it asks `retireSupersededAudio`, which re-checks everything).
   func audioRetirementCandidates() -> [UUID] {
-    meetings.map(\.id).filter { committedAudio[$0] != nil }
+    guard launched, launchTask == nil, !quitting else { return [] }
+    return meetings.map(\.id).filter { committedAudio[$0] != nil }
   }
 
   /// Claims one meeting for compaction, against its record now (generation and segments). Nil
@@ -3606,6 +3607,9 @@ final class MeetingCoordinator {
 /// the length is the same, so a recovery that rewrote the inventory is seen at commit.
 struct MeetingAudioExportSnapshot: Sendable, Equatable {
   let meetingID: UUID
+  /// The recorder's list, frame counts included: a recovery that rewrote it is seen at commit
+  /// even when the source (which reads a recorder file's length from the file) is unchanged.
+  let segments: [MeetingTrackKind: [MeetingSegmentInfo]]
   /// What playback would read now: the recorder's files, or a committed compacted copy through
   /// recovery. Compared whole, so a commit or a recovery that changed the audio is seen.
   let source: MeetingPlaybackSource

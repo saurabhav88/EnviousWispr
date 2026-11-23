@@ -37,6 +37,14 @@ struct MeetingAudioCompactionLifecycleTests {
     }
   }
 
+  /// Counts the scheduler's "originals removed" log lines, observably (the files themselves are
+  /// not an Observation input).
+  @MainActor @Observable
+  final class RetirementLog {
+    private(set) var removals = 0
+    func record(_ line: String) { if line.hasPrefix("meeting compaction originals removed") { removals += 1 } }
+  }
+
   final class Silence: PlaybackWindowAudio, @unchecked Sendable {
     func window(startMs: Int, count: Int) throws -> [Float] {
       [Float](repeating: 0, count: count * 16)
@@ -622,9 +630,11 @@ struct MeetingAudioCompactionLifecycleTests {
     let wakes = MeetingWakeSignal()
     final class Turn { var mayRun = false }
     let turn = Turn()
+    let retirements = RetirementLog()
     coordinator.audioCompaction = MeetingAudioCompactionScheduler(
       coordinator: coordinator, compactor: MeetingAudioCompactor(),
-      dependencies: .init(mayRun: { turn.mayRun }, wakes: wakes, log: { _ in }))
+      dependencies: .init(
+        mayRun: { turn.mayRun }, wakes: wakes, log: { retirements.record($0) }))
     await Self.launched(harness, record.id)
     #expect(coordinator.audioCompaction?.isRunning == true)
     #expect(try harness.store.load(id: record.id).compressedAudio == nil)
@@ -636,10 +646,12 @@ struct MeetingAudioCompactionLifecycleTests {
     }
     let inventory = try #require(coordinator.record(id: record.id)?.compressedAudio)
     await MeetingCoordinatorTests.eventually("originals removed after the commit") {
-      (try? Self.names(harness, record.id).contains(where: { name in
-        inventory.segments.contains { $0.source.fileName == name }
-      })) == false
+      retirements.removals > 0
     }
+    #expect(
+      try Self.names(harness, record.id).contains(where: { name in
+        inventory.segments.contains { $0.source.fileName == name }
+      }) == false)
     #expect(try Self.compactedNames(harness, record.id).count == inventory.segments.count)
     #expect(coordinator.playbackSource(meetingID: record.id) != nil)
     coordinator.prepareForTermination()
@@ -658,15 +670,18 @@ struct MeetingAudioCompactionLifecycleTests {
     // The first process ended after the commit and before any original was removed.
     let second = try Harness(copying: first.root)
     let coordinator = second.coordinator
+    let retirements = RetirementLog()
     coordinator.audioCompaction = MeetingAudioCompactionScheduler(
       coordinator: coordinator, compactor: MeetingAudioCompactor(),
-      dependencies: .init(mayRun: { true }, wakes: nil, log: { _ in }))
+      dependencies: .init(mayRun: { true }, wakes: nil, log: { retirements.record($0) }))
     coordinator.launch()
     await MeetingCoordinatorTests.eventually("originals removed on relaunch") {
-      (try? Self.names(second, record.id).contains(where: { name in
-        inventory.segments.contains { $0.source.fileName == name }
-      })) == false
+      retirements.removals > 0
     }
+    #expect(
+      try Self.names(second, record.id).contains(where: { name in
+        inventory.segments.contains { $0.source.fileName == name }
+      }) == false)
     #expect(try Self.compactedNames(second, record.id).count == inventory.segments.count)
     #expect(try second.store.load(id: record.id).compressedAudio == inventory)
     coordinator.prepareForTermination()

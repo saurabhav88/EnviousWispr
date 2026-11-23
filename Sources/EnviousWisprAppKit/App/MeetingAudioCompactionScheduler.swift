@@ -76,9 +76,7 @@ final class MeetingAudioCompactionScheduler {
       // Originals a committed copy supersedes go first: a copy committed this session, and the
       // resumed retirement of one a quit or crash cut short (an interrupted swap), once per
       // session. The store re-hashes every file before removing any.
-      if let meetingID = coordinator.audioRetirementCandidates().first(where: {
-        !retirementSettled.contains($0) && !retirementDeferred.contains($0)
-      }) {
+      if let meetingID = nextRetirement(coordinator) {
         switch await coordinator.retireSupersededAudio(meetingID: meetingID) {
         case .removed(let count):
           deps.log("meeting compaction originals removed count=\(count)")
@@ -97,8 +95,11 @@ final class MeetingAudioCompactionScheduler {
         // Nothing to do until the meeting list changes (a meeting became ready, or one deferred
         // may be tried again).
         let snapshot = coordinator.meetings
-        await MeetingWorkAdmission.waitUntil { [weak coordinator] in
-          coordinator.map { $0.meetings != snapshot } ?? true
+        await MeetingWorkAdmission.waitUntil { [weak coordinator, weak self] in
+          guard let coordinator = coordinator else { return true }
+          // A meeting list change, or a retirement that became possible without one (launch
+          // recovery ending): the candidates read observed state, so this wakes on either.
+          return coordinator.meetings != snapshot || self.nextRetirement(coordinator) != nil
         }
         deferred.removeAll()
         retirementDeferred.removeAll()
@@ -114,6 +115,13 @@ final class MeetingAudioCompactionScheduler {
       case .deferred, .stale:
         deferred.insert(meetingID)
       }
+    }
+  }
+
+  /// The next meeting whose originals may be retired now, if any.
+  private func nextRetirement(_ coordinator: MeetingCoordinator) -> UUID? {
+    coordinator.audioRetirementCandidates().first {
+      !retirementSettled.contains($0) && !retirementDeferred.contains($0)
     }
   }
 
