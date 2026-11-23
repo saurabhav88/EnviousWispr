@@ -106,6 +106,8 @@ struct MeetingFollowDriver: View {
   /// #4611 T8 (transcript page): also brings the playing turn into view when playback starts or
   /// resumes inside the same turn. The meeting page keeps its behavior (off).
   var scrollsWhenPlaybackStarts = false
+  /// #4545: with Reduce Motion on, follow-playback still brings the turn into view, without the glide.
+  @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
   var body: some View {
     let active = MeetingAfterPresentation.activeTurnID(turns: turns, positionMs: player.positionMs)
@@ -115,15 +117,15 @@ struct MeetingFollowDriver: View {
       .onChange(of: active, initial: true) { _, now in
         activeTurnID = now
         if following, player.state == .playing, let now {
-          withAnimation { scroll(now) }
+          withAnimation(reduceMotion ? nil : .default) { scroll(now) }
         }
       }
       .onChange(of: following) { _, now in
-        if now, let active { withAnimation { scroll(active) } }
+        if now, let active { withAnimation(reduceMotion ? nil : .default) { scroll(active) } }
       }
       .onChange(of: player.state) { _, state in
         guard scrollsWhenPlaybackStarts, following, state == .playing, let active else { return }
-        withAnimation { scroll(active) }
+        withAnimation(reduceMotion ? nil : .default) { scroll(active) }
       }
   }
 }

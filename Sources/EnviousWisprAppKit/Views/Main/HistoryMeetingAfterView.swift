@@ -75,6 +75,8 @@ struct HistoryMeetingAfterView: View {
   @Environment(HistoryPaste.self) private var historyPaste
   @Environment(PreviousApplicationTracker.self) private var previousApplication
   @Environment(HistoryRepolishRunner.self) private var historyRepolish
+  /// #4545: jumps to a note or a cited turn still scroll there, without the glide, under Reduce Motion.
+  @Environment(\.accessibilityReduceMotion) private var reduceMotion
   @Environment(HistoryMenuPresenter.self) private var historyMenu
   @Environment(HistoryAudioExport.self) private var audioExport
   @State private var pagePlayer = MeetingPagePlayer()
@@ -353,7 +355,9 @@ struct HistoryMeetingAfterView: View {
             }
             Task { @MainActor in
               await Task.yield()
-              withAnimation { proxy.scrollTo(request.id, anchor: .center) }
+              withAnimation(reduceMotion ? nil : .default) {
+                proxy.scrollTo(request.id, anchor: .center)
+              }
             }
           }
           .background {
@@ -1543,7 +1547,9 @@ extension HistoryMeetingAfterView {
     switch target {
     case .turn(let id):
       followState.showTurn(id)
-      withAnimation { proxy.scrollTo(TurnRowKey(turnID: id, occurrence: 0), anchor: .center) }
+      withAnimation(reduceMotion ? nil : .default) {
+        proxy.scrollTo(TurnRowKey(turnID: id, occurrence: 0), anchor: .center)
+      }
     case .note(let id):
       // Cloud review P2: in the stacked layout the notes and transcript share one scroll view,
       // so following playback would scroll the cited note out of view.
