@@ -1,0 +1,15 @@
+| Term | Verdict | Reason |
+|---|---|---|
+| `model size` | KEEP | Natural search for the three size choices. Broad enough to also mean download size. |
+| `EG-1 size` | KEEP | Natural, specific search for the EG-1 size picker. |
+| `EG-1 Micro, smallest and fastest` | CHANGE to `EG-1 Micro` | The tagline matches the card. People are more likely to type the model name alone. `EG-1` makes clear that `Micro` refers to the model, even in a dictation app. |
+| `EG-1 Mini, fast all-rounder` | CHANGE to `EG-1 Mini` | The tagline matches the card. The model name is a more natural query than the name and tagline together. |
+
+All four terms accurately describe the control. I checked the card titles, taglines, and summaries. The catalog uses the English keys directly, including `Best quality` for the full-size card.
+
+**FINAL LIST**
+
+- Words `["model size", "EG-1 size"]`
+- Phrases `["use the app's own model to clean up my dictation", "choose EG-1 for dictation cleanup on this Mac", "EG-1 Micro", "EG-1 Mini"]`
+
+**VERDICT: REVISE**
