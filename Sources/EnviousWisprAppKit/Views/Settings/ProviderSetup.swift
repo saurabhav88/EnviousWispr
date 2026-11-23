@@ -1085,22 +1085,11 @@ private var localPolishUnloadRow: some View {
     }
     .padding(.horizontal, PolishSectionLayout.rowPaddingH)
     .padding(.vertical, PolishSectionLayout.rowPaddingV)
-    // Kept visible as well as in the row's help: it says what the chosen time costs on the next
-    // dictation, a consequence of the current value rather than an explanation of the control.
-    if settings.localPolishUnloadPolicy != .never {
-      PolishIndented {
-        Text(LocalPolishUnloadCopy.help)
-          .font(.stRowHelper)
-          .foregroundStyle(Color.stTextSecondary)
-          .fixedSize(horizontal: false, vertical: true)
-      }
-    }
     if settings.localPolishUnloadPolicy == .immediately {
       PolishIndented {
-        Text(LocalPolishUnloadCopy.immediatelyWarning)
-          .font(.stHelper)
-          .foregroundStyle(.stWarning)
-          .fixedSize(horizontal: false, vertical: true)
+        InsetNotice(
+          text: LocalPolishUnloadCopy.immediatelyWarning,
+          systemImage: "exclamationmark.triangle", tint: .stWarning)
       }
     }
   }
