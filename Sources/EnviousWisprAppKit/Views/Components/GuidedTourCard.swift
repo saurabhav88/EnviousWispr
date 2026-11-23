@@ -32,19 +32,23 @@ struct GuidedTourCard: View {
       HStack(spacing: DesignSpacing.md) {
         switch phase {
         case .offer:
-          action("Start tour", perform: start)
+          action("Start tour", emphasis: .filled, perform: start)
           action("Not now", emphasis: .quiet, perform: notNow)
         case .stop(let stop):
           if showing {
             if stop == plan.last {
-              action("Finish tour", perform: finish)
+              action("Finish tour", emphasis: .filled, perform: finish)
             } else {
-              action("Next", perform: next)
+              action("Next", emphasis: .filled, perform: next)
             }
           } else if !(stop == .history && showingHistory) {
-            action(openTitle(stop), perform: { open(stop) })
+            action(openTitle(stop), emphasis: .filled, perform: { open(stop) })
           }
-          action("End tour", emphasis: .quiet, perform: end)
+          // #4903: "Finish tour" already ends the tour on the last stop, so a second exit there
+          // would be a near-synonym the user cannot tell apart from it.
+          if !(showing && stop == plan.last) {
+            action("End tour", emphasis: .quiet, perform: end)
+          }
           Spacer(minLength: DesignSpacing.md)
           if let position = plan.position(of: stop) {
             Text("\(position) of \(plan.count)")
