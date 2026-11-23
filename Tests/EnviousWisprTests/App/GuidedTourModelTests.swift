@@ -3,6 +3,7 @@ import Foundation
 import Testing
 
 @testable import EnviousWisprAppKit
+@testable import EnviousWisprServices
 
 /// #4565 guided tour card: when these fail, a new user is offered the tour twice, is counted as
 /// having seen a stop that never arrived, is left on a Recordings stop that no longer exists, or
@@ -147,16 +148,21 @@ struct GuidedTourModelTests {
     #expect(tour.currentStop == .meetings, "turning saving back on leaves the target alone")
   }
 
-  @Test("no event carries anything beyond the two fixed vocabularies")
-  func rowsUseOnlyTheFixedVocabularies() {
+  @Test("every row a full run emits carries exactly an action and a stop, as plain words")
+  func rowsCarryOnlyActionAndStop() {
     let (tour, rows) = make()
     tour.stageOffer()
     tour.presentStagedOffer(canPresent: true)
     _ = tour.start(recordingsOn: true)
-    while tour.advance() != nil {}
+    tour.noteArrival(showing: true, reachable: true)
+    while tour.advance() != nil { tour.noteArrival(showing: true, reachable: true) }
     tour.finish()
-    let actions = Set(GuidedTourTelemetry.Action.allCases)
-    let stops = Set(GuidedTourTelemetry.Stop.allCases)
-    #expect(rows.all.allSatisfy { actions.contains($0.action) && stops.contains($0.stop) })
+    #expect(rows.all.count > 10, "offered, started, a view per stop and completed")
+    for row in rows.all {
+      let props = TelemetryService.guidedTourProperties(row)
+      #expect(Set(props.keys) == ["action", "stop"])
+      #expect(props["action"] as? String == row.action.rawValue)
+      #expect(props["stop"] as? String == row.stop.rawValue)
+    }
   }
 }

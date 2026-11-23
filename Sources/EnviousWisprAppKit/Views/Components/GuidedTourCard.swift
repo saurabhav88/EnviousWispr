@@ -17,6 +17,8 @@ struct GuidedTourCard: View {
   let open: (GuidedTourStop) -> Void
   let end: () -> Void
 
+  @State private var announced: GuidedTourStop?
+
   var body: some View {
     BrandedPanel(icon: "waveform", header: title, description: description) {
       HStack(spacing: DesignSpacing.md) {
@@ -51,14 +53,19 @@ struct GuidedTourCard: View {
       }
     }
     .accessibilityElement(children: .contain)
-    .onAppear { announce(phase) }
-    .onChange(of: phase) { _, new in announce(new) }
+    .onAppear { announce() }
+    .onChange(of: phase) { _, _ in announce() }
+    .onChange(of: showing) { _, _ in announce() }
   }
 
-  /// One announcement per stop, when the card mounts on a stop (a replay with no card showing) and
-  /// on every later stop change. Focus is never moved.
-  private func announce(_ phase: GuidedTourModel.Phase) {
-    guard case .stop(let stop) = phase, let position = plan.position(of: stop) else { return }
+  /// One announcement per stop, made once the stop's page is actually showing: a stop blocked by
+  /// the Setup leave question is not announced while that question is the only thing on screen.
+  /// It covers a card that mounts on a stop (a replay) and every later stop. Focus is never moved.
+  private func announce() {
+    guard case .stop(let stop) = phase, showing, announced != stop,
+      let position = plan.position(of: stop)
+    else { return }
+    announced = stop
     let name = String(localized: stop.pageTitle)
     AccessibilityNotification.Announcement(
       String(localized: "\(name), \(position) of \(plan.count)")
