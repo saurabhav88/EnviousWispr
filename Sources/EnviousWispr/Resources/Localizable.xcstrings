@@ -67265,25 +67265,25 @@
         }
       }
     },
-    "You can skip ahead and start dictating now. AI polish keeps downloading in the background and turns on by itself when it is done." : {
+    "You can skip ahead and start dictating now. AI polish keeps downloading while EnviousWispr is open and turns on by itself when it is done." : {
       "comment" : "Setup Getting ready: the Skip ahead card's explanation.",
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Du kannst diesen Schritt überspringen und jetzt schon diktieren. Die KI-Nachbearbeitung lädt im Hintergrund weiter und schaltet sich von selbst ein, sobald sie fertig ist."
+            "value" : "Du kannst diesen Schritt überspringen und jetzt schon diktieren. Die KI-Nachbearbeitung wird weiter heruntergeladen, solange EnviousWispr geöffnet ist, und schaltet sich automatisch ein, sobald der Download abgeschlossen ist."
           }
         },
         "es" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Puedes saltar este paso y empezar a dictar ya. El Pulido con IA sigue descargándose en segundo plano y se activará automáticamente cuando termine la descarga."
+            "value" : "Puedes saltar este paso y empezar a dictar ya. El Pulido con IA sigue descargándose mientras EnviousWispr esté abierto y se activará automáticamente cuando termine la descarga."
           }
         },
         "fr" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Vous pouvez passer cette étape et commencer à dicter dès maintenant. La retouche IA continue de se télécharger en arrière-plan et s’activera automatiquement une fois le téléchargement terminé."
+            "value" : "Vous pouvez passer cette étape et commencer à dicter dès maintenant. La retouche IA continue de se télécharger tant qu’EnviousWispr est ouvert et s’activera automatiquement une fois le téléchargement terminé."
           }
         }
       }

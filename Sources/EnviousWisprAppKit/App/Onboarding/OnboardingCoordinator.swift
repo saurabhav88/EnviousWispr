@@ -605,8 +605,9 @@ final class OnboardingCoordinator {
     }
   #endif
 
-  /// App quit: the checkpoint is already written and delivery resumes partial bytes on the
-  /// next launch, so only the coordinator's own work and the sleep assertion end.
+  /// App quit: the checkpoint is already written. This ends the coordinator's work and
+  /// releases its sleep assertion. Delivery keeps partial bytes. If Setup's AI polish
+  /// download is paused after relaunch, the user can press Resume (#4845).
   func quit() {
     endWarm(cancelLoad: true)
     isActive = false

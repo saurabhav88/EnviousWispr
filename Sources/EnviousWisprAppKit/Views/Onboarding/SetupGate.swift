@@ -499,7 +499,7 @@ enum SetupGate {
     comment: "Setup Getting ready: the Skip ahead card's title while AI polish downloads slowly.")
   static let offerBody = String(
     localized:
-      "You can skip ahead and start dictating now. AI polish keeps downloading in the background and turns on by itself when it is done.",
+      "You can skip ahead and start dictating now. AI polish keeps downloading while EnviousWispr is open and turns on by itself when it is done.",
     comment: "Setup Getting ready: the Skip ahead card's explanation.")
   static let skipAhead = String(
     localized: "Skip ahead",
