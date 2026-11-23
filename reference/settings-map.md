@@ -14,7 +14,7 @@ The interface ships in English, German, Spanish and French. The other 28 languag
 
 328 nodes, 299 searchable, 9568 vocabulary blocks.
 
-Fingerprints: mapSHA256 `b0a757e8b509c67ed717e19e702e8e03e8dac37a64d2e148c6a65f0bf3253ef3`, uiCatalogSHA256 `0f8cd3e7815e11ffba273a1440e611fb99f11eec4e5b8f4ea328ce2cf7cfd2c9`, vocabularyCanonicalization `length-prefixed-v1`, vocabularySHA256 `f2c5708ff2a80079eb4ab65d201a766497fd9d7b1728161f23abdce9383a7617`
+Fingerprints: mapSHA256 `b0a757e8b509c67ed717e19e702e8e03e8dac37a64d2e148c6a65f0bf3253ef3`, uiCatalogSHA256 `0f8cd3e7815e11ffba273a1440e611fb99f11eec4e5b8f4ea328ce2cf7cfd2c9`, vocabularyCanonicalization `length-prefixed-v1`, vocabularySHA256 `21b7283f5e6f0349ca95375366d35ca8dc38128d47c96acb068fb81b9ee943c1`
 
 ## Structure
 
@@ -1892,8 +1892,8 @@ Fingerprints: mapSHA256 `b0a757e8b509c67ed717e19e702e8e03e8dac37a64d2e148c6a65f0
 | Arrival target | [`silentMicWarning`](#node-silentMicWarning) |
 | Fallbacks, in order | none |
 | Declared in | [Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift](../Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift) |
-| Search (en) | words: silent mic warning, no mic input alert<br>phrases: warn me if my mic goes silent while dictating; stop the silent microphone warning on the recording pill |
-| Search (de) | words: Mikrofonwarnung, Warnung bei Mikrofonstille, Hinweis bei stummem Mikrofon<br>phrases: warne mich, wenn beim Diktieren kein Ton vom Mikrofon ankommt; schalte die Warnung aus, wenn das Mikro beim Diktieren keinen Ton liefert |
+| Search (en) | words: silence warning, silent input alert<br>phrases: warn me if nothing comes through while I dictate; turn off the silence warning on the recording pill |
+| Search (de) | words: Stillewarnung, Stillehinweis<br>phrases: warne mich, wenn beim Diktieren kein Ton ankommt; schalte den Hinweis bei fehlendem Ton auf der Aufnahmeanzeige aus |
 | Search (es) | words: aviso de micrófono sin sonido, alerta de micrófono en silencio<br>phrases: cómo activar el aviso si el micro no capta sonido al dictar; cómo quitar el aviso de micrófono en silencio |
 | Search (fr) | words: alerte micro, avertissement micro, alerte micro muet<br>phrases: me prévenir si mon micro ne capte rien pendant la dictée; désactiver l’alerte quand aucun son ne vient du micro |
 | Search (other 28 languages) | titles, words and phrases in [settings-map.json](settings-map.json) under this id |

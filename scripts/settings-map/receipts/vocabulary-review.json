@@ -276,8 +276,8 @@
  "retiredIDs": [],
  "resource": {
   "path": "Sources/EnviousWisprAppKit/Resources/SettingsSearchVocabulary.json",
-  "sha256": "f2c5708ff2a80079eb4ab65d201a766497fd9d7b1728161f23abdce9383a7617",
-  "bytes": 1905018
+  "sha256": "21b7283f5e6f0349ca95375366d35ca8dc38128d47c96acb068fb81b9ee943c1",
+  "bytes": 1904945
  },
  "sources": [
   {
@@ -5514,7 +5514,7 @@
   },
   {
    "language": "de",
-   "contentSHA256": "209135c386a1d2e2d46bc00b8ebc14abcec7d77d661d798e2a1393323a8a0f02",
+   "contentSHA256": "f82cc24c8dce608c0827bd9efa838a2ae93f72a7596d500f5ffa208a019ca1fa",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -7014,6 +7014,36 @@
       "sha256": "58eb8df5494241103ae9383e56400c328c1f1f5eec3f7886664bfa242c27c367"
      },
      "disposition": "the reviewer's FINAL LIST adopted as recorded in reviewed-edits.json (existing words and phrases kept; size words and model-name phrases added); no council run, the wording follows the cards' own reviewed translations"
+    },
+    {
+     "kind": "addition-content",
+     "id": "silentMicWarning",
+     "method": "Codex, one fresh isolated session re-reviewing the block after the merge with #4501, where the meaning pass ranked this switch into the top five for the bare queries 'mic' (pushing out Microphone readiness) and 'Micro'; the new block drops bare 'mic'/'Mikro'/'sound' tokens (#4841)",
+     "date": "2026-11-22",
+     "draft": {
+      "path": "additions/silentMicWarning/draft-retune.json",
+      "sha256": "e45a94f23a2eddf55c2f172845a6fce569b699b75aa1d259dcb159828b16e4bf"
+     },
+     "prompt": {
+      "path": "additions/silentMicWarning/retune-prompt-de.md",
+      "sha256": "4899543be304970c5d230d9f7a6a6ace0f73c4494bac562f8bc3cec9c4efb28c"
+     },
+     "output": {
+      "path": "additions/silentMicWarning/retune-review-de.txt",
+      "sha256": "a617e328b3d90aff30bb53bbfd397a701f13800d1c2ea631b50c715586bed5de"
+     },
+     "disposition": "the reviewer's FINAL LIST adopted in full"
+    },
+    {
+     "kind": "addition-council",
+     "id": "silentMicWarning",
+     "method": "GPT + Gemini council (session ew-4841-silentmic-search-de-2026-11-22) on the same prompt",
+     "date": "2026-11-22",
+     "output": {
+      "path": "additions/silentMicWarning/retune-council-de-digest.md",
+      "sha256": "102c0132e527832a5d00fe67bcc2501934b42f51d6cfb063d7fe5d8a4b5bbbbc"
+     },
+     "disposition": "GPT matched the Codex list; Gemini kept 'Hinweis bei fehlendem Ton' instead of 'Stillewarnung'; the majority list adopted as recorded in the digest"
     }
    ],
    "phraseExemptions": []
@@ -8265,7 +8295,7 @@
   },
   {
    "language": "en",
-   "contentSHA256": "69ab80a305c0c6274d8b0a6c56ce7e33ba93ceba9028ba3014085aa43062d2ba",
+   "contentSHA256": "4a7a726ae779f8211d2a2b0dcffcee534fca658e15ee68589be10af05f0e2ff8",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -9510,6 +9540,25 @@
       "sha256": "cfc8172d27e1fbedf213926173eea4c41170ce3c6bb0e7d714309641ca864fe0"
      },
      "disposition": "the reviewer's FINAL LIST adopted as recorded in reviewed-edits.json (existing words and phrases kept; size words and model-name phrases added); no council run, the wording follows the cards' own reviewed translations"
+    },
+    {
+     "kind": "addition-content",
+     "id": "silentMicWarning",
+     "method": "Codex, one fresh isolated session re-reviewing the block after the merge with #4501, where the meaning pass ranked this switch into the top five for the bare queries 'mic' (pushing out Microphone readiness) and 'Micro'; the new block drops bare 'mic'/'Mikro'/'sound' tokens (#4841)",
+     "date": "2026-11-22",
+     "draft": {
+      "path": "additions/silentMicWarning/draft-retune.json",
+      "sha256": "e45a94f23a2eddf55c2f172845a6fce569b699b75aa1d259dcb159828b16e4bf"
+     },
+     "prompt": {
+      "path": "additions/silentMicWarning/retune-prompt-en.md",
+      "sha256": "bb3c082b51be3d0c1138ed51ee4d6f3ce8ad55fcb6382183550747f9d1ebdf1f"
+     },
+     "output": {
+      "path": "additions/silentMicWarning/retune-review-en.txt",
+      "sha256": "1da16a3fe0bbc1efe7a027f16d4ed0739aeb52d259b11c39a8389c5eb76b5c06"
+     },
+     "disposition": "the reviewer's FINAL LIST adopted in full ('stop' -> 'turn off' in the second phrase)"
     }
    ],
    "phraseExemptions": []

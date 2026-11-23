@@ -8,7 +8,7 @@
     "mapSHA256" : "b0a757e8b509c67ed717e19e702e8e03e8dac37a64d2e148c6a65f0bf3253ef3",
     "uiCatalogSHA256" : "0f8cd3e7815e11ffba273a1440e611fb99f11eec4e5b8f4ea328ce2cf7cfd2c9",
     "vocabularyCanonicalization" : "length-prefixed-v1",
-    "vocabularySHA256" : "f2c5708ff2a80079eb4ab65d201a766497fd9d7b1728161f23abdce9383a7617"
+    "vocabularySHA256" : "21b7283f5e6f0349ca95375366d35ca8dc38128d47c96acb068fb81b9ee943c1"
   },
   "interfaceLanguages" : [
     "en",
@@ -24051,13 +24051,12 @@
         },
         "de" : {
           "phrases" : [
-            "warne mich, wenn beim Diktieren kein Ton vom Mikrofon ankommt",
-            "schalte die Warnung aus, wenn das Mikro beim Diktieren keinen Ton liefert"
+            "warne mich, wenn beim Diktieren kein Ton ankommt",
+            "schalte den Hinweis bei fehlendem Ton auf der Aufnahmeanzeige aus"
           ],
           "words" : [
-            "Mikrofonwarnung",
-            "Warnung bei Mikrofonstille",
-            "Hinweis bei stummem Mikrofon"
+            "Stillewarnung",
+            "Stillehinweis"
           ]
         },
         "el" : {
@@ -24072,12 +24071,12 @@
         },
         "en" : {
           "phrases" : [
-            "warn me if my mic goes silent while dictating",
-            "stop the silent microphone warning on the recording pill"
+            "warn me if nothing comes through while I dictate",
+            "turn off the silence warning on the recording pill"
           ],
           "words" : [
-            "silent mic warning",
-            "no mic input alert"
+            "silence warning",
+            "silent input alert"
           ]
         },
         "es" : {

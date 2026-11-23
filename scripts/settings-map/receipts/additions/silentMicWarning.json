@@ -41,13 +41,12 @@
     },
     "de": {
       "words": [
-        "Mikrofonwarnung",
-        "Warnung bei Mikrofonstille",
-        "Hinweis bei stummem Mikrofon"
+        "Stillewarnung",
+        "Stillehinweis"
       ],
       "phrases": [
-        "warne mich, wenn beim Diktieren kein Ton vom Mikrofon ankommt",
-        "schalte die Warnung aus, wenn das Mikro beim Diktieren keinen Ton liefert"
+        "warne mich, wenn beim Diktieren kein Ton ankommt",
+        "schalte den Hinweis bei fehlendem Ton auf der Aufnahmeanzeige aus"
       ]
     },
     "el": {
@@ -62,12 +61,12 @@
     },
     "en": {
       "words": [
-        "silent mic warning",
-        "no mic input alert"
+        "silence warning",
+        "silent input alert"
       ],
       "phrases": [
-        "warn me if my mic goes silent while dictating",
-        "stop the silent microphone warning on the recording pill"
+        "warn me if nothing comes through while I dictate",
+        "turn off the silence warning on the recording pill"
       ]
     },
     "es": {
