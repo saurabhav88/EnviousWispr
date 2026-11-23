@@ -60,6 +60,11 @@ final class OnboardingTelemetryObserver {
     var projectModel: (LLMProvider, String) -> OnboardingTelemetry.ProjectedModel
     /// `onboarding.film_finished`: result, last scene.
     var emitFilm: (OnboardingTelemetry.FilmResult, String) -> Void = { _, _ in }
+    /// #4845 `onboarding.skip_ahead`: action, polish pick, estimate, waited seconds, visit key.
+    var emitSkipAhead:
+      (OnboardingTelemetry.SkipAheadAction, String, Double?, Double, String) -> Void = {
+        _, _, _, _, _ in
+      }
   }
 
   /// Plan §3.8: the accepted ceiling, one per Setup screen (`done` is never presented).
@@ -292,6 +297,9 @@ final class OnboardingTelemetryObserver {
     case .blockChanged(let block, let step, let choices):
       guard ownedVisit() else { return }
       updateBlocker(step: step, block: block, choices: choices)
+    case .skipAhead(let action, let polish, let secondsLeft, let waited, let visit):
+      guard ownedVisit() else { return }
+      inputs.emitSkipAhead(action, polish, secondsLeft, waited, visit)
     case .warmFailed(let step):
       // One row per failure: each failure waits for an explicit Retry, so it is its own episode.
       guard ownedVisit() else { return }
@@ -301,10 +309,12 @@ final class OnboardingTelemetryObserver {
       blocker = nil
       polishFailure = nil
       rejectedKeys = []
-    case .completed(let final, let interrupted, let rulesVersion):
+    case .completed(let final, let interrupted, let rulesVersion, let polishDeferred, let skipAhead):
       let owned = !interrupted && ownedVisit()
       // Agreement is read from this visit's picks before they are sent and cleared.
-      let summary = completionSummary(final, interrupted: !owned, rulesVersion: rulesVersion)
+      var summary = completionSummary(final, interrupted: !owned, rulesVersion: rulesVersion)
+      summary?.polishDeferred = polishDeferred
+      summary?.skipAhead = skipAhead
       if owned {
         observeAllEnds()
         emitChoices()
@@ -620,6 +630,11 @@ extension OnboardingTelemetryObserver.Inputs {
           projectedBySettingsTelemetry: SettingsProjection.model(
             provider: provider, id: id, list: owners.cloudModelList.snapshot?.list))
       },
-      emitFilm: { result, scene in telemetry.onboardingFilmFinished(result: result, lastScene: scene) })
+      emitFilm: { result, scene in telemetry.onboardingFilmFinished(result: result, lastScene: scene) },
+      emitSkipAhead: { action, polish, secondsLeft, waited, visit in
+        telemetry.onboardingSkipAhead(
+          action: action, polishModel: polish, secondsLeft: secondsLeft, waitedSeconds: waited,
+          visit: visit)
+      })
   }
 }

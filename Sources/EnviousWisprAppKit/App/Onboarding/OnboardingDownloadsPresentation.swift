@@ -52,13 +52,16 @@ struct OnboardingDownloadsPresentation: Equatable, Sendable {
   var isNetworkSlow: Bool
   /// The runtime is counting down to move on ("Taking you to the next step").
   var isCountingDown: Bool
+  /// #4845: a paused polish transfer that keeps its partial bytes (Resume continues it). An update
+  /// that never started reads paused too but has nothing to resume.
+  var polishResumable = true
 
   static func make(
     state: OnboardingFlowState, block: OnboardingDownloadBlock?, warmFailed: Bool,
     queuedPolish: String?, isNetworkSlow: Bool, isCountingDown: Bool,
     speechPhase: (ASRBackendType) -> OnboardingDownloadPhase,
     polishPhase: (String) -> OnboardingDownloadPhase?, downloadsFinished: Bool,
-    speechStartPending: Bool = false
+    speechStartPending: Bool = false, polishResumable: (String) -> Bool = { _ in true }
   ) -> OnboardingDownloadsPresentation {
     let choices = state.choices
     let readiness = state.readiness
@@ -79,7 +82,8 @@ struct OnboardingDownloadsPresentation: Equatable, Sendable {
       engineWarm: speech != nil && readiness.speech == speech && readiness.engineWarm,
       warmFailed: warmFailed, microphoneGranted: readiness.microphoneGranted,
       accessibilityGranted: readiness.accessibilityGranted, downloadsFinished: downloadsFinished,
-      isNetworkSlow: isNetworkSlow, isCountingDown: isCountingDown)
+      isNetworkSlow: isNetworkSlow, isCountingDown: isCountingDown,
+      polishResumable: polish.map(polishResumable) ?? true)
   }
 
   /// One mapping, in priority order: an owner-reported failure, then readiness for the CURRENT

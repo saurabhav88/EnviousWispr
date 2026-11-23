@@ -98,6 +98,8 @@ struct OnboardingCoordinatorTests {
     var warm: ((ASRBackendType) -> OnboardingWarmup?)?
     /// The coordinator's clock (`deps.now`).
     var clock = Date(timeIntervalSince1970: 1000)
+    /// The coordinator's monotonic clock (`deps.uptime`, #4845).
+    var uptime: TimeInterval = 0
     /// Runs when the speech owner receives a request (an owner moving its phase).
     var onRequest: ((ASRBackendType) -> Void)?
 
@@ -209,6 +211,7 @@ struct OnboardingCoordinatorTests {
           acquireSleepAssertion: { self.log.append("awake") },
           releaseSleepAssertion: { self.log.append("sleepOK") },
           now: { self.clock },
+          uptime: { self.uptime },
           warmEngine: { self.warm?($0) ?? nil },
           onPracticeOutcome: { self.log.append("practice(\($0.rawValue))") },
           onCompleted: { self.log.append("onCompleted") }),
@@ -676,5 +679,259 @@ struct OnboardingCoordinatorTests {
     d.begin()
     #expect(d.state.recommended == Self.japaneseWhisper)
     #expect(d.state.choices.speech == .whisper && d.state.choices.polish == "eg1.mini")
+  }
+
+  // MARK: - #4845 Skip ahead
+
+  /// A coordinator resumed on Getting ready with these picks (speech readiness comes from `world`).
+  static func atGettingReady(_ world: World, polish: String = "eg1.mini") throws
+    -> OnboardingCoordinator
+  {
+    var saved = OnboardingFlowState()
+    saved.step = .gettingReady
+    saved.choices = OnboardingChoices(languageMode: .auto, speech: .parakeet, polish: polish)
+    world.checkpoint = try OnboardingCheckpoint(
+      state: saved, startedAt: Date(timeIntervalSince1970: 1),
+      savedAt: Date(timeIntervalSince1970: 2)
+    ).encoded()
+    let c = world.coordinator()
+    c.begin()
+    return c
+  }
+
+  private static func skipRows(_ c: OnboardingCoordinator) -> () -> [OnboardingTelemetry.SkipAheadAction] {
+    var rows: [OnboardingTelemetry.SkipAheadAction] = []
+    c.onObservation = { if case .skipAhead(let action, _, _, _, _) = $0 { rows.append(action) } }
+    return { rows }
+  }
+
+  @Test("Skip ahead on a current offer opens Practice; a stale or ineligible press changes nothing")
+  func skipAheadAcceptsOnlyACurrentOffer() throws {
+    // When this fails, a late press opens Practice for the wrong pick or while speech cannot work.
+    let world = World()
+    world.speechPhase[.parakeet] = .installed
+    world.polishPhase[.egOne(.mini)] = .downloading(fraction: 0.3)
+    let c = try Self.atGettingReady(world)
+    let rows = Self.skipRows(c)
+    let quiet = world.log.count
+    #expect(!c.acceptSkipAhead(pick: "eg1.full", secondsLeft: 300, waitedSeconds: 70))
+    world.polishPhase[.egOne(.mini)] = .paused
+    #expect(!c.acceptSkipAhead(pick: "eg1.mini", secondsLeft: 300, waitedSeconds: 70))
+    world.polishPhase[.egOne(.mini)] = .downloading(fraction: 0.3)
+    world.engine = (.parakeet, .warming)
+    #expect(!c.acceptSkipAhead(pick: "eg1.mini", secondsLeft: 300, waitedSeconds: 70))
+    world.engine = (.parakeet, .ready)
+    world.permissions = (microphone: true, accessibility: false)
+    #expect(!c.acceptSkipAhead(pick: "eg1.mini", secondsLeft: 300, waitedSeconds: 70))
+    #expect(c.state.step == .gettingReady && c.state.deferredPolish == nil)
+    #expect(world.log.count == quiet && rows().isEmpty)
+
+    world.permissions = (microphone: true, accessibility: true)
+    #expect(c.acceptSkipAhead(pick: "eg1.mini", secondsLeft: 300, waitedSeconds: 70))
+    #expect(c.state.step == .practice && c.state.deferredPolish == "eg1.mini" && c.isPracticeUsable)
+    #expect(OnboardingCheckpoint.decode(world.checkpoint)?.deferredPolish == "eg1.mini")
+    // The poll had not counted the card: the press sends offered first.
+    #expect(rows() == [.offered, .skipped])
+    #expect(!c.acceptSkipAhead(pick: "eg1.mini", secondsLeft: 300, waitedSeconds: 70))
+    #expect(rows() == [.offered, .skipped])
+  }
+
+  @Test("Skip ahead starts the polish waiting behind speech; a disk refusal keeps Practice open")
+  func skipAheadStartsTheQueuedPolish() throws {
+    // When this fails, the polish download never starts after Skip ahead on a small Mac.
+    for diskFull in [false, true] {
+      let world = World()
+      world.parallel = false
+      world.speechPhase[.parakeet] = .downloading(fraction: 0.9)
+      let c = try Self.atGettingReady(world)
+      c.send(.changePolish)
+      c.send(.choosePolish("eg1.mini"))
+      #expect(c.state.step == .gettingReady && c.queuedPolishID == "eg1.mini", "\(diskFull)")
+      world.speechPhase[.parakeet] = .installed
+      if diskFull {
+        world.free = 10
+        world.bytes[.polish(.egOne(.mini))] = 1000
+      }
+      #expect(c.acceptSkipAhead(pick: "eg1.mini", secondsLeft: nil, waitedSeconds: 61))
+      #expect(c.state.step == .practice, "\(diskFull)")
+      #expect(world.log.contains("requestPolish(egOne.mini)") == !diskFull, "\(diskFull)")
+      if diskFull {
+        guard case .insufficientDisk = c.block else {
+          Issue.record("expected the disk block Practice's note reads")
+          continue
+        }
+        // The pick the person kept is still saved as the selection.
+        #expect(world.log.contains("selectPolish(egOne.mini)"), "the kept pick was not saved")
+      }
+    }
+  }
+
+  @Test("each Skip ahead row is sent once per visit, and a download that wins is counted")
+  func skipAheadRowsAreLatched() async throws {
+    // When this fails, the funnel double-counts offers or never sees the download winning.
+    let world = World()
+    world.speechPhase[.parakeet] = .installed
+    world.polishPhase[.egOne(.mini)] = .downloading(fraction: 0.3)
+    let c = try Self.atGettingReady(world)
+    let rows = Self.skipRows(c)
+    c.noteSkipAheadKeptWaiting(polish: "eg1.mini", secondsLeft: 300, waitedSeconds: 5)  // not offered
+    c.noteSkipAheadOffered(polish: "eg1.mini", secondsLeft: 300, waitedSeconds: 61)
+    c.noteSkipAheadOffered(polish: "eg1.mini", secondsLeft: 280, waitedSeconds: 63)
+    c.noteSkipAheadKeptWaiting(polish: "eg1.mini", secondsLeft: 270, waitedSeconds: 65)
+    c.noteSkipAheadKeptWaiting(polish: "eg1.mini", secondsLeft: 260, waitedSeconds: 67)
+    #expect(rows() == [.offered, .keptWaiting])
+    // Verification hides the offer, then the model loads: the download won.
+    world.polishPhase[.egOne(.mini)] = .installed
+    world.local[.egOne(.mini)] = OnboardingLocalPolishState(
+      installed: true, serverReady: true, healthy: true)
+    c.refreshReadiness()
+    await c.settle()
+    #expect(c.state.step == .practice && c.state.deferredPolish == nil)
+    #expect(rows() == [.offered, .keptWaiting, .downloadWon])
+  }
+
+  @Test("a download win is counted only when the offered polish model itself opens Practice")
+  func downloadWonNeedsTheOfferedPick() async throws {
+    // When this fails, Continue without AI polish or a new pick is counted as the download winning.
+    let world = World()
+    world.speechPhase[.parakeet] = .installed
+    world.polishPhase[.egOne(.mini)] = .downloading(fraction: 0.3)
+    let c = try Self.atGettingReady(world)
+    c.refreshReadiness()
+    await c.settle()
+    let rows = Self.skipRows(c)
+    c.noteSkipAheadOffered(polish: "eg1.mini", secondsLeft: 300, waitedSeconds: 61)
+    c.send(.continueWithoutPolish)
+    #expect(c.state.step == .practice)
+    #expect(rows() == [.offered])
+  }
+
+  @Test("completion reports whether the person skipped ahead, also when it finishes on relaunch")
+  func completionCarriesTheSkip() throws {
+    // When this fails, retention cannot be split by who skipped ahead.
+    var practice = OnboardingFlowState()
+    practice.step = .done
+    practice.choices = OnboardingChoices(languageMode: .auto, speech: .parakeet, polish: "eg1.mini")
+    practice.practiceOutcome = .succeeded
+    for (deferred, expected) in [("eg1.mini", true), (nil, false), ("eg1.full", false)] as [(String?, Bool)] {
+      let world = World()
+      practice.deferredPolish = deferred
+      world.checkpoint = try OnboardingCheckpoint(
+        state: practice, startedAt: Date(timeIntervalSince1970: 1),
+        savedAt: Date(timeIntervalSince1970: 2)
+      ).encoded()
+      let c = world.coordinator()
+      var reported: Bool?
+      c.onObservation = {
+        if case .completed(_, true, _, let polishDeferred, _) = $0 { reported = polishDeferred }
+      }
+      #expect(!c.begin())
+      #expect(reported == expected, "\(String(describing: deferred))")
+    }
+
+    let world = World()
+    world.speechPhase[.parakeet] = .installed
+    world.polishPhase[.egOne(.mini)] = .downloading(fraction: 0.3)
+    let c = try Self.atGettingReady(world)
+    var reported: Bool?
+    c.onObservation = {
+      if case .completed(_, false, _, let polishDeferred, _) = $0 { reported = polishDeferred }
+    }
+    #expect(c.acceptSkipAhead(pick: "eg1.mini", secondsLeft: 300, waitedSeconds: 70))
+    c.send(.practiceSucceeded)
+    c.send(.filmFinished)
+    #expect(reported == true)
+  }
+
+  @Test("the first verified practice delivery is timed from this visit's offer, never a past visit's")
+  func skipAheadDeliveryIsVisitScoped() throws {
+    // When this fails, the Skip ahead metric times the wrong take, a reopened window inherits the
+    // last visit's numbers, or a later visit's end row resolves an earlier visit's offer.
+    let world = OnboardingCoordinatorTests.World()
+    world.speechPhase[.parakeet] = .installed
+    world.polishPhase[.egOne(.mini)] = .downloading(fraction: 0.3)
+    let c = try Self.atGettingReady(world)
+    var rowVisits: [String] = []
+    c.onObservation = { if case .skipAhead(_, _, _, _, let visit) = $0 { rowVisits.append(visit) } }
+    func summary() -> (Bool, Double?) {
+      let s = c.skipAheadVisitSummary()
+      return (s.offered, s.offerToFirstDeliverySeconds)
+    }
+    c.beginSkipAheadVisit()
+    c.noteVerifiedPracticeDelivery()  // no offer yet: nothing to time
+    #expect(summary() == (false, nil))
+    world.uptime = 100
+    c.noteSkipAheadOffered(polish: "eg1.mini", secondsLeft: 300, waitedSeconds: 61)
+    #expect(summary() == (true, nil))
+    world.uptime = 130
+    #expect(c.acceptSkipAhead(pick: "eg1.mini", secondsLeft: 300, waitedSeconds: 91))
+    world.uptime = 145  // a failed take sends nothing; this is the first verified one
+    c.noteVerifiedPracticeDelivery()
+    world.uptime = 200
+    c.noteVerifiedPracticeDelivery()  // a later take keeps the first time
+    #expect(summary() == (true, 45))
+    let firstVisit = c.skipAheadVisitSummary().visit
+    #expect(rowVisits.count == 2 && Set(rowVisits) == [firstVisit], "offer rows and end row disagree")
+    c.beginSkipAheadVisit()  // the window closed and reopened
+    #expect(summary() == (false, nil))
+    #expect(c.skipAheadVisitSummary().visit != firstVisit, "a later visit could resolve the old offer")
+    c.noteVerifiedPracticeDelivery()
+    #expect(summary() == (false, nil))
+
+    // The same summary rides on completion.
+    let world2 = OnboardingCoordinatorTests.World()
+    world2.speechPhase[.parakeet] = .installed
+    world2.polishPhase[.egOne(.mini)] = .downloading(fraction: 0.3)
+    let c2 = try Self.atGettingReady(world2)
+    var reported: OnboardingTelemetry.SkipAheadVisitSummary?
+    c2.onObservation = { if case .completed(_, _, _, _, let s) = $0 { reported = s } }
+    world2.uptime = 10
+    c2.noteSkipAheadOffered(polish: "eg1.mini", secondsLeft: nil, waitedSeconds: 60)
+    #expect(c2.acceptSkipAhead(pick: "eg1.mini", secondsLeft: nil, waitedSeconds: 60))
+    world2.uptime = 25
+    c2.noteVerifiedPracticeDelivery()
+    c2.send(.practiceSucceeded)
+    c2.send(.filmFinished)
+    #expect(reported?.offered == true && reported?.offerToFirstDeliverySeconds == 15)
+    #expect(reported?.visit == c2.skipAheadVisitID)
+  }
+
+  @Test("one Skip ahead log per visit: a new pick or Start over sends no extra rows")
+  func skipAheadLogFollowsThePick() async throws {
+    // When this fails, one visit sends more than three Skip ahead rows (a second offered row
+    // after a changed pick or Start over), or the visit's last row names a pick it did not act on.
+    let world = World()
+    world.speechPhase[.parakeet] = .installed
+    world.polishPhase[.egOne(.mini)] = .downloading(fraction: 0.3)
+    world.polishPhase[.egOne(.full)] = .downloading(fraction: 0.1)
+    let c = try Self.atGettingReady(world)
+    var rows: [(OnboardingTelemetry.SkipAheadAction, String)] = []
+    c.onObservation = {
+      if case .skipAhead(let action, let polish, _, _, _) = $0 { rows.append((action, polish)) }
+    }
+    c.noteSkipAheadOffered(polish: "eg1.mini", secondsLeft: 300, waitedSeconds: 61)
+    c.noteSkipAheadOffered(polish: "eg1.full", secondsLeft: 900, waitedSeconds: 70)
+    c.noteSkipAheadKeptWaiting(polish: "eg1.full", secondsLeft: 880, waitedSeconds: 72)
+    c.reset()
+    c.noteSkipAheadOffered(polish: "eg1.full", secondsLeft: 900, waitedSeconds: 65)
+    c.noteSkipAheadKeptWaiting(polish: "eg1.full", secondsLeft: 880, waitedSeconds: 66)
+    #expect(rows.map(\.0) == [.offered, .keptWaiting], "a visit sent extra Skip ahead rows")
+    #expect(rows.map(\.1) == ["eg1.mini", "eg1.full"], "a row named a pick it did not act on")
+  }
+
+  @Test("a press on a card the poll had not counted sends offered first")
+  func pressBeforeThePollCountsTheOffer() async throws {
+    // When this fails, a visit reports Keep waiting or Skip ahead with no offered row, and the
+    // success share loses that visit.
+    let world = World()
+    world.speechPhase[.parakeet] = .installed
+    world.polishPhase[.egOne(.mini)] = .downloading(fraction: 0.3)
+    let c = try Self.atGettingReady(world)
+    var rows: [OnboardingTelemetry.SkipAheadAction] = []
+    c.onObservation = {
+      if case .skipAhead(let action, _, _, _, _) = $0 { rows.append(action) }
+    }
+    c.noteSkipAheadKeptWaiting(polish: "eg1.mini", secondsLeft: 300, waitedSeconds: 61)
+    #expect(rows == [.offered, .keptWaiting])
   }
 }

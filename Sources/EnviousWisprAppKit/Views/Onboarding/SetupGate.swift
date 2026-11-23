@@ -137,7 +137,35 @@ enum SetupGate {
         localized: "Downloading \(speechName)", comment: "Setup Downloads title: the speech model.")
   }
 
-  static func subtitle(_ p: OnboardingDownloadsPresentation, screen: Screen) -> String {
+  /// #4845 D-C: Getting ready's time-left line, shown only while the polish model is actually
+  /// transferring with a known estimate and nothing is wrong. nil hides it.
+  static func timeLeft(
+    _ p: OnboardingDownloadsPresentation, screen: Screen, secondsLeft: Double?
+  ) -> String? {
+    guard screen == .gettingReady, problem(p, screen: screen) == nil,
+      p.polishPreparation == .downloading, case .downloading? = p.polishPhase,
+      let seconds = secondsLeft, seconds.isFinite, seconds >= 0
+    else { return nil }
+    if seconds < 60 {
+      return String(
+        localized: "Less than a minute left.",
+        comment: "Setup Getting ready: the AI polish download should finish within a minute.")
+    }
+    if seconds < 90 {
+      return String(
+        localized: "About a minute left.",
+        comment: "Setup Getting ready: about one minute of AI polish download is left.")
+    }
+    let minutes = Int((seconds / 60).rounded())
+    return String(
+      localized: "About \(minutes) minutes left.",
+      comment:
+        "Setup Getting ready: the AI polish download time left. %lld is a whole number of minutes, 2 or more.")
+  }
+
+  static func subtitle(
+    _ p: OnboardingDownloadsPresentation, screen: Screen, secondsLeft: Double? = nil
+  ) -> String {
     switch problem(p, screen: screen) {
     case .disk(let needed)?:
       let size = EGOneSizeCardCopy.byteCount(needed)
@@ -164,9 +192,11 @@ enum SetupGate {
       break
     }
     guard screen == .downloads else {
-      return String(
+      let starts = String(
         localized: "Your first dictation starts the moment this finishes.",
         comment: "Setup Getting ready subtitle.")
+      guard let left = timeLeft(p, screen: screen, secondsLeft: secondsLeft) else { return starts }
+      return left + "\n" + starts
     }
     if p.downloadsFinished {
       let done = String(
@@ -461,6 +491,36 @@ enum SetupGate {
     }
     return actions
   }
+
+  // MARK: Skip ahead (#4845)
+
+  static let offerTitle = String(
+    localized: "This download is taking longer than expected.",
+    comment: "Setup Getting ready: the Skip ahead card's title while AI polish downloads slowly.")
+  static let offerBody = String(
+    localized:
+      "You can skip ahead and start dictating now. AI polish keeps downloading in the background and turns on by itself when it is done.",
+    comment: "Setup Getting ready: the Skip ahead card's explanation.")
+  static let skipAhead = String(
+    localized: "Skip ahead",
+    comment: "Setup Getting ready: button that opens practice now while AI polish downloads.")
+  static let keepWaiting = String(
+    localized: "Keep waiting",
+    comment: "Setup Getting ready: button that keeps waiting for the AI polish download.")
+  /// VoiceOver's full-sentence labels of the card's two buttons (plan D-C), so each says what it
+  /// does on its own, with hints off.
+  static let skipAheadLabel = String(
+    localized: "Skip ahead and start dictating now",
+    comment: "Setup Getting ready: VoiceOver label of the Skip ahead button on the slow-download card.")
+  static let keepWaitingLabel = String(
+    localized: "Keep waiting for AI polish to finish downloading",
+    comment: "Setup Getting ready: VoiceOver label of the Keep waiting button on the slow-download card.")
+  /// One sentence so translators can order it; the bold words are the action.
+  static var ratherNotWait: LocalizedStringKey { "Rather not wait? **Skip ahead**" }
+  /// The same sentence for VoiceOver, without the emphasis marks.
+  static let ratherNotWaitLabel = String(
+    localized: "Rather not wait? Skip ahead",
+    comment: "Setup Getting ready: VoiceOver label of the one-line Skip ahead button.")
 
   // MARK: Shared words
 

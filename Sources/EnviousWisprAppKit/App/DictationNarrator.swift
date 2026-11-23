@@ -549,6 +549,24 @@ enum DictationNarrator {
     return "\(spokenTitle). \(parakeetUpgradeSubtitle(for: phase))"
   }
 
+  // MARK: #4845 LIFE-5 AI polish download complete (founder-approved, 2026-11-22)
+
+  static let polishDownloadCompleteTitle = String(
+    localized: "AI polish download complete",
+    comment: "Pill title once a downloaded AI polish model is loaded and ready for dictation.")
+
+  static func polishDownloadCompleteSubtitle(modelName: String) -> String {
+    String(
+      localized: "\(modelName) is on for your next dictation.",
+      comment:
+        "Pill line under AI polish download complete. %@ is the AI polish model's name, such as EG-1 Mini.")
+  }
+
+  /// The spoken sentence: the title and the line, as one.
+  static func polishDownloadCompleteAnnouncement(modelName: String) -> String {
+    "\(polishDownloadCompleteTitle). \(polishDownloadCompleteSubtitle(modelName: modelName))"
+  }
+
   // dash kept (founder 2026-07-15)
   static let readyTitle = String(
     localized: "Ready — press to dictate",

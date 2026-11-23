@@ -229,6 +229,11 @@
 
     func send(_ args: [String: Any]) -> Result {
       guard let session = activeSession() else { return notRunning() }
+      // #4845: Getting ready's two offer buttons go through the runtime's own press checks, the
+      // same calls the visible buttons make; `skipAheadAccepted` is never sendable on its own.
+      if let name = args["event"] as? String, Self.offerPresses.contains(name) {
+        return offerPress(name, args: args, session: session)
+      }
       let event: OnboardingEvent
       switch Self.event(from: args) {
       case .success(let parsed): event = parsed
@@ -251,6 +256,49 @@
       return .ok(snapshot(extra: ["outcome": outcome, "from": before.rawValue]))
     }
 
+    /// #4845: a press on the Skip ahead offer the screen shows now. Optional `pick` and `visit`
+    /// name what the press is for (a press for another pick or an older visit is refused, as a
+    /// stale button would be); omitted, they are the offer showing now.
+    private func offerPress(
+      _ name: String, args: [String: Any], session: SetupSession.Components
+    ) -> Result {
+      // A supplied field of the wrong type is refused before anything runs; only an absent field
+      // means "the offer showing now".
+      if let raw = args["pick"], !(raw is String) {
+        return .failure(.badArgs, "pick must be a polish id string")
+      }
+      if let raw = args["visit"], !(raw is Int) {
+        return .failure(.badArgs, "visit must be an integer")
+      }
+      let runtime = session.runtime
+      // The runtime's own poll first, so the press meets the offer as it stands now.
+      runtime.tick()
+      let before = session.coordinator.state.step
+      func refused(_ reason: String) -> Result {
+        .ok(snapshot(extra: ["outcome": "refused", "reason": reason, "from": before.rawValue]))
+      }
+      guard runtime.skipOffer != .hidden, let shownPick = runtime.skipOfferPick else {
+        return refused("no Skip ahead offer is showing")
+      }
+      let pick = args["pick"] as? String ?? shownPick
+      let visit = (args["visit"] as? Int) ?? runtime.offerVisit
+      let accepted =
+        name == "skipAhead"
+        ? runtime.skipAhead(visit: visit, pick: pick)
+        : runtime.keepWaiting(visit: visit, pick: pick)
+      guard accepted else {
+        if pick != shownPick { return refused("the offer is for \(shownPick), not \(pick)") }
+        if visit != runtime.offerVisit { return refused("the offer belongs to another window visit") }
+        return refused(session.coordinator.lastRefusal ?? "the Skip ahead offer is no longer current")
+      }
+      runtime.tick()
+      let outcome = session.coordinator.state.step == before ? "stayed" : "moved"
+      return .ok(snapshot(extra: ["outcome": outcome, "from": before.rawValue]))
+    }
+
+    /// #4845: the offer's presses, handled by `offerPress`, not by `event(from:)`.
+    static let offerPresses: Set<String> = ["skipAhead", "keepWaiting"]
+
     // MARK: Parsing
 
     enum Parsed {
@@ -263,6 +311,7 @@
       "next", "back", "chooseLanguage", "compareSpeech", "chooseSpeech", "seeAllPolish",
       "choosePolish", "chooseCloud", "skipPolish", "turnPolishOn", "continueWithoutPolish",
       "reviewPermissions", "practiceSucceeded", "skipPractice", "filmFinished", "skipFilm",
+      "skipAhead", "keepWaiting",
     ]
 
     static func event(from args: [String: Any]) -> Parsed {
@@ -352,6 +401,16 @@
         out["warmFailed"] = coordinator.warmFailed
         out["queuedPolish"] = coordinator.queuedPolishID ?? NSNull()
         out["running"] = session?.runtime.isRunning ?? false
+        // #4845: the Skip ahead offer as Getting ready shows it.
+        if let runtime = session?.runtime {
+          out["skipAhead"] = [
+            "form": String(describing: runtime.skipOffer),
+            "pick": runtime.skipOfferPick ?? NSNull(),
+            "visit": runtime.offerVisit,
+            "secondsLeft": runtime.secondsLeft ?? NSNull(),
+            "deferredPolish": state.deferredPolish ?? NSNull(),
+          ] as [String: Any]
+        }
         out["recommended"] = [
           "speech": state.recommended.speech.rawValue, "polish": state.recommended.polish,
           "rulesVersion": state.recommended.rulesVersion,

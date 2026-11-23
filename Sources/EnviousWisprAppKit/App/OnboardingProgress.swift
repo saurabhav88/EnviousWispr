@@ -77,13 +77,16 @@ final class OnboardingProgress {
   /// app-quit terminate path call this. Emits at most once per session; a clean
   /// finish (`markCompleted`) or a prior abandon suppresses it. Posture is passed
   /// in by the caller so this box does not depend on `PermissionsService`.
-  func emitAbandonIfInFlight(reason: String, micStatus: String, accessibilityStatus: String) {
+  func emitAbandonIfInFlight(
+    reason: String, micStatus: String, accessibilityStatus: String,
+    skipAhead: OnboardingTelemetry.SkipAheadVisitSummary? = nil
+  ) {
     guard let started = sessionStartedAt, !terminalEmitted else { return }
     terminalEmitted = true
     TelemetryService.shared.onboardingAbandoned(
       screen: screen, step: step,
       elapsedSeconds: Date().timeIntervalSince(started),
       micStatus: micStatus, accessibilityStatus: accessibilityStatus,
-      abandonReason: reason, source: source)
+      abandonReason: reason, source: source, skipAhead: skipAhead)
   }
 }

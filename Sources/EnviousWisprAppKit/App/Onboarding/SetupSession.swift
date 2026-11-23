@@ -80,6 +80,12 @@ final class SetupSession {
 
   func present() {
     guard let components, components.coordinator.isActive else { return }
+    // #4845: a window opened (not a refocus) starts a new Skip ahead visit.
+    if !presenter.isVisible { components.runtime.beginOfferVisit() }
+    components.runtime.offerIsOnScreen = { [weak presenter] in presenter?.windowIsOnScreen ?? false }
+    presenter.onVisibilityChanged = { [weak runtime = components.runtime] in
+      runtime?.offerVisibilityChanged()
+    }
     beginVisit()
     var sources = components.screenSources
     let runtime = components.runtime
@@ -92,6 +98,20 @@ final class SetupSession {
       cancelDownloads: { [weak coordinator] in coordinator?.cancelDownloads() },
       retryWarmup: { [weak coordinator] in coordinator?.retryWarmup() },
       retryPolish: { [weak coordinator] in coordinator?.retryPolish() })
+    sources.skipAhead = SetupSkipAheadSources(
+      offer: { [weak runtime, weak coordinator] in
+        guard let runtime, let coordinator else { return .hidden }
+        // The estimate shows in the subtitle whether or not the offer does. The offer shows only
+        // for the pick it was earned for; a pick change hides it until the runtime re-decides.
+        let pick = runtime.skipOfferPick
+        let current = pick != nil && pick == coordinator.state.choices.polish
+        return SetupSkipAheadOffer(
+          form: current ? runtime.skipOffer : .hidden, visit: runtime.offerVisit,
+          pick: current ? pick : nil, secondsLeft: runtime.secondsLeft)
+      },
+      skip: { [weak runtime] visit, pick in runtime?.skipAhead(visit: visit, pick: pick) },
+      keepWaiting: { [weak runtime] visit, pick in runtime?.keepWaiting(visit: visit, pick: pick) })
+    sources.practiceDelivered = { [weak coordinator] in coordinator?.noteVerifiedPracticeDelivery() }
     presenter.show(
       coordinator: coordinator, telemetry: components.telemetry, sources: sources,
       activateApp: components.activateApp,
@@ -147,11 +167,14 @@ final class SetupSession {
   }
 
   private func endVisit(reason: String) {
+    // #4845: the Skip ahead offer ends with the window, whoever owns the telemetry visit.
+    components?.runtime.endOfferVisit()
     guard ownsVisit else { return }
     components?.telemetry?.visitEnded()
     progress?.emitAbandonIfInFlight(
       reason: reason, micStatus: permissions?.microphoneStatusString ?? "unknown",
-      accessibilityStatus: (permissions?.accessibilityGrantedLive ?? false) ? "granted" : "denied")
+      accessibilityStatus: (permissions?.accessibilityGrantedLive ?? false) ? "granted" : "denied",
+      skipAhead: components?.coordinator.skipAheadVisitSummary())
     ownsVisit = false
   }
 }

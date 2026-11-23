@@ -65,6 +65,8 @@ enum PillCatalogRequest: Equatable, Sendable {
   /// #3546 A3: the Parakeet Ultra upgrade pills. A feature route with no pipeline intent,
   /// announced by the catalog directly (medium).
   case parakeetUpgrade(ParakeetUpgradePillModel)
+  /// #4845 LIFE-5: the AI polish download completion pill.
+  case polishDownloadComplete(PolishDownloadPillModel)
 
   // **NINETEEN cases: `.recording`, the sixteen non-recording the migration
   // froze, and the two #996 auto-learn feature routes above.** C2 staged
@@ -169,6 +171,9 @@ enum PillCatalog {
     }
     if case .parakeetUpgrade(let model) = request {
       return .medium(DictationNarrator.parakeetUpgradeAnnouncement(for: model.phase))
+    }
+    if case .polishDownloadComplete(let model) = request {
+      return .medium(DictationNarrator.polishDownloadCompleteAnnouncement(modelName: model.modelName))
     }
     guard let intent = request.matchingIntent else {
       // **Import status announces NOTHING, and that is preserved rather than
@@ -425,6 +430,12 @@ enum PillCatalog {
         id: id, content: .parakeetUpgrade(model), expiry: expiry,
         requestedWidth: .fixed(messageWidth))
 
+    case .polishDownloadComplete(let model):
+      // #4845 LIFE-5: the upgrade ready pill's shape and three-second dwell.
+      return PillDefinition(
+        id: id, content: .polishDownloadComplete(model), expiry: .after(seconds: 3),
+        requestedWidth: .fixed(messageWidth))
+
     case .correctionLearned(let model):
       // 2026-09-21 plan §3.1 step 9, widened to three seconds on 2026-09-22
       // (founder, live UAT: "the pill wasn't there long enough"), to four on
@@ -572,7 +583,7 @@ extension PillCatalogRequest {
     case .bluetoothAwareness: return .bluetoothAwareness
     case .escapeRecovery(let transcriptID): return .escapeRecovery(transcriptID: transcriptID)
     case .importStatus, .meetingSummaryLimit, .correctionLearned, .correctionLearnedSaveError, .polishSetupCard,
-      .parakeetUpgrade:
+      .parakeetUpgrade, .polishDownloadComplete:
       return nil
     }
   }

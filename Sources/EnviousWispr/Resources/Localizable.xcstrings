@@ -1078,6 +1078,29 @@
         }
       }
     },
+    "%@ is on for your next dictation." : {
+      "comment" : "Pill line under AI polish download complete. %@ is the AI polish model's name, such as EG-1 Mini.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ ist für dein nächstes Diktat aktiv."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ está activado para tu próximo dictado."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ est activé pour votre prochaine dictée."
+          }
+        }
+      }
+    },
     "%@ is ready" : {
       "comment" : "Setup Downloads title: the speech model is on this Mac.",
       "localizations" : {
@@ -4845,6 +4868,28 @@
         }
       }
     },
+    "AI polish could not start, so this practice fixes filler words and formatting only. You can check it in Settings after setup." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Die KI-Nachbearbeitung konnte nicht starten. In dieser Übung werden deshalb nur Füllwörter und Formatierung bearbeitet. Das kannst du nach der Einrichtung in den Einstellungen prüfen."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "El Pulido con IA no ha podido iniciarse, así que esta práctica solo corrige las muletillas y el formato. Puedes revisarlo en Ajustes después de la configuración."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "La retouche IA n’a pas pu démarrer : cet essai corrige donc uniquement les mots de remplissage et la mise en forme. Vous pourrez la vérifier dans Réglages après la configuration."
+          }
+        }
+      }
+    },
     "AI polish did not start" : {
       "comment" : "Setup Getting ready title: the polish model failed to load.",
       "localizations" : {
@@ -4886,6 +4931,75 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "El Pulido con IA no se ha aplicado esta vez.\nMantén pulsado %@ y repite la frase para ver el resultado."
+          }
+        }
+      }
+    },
+    "AI polish download complete" : {
+      "comment" : "Pill title once a downloaded AI polish model is loaded and ready for dictation.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Download der KI-Nachbearbeitung abgeschlossen"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Descarga del Pulido con IA completada"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Téléchargement de la retouche IA terminé"
+          }
+        }
+      }
+    },
+    "AI polish download paused · Resume" : {
+      "comment" : "Menu bar menu: the AI polish download is paused; clicking resumes it.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Download der KI-Nachbearbeitung pausiert · Fortsetzen"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Descarga del Pulido con IA en pausa · Reanudar"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Téléchargement de la retouche IA en pause · Reprendre"
+          }
+        }
+      }
+    },
+    "AI polish downloading · %@" : {
+      "comment" : "Menu bar menu: the AI polish model is downloading. %@ is the percent done, formatted for the region, such as 42%.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Download der KI-Nachbearbeitung · %@"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Descargando Pulido con IA · %@"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Téléchargement de la retouche IA · %@"
           }
         }
       }
@@ -5421,6 +5535,28 @@
         }
       }
     },
+    "AI polish is getting ready, so this practice fixes filler words and formatting only. It turns on by itself in a moment." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Die KI-Nachbearbeitung wird gerade vorbereitet. In dieser Übung werden deshalb nur Füllwörter und Formatierung bearbeitet. Die KI-Nachbearbeitung aktiviert sich gleich automatisch."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "El Pulido con IA se está preparando, así que esta práctica solo corrige las muletillas y el formato. Se activará automáticamente en un momento."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "La retouche IA est en cours de préparation : cet essai corrige donc uniquement les mots de remplissage et la mise en forme. Elle s’activera automatiquement dans un instant."
+          }
+        }
+      }
+    },
     "AI polish is off. You can turn it on in Settings." : {
       "localizations" : {
         "de" : {
@@ -5439,6 +5575,28 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "El Pulido con IA está desactivado. Puedes activarlo en Ajustes."
+          }
+        }
+      }
+    },
+    "AI polish is still downloading, so this practice fixes filler words and formatting only. Full AI polish turns on by itself when the download is done." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Die KI-Nachbearbeitung wird noch heruntergeladen. In dieser Übung werden deshalb nur Füllwörter und Formatierung bearbeitet. Die volle KI-Nachbearbeitung aktiviert sich automatisch, sobald der Download abgeschlossen ist."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "El Pulido con IA aún se está descargando, así que esta práctica solo corrige las muletillas y el formato. El Pulido con IA completo se activará automáticamente cuando termine la descarga."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "La retouche IA est encore en cours de téléchargement : cet essai corrige donc uniquement les mots de remplissage et la mise en forme. La retouche IA complète s’activera automatiquement une fois le téléchargement terminé."
           }
         }
       }
@@ -5991,6 +6149,29 @@
         }
       }
     },
+    "About %lld minutes left." : {
+      "comment" : "Setup Getting ready: the AI polish download time left. %lld is a whole number of minutes, 2 or more.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Noch etwa %lld Minuten."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Quedan unos %lld minutos."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Il reste environ %lld minutes."
+          }
+        }
+      }
+    },
     "About 1 in 24 dictations lost its final words with this on, compared with the same recording transcribed after stopping." : {
       "comment" : "Speech engine settings, Faster Transcription: help panel: accuracy.",
       "localizations" : {
@@ -6102,6 +6283,29 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Más información sobre Apple Intelligence"
+          }
+        }
+      }
+    },
+    "About a minute left." : {
+      "comment" : "Setup Getting ready: about one minute of AI polish download is left.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Noch etwa eine Minute."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Queda cerca de un minuto."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Il reste environ une minute."
           }
         }
       }
@@ -10913,6 +11117,28 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Baskir"
+          }
+        }
+      }
+    },
+    "Basic cleanup for now" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Vorerst nur einfache Korrekturen"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Por ahora, correcciones básicas"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Corrections de base pour l’instant"
           }
         }
       }
@@ -30208,6 +30434,29 @@
         }
       }
     },
+    "Keep waiting" : {
+      "comment" : "Setup Getting ready: button that keeps waiting for the AI polish download.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Weiter warten"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Seguir esperando"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Continuer d’attendre"
+          }
+        }
+      }
+    },
     "Keeping your mic ready reduces Bluetooth startup delay." : {
       "comment" : "Microphone settings: short line under the Bluetooth guide row.",
       "localizations" : {
@@ -31506,6 +31755,29 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Duración"
+          }
+        }
+      }
+    },
+    "Less than a minute left." : {
+      "comment" : "Setup Getting ready: the AI polish download should finish within a minute.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Noch weniger als eine Minute."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Queda menos de un minuto."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Il reste moins d’une minute."
           }
         }
       }
@@ -44574,6 +44846,51 @@
         }
       }
     },
+    "Rather not wait? **Skip ahead**" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Lieber nicht warten? **Überspringen**"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "¿Prefieres no esperar? **Saltar este paso**"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Vous préférez ne pas attendre ? **Passer cette étape**"
+          }
+        }
+      }
+    },
+    "Rather not wait? Skip ahead" : {
+      "comment" : "Setup Getting ready: VoiceOver label of the one-line Skip ahead button.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Lieber nicht warten? Überspringen"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "¿Prefieres no esperar? Saltar este paso"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Vous préférez ne pas attendre ? Passer cette étape"
+          }
+        }
+      }
+    },
     "Re-check Fast model status" : {
       "localizations" : {
         "de" : {
@@ -51476,6 +51793,29 @@
         }
       }
     },
+    "Skip ahead" : {
+      "comment" : "Setup Getting ready: button that opens practice now while AI polish downloads.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Überspringen"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Saltar este paso"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Passer cette étape"
+          }
+        }
+      }
+    },
     "Skip practice" : {
       "localizations" : {
         "de" : {
@@ -56042,6 +56382,50 @@
         }
       }
     },
+    "The AI polish download stopped, so this practice fixes filler words and formatting only. Open AI Polish in Settings after setup to finish the download." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Der Download der KI-Nachbearbeitung wurde unterbrochen. In dieser Übung werden deshalb nur Füllwörter und Formatierung bearbeitet. Öffne nach der Einrichtung „KI-Nachbearbeitung“ in den Einstellungen, um den Download abzuschließen."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "La descarga del Pulido con IA se ha detenido, así que esta práctica solo corrige las muletillas y el formato. Abre “Pulido con IA” en Ajustes después de la configuración para terminar la descarga."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Le téléchargement de la retouche IA s’est arrêté : cet essai corrige donc uniquement les mots de remplissage et la mise en forme. Ouvrez « Retouche IA » dans Réglages après la configuration pour terminer le téléchargement."
+          }
+        }
+      }
+    },
+    "The AI polish download stopped, so this practice fixes filler words and formatting only. You can resume it from the menu bar after setup." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Der Download der KI-Nachbearbeitung wurde unterbrochen. In dieser Übung werden deshalb nur Füllwörter und Formatierung bearbeitet. Du kannst den Download nach der Einrichtung über die Menüleiste fortsetzen."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "La descarga del Pulido con IA se ha detenido, así que esta práctica solo corrige las muletillas y el formato. Puedes reanudarla desde la barra de menús después de la configuración."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Le téléchargement de la retouche IA s’est arrêté : cet essai corrige donc uniquement les mots de remplissage et la mise en forme. Vous pourrez le reprendre depuis la barre des menus après la configuration."
+          }
+        }
+      }
+    },
     "The AI that writes your meeting summaries. Separate from AI Polish for dictation." : {
       "comment" : "EnviousMeet Summaries tab: the line under Summary engine.",
       "localizations" : {
@@ -58923,6 +59307,29 @@
         }
       }
     },
+    "This download is taking longer than expected." : {
+      "comment" : "Setup Getting ready: the Skip ahead card's title while AI polish downloads slowly.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Dieser Download dauert länger als erwartet."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Esta descarga está tardando más de lo previsto."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ce téléchargement prend plus de temps que prévu."
+          }
+        }
+      }
+    },
     "This engine can't write summaries. Choose another one." : {
       "comment" : "History, a meeting: the chosen summary engine or model (an EG-1 or S1-mini Ollama model) cannot summarize.",
       "localizations" : {
@@ -59879,6 +60286,28 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Son tus palabras: EnviousWispr las ha escrito por ti.\nEn cualquier otra app, haz clic primero en un campo de texto."
+          }
+        }
+      }
+    },
+    "Those are your words, with basic cleanup.\nAI polish takes over by itself when it is ready." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Das sind deine Worte, mit einfachen Korrekturen.\nDie KI-Nachbearbeitung übernimmt von selbst, sobald sie bereit ist."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Estas son tus palabras, con correcciones básicas.\nEl Pulido con IA tomará el relevo automáticamente en cuanto esté listo."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Voici vos mots, avec des corrections de base.\nLa retouche IA prendra le relais automatiquement dès qu’elle sera prête."
           }
         }
       }
@@ -66441,6 +66870,29 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Puedes salir de esta copia y usar la de Aplicaciones."
+          }
+        }
+      }
+    },
+    "You can skip ahead and start dictating now. AI polish keeps downloading in the background and turns on by itself when it is done." : {
+      "comment" : "Setup Getting ready: the Skip ahead card's explanation.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Du kannst diesen Schritt überspringen und jetzt schon diktieren. Die KI-Nachbearbeitung lädt im Hintergrund weiter und schaltet sich von selbst ein, sobald sie fertig ist."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Puedes saltar este paso y empezar a dictar ya. El Pulido con IA sigue descargándose en segundo plano y se activará automáticamente cuando termine la descarga."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Vous pouvez passer cette étape et commencer à dicter dès maintenant. La retouche IA continue de se télécharger en arrière-plan et s’activera automatiquement une fois le téléchargement terminé."
           }
         }
       }
@@ -87656,6 +88108,52 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Ahora las notificaciones son más claras cuando algo falla, con avisos distintos para los fallos parciales y completos."
+          }
+        }
+      }
+    },
+    "Keep waiting for AI polish to finish downloading" : {
+      "comment" : "Setup Getting ready: VoiceOver label of the Keep waiting button on the slow-download card.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Weiter warten, bis die KI-Nachbearbeitung heruntergeladen ist"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Continuer d’attendre la fin du téléchargement de la retouche IA"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Seguir esperando a que termine la descarga del Pulido con IA"
+          }
+        }
+      }
+    },
+    "Skip ahead and start dictating now" : {
+      "comment" : "Setup Getting ready: VoiceOver label of the Skip ahead button on the slow-download card.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Überspringen und jetzt schon diktieren"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Passer cette étape et commencer à dicter dès maintenant"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Saltar este paso y empezar a dictar ya"
           }
         }
       }

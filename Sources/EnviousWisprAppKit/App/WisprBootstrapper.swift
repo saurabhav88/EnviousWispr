@@ -1317,6 +1317,20 @@ package final class WisprBootstrapper {
         upgradePills.backgroundUpgradeChanged(state)
       }
     }
+    // #4845 LIFE-5: the one "AI polish download complete" pill, for a download this process
+    // completed (Setup's Skip ahead or Settings). Held by the onboarding completion below.
+    let polishDownloadPills = PolishDownloadPillPresenter(
+      overlay: recordingOverlay,
+      inputs: .init(
+        sources: { [localPolishRuntimes] in localPolishRuntimes.all },
+        setupComplete: { [settings] in settings.onboardingState == .completed },
+        summaryHoldsServer: { [localPolishRuntimes] in localPolishRuntimes.summaryHeldModel != nil },
+        modelName: { model in
+          if let size = model.size { return EGOneSizeCardCopy.title(size) }
+          return model.provider.displayName
+        },
+        schedule: PolishDownloadPillPresenter.mainActorSchedule))
+    polishDownloadPills.start()
 
     // #996 chunk 5h: composed here because every collaborator it needs already
     // exists (settings, the word list, the packs, the overlay director, the
@@ -1556,6 +1570,8 @@ package final class WisprBootstrapper {
         learnFromEdits?.onboardingDidComplete()
         // #3546 E22: a held background Parakeet upgrade starts now.
         parakeetUpgrade.onboardingDidComplete()
+        // #4845 LIFE-5: a download-complete pill held back during Setup can show now.
+        polishDownloadPills.attempt()
         // #4528: launch skips the speech warm until Setup completes (LaunchEngineWarm), so
         // completion warms instead. Setup usually left the engine warm already (this joins or
         // no-ops); after a completion restored on relaunch, or Skip practice while Practice
@@ -1908,10 +1924,19 @@ package final class WisprBootstrapper {
     // #3546 A3: an activation deferred because the engine lease was held (a speed test, a
     // decode still finishing for an abandoned take) is offered again when it is released.
     // #3849: every poke re-runs every gate, so a switch deferred by gate 6c applies here too.
-    engineLease.onReleased = { [weak engineCoordinator, meetingWakes] in
+    engineLease.onReleased = { [weak engineCoordinator, meetingWakes, localPolishRuntimes] in
       engineCoordinator?.poke(.parakeetUpgradeOwed)
       // #4052: a meeting pass waiting for the engine takes its turn.
       meetingWakes.poke()
+      // #4845 LIFE-5: a completed AI polish download waiting for its readiness check asks again
+      // whenever the engine frees up, whoever held it (a take, including a cancelled or too-short
+      // one, a decode still finishing for an abandoned take, a file import, a speed test).
+      for runtime in localPolishRuntimes.all { runtime.confirmPendingDownload() }
+    }
+    // #4845 LIFE-5: that check never makes a holder wait: claiming the engine cancels it, and the
+    // helper stops the cancelled request at its next generation round.
+    engineLease.onGranted = { [localPolishRuntimes] in
+      for runtime in localPolishRuntimes.all { runtime.standDownDownloadConfirmation() }
     }
     // #3973 C1: a meeting operation waiting behind a dictation's reservation looks again when
     // that press ends without taking the turn.
@@ -2250,6 +2275,26 @@ package final class WisprBootstrapper {
         },
         pasteLastDictation: { rowID, target in
           lastDictationAction.pasteFromMenu(rowID: rowID, target: target)
+        },
+        // #4845 D-F: the selected bundled model's download, after Setup only (the slot is
+        // Setup-gated by `renderMenu` too); verifying shows nothing, failed keeps the warning.
+        polishDownload: { [settings, localPolishRuntimes] in
+          let model = settings.polishModelID(for: settings.llmProvider)
+          return PolishDownloadMenu.line(
+            setupComplete: settings.onboardingState == .completed, selected: model,
+            installState: localPolishRuntimes.runtime(for: model)?.installState)
+        },
+        openAIPolishForDownload: {
+          navigationCoordinator.request(.aiPolish)
+          appWindowCoordinator.showWindow()
+        },
+        resumePolishDownload: { [settings, localPolishRuntimes] model in
+          // A stale line (another model selected since, or no longer paused) starts nothing.
+          let runtime = localPolishRuntimes.runtime(for: model)
+          PolishDownloadMenu.resume(
+            model, selected: settings.polishModelID(for: settings.llmProvider),
+            installState: runtime?.installState
+          ) { runtime?.startDownload() }
         }
       )
     )

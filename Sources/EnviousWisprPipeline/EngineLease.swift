@@ -101,6 +101,11 @@ package final class EngineLease {
   /// without each holder remembering to say so. Synchronous; it must not re-enter `admit`.
   package var onReleased: (@MainActor () -> Void)?
 
+  /// #4845: called after every grant (a press, a reserved hand-off, any other holder), so work
+  /// that must never make a holder wait (a polish readiness check on the shared server) stands
+  /// down the moment the engine is claimed. Synchronous; it must not re-enter `admit`.
+  package var onGranted: (@MainActor () -> Void)?
+
   package init() {}
 
   /// Claims the resource, or refuses and names the holder.
@@ -119,6 +124,7 @@ package final class EngineLease {
     let token = Token(holder: holder)
     held = token
     admissionEpoch += 1
+    onGranted?()
     return token
   }
 

@@ -11,6 +11,9 @@ enum SetupPracticeState: Equatable {
   /// #4590: the take reached the box but AI polish did not run on it (failed, skipped, or the
   /// dictation was too short), while polish is on. Counts as success; the copy stays honest.
   case workedWithoutPolish
+  /// #4845: the take reached the box on basic cleanup because the person chose Skip ahead while
+  /// AI polish downloads. A success, like `.worked`.
+  case workedBasicCleanup
   case missedBox(copiedToClipboard: Bool)
   case pipelineFailed
   /// #4601: the microphone did not answer (a first press with no session, or a failed take).
@@ -26,7 +29,9 @@ enum SetupPracticeState: Equatable {
   }
 
   /// Either success state: the take landed in the box.
-  var isWorked: Bool { self == .worked || self == .workedWithoutPolish }
+  var isWorked: Bool {
+    self == .worked || self == .workedWithoutPolish || self == .workedBasicCleanup
+  }
 
   var needsPermission: Bool { self == .microphoneOff || self == .accessibilityOff }
   var acceptsFocus: Bool { self != .preparing && !needsPermission }
@@ -48,6 +53,7 @@ enum SetupPracticeState: Equatable {
     case .polishing: "Polishing…"
     case .worked: "That is it. You are set."
     case .workedWithoutPolish: "Dictation worked"
+    case .workedBasicCleanup: "Dictation worked"
     case .noSpeech: "Let’s try that again"
     case .missedBox(copiedToClipboard: true): "Your words were copied"
     case .missedBox(copiedToClipboard: false): "Click the box, then talk"
@@ -72,6 +78,8 @@ enum SetupPracticeState: Equatable {
       "Those are your words, typed for you.\nIn any other app, click into a text box first."
     case .workedWithoutPolish:
       "AI polish didn’t run on this one.\nHold \(key) and say the line again to see it."
+    case .workedBasicCleanup:
+      "Those are your words, with basic cleanup.\nAI polish takes over by itself when it is ready."
     case .noSpeech:
       "EnviousWispr didn’t hear any speech.\nPick another microphone, or hold \(key) and speak."
     case .missedBox(copiedToClipboard: true):
@@ -93,7 +101,7 @@ enum SetupPracticeState: Equatable {
     case .waiting: .welcome
     case .listening: .equalizer
     case .transcribing, .polishing: .shimmer
-    case .worked: .triumph
+    case .worked, .workedBasicCleanup: .triumph
     case .workedWithoutPolish: .smile
     default: .idle
     }
@@ -103,12 +111,63 @@ enum SetupPracticeState: Equatable {
 enum SetupPracticePolish: Equatable {
   case live, off
   case cloudLater(providerName: String)
+  /// #4845 D-C: the person chose Skip ahead and the picked AI polish is not ready yet.
+  case deferred(DeferredStage)
+
+  /// Where the skipped-ahead AI polish model stands, from its live phase.
+  enum DeferredStage: Equatable {
+    case downloading, starting, unavailable
+    /// The download stopped: `paused` points to the menu bar's Resume; otherwise (failed, or a
+    /// start refused for disk) to AI Polish in Settings.
+    case stopped(paused: Bool)
+  }
+
+  /// The stage from Getting ready's own presentation of the current pick; nil once polish is
+  /// ready (or for a pick that downloads nothing).
+  /// The current pick's live readiness and transfer decide first; a saved refusal (disk) explains
+  /// the note only while the model is still not moving.
+  static func deferredStage(_ p: OnboardingDownloadsPresentation) -> DeferredStage? {
+    switch p.polishPreparation {
+    case .ready, .none, .off, .appleIntelligence, .cloud: return nil
+    case .loading: return .starting
+    case .failed: return .unavailable
+    case .downloading: return .downloading
+    case .queued, .waiting: return p.block != nil ? .stopped(paused: false) : .downloading
+    case .downloadStopped:
+      // Only a transfer with bytes to continue points to the menu bar's Resume (the menu shows
+      // none for an update that never started).
+      return .stopped(paused: p.block == nil && p.polishPhase == .paused && p.polishResumable)
+    }
+  }
 
   var note: LocalizedStringKey? {
     switch self {
     case .live: nil
     case .off: "AI polish is off. You can turn it on in Settings."
     case .cloudLater(let provider): "Add your \(provider) key in Settings to turn on AI polish."
+    case .deferred: nil
+    }
+  }
+
+  /// #4845: the "Basic cleanup for now" note's explanation, shown for the whole practice.
+  var deferredBody: LocalizedStringKey? {
+    guard case .deferred(let stage) = self else { return nil }
+    switch stage {
+    case .downloading:
+      return
+        "AI polish is still downloading, so this practice fixes filler words and formatting only. Full AI polish turns on by itself when the download is done."
+    case .starting:
+      return
+        "AI polish is getting ready, so this practice fixes filler words and formatting only. It turns on by itself in a moment."
+    case .unavailable:
+      return
+        "AI polish could not start, so this practice fixes filler words and formatting only. You can check it in Settings after setup."
+    case .stopped(paused: true):
+      return
+        "The AI polish download stopped, so this practice fixes filler words and formatting only. You can resume it from the menu bar after setup."
+    case .stopped(paused: false):
+      return
+        "The AI polish download stopped, so this practice fixes filler words and formatting only. Open AI Polish in Settings after setup to finish the download."
     }
   }
 }
@@ -206,6 +265,9 @@ struct SetupPracticeScreen: View {
       if state != .preparing {
         editor
       }
+      if state.acceptsFocus, let body = polish.deferredBody {
+        deferredNote(body)
+      }
       if state.acceptsFocus {
         if state.isWorked, let note = polish.note {
           Text(note)
@@ -234,6 +296,31 @@ struct SetupPracticeScreen: View {
       return Text(verbatim: DictationNarrator.copy(for: .micNotResponding))
     }
     return Text(state.subtitle(key: key))
+  }
+
+  /// #4845 D-C: "Basic cleanup for now" under the box (mockup Practice).
+  private func deferredNote(_ body: LocalizedStringKey) -> some View {
+    HStack(alignment: .firstTextBaseline, spacing: DesignSpacing.md) {
+      Image(systemName: "sparkle")
+        .foregroundStyle(Color.obAccent)
+        .accessibilityHidden(true)
+      VStack(alignment: .leading, spacing: DesignSpacing.xxs) {
+        Text("Basic cleanup for now")
+          .font(.firstRunCaption.weight(.semibold))
+          .foregroundStyle(Color.obTextPrimary)
+        Text(body)
+          .font(.firstRunCaption)
+          .foregroundStyle(Color.obTextSecondary)
+          .fixedSize(horizontal: false, vertical: true)
+      }
+      .frame(maxWidth: .infinity, alignment: .leading)
+    }
+    .padding(DesignSpacing.xl)
+    .background(
+      RoundedRectangle(cornerRadius: DesignRadius.xl, style: .continuous)
+        .strokeBorder(Color.firstRunRule, lineWidth: 1)
+    )
+    .accessibilityElement(children: .combine)
   }
 
   private var permissionGuide: some View {

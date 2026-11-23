@@ -330,7 +330,10 @@
       case .onboardingGoto:
         return onboardingCommand(args, allowed: ["step"]) { $0.goto(args) }
       case .onboardingSend:
-        return onboardingCommand(args, allowed: ["event", "value", "provider", "model"]) {
+        // #4845: `pick` and `visit` target a Skip ahead or Keep waiting press.
+        return onboardingCommand(
+          args, allowed: ["event", "value", "provider", "model", "pick", "visit"]
+        ) {
           $0.send(args)
         }
       case .dictationStart:

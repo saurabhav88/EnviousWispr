@@ -309,6 +309,12 @@ struct SetupScreenSources {
   var downloads: (@MainActor () -> OnboardingDownloadsPresentation)?
   /// Downloads and Getting ready actions, all through the coordinator (D4a, M83).
   var downloadActions = SetupDownloadActions()
+  /// #4845: Getting ready's Skip ahead offer and its two buttons, through the runtime. nil hides
+  /// the offer (render fixtures).
+  var skipAhead: SetupSkipAheadSources?
+  /// #4845 D-H: a practice take reached the expected editor (verified receipt). The coordinator
+  /// keeps the first one per window visit for the Skip ahead summary.
+  var practiceDelivered: (@MainActor () -> Void)?
   /// Hides the Setup window; the flow, its transfers and its visit continue (the presenter's
   /// close path). nil hides Getting ready's close link.
   var closeSetup: (@MainActor () -> Void)?
@@ -343,6 +349,25 @@ struct SetupDownloadActions {
   var cancelDownloads: @MainActor () -> Void = {}
   var retryWarmup: @MainActor () -> Void = {}
   var retryPolish: @MainActor () -> Void = {}
+}
+
+/// What Getting ready shows of the Skip ahead offer (#4845 D-B): the runtime's form, its window
+/// visit and the pick it was earned for, and the time-left estimate. Plain values.
+struct SetupSkipAheadOffer: Equatable {
+  var form: OnboardingSkipOffer.Form
+  var visit: Int
+  var pick: String?
+  var secondsLeft: Double?
+
+  static let hidden = SetupSkipAheadOffer(form: .hidden, visit: 0, pick: nil, secondsLeft: nil)
+}
+
+/// The runtime's Skip ahead reads and presses (#4845 D-B). Every press names the visit and pick
+/// the screen showed; the runtime and coordinator re-check both before anything changes.
+struct SetupSkipAheadSources {
+  var offer: @MainActor () -> SetupSkipAheadOffer
+  var skip: @MainActor (_ visit: Int, _ pick: String) -> Void
+  var keepWaiting: @MainActor (_ visit: Int, _ pick: String) -> Void
 }
 
 /// The record shortcut's owners for Setup's key screen (#4528 D5, plan M80).

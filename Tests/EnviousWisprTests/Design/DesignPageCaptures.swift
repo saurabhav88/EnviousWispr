@@ -370,6 +370,9 @@ enum DesignPageCaptures {
     case .correctionLearnedSaveError: "correction-save-error"
     case .polishSetupCard: "polish-setup-card"
     case .parakeetUpgrade: "parakeet-upgrade"
+    // #4845: the Parakeet ready pill's layout (ColdStartNoticeView, ready icon) with other words;
+    // PolishDownloadPillTests checks the words and the live UAT captures it.
+    case .polishDownloadComplete: nil
     }
   }
 

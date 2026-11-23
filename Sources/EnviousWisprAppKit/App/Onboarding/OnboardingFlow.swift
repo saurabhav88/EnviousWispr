@@ -20,6 +20,13 @@ struct OnboardingChoices: Codable, Equatable, Sendable {
 
   static let polishOff = "off"
   static let polishCloud = "cloud"
+
+  /// #4845: a polish pick served by a `LocalPolishRuntime` download (the EG-1 sizes and S1-mini),
+  /// the only picks Skip ahead can defer and the only picks whose choice starts a download. One
+  /// mapping owner: `OnboardingDownloads.localModel(forPolish:)` over `SetupRules.registeredPolish`.
+  static func isRuntimeDownloadedPolish(_ id: String) -> Bool {
+    OnboardingDownloads.localModel(forPolish: id) != nil
+  }
 }
 
 /// Readiness facts for ONE selection, measured by C2's live owners (delivery, warm engine,
@@ -86,6 +93,10 @@ struct OnboardingFlowState: Equatable, Sendable {
   var practiceOutcome: OnboardingPracticeOutcome?
   var downloadsReturn: OnboardingStep?
   var recoveringReadiness = false
+  /// #4845: the exact polish pick the person chose Skip ahead for on Getting ready. While it
+  /// matches the current pick, Practice runs with basic cleanup instead of waiting for that model
+  /// (`isReadyForPractice`). Set only by `skipAheadAccepted`; cleared when the polish pick changes.
+  var deferredPolish: String?
 
   var canInspectDownloads: Bool {
     Self.downloadOrigins.contains(step)
@@ -110,6 +121,8 @@ struct OnboardingFlowState: Equatable, Sendable {
     else { return false }
     let polish = choices.polish ?? OnboardingChoices.polishOff
     if polish == OnboardingChoices.polishOff { return true }
+    // #4845: Skip ahead waives only the polish model's readiness, for the pick it was chosen for.
+    if deferredPolish == polish, OnboardingChoices.isRuntimeDownloadedPolish(polish) { return true }
     guard r.polish == polish, r.polishReady else { return false }
     if polish == OnboardingChoices.polishCloud {
       return choices.cloudProvider != nil && r.cloudProvider == choices.cloudProvider
@@ -146,6 +159,9 @@ enum OnboardingEvent: Equatable, Sendable {
   /// Getting ready's way past a polish model that cannot get ready: stores AI polish off. Speech
   /// and permission readiness are still required (plan M83).
   case continueWithoutPolish
+  /// #4845: Getting ready's Skip ahead, sent only after the coordinator's dispatch checks passed.
+  /// Grants the Practice bypass for the current runtime-downloaded polish pick; starts nothing.
+  case skipAheadAccepted
   /// Getting ready's way back to Permissions when a grant was turned off (plan M83).
   case reviewPermissions
   case changeSpeech
@@ -186,12 +202,6 @@ struct OnboardingTransition: Equatable, Sendable {
 
 /// The pure reducer (#4528 plan §3.3.1). Reads no hardware, setting, clock, credential or service.
 enum OnboardingFlow {
-  /// Polish ids that download a local model when chosen.
-  static func downloadsLocally(_ polish: String) -> Bool {
-    polish != OnboardingChoices.polishOff && polish != OnboardingChoices.polishCloud
-      && polish != "appleIntelligence"
-  }
-
   static func reduce(_ state: OnboardingFlowState, _ event: OnboardingEvent) -> OnboardingTransition
   {
     var s = state
@@ -206,17 +216,20 @@ enum OnboardingFlow {
     }
     func choosePolish(_ id: String) -> OnboardingTransition {
       if s.choices.polish != id { s.readiness.clearPolish() }
+      if s.deferredPolish != id { s.deferredPolish = nil }
       s.choices.polish = id
       s.choices.cloudProvider = nil
       s.choices.cloudModel = nil
       return finishRecovery(
-        or: .downloads, effects: downloadsLocally(id) ? [.startPolishDownload(id)] : [])
+        or: .downloads,
+        effects: OnboardingChoices.isRuntimeDownloadedPolish(id) ? [.startPolishDownload(id)] : [])
     }
     func chooseCloud(_ provider: LLMProvider, _ model: String) -> OnboardingTransition {
       let same =
         s.choices.polish == OnboardingChoices.polishCloud && s.choices.cloudProvider == provider
         && s.choices.cloudModel == model
       if !same { s.readiness.clearPolish() }
+      s.deferredPolish = nil
       s.choices.polish = OnboardingChoices.polishCloud
       s.choices.cloudProvider = provider
       s.choices.cloudModel = model
@@ -309,6 +322,7 @@ enum OnboardingFlow {
       return choosePolish(s.choices.polish ?? s.recommended.polish)
     case (.polishPick, .skipPolish), (.polishSeeAll, .skipPolish):
       if s.choices.polish != OnboardingChoices.polishOff { s.readiness.clearPolish() }
+      s.deferredPolish = nil
       s.choices.polish = OnboardingChoices.polishOff
       s.choices.cloudProvider = nil
       s.choices.cloudModel = nil
@@ -331,8 +345,18 @@ enum OnboardingFlow {
     case (.key, .next): return move(s.isReadyForPractice ? .practice : .gettingReady)
     case (.gettingReady, .next):
       return s.isReadyForPractice ? move(.practice) : refuse("not ready for practice")
+    case (.gettingReady, .skipAheadAccepted):
+      // #4845: the coordinator already re-checked the live offer; the reducer re-checks the facts
+      // it owns, so a stale event can never open Practice for another pick or without speech.
+      guard let polish = s.choices.polish, OnboardingChoices.isRuntimeDownloadedPolish(polish) else {
+        return refuse("Skip ahead needs an AI polish model that downloads")
+      }
+      s.deferredPolish = polish
+      guard s.isReadyForPractice else { return refuse("speech or permissions are not ready") }
+      return move(.practice)
     case (.gettingReady, .continueWithoutPolish):
       if s.choices.polish != OnboardingChoices.polishOff { s.readiness.clearPolish() }
+      s.deferredPolish = nil
       s.choices.polish = OnboardingChoices.polishOff
       s.choices.cloudProvider = nil
       s.choices.cloudModel = nil

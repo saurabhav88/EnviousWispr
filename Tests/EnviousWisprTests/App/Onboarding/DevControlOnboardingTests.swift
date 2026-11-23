@@ -29,7 +29,9 @@
     private static func make(
       _ world: OnboardingCoordinatorTests.World = .init(),
       box: Box = Box(),
-      telemetry: OnboardingTelemetryObserver? = nil
+      telemetry: OnboardingTelemetryObserver? = nil,
+      snapshot: @escaping () -> OnboardingDownloadSnapshot? = { nil },
+      uptime: @escaping () -> TimeInterval = { 0 }
     ) -> (DevControlOnboarding, OnboardingCoordinatorTests.World) {
       let door = DevControlOnboarding(
         setupSession: SetupSession { _ in
@@ -38,9 +40,10 @@
           let runtime = OnboardingRuntime(
             coordinator: coordinator, facts: OnboardingLiveFacts(),
             inputs: .init(
-              readObservedFacts: { AnyHashable(0) }, downloadProgress: { nil },
+              readObservedFacts: { AnyHashable(0) }, downloadSnapshot: snapshot,
               downloadsFinished: { false }, sampleAppleIntelligence: { .available },
               recheckAppleIntelligence: {}, now: { Date(timeIntervalSince1970: 0) },
+              uptime: uptime,
               // deadline-fallback: timers wait until stop() cancels them.
               sleep: { _ in try? await Task.sleep(for: .seconds(3600)) },
               pollInterval: .seconds(3600)))
@@ -146,6 +149,58 @@
       _ = door.stop()
       #expect(Self.payload(door.status())?["presented"] as? Bool == false)
       #expect(NSApp.windows.filter { $0.title == "Setup" && $0.isVisible }.isEmpty)
+    }
+
+    @Test("Skip ahead and Keep waiting go through the runtime's checks; refusals say why (#4845)")
+    func skipAheadPresses() throws {
+      // When this fails, a DEBUG run can open Practice where the screen would refuse, or a
+      // refusal is reported as something it is not.
+      let world = OnboardingCoordinatorTests.World()
+      world.speechPhase[.parakeet] = .installed
+      world.polishPhase[.egOne(.mini)] = .downloading(fraction: 0.3)
+      var saved = OnboardingFlowState()
+      saved.step = .gettingReady
+      saved.choices = OnboardingChoices(languageMode: .auto, speech: .parakeet, polish: "eg1.mini")
+      world.checkpoint = try OnboardingCheckpoint(
+        state: saved, startedAt: Date(timeIntervalSince1970: 1),
+        savedAt: Date(timeIntervalSince1970: 2)
+      ).encoded()
+      let speech = OnboardingDownloadSnapshot.Pick(
+        id: "speech:parakeet", phase: .installed, downloadedBytes: nil, totalBytes: nil)
+      let polish = OnboardingDownloadSnapshot.Pick(
+        id: "polish:eg1.mini", phase: .downloading(fraction: nil), downloadedBytes: nil,
+        totalBytes: nil)
+      let (door, _) = Self.make(
+        world, snapshot: { .init(speech: speech, polish: polish) }, uptime: { world.uptime })
+      defer { _ = door.stop() }
+      _ = door.begin()
+      _ = door.present()  // the window opens on Getting ready: a new offer visit at 0
+      func send(_ args: [String: Any]) -> [String: Any]? { Self.payload(door.send(args)) }
+
+      var reply = send(["event": "skipAhead"])
+      #expect(reply?["outcome"] as? String == "refused")
+      #expect(reply?["reason"] as? String == "no Skip ahead offer is showing")
+      world.uptime = 61  // a minute on Getting ready: the card shows
+      reply = send(["event": "skipAhead", "pick": "eg1.full"])
+      #expect(reply?["reason"] as? String == "the offer is for eg1.mini, not eg1.full")
+      reply = send(["event": "keepWaiting", "visit": 999])
+      #expect(reply?["reason"] as? String == "the offer belongs to another window visit")
+      #expect(reply?["step"] as? String == "gettingReady")
+      // A malformed field is refused outright, never read as "the offer showing now".
+      #expect(Self.code(door.send(["event": "skipAhead", "visit": "999"])) == "badArgs")
+      #expect(Self.code(door.send(["event": "skipAhead", "pick": 7])) == "badArgs")
+      #expect(Self.payload(door.status())?["step"] as? String == "gettingReady")
+
+      reply = send(["event": "keepWaiting"])
+      #expect(reply?["outcome"] as? String == "stayed")
+      let offer = reply?["skipAhead"] as? [String: Any]
+      #expect(offer?["form"] as? String == "line" && offer?["pick"] as? String == "eg1.mini")
+      reply = send(["event": "skipAhead"])
+      #expect(reply?["outcome"] as? String == "moved" && reply?["step"] as? String == "practice")
+      #expect((reply?["skipAhead"] as? [String: Any])?["deferredPolish"] as? String == "eg1.mini")
+
+      // The reducer's event itself is never sendable.
+      #expect(Self.code(door.send(["event": "skipAheadAccepted"])) == "badArgs")
     }
 
     @Test("closing the Setup window keeps the flow; placeholders send no screen rows (D0, M67)")
@@ -375,7 +430,7 @@
           runtime: OnboardingRuntime(
             coordinator: c, facts: OnboardingLiveFacts(),
             inputs: .init(
-              readObservedFacts: { AnyHashable(0) }, downloadProgress: { nil },
+              readObservedFacts: { AnyHashable(0) }, downloadSnapshot: { nil },
               downloadsFinished: { false }, sampleAppleIntelligence: { .available },
               recheckAppleIntelligence: {}, now: { .now },
               // deadline-fallback: timers wait until stop() cancels them.
@@ -412,7 +467,7 @@
           runtime: OnboardingRuntime(
             coordinator: coordinator, facts: OnboardingLiveFacts(),
             inputs: .init(
-              readObservedFacts: { AnyHashable(0) }, downloadProgress: { nil },
+              readObservedFacts: { AnyHashable(0) }, downloadSnapshot: { nil },
               downloadsFinished: { false }, sampleAppleIntelligence: { .available },
               recheckAppleIntelligence: {}, now: { .now },
               // deadline-fallback: timers wait until stop() cancels them.
@@ -471,7 +526,7 @@
               runtime: OnboardingRuntime(
                 coordinator: c, facts: OnboardingLiveFacts(),
                 inputs: .init(
-                  readObservedFacts: { AnyHashable(0) }, downloadProgress: { nil },
+                  readObservedFacts: { AnyHashable(0) }, downloadSnapshot: { nil },
                   downloadsFinished: { false }, sampleAppleIntelligence: { .available },
                   recheckAppleIntelligence: {}, now: { .now },
                   // deadline-fallback: timers wait until stop() cancels them.

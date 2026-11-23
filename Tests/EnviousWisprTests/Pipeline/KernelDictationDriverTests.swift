@@ -653,6 +653,27 @@ import Testing
         == .delivered(verifiedEditor: nil, copied: false, polished: false))
   }
 
+  @Test("#4845: only a take that waited for the polish model counts as Skip ahead's basic cleanup")
+  func practiceEvidenceWaitedForModel() {
+    // When this fails, Setup's Practice after Skip ahead calls a crashed or failed polish "basic
+    // cleanup for now", or tells a person whose take waited for the downloading model to try again.
+    let context = PolishSetupTakeContext(
+      provider: .egOne, model: "eg-1", configurationRevision: 1, episode: nil)
+    func outcome(_ result: PolishTakeResult, _ evidence: PolishSetupEvidence?) -> PolishTakeOutcome {
+      PolishTakeOutcome(
+        takeID: "take", context: context, result: result, evidence: evidence, setupProblem: nil,
+        observedAt: .now)
+    }
+    let waited = PracticeTakeEvidence.waitedForModel
+    #expect(waited(outcome(.skippedSilently, .localEngineNotReady)), "a model still starting")
+    #expect(waited(outcome(.skippedWithNotice, .localEngineDownloadPending)), "a model downloading")
+    #expect(waited(outcome(.bypassed, nil)), "a take too short to polish")
+    #expect(!waited(outcome(.skippedSilently, nil)), "a crash mid-request counted as waiting")
+    #expect(!waited(outcome(.failed, nil)), "a polish failure counted as waiting")
+    #expect(!waited(outcome(.polished, nil)), "a polished take counted as waiting")
+    #expect(!waited(nil), "a take with no polish outcome counted as waiting")
+  }
+
   @Test("#4528: a practice take stopped before it heard anything reads as no speech")
   func practiceEvidenceMapsAnEarlyStopToNoSpeech() async throws {
     // When this fails, Setup tells a person who let go too early that dictation failed.

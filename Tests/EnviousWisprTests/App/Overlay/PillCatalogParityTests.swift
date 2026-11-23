@@ -63,6 +63,8 @@ struct PillCatalogParityTests {
     case .polishSetupCard: return "polishSetupCard"
     // #3546 A3: a feature pill the catalog mints; it has no frozen pre-migration row.
     case .parakeetUpgrade: return "parakeetUpgrade"
+    // #4845: a feature pill the catalog mints; it has no frozen pre-migration row.
+    case .polishDownloadComplete: return "polishDownloadComplete"
     }
   }
 

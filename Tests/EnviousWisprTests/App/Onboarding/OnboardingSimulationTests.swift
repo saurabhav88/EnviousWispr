@@ -277,7 +277,7 @@
             runtime: OnboardingRuntime(
               coordinator: c, facts: OnboardingLiveFacts(),
               inputs: .init(
-                readObservedFacts: { AnyHashable(0) }, downloadProgress: { nil },
+                readObservedFacts: { AnyHashable(0) }, downloadSnapshot: { nil },
                 downloadsFinished: { false }, sampleAppleIntelligence: { .available },
                 recheckAppleIntelligence: {}, now: { .now },
                 // deadline-fallback: timers wait until stop() cancels them.
@@ -316,7 +316,7 @@
             runtime: OnboardingRuntime(
               coordinator: c, facts: OnboardingLiveFacts(),
               inputs: .init(
-                readObservedFacts: { AnyHashable(0) }, downloadProgress: { nil },
+                readObservedFacts: { AnyHashable(0) }, downloadSnapshot: { nil },
                 downloadsFinished: { false }, sampleAppleIntelligence: { .available },
                 recheckAppleIntelligence: {}, now: { .now },
                 // deadline-fallback: timers wait until stop() cancels them.
@@ -358,7 +358,7 @@
             runtime: OnboardingRuntime(
               coordinator: c, facts: OnboardingLiveFacts(),
               inputs: .init(
-                readObservedFacts: { AnyHashable(0) }, downloadProgress: { nil },
+                readObservedFacts: { AnyHashable(0) }, downloadSnapshot: { nil },
                 downloadsFinished: { false }, sampleAppleIntelligence: { .available },
                 recheckAppleIntelligence: {}, now: { .now },
                 // deadline-fallback: timers wait until stop() cancels them.
