@@ -1,0 +1,15 @@
+| Term | Verdict | Reason |
+|---|---|---|
+| Modellgröße | KEEP | Natural German for the setting and a likely search term. |
+| EG-1 Größe | CHANGE → `EG-1-Größe` | The space is plausible in a typed search. The hyphen gives the German compound its standard spelling. |
+| EG-1 Micro, am kleinsten und schnellsten | KEEP | Matches the card name and tagline. A user is more likely to type `EG-1 Micro` alone, but the full phrase works as a search by remembered wording. `Mikro` can mean microphone in German. The full product name makes the meaning clear. |
+| EG-1 Mini, schneller Allrounder | KEEP | Matches the card name and tagline. Natural as a label-based search, though `EG-1 Mini` alone is more likely. |
+
+All four terms accurately point to the size choices. I checked the card titles, taglines, and German summaries. The full-size card is `EG-1`, with `Beste Qualität`. [Size cards](/Users/m4pro_sv/Developer/EnviousLabs/EnviousWispr-4501-search-eg1/Sources/EnviousWisprAppKit/Views/Settings/EGOneSizeCards.swift:27) · [German catalog](/Users/m4pro_sv/Developer/EnviousLabs/EnviousWispr-4501-search-eg1/Sources/EnviousWispr/Resources/Localizable.xcstrings:11127)
+
+**FINAL LIST**
+
+- `words` — `["Modellgröße", "EG-1-Größe"]`
+- `phrases` — `["verbessere meine Diktate mit dem eigenen Modell der App", "wähle EG-1 für die Diktatkorrektur auf diesem Mac", "EG-1 Micro, am kleinsten und schnellsten", "EG-1 Mini, schneller Allrounder"]`
+
+**VERDICT: REVISE**

@@ -8654,6 +8654,58 @@
      "Volver a comprobar Whisper"
     ]
    }
+  },
+  "aiPolishProvider.egOne": {
+   "en": {
+    "words": [
+     "model size",
+     "EG-1 size"
+    ],
+    "phrases": [
+     "use the app's own model to clean up my dictation",
+     "choose EG-1 for dictation cleanup on this Mac",
+     "EG-1 Micro",
+     "EG-1 Mini"
+    ]
+   },
+   "de": {
+    "words": [
+     "Modellgröße",
+     "EG-1-Größe"
+    ],
+    "phrases": [
+     "verbessere meine Diktate mit dem eigenen Modell der App",
+     "wähle EG-1 für die Diktatkorrektur auf diesem Mac",
+     "EG-1 Micro, am kleinsten und schnellsten",
+     "EG-1 Mini, schneller Allrounder"
+    ]
+   },
+   "es": {
+    "words": [
+     "EG-1 dictado",
+     "corrector propio",
+     "tamaño del modelo",
+     "tamaños de EG-1"
+    ],
+    "phrases": [
+     "usar EG-1 para corregir mi dictado en el Mac",
+     "cambiar a EG-1 Micro",
+     "cambiar a EG-1 Mini"
+    ]
+   },
+   "fr": {
+    "words": [
+     "EG-1 dictée",
+     "correcteur EnviousWispr",
+     "taille du modèle",
+     "taille du modèle EG-1"
+    ],
+    "phrases": [
+     "utiliser EG-1 sur mon Mac pour corriger mes dictées",
+     "choisir EG-1 Micro",
+     "choisir EG-1 Mini"
+    ]
+   }
   }
  },
  "added": {

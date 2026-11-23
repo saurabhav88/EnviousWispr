@@ -1,0 +1,15 @@
+| Término | Veredicto | Motivo |
+|---|---|---|
+| tamaño del modelo | KEEP | Búsqueda natural para el selector. Es genérica y también podría referirse a otros modelos. |
+| tamaño de EG-1 | CHANGE → `tamaños de EG-1` | El singular suena natural. El plural deja más claro que hay tres opciones y evita confundir la familia con la tarjeta llamada «EG-1». |
+| EG-1 Micro, más pequeño y rápido | CHANGE → `cambiar a EG-1 Micro` | Coincide con la tarjeta del modelo más ligero. La alternativa suena más a búsqueda. «Micro» solo puede significar «micrófono» y «EG-1» aclara el sentido. |
+| EG-1 Mini, versátil y rápido | CHANGE → `cambiar a EG-1 Mini` | Coincide con la tarjeta de la opción intermedia, pensada para dictados cortos. La alternativa suena más a búsqueda. |
+
+Verifiqué los títulos, lemas y resúmenes de las tres tarjetas. NOT VERIFIED en cuanto a qué resultado aparece primero al buscar.
+
+**FINAL LIST**
+
+- `words` = `["EG-1 dictado", "corrector propio", "tamaño del modelo", "tamaños de EG-1"]`
+- `phrases` = `["usar EG-1 para corregir mi dictado en el Mac", "cambiar a EG-1 Micro", "cambiar a EG-1 Mini"]`
+
+**VERDICT: REVISE**
