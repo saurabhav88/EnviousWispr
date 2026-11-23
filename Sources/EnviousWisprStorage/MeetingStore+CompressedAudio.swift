@@ -245,24 +245,26 @@ extension MeetingStore {
     guard record.isWritableByThisBuild else { throw StoreError.newerFormat }
     let committed = Set(record.compressedAudio?.segments.map(\.compressed.fileName) ?? [])
     let committedID = record.compressedAudio?.id
-    // A finished compacted file is removed as abandoned only when it is provably not the
-    // meeting's audio: never one bearing the committed inventory's id (even when a damaged
-    // inventory omits it), and, with no committed inventory, only while the recorder file it
-    // would replace (the raw or the cleaned one, by name) is still on disk. A record that lost
-    // its inventory after a retirement, or whose segment list was cleared, may hold the only
-    // audio there is in such a file.
-    let names = Set(try FileManager.default.contentsOfDirectory(atPath: folder(for: id).path))
+    // Uncertain means keep. Candidates (`.m4a.partial`) are never audio and always go. A
+    // FINISHED compacted file goes only as another attempt's leftover next to a committed
+    // inventory that still validates: with no inventory, or one that does not validate, a
+    // finished file may be the only audio left (a retirement removed its recorder file, or a
+    // damaged record names another attempt), so none is touched. A leftover from a crash
+    // before the first commit stays until a later attempt commits, and Delete audio and Delete
+    // meeting remove it with everything else.
+    var inventoryValid = false
+    if let inventory = record.compressedAudio {
+      let names = Set(try FileManager.default.contentsOfDirectory(atPath: folder(for: id).path))
+      inventoryValid =
+        (try? Self.validate(inventory, record: record, folderNames: names, requireOriginals: false))
+        != nil
+    }
     var removed = 0
     for file in try segmentFiles(meeting: id) where file.encoding == .aacM4A {
       if !file.partial {
-        if committed.contains(file.url.lastPathComponent) { continue }
-        if let committedID, file.inventoryID == committedID { continue }
-        if committedID == nil {
-          let source = MeetingSegmentNaming.fileName(
-            track: file.track, variant: file.variant, index: file.index, startMs: file.startMs,
-            partial: false)
-          guard names.contains(source) else { continue }
-        }
+        guard inventoryValid, let committedID, file.inventoryID != committedID,
+          !committed.contains(file.url.lastPathComponent)
+        else { continue }
       }
       try FileManager.default.removeItem(at: file.url)
       removed += 1

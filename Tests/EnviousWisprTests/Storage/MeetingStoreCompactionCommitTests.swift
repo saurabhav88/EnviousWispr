@@ -570,34 +570,48 @@ struct MeetingStoreCompactionCommitTests {
     #expect(try omitting.store.removeAbandonedCompactedAudio(meeting: omitting.id) == 0)
     for name in omitting.outputNames { #expect(omitting.exists(name), "\(name) must stay") }
 
-    // A retirement cut short after the cleaned originals went (raw ones still listed and on
-    // disk), then the inventory lost: the cleaned compacted files are the only cleaned audio.
-    let partial = try Self.fixture()
-    _ = try partial.commit()
-    for entry in partial.inventory.segments where entry.variant == .cleaned {
-      try FileManager.default.removeItem(at: partial.dir.appendingPathComponent(entry.source.fileName))
+    // No inventory, whatever the recorder files look like (present, retired, empty or
+    // unreadable): a finished compacted file is never touched, a candidate always goes.
+    let none = try Self.fixture()
+    _ = try none.commit()
+    for entry in none.inventory.segments where entry.variant == .cleaned {
+      try FileManager.default.removeItem(at: none.dir.appendingPathComponent(entry.source.fileName))
     }
-    let partialURL = partial.store.recordURL(for: partial.id)
-    var partialJSON = try #require(
-      JSONSerialization.jsonObject(with: Data(contentsOf: partialURL)) as? [String: Any])
-    partialJSON.removeValue(forKey: "compressedAudio")
-    try JSONSerialization.data(withJSONObject: partialJSON).write(to: partialURL)
-    let rawCount = partial.inventory.segments.filter { $0.variant == .raw }.count
-    // Only the raw compacted files, whose raw originals are still there, are redundant.
-    #expect(try partial.store.removeAbandonedCompactedAudio(meeting: partial.id) == rawCount)
-    for entry in partial.inventory.segments {
-      #expect(
-        partial.exists(entry.compressed.fileName) == (entry.variant == .cleaned),
-        "\(entry.compressed.fileName)")
-    }
+    try none.write(none.cafNames[0], "")  // present but unreadable
+    let noneURL = none.store.recordURL(for: none.id)
+    var noneJSON = try #require(
+      JSONSerialization.jsonObject(with: Data(contentsOf: noneURL)) as? [String: Any])
+    noneJSON.removeValue(forKey: "compressedAudio")
+    try JSONSerialization.data(withJSONObject: noneJSON).write(to: noneURL)
+    let stray = MeetingSegmentNaming.compactedFileName(
+      source: Self.segment(.microphone, 1), track: .microphone, variant: .raw,
+      inventoryID: UUID(), partial: true)
+    try none.write(stray, "aac candidate")
+    #expect(try none.store.removeAbandonedCompactedAudio(meeting: none.id) == 1)
+    #expect(none.exists(stray) == false, "a candidate is never audio")
+    for name in none.outputNames { #expect(none.exists(name), "\(name) must stay") }
 
-    // A meeting whose originals are all still there does have abandoned candidates to remove.
-    let fresh = try Self.fixture()
-    try fresh.write(
-      MeetingSegmentNaming.compactedFileName(
-        source: Self.segment(.microphone, 1), track: .microphone, variant: .raw,
-        inventoryID: UUID(), partial: false), "aac stray")
-    #expect(try fresh.store.removeAbandonedCompactedAudio(meeting: fresh.id) > 0)
+    // A committed inventory that no longer validates (it names a version this build cannot
+    // read) while another attempt's finished files sit in the folder: nothing finished goes.
+    let invalid = try Self.fixture()
+    _ = try invalid.commit()
+    var bad = try invalid.store.load(id: invalid.id)
+    bad.commitCompressedAudio(Self.replacing(invalid.inventory, version: 2))
+    try invalid.store.save(bad)
+    let foreign = MeetingSegmentNaming.compactedFileName(
+      source: Self.segment(.microphone, 1), track: .microphone, variant: .raw,
+      inventoryID: UUID(), partial: false)
+    try invalid.write(foreign, "aac other attempt")
+    #expect(try invalid.store.removeAbandonedCompactedAudio(meeting: invalid.id) == 0)
+    #expect(invalid.exists(foreign))
+
+    // A valid committed inventory: another attempt's finished leftover goes, the copy stays.
+    let valid = try Self.fixture()
+    _ = try valid.commit()
+    try valid.write(foreign, "aac other attempt")
+    #expect(try valid.store.removeAbandonedCompactedAudio(meeting: valid.id) == 1)
+    #expect(valid.exists(foreign) == false)
+    for name in valid.outputNames { #expect(valid.exists(name), "\(name) must stay") }
   }
 
   @Test("an interrupted retirement reports what it removed, keeps the rest, and resumes")
