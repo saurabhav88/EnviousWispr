@@ -2,6 +2,7 @@
 import AppKit
 import EnviousWisprCore
 import EnviousWisprLLM
+import EnviousWisprLocalPolish
 import EnviousWisprServices
 import Foundation
 import Testing
@@ -433,6 +434,132 @@ struct MenuBarControllerTests {
       state: fixture(
         pipelineState: .idle, onboardingComplete: false, polishSetupWarning: Self.openAIKeyMissing))
     #expect(menu.items.contains { $0.identifier == MenuBarItemID.polishSetup } == false)
+  }
+
+  // MARK: - AI polish download line (#4845 D-F)
+
+  @Test("a download takes the AI polish slot over the warning, after Setup only")
+  func downloadLineTakesTheSlot() {
+    let spy = ActionSpy()
+    let controller = makeController(spy: spy)
+    let menu = NSMenu()
+    let mini = LocalPolishModelID.egOne(.mini)
+    controller.renderMenu(
+      into: menu,
+      state: fixture(
+        pipelineState: .idle, polishSetupWarning: Self.openAIKeyMissing,
+        polishDownload: .downloading(model: mini, fraction: 0.42)))
+    let slot = menu.items.filter {
+      $0.identifier == MenuBarItemID.polishDownload || $0.identifier == MenuBarItemID.polishSetup
+    }
+    #expect(slot.count == 1, "the download and the warning shared the menu")
+    let percent = 0.42.formatted(.percent.precision(.fractionLength(0)))
+    #expect(slot.first?.title == "AI polish downloading · \(percent)")
+    #expect(slot.first?.identifier == MenuBarItemID.polishDownload)
+    #expect(slot.first?.image != nil)
+    let lineIndex = menu.items.firstIndex { $0.identifier == MenuBarItemID.polishDownload }
+    let endIndex = menu.items.firstIndex { $0.identifier == MenuBarItemID.polishSlotEnd }
+    #expect(lineIndex != nil && endIndex == lineIndex.map { $0 + 1 })
+    perform(slot.first)
+    #expect(spy.fired == ["openAIPolishForDownload"])
+
+    // Paused: Resume carries the exact model the line was built for.
+    controller.renderMenu(
+      into: menu, state: fixture(pipelineState: .idle, polishDownload: .paused(model: mini)))
+    let paused = menu.items.first { $0.identifier == MenuBarItemID.polishDownload }
+    #expect(paused?.title == "AI polish download paused · Resume")
+    perform(paused)
+    #expect(spy.resumed == [mini])
+
+    // During Setup: nothing in the slot.
+    controller.renderMenu(
+      into: menu,
+      state: fixture(
+        pipelineState: .idle, onboardingComplete: false, polishDownload: .paused(model: mini)))
+    #expect(menu.items.contains { $0.identifier == MenuBarItemID.polishDownload } == false)
+  }
+
+  @Test("the line follows the runtime: downloading, paused, nothing for verifying or a failure")
+  func downloadLineRule() {
+    let mini = LocalPolishModelID.egOne(.mini)
+    let line = PolishDownloadMenu.line
+    #expect(
+      line(true, mini, .downloading(fractionCompleted: 0.3, upgrade: nil))
+        == .downloading(model: mini, fraction: 0.3))
+    #expect(line(true, mini, .paused) == .paused(model: mini))
+    #expect(line(true, mini, .verifying) == nil, "verification alone showed a download line")
+    #expect(line(true, mini, .failed(.network)) == nil, "a failure hid the existing warning")
+    #expect(line(true, mini, .installed(version: nil)) == nil)
+    #expect(line(false, mini, .paused) == nil, "a line showed during Setup")
+    #expect(line(true, mini, nil) == nil, "a model with no runtime showed a line")
+  }
+
+  @Test("Resume starts only the model it was shown for, and only while it is still paused")
+  func resumeRefusesAStaleLine() {
+    let mini = LocalPolishModelID.egOne(.mini)
+    var started = 0
+    #expect(PolishDownloadMenu.resume(mini, selected: mini, installState: .paused) { started += 1 })
+    #expect(started == 1)
+    #expect(
+      !PolishDownloadMenu.resume(mini, selected: .egOne(.full), installState: .paused) {
+        started += 1
+      }, "a line for another model resumed")
+    #expect(
+      !PolishDownloadMenu.resume(
+        mini, selected: mini, installState: .downloading(fractionCompleted: 0.5, upgrade: nil)
+      ) { started += 1 }, "a line no longer paused started a second transfer")
+    #expect(!PolishDownloadMenu.resume(mini, selected: mini, installState: nil) { started += 1 })
+    #expect(started == 1)
+  }
+
+  @Test("while the menu is open the slot moves: percent, paused to downloading, back to the warning")
+  func openMenuTickRefreshesTheSlot() throws {
+    let spy = ActionSpy()
+    let settings = SettingsManager(
+      defaults: try #require(TestDefaults.suite("ew.tests.menu-polish-tick.\(UUID())")))
+    settings.onboardingState = .completed
+    let controller = makeController(spy: spy, settings: settings)
+    let menu = NSMenu()
+    let mini = LocalPolishModelID.egOne(.mini)
+    spy.polishSetupWarning = Self.openAIKeyMissing
+    spy.polishDownload = .paused(model: mini)
+    controller.renderMenu(
+      into: menu,
+      state: fixture(
+        pipelineState: .idle, polishSetupWarning: Self.openAIKeyMissing,
+        polishDownload: .paused(model: mini)))
+    let countBefore = menu.items.count
+    let unrelatedBefore = (spy.lastDictationReads, spy.microphoneChoiceReads, spy.meetingFactReads)
+    func slot() -> [NSMenuItem] {
+      menu.items.filter {
+        $0.identifier == MenuBarItemID.polishDownload || $0.identifier == MenuBarItemID.polishSetup
+      }
+    }
+    spy.polishDownload = .downloading(model: mini, fraction: 0.1)
+    controller.refreshPolishSlot(in: menu)
+    #expect(slot().map(\.title) == ["AI polish downloading · \(0.1.formatted(.percent.precision(.fractionLength(0))))"])
+    spy.polishDownload = .downloading(model: mini, fraction: 0.55)
+    controller.refreshPolishSlot(in: menu)
+    #expect(slot().map(\.title) == ["AI polish downloading · \(0.55.formatted(.percent.precision(.fractionLength(0))))"])
+    // The download ends: the warning it covered comes back in the same place.
+    spy.polishDownload = nil
+    controller.refreshPolishSlot(in: menu)
+    #expect(slot().map(\.identifier) == [MenuBarItemID.polishSetup])
+    #expect(menu.items.count == countBefore, "the tick added or lost an item")
+    // Nothing left to show: the slot empties, and a new download comes back before its separator.
+    spy.polishSetupWarning = nil
+    controller.refreshPolishSlot(in: menu)
+    #expect(slot().isEmpty && menu.items.count == countBefore - 1)
+    spy.polishDownload = .paused(model: mini)
+    controller.refreshPolishSlot(in: menu)
+    let index = menu.items.firstIndex { $0.identifier == MenuBarItemID.polishDownload }
+    let end = menu.items.firstIndex { $0.identifier == MenuBarItemID.polishSlotEnd }
+    #expect(index != nil && end == index.map { $0 + 1 })
+    // Six ticks read only the slot's own facts: Last Dictation, the microphones and the meeting
+    // block were not sampled again.
+    #expect(
+      (spy.lastDictationReads, spy.microphoneChoiceReads, spy.meetingFactReads) == unrelatedBefore,
+      "the polish tick resampled unrelated menu inputs")
   }
 
   @Test("a click reports what the line showed, even after the setup was finished meanwhile")
@@ -1317,6 +1444,7 @@ struct MenuBarControllerTests {
       pid: 501, bundleIdentifier: "com.apple.TextEdit", focusedSubrole: nil),
     quickAddFallbackEnabled: Bool = true,
     polishSetupWarning: PolishSetupWarningSubjects? = nil,
+    polishDownload: PolishDownloadLine? = nil,
     microphoneChoices: [MicrophoneMenuChoice] = [],
     microphoneSelection: String = ""
   ) -> MenuBarViewState {
@@ -1340,6 +1468,7 @@ struct MenuBarControllerTests {
       appearancePreference: appearancePreference
     )
     state.polishSetupWarning = polishSetupWarning
+    state.polishDownload = polishDownload
     state.microphoneChoices = microphoneChoices
     state.microphoneSelection = microphoneSelection
     return state
@@ -1426,7 +1555,10 @@ struct MenuBarControllerTests {
         continueOnboarding: { spy.fired.append("continueOnboarding") },
         openMainWindow: { spy.fired.append("openMainWindow") },
         openHelpCenter: { spy.fired.append("openHelpCenter") },
-        microphoneChoices: { [] },
+        microphoneChoices: {
+          spy.microphoneChoiceReads += 1
+          return []
+        },
         chooseMicrophone: { uid in
           microphoneChoices.owner.choose(uid: uid) { settings.chooseInputDevice(uid: $0) }
         },
@@ -1441,15 +1573,24 @@ struct MenuBarControllerTests {
         meetingPhase: { spy.meetingPhase },
         requestMeetingStart: { spy.fired.append("requestMeetingStart") },
         stopMeeting: { spy.fired.append("stopMeeting") },
-        meetingMenuFacts: { spy.meetingMenuFacts },
+        meetingMenuFacts: {
+          spy.meetingFactReads += 1
+          return spy.meetingMenuFacts
+        },
         showMeeting: { spy.shownMeetings.append($0) },
         quit: { spy.fired.append("quit") },
-        lastDictation: { spy.lastDictation },
+        lastDictation: {
+          spy.lastDictationReads += 1
+          return spy.lastDictation
+        },
         pasteLastDictation: { rowID, target in
           spy.fired.append(
             "pasteLastDictation:\(rowID?.uuidString ?? "none"):"
               + "\(target.map { String($0.processIdentifier) } ?? "none")")
-        }
+        },
+        polishDownload: { spy.polishDownload },
+        openAIPolishForDownload: { spy.fired.append("openAIPolishForDownload") },
+        resumePolishDownload: { spy.resumed.append($0) }
       )
     )
     return controller
@@ -1635,4 +1776,11 @@ final class ActionSpy {
   /// #3438: what `polishSetupWarning` answers, and what each AI Polish open was told.
   var polishSetupWarning: PolishSetupWarningSubjects?
   var openedAIPolishFor: [PolishSetupWarningSubjects] = []
+  /// #4845: what `polishDownload` answers, and which models Resume was asked for.
+  var polishDownload: PolishDownloadLine?
+  var resumed: [LocalPolishModelID] = []
+  /// How often the unrelated menu inputs were sampled (the polish tick must leave them alone).
+  var lastDictationReads = 0
+  var microphoneChoiceReads = 0
+  var meetingFactReads = 0
 }

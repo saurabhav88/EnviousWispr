@@ -2239,6 +2239,26 @@ package final class WisprBootstrapper {
         },
         pasteLastDictation: { rowID, target in
           lastDictationAction.pasteFromMenu(rowID: rowID, target: target)
+        },
+        // #4845 D-F: the selected bundled model's download, after Setup only (the slot is
+        // Setup-gated by `renderMenu` too); verifying shows nothing, failed keeps the warning.
+        polishDownload: { [settings, localPolishRuntimes] in
+          let model = settings.polishModelID(for: settings.llmProvider)
+          return PolishDownloadMenu.line(
+            setupComplete: settings.onboardingState == .completed, selected: model,
+            installState: localPolishRuntimes.runtime(for: model)?.installState)
+        },
+        openAIPolishForDownload: {
+          navigationCoordinator.request(.aiPolish)
+          appWindowCoordinator.showWindow()
+        },
+        resumePolishDownload: { [settings, localPolishRuntimes] model in
+          // A stale line (another model selected since, or no longer paused) starts nothing.
+          let runtime = localPolishRuntimes.runtime(for: model)
+          PolishDownloadMenu.resume(
+            model, selected: settings.polishModelID(for: settings.llmProvider),
+            installState: runtime?.installState
+          ) { runtime?.startDownload() }
         }
       )
     )
