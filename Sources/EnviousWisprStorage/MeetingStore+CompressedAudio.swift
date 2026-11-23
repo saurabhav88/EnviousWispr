@@ -244,20 +244,26 @@ extension MeetingStore {
     let record = try load(id: id)
     guard record.isWritableByThisBuild else { throw StoreError.newerFormat }
     let committed = Set(record.compressedAudio?.segments.map(\.compressed.fileName) ?? [])
-    // A record with no inventory whose recorder files are not all on disk may have lost its
-    // inventory after a retirement: the compacted files are then the only audio left, so none
-    // is treated as abandoned. Only a meeting whose every listed original is still there can
-    // have uncommitted compacted files.
-    if record.compressedAudio == nil {
+    let committedID = record.compressedAudio?.id
+    // Finished compacted files are removed as abandoned only when they are provably not the
+    // meeting's audio: never one that bears the committed inventory's id (even when a damaged
+    // inventory omits it), and, for a record with no inventory at all, only while the record
+    // lists recorder files and every one is still on disk. A record that lost its inventory
+    // after retirement, or whose list was cleared because no recorder file was found, may hold
+    // the only audio there is in those compacted files.
+    var finalsMayGo = true
+    if committedID == nil {
       let names = Set(try FileManager.default.contentsOfDirectory(atPath: folder(for: id).path))
-      let originalsAllPresent = record.segments.values.joined().allSatisfy {
-        names.contains($0.fileName)
-      }
-      guard originalsAllPresent else { return 0 }
+      let listed = Array(record.segments.values.joined())
+      finalsMayGo = !listed.isEmpty && listed.allSatisfy { names.contains($0.fileName) }
     }
     var removed = 0
     for file in try segmentFiles(meeting: id) where file.encoding == .aacM4A {
-      if !file.partial, committed.contains(file.url.lastPathComponent) { continue }
+      if !file.partial {
+        if committed.contains(file.url.lastPathComponent) { continue }
+        if let committedID, file.inventoryID == committedID { continue }
+        guard finalsMayGo else { continue }
+      }
       try FileManager.default.removeItem(at: file.url)
       removed += 1
     }
@@ -365,7 +371,10 @@ extension MeetingStore {
     let cleanedInInventory = inventory.segments.filter { $0.variant == .cleaned }
     // By file name, never index alone: two cleaned files sharing an index are two entries, and
     // the selector below refuses the duplicate logical key.
-    guard !requireOriginals || Set(cleanedInInventory.map(\.source.fileName)) == cleanedOnDisk
+    // At commit the inventory covers exactly the cleaned originals on disk. A resumed
+    // retirement may find some already gone, but every one still there must be covered.
+    let cleanedNames = Set(cleanedInInventory.map(\.source.fileName))
+    guard requireOriginals ? cleanedNames == cleanedOnDisk : cleanedOnDisk.isSubset(of: cleanedNames)
     else {
       throw CompactionError.invalidInventory("cleaned_set")
     }

@@ -519,7 +519,18 @@ struct MeetingStoreCompactionCommitTests {
     try renamed.store.save(other)
     #expect(throws: MeetingStore.CompactionError.self) { try renamed.retire() }
 
-    for fixture in [f, renamed] {
+    // An inventory that drops a cleaned entry while that cleaned original is still on disk.
+    let dropped = try Self.fixture()
+    _ = try dropped.commit()
+    var third = try dropped.store.load(id: dropped.id)
+    let withoutCleaned = dropped.inventory.segments.filter { $0.variant != .cleaned || $0.source.index != 1 }
+    third.commitCompressedAudio(Self.replacing(dropped.inventory, segments: withoutCleaned))
+    try dropped.store.save(third)
+    #expect(throws: MeetingStore.CompactionError.invalidInventory("cleaned_set")) {
+      try dropped.retire()
+    }
+
+    for fixture in [f, renamed, dropped] {
       for name in fixture.cafNames { #expect(fixture.exists(name), "\(name) must stay") }
     }
   }
@@ -539,6 +550,25 @@ struct MeetingStoreCompactionCommitTests {
     #expect(try f.store.load(id: f.id).compressedAudio == nil)
     #expect(try f.store.removeAbandonedCompactedAudio(meeting: f.id) == 0)
     for name in f.outputNames { #expect(f.exists(name), "\(name) must stay") }
+
+    // The same after Transcribe again found no recorder file and cleared the saved list: an
+    // empty list never makes the compacted files abandoned.
+    var cleared = try f.store.load(id: f.id)
+    cleared.segments = [:]
+    try f.store.save(cleared)
+    #expect(try f.store.removeAbandonedCompactedAudio(meeting: f.id) == 0)
+    for name in f.outputNames { #expect(f.exists(name), "\(name) must stay") }
+
+    // A damaged committed inventory that omits a track keeps every file bearing its id.
+    let omitting = try Self.fixture()
+    _ = try omitting.commit()
+    #expect(try omitting.retire() == omitting.cafNames.count)
+    var damaged = try omitting.store.load(id: omitting.id)
+    damaged.commitCompressedAudio(
+      Self.replacing(omitting.inventory, segments: Array(omitting.inventory.segments.dropLast())))
+    try omitting.store.save(damaged)
+    #expect(try omitting.store.removeAbandonedCompactedAudio(meeting: omitting.id) == 0)
+    for name in omitting.outputNames { #expect(omitting.exists(name), "\(name) must stay") }
 
     // A meeting whose originals are all still there does have abandoned candidates to remove.
     let fresh = try Self.fixture()
