@@ -25,6 +25,10 @@ struct RainbowLipsIcon: View {
   let audioLevel: Float
   /// When true, all bars turn red and pulse opacity (distress/interruption state).
   var isDistress: Bool = false
+  /// #4841: the microphone is sending exact digital silence. The lips draw grey
+  /// and closed (still), matching the approved silent-mic mockup. Drawn here,
+  /// not with a `.grayscale` modifier, because the lips are a `Canvas`.
+  var isSilent: Bool = false
 
   private let upperBars: [(x: CGFloat, y: CGFloat, h: CGFloat, color: Color)] = [
     (4, 22.25, 5, Color(red: 1.0, green: 0.165, blue: 0.251)),
@@ -70,6 +74,9 @@ struct RainbowLipsIcon: View {
   }
 
   private static let distressRed = Color(red: 1.0, green: 0.165, blue: 0.251)
+  /// #4841: the approved mockup's grayscale lips at 50 % opacity, on the
+  /// capsule's dark fill.
+  private static let silentGrey = Color(white: 0.6).opacity(0.5)
 
   /// #2303. The PULSE is decoration; the red bars are the signal and they read the same held
   /// still. The lips' ordinary movement is not touched here — `OverlayMotion` records why.
@@ -100,6 +107,10 @@ struct RainbowLipsIcon: View {
           .frame(width: size, height: size)
           .accessibilityHidden(true)
       }
+    } else if isSilent {
+      lipsCanvas(level: 0, barColorOverride: Self.silentGrey)
+        .frame(width: size, height: size)
+        .accessibilityHidden(true)
     } else {
       lipsCanvas(level: CGFloat(min(max(audioLevel, 0), 1)), barColorOverride: nil)
         .frame(width: size, height: size)

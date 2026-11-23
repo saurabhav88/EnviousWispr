@@ -59,72 +59,6 @@ public final class AudioCaptureManager: AudioCaptureInterface {
   /// for why this is not a computed projection of the property above.
   public private(set) var boundInputDeviceKind: String?
 
-  /// #1317 (ported in-process from the former app-side capture proxy at the C1
-  /// collapse, #1543): WHY the CURRENT trailing all-zero run was refused by the
-  /// device discriminator. The kernel's STOP-time backstop reads this guard-first
-  /// so a refused silent stretch is not later misclassified as the harness glitch.
-  /// Scoped to the current run, not session-wide: a non-zero sample that breaks
-  /// the trailing zero run clears it, so an earlier resolved refusal cannot blind
-  /// the backstop to a later, unrelated genuine zero-signal failure. Reset in
-  /// `beginCapturePhase`; per the `effectiveDiscriminatorDevice` invariant no
-  /// teardown path may clear it early.
-  ///
-  /// #1578 replaces the former Boolean latch with its categorical reason, so WHY
-  /// and whether a refusal happened cannot drift apart.
-  private var currentZeroSignalRefusalReason: ZeroSignalEligibility?
-
-  /// #1578: whether the CURRENT zero run has already produced its reactive refusal
-  /// observation. Classification still runs on every candidate batch so a later
-  /// `.eligible` verdict preserves the shipping stall behavior. This flag suppresses
-  /// only duplicate refusal forwarding, backlog admission, and STOP-time
-  /// reclassification. Forwarding acceptance never controls it.
-  private var currentRunWasClassifiedReactively = false
-
-  /// #1578: refusal contexts whose one forward attempt was REJECTED (no
-  /// subscriber, or a stale-session rejection). Per SESSION, not per run:
-  /// clearing this on non-zero recovery would erase a refusal that genuinely
-  /// happened just because the microphone came back. Drained atomically at a
-  /// terminal.
-  private var pendingZeroSignalRefusals: [ZeroSignalRefusalContext] = []
-
-  public var zeroSignalRefusalReason: ZeroSignalEligibility? {
-    currentZeroSignalRefusalReason
-  }
-
-  public var zeroSignalRunWasClassifiedReactively: Bool {
-    currentRunWasClassifiedReactively
-  }
-
-  /// #1578: the manager MUST store this itself. The protocol extension's default
-  /// is an explicit no-op setter for conformers with no reactive detector, so
-  /// inheriting it here would silently swallow the production subscriber.
-  public var onZeroSignalRefused: ((ZeroSignalRefusalContext) -> Bool)?
-
-  /// #1578: ONE owner for the three fields above, so a future third reset point
-  /// cannot clear two of them and miss the other.
-  ///
-  /// `clearBacklog` is the entire difference between the two call sites, and it
-  /// is load-bearing: session start clears everything, while non-zero recovery
-  /// clears only the current-run facts. A recovery that also emptied the backlog
-  /// would delete a rejected refusal for the very reason it should be kept — the
-  /// microphone started working again.
-  private func resetZeroSignalState(clearBacklog: Bool) {
-    currentZeroSignalRefusalReason = nil
-    currentRunWasClassifiedReactively = false
-    if clearBacklog {
-      pendingZeroSignalRefusals.removeAll(keepingCapacity: true)
-    }
-  }
-
-  /// #1578: ATOMIC take-and-clear. Synchronous and MainActor-isolated, so a
-  /// second caller — a cancel landing while `stopCapture()` is suspended — gets
-  /// an empty array instead of a duplicate. Append order is preserved.
-  public func takePendingZeroSignalRefusals() -> [ZeroSignalRefusalContext] {
-    let pending = pendingZeroSignalRefusals
-    pendingZeroSignalRefusals.removeAll(keepingCapacity: true)
-    return pending
-  }
-
   /// Current audio level (0.0 - 1.0) for waveform visualization.
   public private(set) var audioLevel: Float = 0.0
 
@@ -166,11 +100,10 @@ public final class AudioCaptureManager: AudioCaptureInterface {
 
   // MARK: - Round-4 telemetry callbacks (issue #285)
 
-  /// Stall watchdog callback. Two in-process producers fire it — the HAL
-  /// no-buffer watchdog (forwarded from `source.onCaptureStalled`) and the
-  /// reactive all-zero dead-air detector below — both gated by the shared
+  /// Stall watchdog callback. One producer since #4841: the HAL no-buffer
+  /// watchdog (forwarded from `source.onCaptureStalled`), gated by the
   /// `captureStallReported` latch so the documented at-most-once-per-session
-  /// contract holds.
+  /// contract holds. Exact zeros never fire it.
   public var onCaptureStalled: ((CaptureStallContext) -> Void)?
 
   /// Fired by `resolveSource()` — initial resolution + changed-only afterwards.
@@ -313,7 +246,7 @@ public final class AudioCaptureManager: AudioCaptureInterface {
 
   /// #1810 twin of `cachedSourceType`: the session's pre-roll drain, snapshotted
   /// before any teardown path can nil `activeSource`, so the kernel's STOP-time
-  /// classification reads the same number the reactive detector used.
+  /// classification reads the same number the live `exactZeroRun` used.
   private var cachedDrainedPreRollSampleCount: Int = 0
 
   /// Route resolver — decides which source to use based on BT state + user preference.
@@ -349,8 +282,6 @@ public final class AudioCaptureManager: AudioCaptureInterface {
   /// #4601 §5: the ONE manager request owner. Each `resolveSource()` mints the next value; work
   /// that resumes from an await with an older value is superseded and changes nothing.
   private var resolveRequestID: UInt64 = 0
-  /// #4601: the dead-air diagnostic's default input UID, read on the lane when capture starts.
-  private var captureDefaultInputUID: String?
 
   /// Idle teardown timer: shuts down the warm engine after inactivity.
   private var warmEngineTeardownTask: Task<Void, Never>?
@@ -384,12 +315,8 @@ public final class AudioCaptureManager: AudioCaptureInterface {
   /// later failure-terminal telemetry read report the wrong transport. Nil
   /// before the first resolution.
   ///
-  /// NO LONGER TELEMETRY-ONLY (#1788): `effective` is now a CAPTURE-POLICY input,
-  /// selecting the mid-take all-zero ceiling via `allZeroCeilingSamples`. The
-  /// freezing described above is what makes that safe — the ceiling is chosen from
-  /// the route the session actually bound, not from a live re-read that a mid-take
-  /// device switch could have already changed. Nil still falls to the shipping 1.0s
-  /// ceiling, so a session that never resolved behaves exactly as before.
+  /// Telemetry-only again since #4841 (#1788 had made `effective` choose the
+  /// mid-take all-zero ceiling; exact zeros no longer end a take on any route).
   public private(set) var currentResolvedRoute: ResolvedRouteTransports?
 
   /// Adopt a fresh route decision: freeze it plus its derived transports (using
@@ -433,59 +360,41 @@ public final class AudioCaptureManager: AudioCaptureInterface {
       actualBoundTransport: actualBoundTransport)
   }
 
-  // MARK: - Reactive dead-air detector state (#1317, ported in-process at C1 #1543)
+  // MARK: - Exact-zero observation (#1317, observation-only since #4841)
 
-  /// Per-capture-generation all-zero harness-glitch detector. Fed the
-  /// authoritative captured samples on the MainActor via `ingestSamples` —
-  /// the in-process equivalent of the proxy's per-buffer MainActor hop, so the
-  /// detector is never mutated from the HAL consumer thread. Reset at every
-  /// fresh `beginCapturePhase`.
+  /// Per-capture-generation exact-zero counter. Fed the authoritative captured
+  /// samples (drained pre-roll first) on the MainActor via `ingestSamples`, so
+  /// it is never mutated from the HAL consumer thread. Reset at every fresh
+  /// `beginCapturePhase`. #4841: it only observes; exact zeros never end a take.
   private var deadAirDetector = DeadAirStreamingDetector()
 
-  /// How many leading exact-zero samples the mid-take all-zero detector tolerates
-  /// before it concludes the microphone is dead (not consulted on a confirmed-bound
-  /// USB take, where `zeroSamplesEndTake` skips classification, #4154). ONE owner, ONE code path in every
-  /// configuration — release and DEBUG differ only in whether an override is
-  /// consulted, never in how the verdict is computed (#1788).
-  ///
-  /// Release, and DEBUG with no override set, is `minimumTranscriptionSamples`
-  /// (16,000 = 1.0s) on every transport EXCEPT Bluetooth, which gets 3.0s (#1788 —
-  /// see `allZeroFromStartCeilingSamples(forEffectiveTransport:)` for why, and note
-  /// the DEBUG override still wins over both so a measurement run can see past
-  /// either).
-  ///
-  /// The DEBUG override exists because a Bluetooth wake slower than the ceiling is
-  /// otherwise CENSORED — the take aborts before the wake completes, so the tail we
-  /// most need to see is the one we structurally cannot observe. Raising it makes
-  /// that tail measurable. Diagnostic recipe: gotchas-audio.md
-  /// FACT: bt-mic-warmup-delay-is-industry-wide-not-eviouswispr-specific.
-  ///
-  ///     defaults write com.enviouswispr.app.dev EWDebugAllZeroCeilingSamples -int 160000
-  ///
-  /// A non-positive or absent value yields the shipping ceiling, so an
-  /// unconfigured DEBUG build cannot behave differently from production.
-  ///
-  /// #1810: the base ceiling is a bar on LIVE capture, and the detector is fed the
-  /// drained pre-roll first, so the drained count is added back here. The override
-  /// gets the same treatment deliberately — a DEBUG bar that meant something
-  /// different from the shipping bar would make every local measurement
-  /// incomparable with the fleet, which is the whole reason the override exists.
-  var allZeroCeilingSamples: Int {
-    let drained = drainedPreRollSampleCount
-    #if DEBUG
-      let override = UserDefaults.standard.integer(
-        forKey: "EWDebugAllZeroCeilingSamples")
-      if override > 0 { return override + drained }
-    #endif
-    return Self.allZeroFromStartCeilingSamples(
-      forEffectiveTransport: currentResolvedRoute?.effective) + drained
+  /// #4841: the live exact-zero run for the silent-mic notice. Drained pre-roll
+  /// is excluded from both the run length and the since-start test, so a warm
+  /// microphone's ring cannot shift which threshold applies (#1810's live-capture
+  /// rule, applied here).
+  public var exactZeroRun: ExactZeroRun? {
+    guard isCapturing else { return nil }
+    return Self.exactZeroRun(
+      totalSampleCount: deadAirDetector.totalSampleCount,
+      consecutiveExactZeroSuffix: deadAirDetector.consecutiveExactZeroSuffix,
+      drainedPreRollSampleCount: drainedPreRollSampleCount)
+  }
+
+  /// Pure so the pre-roll boundary cases unit-test without opening hardware.
+  nonisolated static func exactZeroRun(
+    totalSampleCount: Int, consecutiveExactZeroSuffix: Int, drainedPreRollSampleCount: Int
+  ) -> ExactZeroRun {
+    let liveCount = max(0, totalSampleCount - max(0, drainedPreRollSampleCount))
+    let liveSuffix = min(consecutiveExactZeroSuffix, liveCount)
+    return ExactZeroRun(
+      sampleCount: liveSuffix, sinceTakeStart: liveCount > 0 && liveSuffix == liveCount)
   }
 
   /// Clamped pre-roll drain for this capture session, and the clamp is the point.
   /// `AudioInputSource.drainedPreRollSampleCount` is typed `Int`, so a stub or a
-  /// future conformer can return a negative; a negative would SHRINK the ceiling
-  /// and make the abort fire EARLIER, which is the one direction #1810 promises is
-  /// impossible. Read through this property, never the source's raw value.
+  /// future conformer can return a negative; a negative would count pre-roll as
+  /// live capture, which is the one direction #1810 promises is impossible. Read
+  /// through this property, never the source's raw value.
   ///
   /// Falls back to `cachedDrainedPreRollSampleCount` for the same reason
   /// `captureSourceType` falls back to `cachedSourceType`: `stopCapture()`'s
@@ -495,70 +404,17 @@ public final class AudioCaptureManager: AudioCaptureInterface {
     max(0, activeSource?.drainedPreRollSampleCount ?? cachedDrainedPreRollSampleCount)
   }
 
-  /// THE #1788 FIX, and the only transport conditional in it.
-  ///
-  /// Bluetooth alone negotiates a voice link before audio flows, so it alone tolerates
-  /// 3.0s of exact silence mid-take instead of 1.0s. Every other value — `"built_in"`,
-  /// `"usb"`, `"unknown"`, and `nil` — returns the shipping ceiling, so a wired user's
-  /// behaviour is byte-identical to before and an UNREADABLE transport fails to
-  /// today's behaviour rather than to the longer one.
-  ///
-  /// Pure and static so the wired-unchanged guarantee is unit-testable without opening
-  /// real hardware: `currentResolvedRoute` is `private(set)` with only private
-  /// production writers, so a test cannot inject a route through the manager.
-  ///
-  /// Scope, deliberately narrow: this governs the MID-TAKE all-zero abort only, and
-  /// it returns a bar on LIVE capture — `allZeroCeilingSamples` adds the drained
-  /// pre-roll back on top (#1810). `RecordingSessionKernel.classifyZeroSignalAtStop`
-  /// still keeps 1.0s on every transport, so a genuinely dead Bluetooth mic released
-  /// before 3.0s ends with the same honest failure; #1810 gave that stop-time bar the
-  /// same pre-roll correction, so both now mean 1.0s of live capture rather than 1.0s
-  /// minus whatever silent pre-roll was drained. `.becameZeroMidCapture` keeps its own
-  /// threshold and takes NO pre-roll correction — it counts a trailing zero suffix, so
-  /// the drain is irrelevant to it. Do not "harmonise" the three.
-  nonisolated static func allZeroFromStartCeilingSamples(
-    forEffectiveTransport effectiveTransport: String?
-  ) -> Int {
-    effectiveTransport == "bluetooth"
-      ? AudioConstants.bluetoothAllZeroMidTakeCeilingSamples
-      : AudioConstants.minimumTranscriptionSamples
-  }
-
-  /// #4154: whether exact-zero samples alone may end or relabel a take on this
-  /// transport. Only a confirmed-bound USB microphone opts out, and only in two
-  /// places: the reactive detector skips both shapes, and the kernel's stop-time
-  /// path stops interpreting a trailing mid-take zero run as a failure. A
-  /// whole-zero USB take keeps today's stop-time handling. On USB, zeros are
-  /// the only evidence the zero-signal paths act on (eligibility already requires
-  /// the device alive and unmuted), a USB hardware mute is indistinguishable from
-  /// a fault (#1578), and the reporter's cause is not established. Silence is
-  /// allowed while the stream stays live. Every other value, `"unknown"` and nil
-  /// keep today's behaviour, the same fail-closed shape as the #1788 ceiling
-  /// above. Callers pass a frozen per-take transport, never a live re-read: the
-  /// reactive detector passes the bind `prepare()` returned, the kernel's
-  /// stop-time path passes its frozen take route when the bound source reported
-  /// it.
-  package nonisolated static func zeroSamplesEndTake(forEffectiveTransport transport: String?)
-    -> Bool
-  {
-    transport != "usb"
-  }
-
   #if DEBUG
     /// One-shot per capture generation so the zero-prefix line is emitted once,
     /// not on every subsequent batch. Reset in `beginCapturePhase`.
     private var didLogZeroPrefixThisSession = false
   #endif
 
-  /// The ONE shared latch the HAL no-buffer watchdog and the dead-air detector
-  /// both check-and-set before calling `onCaptureStalled`, so the callback's
-  /// documented at-most-once-per-session contract holds across the two
-  /// independent firing paths. Reset per session in `beginCapturePhase`.
+  /// The latch the HAL no-buffer watchdog checks-and-sets before calling
+  /// `onCaptureStalled`, so the callback's documented at-most-once-per-session
+  /// contract holds. Reset per session in `beginCapturePhase`. #4841: the only
+  /// remaining stall producer; exact zeros never report a stall.
   private var captureStallReported = false
-
-  /// Uptime stamp frozen when live capture begins — the `armedAtUptimeNs`
-  /// baseline for a dead-air `CaptureStallContext`. Zero outside a session.
-  private var captureStartUptimeNs: UInt64 = 0
 
   // MARK: - Crash-recovery spool state (#1063; ported in-process at C1 #1543)
 
@@ -755,14 +611,10 @@ public final class AudioCaptureManager: AudioCaptureInterface {
     capturedSamples.reserveCapacity(16000 * 30)
     audioLevel = 0.0
 
-    // Reset per-session reactive dead-air + stall-latch state (#1317 / #1543).
+    // Reset per-session exact-zero + stall-latch state (#1317 / #1543).
     deadAirDetector = DeadAirStreamingDetector()
-    // #1810: the previous session's drain must not survive into this one's ceiling.
+    // #1810: the previous session's drain must not count as this one's pre-roll.
     cachedDrainedPreRollSampleCount = 0
-    // #1578: session start is the ONE place the backlog is cleared without a
-    // consumer having taken it — a new session must never inherit the previous
-    // one's undelivered refusals.
-    resetZeroSignalState(clearBacklog: true)
     captureStallReported = false
     #if DEBUG
       didLogZeroPrefixThisSession = false
@@ -817,7 +669,7 @@ public final class AudioCaptureManager: AudioCaptureInterface {
       // #1543 (Codex review P2): the HAL source stamps its per-instance
       // generation and a coarse `route: "hal_device_input"`. Overlay the
       // manager's app-lifetime session id (so dedup + `isCurrentSession` see the
-      // same unique id the dead-air path uses) and the frozen route decision
+      // manager's unique id) and the frozen route decision
       // (so built-in vs Bluetooth stalls bucket correctly with transport detail).
       self.onCaptureStalled?(self.enrichStallContext(ctx))
     }
@@ -828,17 +680,6 @@ public final class AudioCaptureManager: AudioCaptureInterface {
     onLifecycleSignal?("manager_start_capture_completed")
     isCapturing = true
     captureSessionSource = source  // heartpath 5b: retain the object that owns this session
-    // #4601: the dead-air diagnostic's default input UID, read on the lane now so the verdict
-    // never waits for it; stored only while this capture session is still current.
-    captureDefaultInputUID = nil
-    let diagnosticSession = captureSessionCounter
-    Task { [weak self, lane] in
-      let read = await lane.run("default_input_uid") { AudioDeviceEnumerator.defaultInputDeviceUID() }
-      guard let self, self.captureSessionCounter == diagnosticSession, case .value(let uid) = read
-      else { return }
-      self.captureDefaultInputUID = uid
-    }
-    captureStartUptimeNs = DispatchTime.now().uptimeNanoseconds
     // Crash-recovery limb: arm the spool from the directive AFTER capture is
     // live (the feed loop guards on `isCapturing`). Fail-open — never throws,
     // never gates the returned stream (heart path is byte-identical).
@@ -945,7 +786,6 @@ public final class AudioCaptureManager: AudioCaptureInterface {
     // In-process path returns empty vadSegments; pipeline owns its own SilenceDetector.
     let samples = capturedSamples
     capturedSamples = []
-    captureStartUptimeNs = 0
 
     // Crash-recovery limb (AFTER the authoritative result is frozen so it never
     // delays delivery): append the tail beyond what the poll loop fed, then
@@ -972,9 +812,8 @@ public final class AudioCaptureManager: AudioCaptureInterface {
     guard isCapturing else { return }
     audioLevel = level
     capturedSamples.append(contentsOf: samples)
-    // #1317 (#1543): reactive all-zero harness-glitch detection on the same
-    // MainActor-isolated authoritative samples that accumulate above — the
-    // in-process equivalent of the proxy's per-buffer MainActor hop.
+    // #1317 (#1543), observation-only since #4841: the exact-zero counter runs
+    // on the same MainActor-isolated authoritative samples that accumulate above.
     feedDeadAirDetector(samples)
     if capturedSamples.count >= maxRecordingSamplesLimit {
       isCapturing = false
@@ -1688,103 +1527,19 @@ public final class AudioCaptureManager: AudioCaptureInterface {
     return []
   }
 
-  // MARK: - Reactive dead-air detection (#1317, ported in-process at C1 #1543)
+  // MARK: - Exact-zero observation (#1317; observation-only since #4841)
 
-  /// Feed this batch's raw samples into the per-generation all-zero
-  /// harness-glitch detector; when it crosses a confidence threshold (and the
-  /// bind is not a confirmed-bound USB microphone, which tolerates the run,
-  /// #4154), run the §3.0 device discriminator and — only if it returns `.eligible` — fire
-  /// `onCaptureStalled` with the matching failure mode. Any of the five
-  /// non-eligible reasons fails closed: no fire, today's honest no-speech path
-  /// is untouched, the run's reason is frozen so the kernel's STOP-time backstop
-  /// stays fail-closed, and the next batch re-evaluates (device state can
-  /// legitimately change mid-recording). MainActor-isolated (called from
-  /// `ingestSamples`), so the detector is never mutated off the consumer thread.
+  /// Feed this batch's raw samples into the per-generation exact-zero counter.
+  /// #4841: observation only — exact zeros never end a take on any microphone;
+  /// the silent-mic notice reads `exactZeroRun` and STOP classifies the whole
+  /// buffer. MainActor-isolated (called from `ingestSamples`), so the counter is
+  /// never mutated off the consumer thread.
   private func feedDeadAirDetector(_ samples: [Float]) {
-    guard !deadAirDetector.fired, !captureStallReported, !samples.isEmpty else { return }
-    let suffixBefore = deadAirDetector.consecutiveExactZeroSuffix
+    guard !captureStallReported, !samples.isEmpty else { return }
     samples.withUnsafeBufferPointer { deadAirDetector.ingest($0) }
-    // A non-zero sample anywhere in this batch breaks the trailing zero-run —
-    // `consecutiveExactZeroSuffix` after ingest is then strictly less than
-    // `suffixBefore + samples.count`. Any earlier refusal applied to THAT run,
-    // not this new one, so it must not suppress detection of a later, unrelated
-    // zero-signal failure.
-    if deadAirDetector.consecutiveExactZeroSuffix != suffixBefore + samples.count {
-      // #1578: current-run facts only. Anything already REJECTED stays in the
-      // backlog — the run it described really happened, and recovery does not
-      // undo it.
-      resetZeroSignalState(clearBacklog: false)
-    }
     #if DEBUG
       emitZeroPrefixDiagnosticIfNeeded()
     #endif
-
-    // #4154: on a confirmed-bound USB microphone a zero run is tolerated, not
-    // classified. Ingestion, the run reset above and the DEBUG observation still
-    // ran; returning here sets no fire latch, no refusal and no reactive
-    // classification, so the take continues and later real audio is captured.
-    // `.noBuffers` comes from the source watchdog and is not gated here.
-    guard
-      Self.zeroSamplesEndTake(forEffectiveTransport: effectiveDiscriminatorDevice?.transportLabel)
-    else { return }
-
-    let mode: CaptureStallFailureMode
-    if deadAirDetector.isAllZeroFromStart(ceilingSamples: allZeroCeilingSamples) {
-      mode = .allZeroFromStart
-    } else if deadAirDetector.isBecameZeroMidCapture {
-      mode = .becameZeroMidCapture
-    } else {
-      return
-    }
-
-    // Evaluate against the bind this attempt's `prepare()` RETURNED (#1844),
-    // not a live re-read — the live UID properties can already reflect a device
-    // the user switched to mid-recording, and a settings-derived value can name
-    // a microphone HAL never opened. The optional goes straight to the
-    // classifier: #1578 made it the single owner of the missing-bind outcome,
-    // so translating `nil` here would put that policy in two places.
-    let reason = ZeroSignalDeviceDiscriminator.classify(bound: effectiveDiscriminatorDevice)
-
-    guard reason == .eligible else {
-      // This candidate was refused for one of the classifier's five non-eligible
-      // reasons. Freeze the first reason so STOP cannot later reinterpret the run
-      // from a changed live device state.
-      //
-      // ONE observation per RUN, though the classification above still runs per
-      // BATCH. `feedDeadAirDetector` fires on every incoming batch and a zero run
-      // spans many of them; this flag — not callback success, not backlog
-      // membership, not either stall latch — is what silences the second and
-      // later refusals of the same run.
-      guard !currentRunWasClassifiedReactively else { return }
-
-      // Set BOTH fields before calling out: a subscriber that synchronously
-      // re-enters capture must find this run already classified.
-      currentZeroSignalRefusalReason = reason
-      currentRunWasClassifiedReactively = true
-
-      // Same authorities `fireDeadAirStall` uses for the same two facts — the
-      // detector-selected shape and the resolved effective transport — so the
-      // refusal event and the stall event can never disagree about a take.
-      let context = ZeroSignalRefusalContext(
-        sessionID: currentCaptureSessionID,
-        reason: reason,
-        transport: currentResolvedRoute?.effective ?? "unknown",
-        failureShape: mode
-      )
-      // ONE attempt. A missing subscriber and an explicit `false` are the same
-      // answer — not delivered — so the context is preserved for a terminal
-      // drain rather than lost. Note this deliberately sets neither
-      // `deadAirDetector.fired` nor `captureStallReported`: a refusal is an
-      // observation, and latching either one would suppress a later GENUINE
-      // failure in the same take.
-      if onZeroSignalRefused?(context) != true {
-        pendingZeroSignalRefusals.append(context)
-      }
-      return
-    }
-
-    deadAirDetector.fired = true
-    fireDeadAirStall(mode: mode)
   }
 
   #if DEBUG
@@ -1826,7 +1581,8 @@ public final class AudioCaptureManager: AudioCaptureInterface {
 
     /// Report the exact-zero prefix once per capture generation (#1788).
     ///
-    /// On Bluetooth this is the A2DP->SCO/HFP link wake time. It is a DEBUG
+    /// On Bluetooth this is the A2DP->SCO/HFP link wake time. Since #4841 a slow
+    /// wake no longer ends the take, so the whole tail is observable. It is a DEBUG
     /// diagnostic on purpose and permanently: production telemetry carries no
     /// such field, and without this line a future Bluetooth investigation has to
     /// re-derive wake timing by hand, which is how #1788 started. Writes to
@@ -1862,7 +1618,6 @@ public final class AudioCaptureManager: AudioCaptureInterface {
       let wakeField =
         wakeMs.map { String(format: "%.0f", $0) } ?? "unavailable"
       let transport = currentResolvedRoute?.effective ?? "unknown"
-      let ceiling = allZeroCeilingSamples
       // EVERY value on this line is a LOWER BOUND on press-to-audio latency: a
       // sample clock cannot see an interval in which no samples exist, and no
       // second clock is carried (see `wakeIsStreamMeasured`). `wake_is` reports
@@ -1894,8 +1649,7 @@ public final class AudioCaptureManager: AudioCaptureInterface {
           "ZERO_PREFIX_MEASURE transport=\(transport) "
             + "wake_ms=\(wakeField) wake_is=\(basis) timeline_gaps=\(gapField) "
             + "detector_zero_prefix_ms=\(String(format: "%.0f", zeroPrefixMs)) "
-            + "detector_zero_prefix_samples=\(zeroPrefixSamples) "
-            + "ceiling_samples=\(ceiling)",
+            + "detector_zero_prefix_samples=\(zeroPrefixSamples)",
           level: .info, category: "Audio")
       }
     }
@@ -1915,36 +1669,6 @@ public final class AudioCaptureManager: AudioCaptureInterface {
       inputSelectionMode: currentResolvedRoute?.inputSelectionMode,
       outputTransport: currentResolvedRoute?.outputTransport,
       routeResolutionSource: currentResolvedRoute?.routeResolutionSource)
-  }
-
-  /// Build and fire the dead-air `CaptureStallContext`. Sets the shared
-  /// `captureStallReported` latch first so the HAL no-buffer watchdog and this
-  /// path together honor the at-most-once-per-session contract.
-  private func fireDeadAirStall(mode: CaptureStallFailureMode) {
-    captureStallReported = true
-    let ctx = CaptureStallContext(
-      sessionID: currentCaptureSessionID,
-      armedAtUptimeNs: captureStartUptimeNs,
-      firedAtUptimeNs: DispatchTime.now().uptimeNanoseconds,
-      route: currentAudioRoute,
-      sourceType: captureSourceType,
-      engineStartedSuccessfully: true,
-      tapInstalled: true,
-      formatMismatchObserved: false,
-      // #4601 §5: the preference this take's route was resolved from, not a newer live setting.
-      inputDeviceUIDPreferred: lastRoutePreferredOverride.isEmpty
-        ? nil : lastRoutePreferredOverride,
-      inputDeviceUIDSystemDefault: captureDefaultInputUID,
-      failureMode: mode,
-      selectedTransport: currentResolvedRoute?.selected,
-      effectiveTransport: currentResolvedRoute?.effective,
-      routeReason: currentResolvedRoute?.routeReason,
-      routeFallbackReason: currentResolvedRoute?.routeFallbackReason,
-      inputSelectionMode: currentResolvedRoute?.inputSelectionMode,
-      outputTransport: currentResolvedRoute?.outputTransport,
-      routeResolutionSource: currentResolvedRoute?.routeResolutionSource
-    )
-    onCaptureStalled?(ctx)
   }
 
   // MARK: - Crash-recovery spool (#1063; ported in-process at C1 #1543)

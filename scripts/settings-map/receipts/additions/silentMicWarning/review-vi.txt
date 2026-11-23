@@ -1,0 +1,10 @@
+{
+  "language": "vi",
+  "title": "cảnh báo khi mic không thu được âm thanh",
+  "words": [
+    "cảnh báo mic mất tiếng"
+  ],
+  "phrases": [
+    "bật cảnh báo khi mic không thu được tiếng lúc nhập bằng giọng nói"
+  ]
+}

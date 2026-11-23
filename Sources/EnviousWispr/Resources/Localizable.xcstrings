@@ -2,6 +2,75 @@
   "sourceLanguage" : "en",
   "strings" : {
     "" : {},
+    "If your microphone sends only silence while you dictate, the pill shows a notice after a few seconds, and a stronger one after 15 seconds. Dictation keeps recording either way; to stop recording when you pause, use Stop recording on silence." : {
+      "comment" : "Microphone settings: explains the silent-microphone notice. Names the separate auto-stop setting by its English title; translate that title exactly as the app's own label for it.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Wenn dein Mikrofon beim Diktieren nur Stille liefert, zeigt die Aufnahmeanzeige nach ein paar Sekunden einen Hinweis und nach 15 Sekunden einen deutlicheren. Die Aufnahme läuft in beiden Fällen weiter; um sie bei einer Pause zu beenden, nutze „Aufnahme bei Stille stoppen“."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Si votre micro n’envoie que du silence pendant la dictée, la pastille d’enregistrement affiche un avis après quelques secondes, puis un autre plus visible après 15 secondes. L’enregistrement continue dans les deux cas ; pour l’arrêter quand vous faites une pause, utilisez « Arrêter l’enregistrement en cas de silence »."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Si tu micrófono solo envía silencio mientras dictas, la píldora de grabación muestra un aviso tras unos segundos y otro más visible a los 15 segundos. La grabación continúa en ambos casos; para detenerla cuando haces una pausa, usa «Detener la grabación al detectar silencio»."
+          }
+        }
+      }
+    },
+    "Shows a notice on the pill when no sound arrives." : {
+      "comment" : "Microphone settings: short line under Warn when the microphone is silent.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Zeigt einen Hinweis an der Aufnahmeanzeige, wenn kein Ton ankommt."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Affiche un avis sur la pastille d’enregistrement quand aucun son n’arrive."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Muestra un aviso en la píldora de grabación cuando no llega sonido."
+          }
+        }
+      }
+    },
+    "Warn when the microphone is silent" : {
+      "comment" : "Microphone settings: title of the switch that shows a notice on the recording pill when the microphone sends no sound.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bei Mikrofonstille warnen"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Avertir en cas de silence du micro"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Avisar si el micrófono está en silencio"
+          }
+        }
+      }
+    },
     "\"%@\" added to %@" : {
       "comment" : "Quick Add panel: confirmation after adding a spelling. The first %@ is the misheard text, the second the word; use this language's quotation marks.",
       "localizations" : {
@@ -64956,6 +65025,29 @@
         }
       }
     },
+    "We’re not hearing anything from your microphone." : {
+      "comment" : "Notice next to the recording pill after about 5 seconds in which the microphone sent only digital silence. The recording keeps going.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Über dein Mikrofon hören wir nichts."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Nous ne recevons aucun son de votre micro."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "No oímos nada de tu micrófono."
+          }
+        }
+      }
+    },
     "What Faster Transcription changes" : {
       "comment" : "Speech engine settings, Faster Transcription: help panel title.",
       "localizations" : {
@@ -68114,6 +68206,29 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Tu idioma principal para dictar"
+          }
+        }
+      }
+    },
+    "Your microphone isn’t sending sound. Stop and check it in Settings." : {
+      "comment" : "Notice next to the recording pill after 15 seconds in which the microphone sent only digital silence. The recording keeps going; it asks the user to stop and check the microphone in the app's Settings.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Dein Mikrofon liefert keinen Ton. Beende die Aufnahme und prüfe es in den Einstellungen."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Votre micro n’envoie aucun son. Arrêtez l’enregistrement et vérifiez-le dans Réglages."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Tu micrófono no envía sonido. Detén la grabación y revísalo en Ajustes."
           }
         }
       }
@@ -74130,6 +74245,66 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Choisissez « Español » dans Réglages > Réglages de l’app > Apparence > Langue, puis redémarrez l’app pour appliquer le changement. « Par défaut du système » suit la langue de votre Mac."
+          }
+        }
+      }
+    },
+    "whatsNew.silent-microphone-keeps-recording.title" : {
+      "comment" : "Settings > What's New: the title of one feature announcement (entry silent-microphone-keeps-recording).",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Dictation keeps going when your microphone goes silent"
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Das Diktat läuft weiter, wenn dein Mikrofon verstummt"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "La dictée continue même si votre micro reste silencieux"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "El dictado continúa cuando tu micrófono se queda en silencio"
+          }
+        }
+      }
+    },
+    "whatsNew.silent-microphone-keeps-recording.description" : {
+      "comment" : "Settings > What's New: the paragraph under one feature announcement's title (entry silent-microphone-keeps-recording).",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "If your microphone sends only digital silence, EnviousWispr keeps recording, and the pill warns you after 5 seconds (6 if it was silent from the start). Words you say during the silence are not captured. If you use Stop recording on silence, your dictation still ends once a pause reaches the length you chose. Turn the warning off in Settings > Dictation Settings > Microphone."
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Wenn dein Mikrofon nur digitale Stille liefert, nimmt EnviousWispr weiter auf, und die Aufnahmeanzeige warnt dich nach 5 Sekunden (nach 6, wenn die Stille schon seit Beginn der Aufnahme besteht). Was du sagst, solange das Mikrofon nur Stille liefert, wird nicht aufgenommen. Wenn du „Aufnahme bei Stille stoppen“ nutzt, endet dein Diktat wie bisher, sobald eine Pause so lang ist wie unter „Pausendauer“ eingestellt. Schalte die Warnung unter Einstellungen > Diktateinstellungen > Mikrofon aus."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Si votre micro n’envoie que du silence numérique, EnviousWispr continue d’enregistrer et la pastille d’enregistrement vous avertit après 5 secondes (6 secondes si ce silence dure depuis le début de l’enregistrement). Les mots prononcés pendant ce silence ne sont pas enregistrés. Si vous utilisez « Arrêter l’enregistrement en cas de silence », la dictée s’arrête comme avant dès qu’une pause atteint la durée choisie dans « Durée de la pause ». Désactivez l’avertissement dans Réglages > Réglages de dictée > Micro."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Si tu micrófono solo envía silencio digital, EnviousWispr sigue grabando y la píldora de grabación te avisa a los 5 segundos (a los 6 si el silencio dura desde el inicio de la grabación). Las palabras que digas durante ese silencio no se graban. Si usas «Detener la grabación al detectar silencio», el dictado se detiene como antes en cuanto una pausa alcanza la duración que elegiste en «Duración de la pausa». Desactiva el aviso en Ajustes > Ajustes del dictado > Micrófono."
           }
         }
       }

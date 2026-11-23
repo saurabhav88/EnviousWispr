@@ -1,0 +1,10 @@
+{
+  "language": "sk",
+  "title": "upozorniť, keď z mikrofónu neprichádza zvuk",
+  "words": [
+    "upozornenie na chýbajúci zvuk"
+  ],
+  "phrases": [
+    "ako zapnem upozornenie, keď mikrofón pri diktovaní nezachytí žiadny zvuk"
+  ]
+}

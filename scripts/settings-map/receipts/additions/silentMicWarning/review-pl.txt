@@ -1,0 +1,12 @@
+{
+  "language": "pl",
+  "title": "ostrzegaj, gdy mikrofon nie odbiera dźwięku",
+  "words": [
+    "ostrzeżenie o ciszy",
+    "brak dźwięku z mikrofonu"
+  ],
+  "phrases": [
+    "jak włączyć ostrzeżenie, gdy podczas dyktowania mikrofon nie odbiera dźwięku?",
+    "dlaczego podczas dyktowania pojawia się komunikat o braku dźwięku?"
+  ]
+}

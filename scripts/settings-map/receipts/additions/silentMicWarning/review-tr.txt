@@ -1,0 +1,10 @@
+{
+  "language": "tr",
+  "title": "mikrofon ses almadığında uyar",
+  "words": [
+    "sessizlik bildirimi"
+  ],
+  "phrases": [
+    "dikte sırasında ses gelmiyorsa uyarıyı nasıl açarım?"
+  ]
+}

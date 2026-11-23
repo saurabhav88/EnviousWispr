@@ -1,0 +1,11 @@
+{
+  "language": "de",
+  "words": [
+    "Mikrofonwarnung",
+    "Warnung bei Mikrofonstille"
+  ],
+  "phrases": [
+    "warne mich, wenn beim Diktieren kein Ton vom Mikrofon ankommt",
+    "schalte die Warnung aus, wenn das Mikro beim Diktieren keinen Ton liefert"
+  ]
+}

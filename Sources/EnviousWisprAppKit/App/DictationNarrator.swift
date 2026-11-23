@@ -17,6 +17,29 @@ enum RecordingNoticeReason: Equatable, Sendable {
   /// keyboard features (the other-key rule) are paused. Timed (5 s dismiss). Names no app: macOS
   /// gives no reliable way to tell which app turned it on.
   case secureInputActive
+  /// #4841: the microphone has been sending exact digital silence. Persistent
+  /// (nil dismiss) until sound returns or the take ends; `.calm` at 5 s
+  /// mid-take (6 s silent since start), `.strong` at 15 s. Never posted with
+  /// `.none` (that level clears the notice instead).
+  case micSilent(MicSilenceLevel)
+
+  /// One kind per family, so calm and strong are the same notice for clearing.
+  var kind: RecordingNoticeKind {
+    switch self {
+    case .approachingCap: .approachingCap
+    case .autoStopUnavailable: .autoStopUnavailable
+    case .secureInputActive: .secureInputActive
+    case .micSilent: .micSilent
+    }
+  }
+}
+
+/// #4841: the family of an in-panel notice, independent of its level.
+enum RecordingNoticeKind: Equatable, Sendable {
+  case approachingCap
+  case autoStopUnavailable
+  case secureInputActive
+  case micSilent
 }
 
 /// #1558 (E1) / #1564 (E2). The single, stateless authority that turns the
@@ -374,6 +397,18 @@ enum DictationNarrator {
         localized: "Secure Input is on, so some keyboard features are paused",
         comment:
           "Banner inside the recording panel: macOS Secure Input (often a password field) is on, so some of the app's keyboard features are paused. The dictation itself keeps recording. Names no app on purpose.")
+    case .micSilent(.strong):
+      return String(
+        localized: "Your microphone isn’t sending sound. Stop and check it in Settings.",
+        comment:
+          "Notice next to the recording pill after 15 seconds in which the microphone sent only digital silence. The recording keeps going; it asks the user to stop and check the microphone in the app's Settings.")
+    case .micSilent(.calm), .micSilent(.none):
+      // `.none` is never posted (the tracker clears instead); falling back to the
+      // calm sentence keeps the switch exhaustive without inventing copy.
+      return String(
+        localized: "We’re not hearing anything from your microphone.",
+        comment:
+          "Notice next to the recording pill after about 5 seconds in which the microphone sent only digital silence. The recording keeps going.")
     }
   }
 

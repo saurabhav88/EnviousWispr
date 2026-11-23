@@ -43,7 +43,8 @@ struct LevelRailDesignTests {
     // microphone is still open. Pinned rather than derived, deliberately — a pin
     // that reads `design.width` would agree with any future value.
     #expect(rail.width == 288, "the level rail is \(rail.width)pt wide, not the 288 it declares")
-    #expect(rail.height == 92, "the level rail reserved \(rail.height)pt, not 92")
+    // #4841: content-sized like the reading well, so no reserved height.
+    #expect(rail.height < 92, "the level rail still reserves a box: \(rail.height)pt")
   }
 
   /// The clock is present in BOTH lock states, where the capsule hides it when
@@ -63,32 +64,24 @@ struct LevelRailDesignTests {
       """)
   }
 
-  // MARK: - The notice budget it inherits
+  // MARK: - The locked rail with a notice
 
-  /// **The assertion the design's 92 exists for.** The #1060 banner is the only
-  /// thing that makes a without-words pill grow, and such a pill is handed a no-op
-  /// growth callback — so if the content exceeds the reserved box it is clipped on
-  /// screen with nothing reporting it.
+  /// #4841: the locked rail keeps its 288 pt panel with any notice showing, and
+  /// the bubble (capped at 210 pt) stays a short notice.
   @Test(
-    "the shipped in-panel notices fit the box the level rail reserves",
-    arguments: [RecordingNoticeReason.approachingCap, .autoStopUnavailable, .secureInputActive])
-  func inPanelNoticesFitTheReservedBox(reason: RecordingNoticeReason) throws {
-    let budget = try #require(RecordingPillDesign.levelRail.reservedHeight)
-    for locked in [false, true] {
-      let height = try RenderedPillHarness.recordingContentHeight(
-        design: .levelRail, locked: locked,
-        notice: DictationNarrator.copy(for: reason),
-        width: RecordingPillDesign.levelRail.width)
-      #expect(
-        height <= budget,
-        """
-        the \(reason) banner made the level rail \(height)pt tall (locked: \(locked)) \
-        against the \(budget)pt box it reserves. It cannot grow — a without-words \
-        design is handed a no-op growth callback — so the overflow is CLIPPED with \
-        nothing reporting it. Shorten the copy or raise the reserved height; do not \
-        raise this expectation.
-        """)
-    }
+    "the locked level rail keeps its width and a short notice bubble for every reason",
+    arguments: [
+      RecordingNoticeReason.approachingCap, .autoStopUnavailable, .secureInputActive,
+      .micSilent(.calm), .micSilent(.strong),
+    ])
+  func lockedRailWithANoticeStaysShort(reason: RecordingNoticeReason) throws {
+    let bare = try RenderedPillHarness.recordingContentHeight(
+      design: .levelRail, locked: true, width: RecordingPillDesign.levelRail.width)
+    let height = try RenderedPillHarness.recordingContentHeight(
+      design: .levelRail, locked: true, notice: DictationNarrator.copy(for: reason),
+      noticeReason: reason, width: RecordingPillDesign.levelRail.width)
+    #expect(height > bare, "the \(reason) bubble never rendered on the locked rail")
+    #expect(height <= bare + 78, "the \(reason) bubble made the locked rail \(height)pt")
   }
 
   /// The paired case, so the budget row cannot pass by measuring nothing.
@@ -136,13 +129,15 @@ struct LevelRailDesignTests {
         content: .recording(audioLevel: 0.4, isLocked: false, notice: nil, design: design),
         expiry: .untilReplaced,
         requestedWidth: .fixed(design.width),
-        reservesFixedHeight: design.reservedHeight))
+        reservesFixedHeight: nil))
     let frame = model.state.recording
     #expect(frame?.livePreviewProvider() == .off, "the level rail was handed a live display")
     frame?.onContentHeightChange(123)
 
     #expect(displayReads == 0, "the live provider was read for a pill that shows no words")
-    #expect(growthReports.isEmpty, "a pill that cannot grow reported a height to its window")
+    // #4841: every design grows for its notice bubble, so the height reaches the
+    // window even though no words do.
+    #expect(growthReports == [123], "the level rail's height never reached its window")
   }
 
   /// And it measures the same whether or not a provider was offered, which is the
@@ -169,7 +164,7 @@ struct LevelRailDesignTests {
         for: .recording(audioLevel: 0, design: .levelRail), id: RenderedPillHarness.id()
       ).definition)
     #expect(definition.requestedWidth == .fixed(288))
-    #expect(definition.reservesFixedHeight == 92)
+    #expect(definition.reservesFixedHeight == nil)
     #expect(definition.recordingDesign == .levelRail)
   }
 }

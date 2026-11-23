@@ -81,14 +81,10 @@ struct PillCatalogRecordingParityTests {
     // that read `RecordingPillDesign.levelRail.width` would agree with whatever
     // that becomes and guard nothing.
     #expect(levelRail.requestedWidth == .fixed(288))
-    #expect(classic.reservesFixedHeight == 92)
+    // #4841: every design is content-sized; the notice bubble grows the window.
+    #expect(classic.reservesFixedHeight == nil)
     #expect(readingWell.reservesFixedHeight == nil)
-    // **The same 92 as the capsule, and that is inherited rather than repeated.**
-    // It is the without-words NOTICE BUDGET: the #1060 banner is the only thing
-    // that grows such a pill, and a design that cannot hold words is handed a
-    // no-op growth callback, so anything over the reserved box is clipped in
-    // silence.
-    #expect(levelRail.reservesFixedHeight == 92)
+    #expect(levelRail.reservesFixedHeight == nil)
 
     // **Every PAIR must differ, not just the original two.** Asserting only that
     // classic and readingWell disagree would stay green with a third design that

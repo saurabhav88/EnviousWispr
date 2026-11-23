@@ -1,14 +1,14 @@
 {
   "counts" : {
-    "nodes" : 335,
-    "searchable" : 306,
-    "vocabularyBlocks" : 9792
+    "nodes" : 336,
+    "searchable" : 307,
+    "vocabularyBlocks" : 9824
   },
   "fingerprints" : {
-    "mapSHA256" : "136a9ea213b60e91f1f5fbcbdf66c28137de4b8353472ee94bbfe7e04d86abee",
-    "uiCatalogSHA256" : "81e9b8451021651daaee87172d91ae8bf212d16354f32d60c316774c3bd52548",
+    "mapSHA256" : "63f6ecabfce1ce90fea97a979e94b9a257196f62c689ceb5d49a21ba40d3e504",
+    "uiCatalogSHA256" : "c867df4403089f1beafa13342b4ef1d69ed37d45cb226418964e8b2aa7cd8392",
     "vocabularyCanonicalization" : "length-prefixed-v1",
-    "vocabularySHA256" : "7b0c8d1d7cf5b728b90b331953ffe1f765d30dc124935761c94d97fd46493329"
+    "vocabularySHA256" : "be8c74f8bb8765c6c8625fa7f9c2ff2e84ebe08aae4fd1ca66ee38af808ee608"
   },
   "interfaceLanguages" : [
     "en",
@@ -23963,6 +23963,364 @@
             "麦克风待机",
             "话筒待命",
             "待命时长"
+          ]
+        }
+      }
+    },
+    {
+      "context" : [
+        "window.settings",
+        "page.dictation",
+        "dictation.tab.microphone",
+        "section.microphone"
+      ],
+      "declaredIn" : "Sources/EnviousWisprAppKit/Views/Settings/SettingsMap.swift",
+      "description" : {
+        "catalog" : "Sources/EnviousWispr/Resources/Localizable.xcstrings",
+        "de" : "Zeigt einen Hinweis an der Aufnahmeanzeige, wenn kein Ton ankommt.",
+        "en" : "Shows a notice on the pill when no sound arrives.",
+        "es" : "Muestra un aviso en la píldora de grabación cuando no llega sonido.",
+        "fr" : "Affiche un avis sur la pastille d’enregistrement quand aucun son n’arrive.",
+        "key" : "Shows a notice on the pill when no sound arrives.",
+        "source" : "resource",
+        "table" : "Localizable"
+      },
+      "destination" : {
+        "page" : "dictation",
+        "tab" : "microphone"
+      },
+      "dictionaryTab" : null,
+      "fallbacks" : [
+
+      ],
+      "id" : "silentMicWarning",
+      "kind" : "setting",
+      "parent" : "section.microphone",
+      "searchable" : true,
+      "structure" : "item",
+      "target" : "silentMicWarning",
+      "title" : {
+        "catalog" : "Sources/EnviousWispr/Resources/Localizable.xcstrings",
+        "de" : "Bei Mikrofonstille warnen",
+        "en" : "Warn when the microphone is silent",
+        "es" : "Avisar si el micrófono está en silencio",
+        "fr" : "Avertir en cas de silence du micro",
+        "key" : "Warn when the microphone is silent",
+        "source" : "resource",
+        "table" : "Localizable"
+      },
+      "visibility" : "always",
+      "vocabulary" : {
+        "ar" : {
+          "phrases" : [
+            "كيف أفعّل التنبيه إذا المايك ما يلقط صوت وأنا أملي؟"
+          ],
+          "title" : "التنبيه عند عدم وصول صوت من الميكروفون",
+          "words" : [
+            "تنبيه غياب صوت المايك"
+          ]
+        },
+        "bg" : {
+          "phrases" : [
+            "да ме предупреди, ако няма звук от микрофона, докато диктувам"
+          ],
+          "title" : "предупреждавай, ако няма звук от микрофона",
+          "words" : [
+            "предупреждение за микрофона",
+            "известие при липса на звук"
+          ]
+        },
+        "cs" : {
+          "phrases" : [
+            "jak zapnout upozornění, když mikrofon při diktování nezachytí žádný zvuk"
+          ],
+          "title" : "upozornit, když z mikrofonu nepřichází žádný zvuk",
+          "words" : [
+            "upozornění na výpadek mikrofonu",
+            "mikrofon bez zvuku"
+          ]
+        },
+        "da" : {
+          "phrases" : [
+            "giv mig besked, hvis der ikke kommer lyd fra mikrofonen, mens jeg dikterer"
+          ],
+          "title" : "advar, når mikrofonen ikke opfanger lyd",
+          "words" : [
+            "mikrofonadvarsel"
+          ]
+        },
+        "de" : {
+          "phrases" : [
+            "warne mich, wenn beim Diktieren kein Ton ankommt",
+            "schalte den Hinweis bei fehlendem Ton auf der Aufnahmeanzeige aus"
+          ],
+          "words" : [
+            "Stillewarnung",
+            "Stillehinweis"
+          ]
+        },
+        "el" : {
+          "phrases" : [
+            "πώς ενεργοποιώ την ειδοποίηση όταν το μικρόφωνο δεν πιάνει ήχο στην υπαγόρευση",
+            "γιατί μου βγάζει ειδοποίηση ότι δεν πιάνει ήχο το μικρόφωνο"
+          ],
+          "title" : "ειδοποίηση όταν το μικρόφωνο δεν πιάνει ήχο",
+          "words" : [
+            "ειδοποίηση μικροφώνου"
+          ]
+        },
+        "en" : {
+          "phrases" : [
+            "warn me if nothing comes through while I dictate",
+            "turn off the silence warning on the recording pill"
+          ],
+          "words" : [
+            "silence warning",
+            "silent input alert"
+          ]
+        },
+        "es" : {
+          "phrases" : [
+            "cómo activar el aviso si el micro no capta sonido al dictar",
+            "cómo quitar el aviso de micrófono en silencio"
+          ],
+          "words" : [
+            "aviso de micrófono sin sonido",
+            "alerta de micrófono en silencio"
+          ]
+        },
+        "et" : {
+          "phrases" : [
+            "anna märku, kui dikteerimise ajal mikrofonist heli ei tule",
+            "miks dikteerimise ajal kuvatakse mikrofoni hoiatus"
+          ],
+          "title" : "hoiata, kui mikrofonist ei tule heli",
+          "words" : [
+            "mikrofoni hoiatus"
+          ]
+        },
+        "fi" : {
+          "phrases" : [
+            "miten saan ilmoituksen, jos mikistä ei tule ääntä sanelun aikana?"
+          ],
+          "title" : "varoita, kun mikrofonista ei tule ääntä",
+          "words" : [
+            "mikrofonivaroitus",
+            "hiljaisuusvaroitus"
+          ]
+        },
+        "fr" : {
+          "phrases" : [
+            "me prévenir si mon micro ne capte rien pendant la dictée",
+            "désactiver l’alerte quand aucun son ne vient du micro"
+          ],
+          "words" : [
+            "alerte micro",
+            "avertissement micro",
+            "alerte micro muet"
+          ]
+        },
+        "hi" : {
+          "phrases" : [
+            "डिक्टेशन के दौरान माइक से आवाज़ न आए तो अलर्ट कैसे चालू करें?"
+          ],
+          "title" : "माइक से आवाज़ न आने पर चेतावनी",
+          "words" : [
+            "माइक अलर्ट",
+            "नो ऑडियो अलर्ट"
+          ]
+        },
+        "hr" : {
+          "phrases" : [
+            "kako uključiti upozorenje kad mikrofon ne hvata zvuk dok diktiram",
+            "upozorenje na zaslonu kad mikrofon ne prima zvuk tijekom diktiranja"
+          ],
+          "title" : "upozori kad iz mikrofona ne dolazi zvuk",
+          "words" : [
+            "upozorenje za mikrofon",
+            "mikrofon bez zvuka"
+          ]
+        },
+        "hu" : {
+          "phrases" : [
+            "jelezzen, ha diktálás közben nem jön hang a mikrofonból"
+          ],
+          "title" : "figyelmeztetés, ha a mikrofon nem vesz fel hangot",
+          "words" : [
+            "néma mikrofon"
+          ]
+        },
+        "it" : {
+          "phrases" : [
+            "come attivo l’avviso se non arriva audio dal microfono mentre detto"
+          ],
+          "title" : "avvisa se il microfono non rileva suoni",
+          "words" : [
+            "avviso microfono muto"
+          ]
+        },
+        "ja" : {
+          "phrases" : [
+            "音声入力中にマイクが音を拾わないときに知らせてほしい"
+          ],
+          "title" : "マイク入力が無音のときに警告",
+          "words" : [
+            "無音警告",
+            "マイク無音通知"
+          ]
+        },
+        "ko" : {
+          "phrases" : [
+            "받아쓰기 중 마이크에 소리가 안 들어오면 알려주기"
+          ],
+          "title" : "마이크에 소리가 들어오지 않을 때 경고",
+          "words" : [
+            "마이크 무음 경고",
+            "마이크 입력 없음 알림"
+          ]
+        },
+        "lt" : {
+          "phrases" : [
+            "kaip įjungti įspėjimą, kai diktuojant mikrofonas nefiksuoja garso"
+          ],
+          "title" : "įspėti, kai mikrofonas nefiksuoja garso",
+          "words" : [
+            "įspėjimas apie mikrofono tylą"
+          ]
+        },
+        "lv" : {
+          "phrases" : [
+            "kā ieslēgt brīdinājumu, ja diktējot mikrofons neuztver skaņu"
+          ],
+          "title" : "brīdināt, ja mikrofons neuztver skaņu",
+          "words" : [
+            "brīdinājums par mikrofona klusumu"
+          ]
+        },
+        "mt" : {
+          "phrases" : [
+            "kif nixgħel it-twissija meta l-mikrofonu ma jaqbadx ħoss waqt li niddetta?"
+          ],
+          "title" : "uri twissija meta l-mikrofonu ma jaqbadx ħoss",
+          "words" : [
+            "twissija tal-mikrofonu"
+          ]
+        },
+        "nl" : {
+          "phrases" : [
+            "hoe krijg ik een melding als mijn microfoon tijdens het dicteren geen geluid doorgeeft?"
+          ],
+          "title" : "waarschuwen als de microfoon geen geluid doorgeeft",
+          "words" : [
+            "stiltemelding",
+            "microfoonwaarschuwing"
+          ]
+        },
+        "pl" : {
+          "phrases" : [
+            "jak włączyć ostrzeżenie, gdy podczas dyktowania mikrofon nie odbiera dźwięku?",
+            "dlaczego podczas dyktowania pojawia się komunikat o braku dźwięku?"
+          ],
+          "title" : "ostrzegaj, gdy mikrofon nie odbiera dźwięku",
+          "words" : [
+            "ostrzeżenie o ciszy",
+            "brak dźwięku z mikrofonu"
+          ]
+        },
+        "pt" : {
+          "phrases" : [
+            "como ativar o aviso de microfone sem som durante o ditado?",
+            "por que aparece um aviso de que o microfone não está captando som?"
+          ],
+          "title" : "avisar quando o microfone não capta som",
+          "words" : [
+            "aviso de microfone sem som",
+            "alerta de microfone mudo"
+          ]
+        },
+        "ro" : {
+          "phrases" : [
+            "cum pornesc alerta dacă microfonul nu prinde nimic când dictez?"
+          ],
+          "title" : "avertizează când microfonul nu captează niciun sunet",
+          "words" : [
+            "alertă microfon",
+            "avertizare lipsă sunet"
+          ]
+        },
+        "ru" : {
+          "phrases" : [
+            "как включить предупреждение, если при диктовке микрофон ничего не слышит?",
+            "как отключить предупреждение об отсутствии звука при диктовке?"
+          ],
+          "title" : "предупреждать, если с микрофона не поступает звук",
+          "words" : [
+            "нет звука с микрофона"
+          ]
+        },
+        "sk" : {
+          "phrases" : [
+            "ako zapnem upozornenie, keď mikrofón pri diktovaní nezachytí žiadny zvuk"
+          ],
+          "title" : "upozorniť, keď z mikrofónu neprichádza zvuk",
+          "words" : [
+            "upozornenie na chýbajúci zvuk"
+          ]
+        },
+        "sl" : {
+          "phrases" : [
+            "kako vklopim opozorilo, če mikrofon med narekovanjem ne zazna zvoka?"
+          ],
+          "title" : "opozori, ko mikrofon ne zazna zvoka",
+          "words" : [
+            "opozorilo ob tišini mikrofona"
+          ]
+        },
+        "sv" : {
+          "phrases" : [
+            "varna mig om det inte kommer något ljud från mikrofonen när jag dikterar"
+          ],
+          "title" : "varna när mikrofonen är tyst",
+          "words" : [
+            "mikrofonvarning"
+          ]
+        },
+        "tr" : {
+          "phrases" : [
+            "dikte sırasında ses gelmiyorsa uyarıyı nasıl açarım?"
+          ],
+          "title" : "mikrofon ses almadığında uyar",
+          "words" : [
+            "sessizlik bildirimi"
+          ]
+        },
+        "uk" : {
+          "phrases" : [
+            "як увімкнути попередження, коли під час диктування немає звуку з мікрофона"
+          ],
+          "title" : "попереджати, якщо з мікрофона не надходить звук",
+          "words" : [
+            "сповіщення про мікрофон"
+          ]
+        },
+        "vi" : {
+          "phrases" : [
+            "bật cảnh báo khi mic không thu được tiếng lúc nhập bằng giọng nói"
+          ],
+          "title" : "cảnh báo khi mic không thu được âm thanh",
+          "words" : [
+            "cảnh báo mic mất tiếng"
+          ]
+        },
+        "zh" : {
+          "phrases" : [
+            "听写时麦克风没声音，怎么打开提醒？",
+            "怎么关掉录音状态条上的无声提示？"
+          ],
+          "title" : "麦克风无声时提醒",
+          "words" : [
+            "麦克风无声提醒",
+            "录音无声提示"
           ]
         }
       }

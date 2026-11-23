@@ -287,13 +287,13 @@ final class KernelRecordingSession: RecordingSessionDriving {
     // #1844: OPTIONAL so a test can pass nil and reach the kernel's PRODUCTION
     // default closure, which is the only way to prove that closure reads the frozen
     // bind. #1578 widened it from a Boolean to the decision snapshot; the default
-    // is the eligible/not-yet-classified pair, which is exactly what `{ true }`
-    // meant before, so every existing scenario is unchanged and none of them
-    // starts depending on this machine's real microphone.
+    // is `.eligible`, which is exactly what `{ true }` meant before, so every
+    // existing scenario is unchanged and none of them starts depending on this
+    // machine's real microphone.
     zeroSignalDecisionSnapshot: (@MainActor () -> ZeroSignalDecisionSnapshot)? = {
-      ZeroSignalDecisionSnapshot(eligibility: .eligible, currentRunWasClassifiedReactively: false)
+      ZeroSignalDecisionSnapshot(eligibility: .eligible)
     },
-    /// #1578: collects refusals the kernel drains or classifies at STOP.
+    /// #1578: collects refusals the kernel classifies at STOP.
     zeroSignalRefusalSink: @escaping @MainActor ([ZeroSignalRefusalContext]) -> Void = { _ in },
     /// #2087: the terminal telemetry snapshot, as the KERNEL built it.
     ///

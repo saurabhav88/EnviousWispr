@@ -98,6 +98,11 @@ PROBES = [
      "query": "universal live preview meeting", "title": "Universal", "row_has": "EnviousMeet",
      "entry": "meetingLiveWords.universal", "dest_page": "EnviousMeet", "dest_tab": "Models",
      "landings": {("target", "meetingLiveWords")}},
+    # #4841: the silent-microphone warning switch, found by what a user calls it.
+    {"name": "silent-mic-warning-from-keybinds", "page": "Keybinds", "tab": None,
+     "query": "silent microphone", "title": "Warn when the microphone is silent", "row_has": None,
+     "entry": "silentMicWarning", "dest_page": "Dictation Settings", "dest_tab": "Microphone",
+     "landings": {("target", "silentMicWarning")}},
 ]
 
 ARRIVAL = re.compile(r"arrival landed=(\w+) entry=(\S+) at=(\S+)( upgrade=true)?")
@@ -286,7 +291,7 @@ def _self_test():
           verdict(save, True, [("section", "aiPolish.providerSection", False)], "AI Polish", None)[0] == "PASS")
     check("Save: an undeclared landing fails",
           verdict(save, True, [("landing", "page.aiPolish", False)], "AI Polish", None)[0] == "FAIL")
-    check("fourteen probes with unique names", len(PROBES) == 14 and len({p["name"] for p in PROBES}) == 14)
+    check("fifteen probes with unique names", len(PROBES) == 15 and len({p["name"] for p in PROBES}) == 15)
     print("self-test:", "FAIL" if failures else "PASS")
     return 1 if failures else 0
 

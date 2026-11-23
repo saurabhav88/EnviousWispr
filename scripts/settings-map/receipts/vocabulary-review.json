@@ -268,6 +268,11 @@
    "reviewSHA256": "898926a2d29a6ae23d962b3e3e8d826925e89c82cf1579043e39c42618db4d8b"
   },
   {
+   "id": "silentMicWarning",
+   "review": "additions/silentMicWarning.json",
+   "reviewSHA256": "dfae26900c3594114ba05ae2b22c59ae7d1706eb31669988400daca84d180c60"
+  },
+  {
    "id": "unloadPolishModel",
    "review": "additions/unloadPolishModel.json",
    "reviewSHA256": "3a3deff424c67fde8ac3d025c552ab451e0be416adee08cdd394c572e8586982"
@@ -311,8 +316,8 @@
  "retiredIDs": [],
  "resource": {
   "path": "Sources/EnviousWisprAppKit/Resources/SettingsSearchVocabulary.json",
-  "sha256": "7b0c8d1d7cf5b728b90b331953ffe1f765d30dc124935761c94d97fd46493329",
-  "bytes": 1957547
+  "sha256": "be8c74f8bb8765c6c8625fa7f9c2ff2e84ebe08aae4fd1ca66ee38af808ee608",
+  "bytes": 1965347
  },
  "sources": [
   {
@@ -596,7 +601,7 @@
  "languages": [
   {
    "language": "ar",
-   "contentSHA256": "1758f04240ba1efbe29bc4a4d9d0d4d0055939065b3fba5581b9817600b94ab8",
+   "contentSHA256": "a12f17bd8917b3a4136b28dc62b04641502d196bcbd085f877c522e95888d92b",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -1819,6 +1824,25 @@
     },
     {
      "kind": "addition-content",
+     "id": "silentMicWarning",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with Microphone readiness, Stop recording on silence, the Bluetooth guide, Input device and music during dictation); first draft by scripts/settings-map/draft-vocabulary.sh (#4841)",
+     "date": "2026-11-22",
+     "draft": {
+      "path": "additions/silentMicWarning/draft-silentMicWarning.json",
+      "sha256": "c2d32ee006177906348bcd3cde8997a267089229db57b002ea16eeac0fa822d7"
+     },
+     "prompt": {
+      "path": "additions/silentMicWarning/review-driver.py.txt",
+      "sha256": "a5df55a9f929fd6a56387b65538ce4a21839132c2f2dfab6c2d915c2c1a12169"
+     },
+     "output": {
+      "path": "additions/silentMicWarning/review-ar.txt",
+      "sha256": "fb1dc9fe896a8f7af3c20e39137de2950e80d65e6a4ddb9e6e0a6c9af60849e7"
+     },
+     "disposition": "adopted in full"
+    },
+    {
+     "kind": "addition-content",
      "id": "unloadPolishModel",
      "issue": 3853,
      "date": "2026-11-22",
@@ -1846,7 +1870,7 @@
   },
   {
    "language": "bg",
-   "contentSHA256": "2ef755e56cb33511024166a0cf75d675ce83e2996c297aa611ba1ce2d02386f5",
+   "contentSHA256": "063409fbc64d940402e1e5b0e806b372fffae9454f1dd45b14fe7f4b6c178a73",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -3060,6 +3084,25 @@
     },
     {
      "kind": "addition-content",
+     "id": "silentMicWarning",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with Microphone readiness, Stop recording on silence, the Bluetooth guide, Input device and music during dictation); first draft by scripts/settings-map/draft-vocabulary.sh (#4841)",
+     "date": "2026-11-22",
+     "draft": {
+      "path": "additions/silentMicWarning/draft-silentMicWarning.json",
+      "sha256": "c2d32ee006177906348bcd3cde8997a267089229db57b002ea16eeac0fa822d7"
+     },
+     "prompt": {
+      "path": "additions/silentMicWarning/review-driver.py.txt",
+      "sha256": "a5df55a9f929fd6a56387b65538ce4a21839132c2f2dfab6c2d915c2c1a12169"
+     },
+     "output": {
+      "path": "additions/silentMicWarning/review-bg.txt",
+      "sha256": "eb3d92a92385563e4968d575d29140d3c2ac49abe7ed1c4c1cba5e84125b185c"
+     },
+     "disposition": "adopted in full"
+    },
+    {
+     "kind": "addition-content",
      "id": "unloadPolishModel",
      "issue": 3853,
      "date": "2026-11-22",
@@ -3087,7 +3130,7 @@
   },
   {
    "language": "cs",
-   "contentSHA256": "4936a77f6c28a6c8eb1bbb1a78d09a073b5d26a9f278d622f57ec5f4edcfb1f9",
+   "contentSHA256": "1e8d3508b92ae4a43f6fcedb0db4439fcf5d5da7616394662f170d0d721ad7e7",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -4301,6 +4344,25 @@
     },
     {
      "kind": "addition-content",
+     "id": "silentMicWarning",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with Microphone readiness, Stop recording on silence, the Bluetooth guide, Input device and music during dictation); first draft by scripts/settings-map/draft-vocabulary.sh (#4841)",
+     "date": "2026-11-22",
+     "draft": {
+      "path": "additions/silentMicWarning/draft-silentMicWarning.json",
+      "sha256": "c2d32ee006177906348bcd3cde8997a267089229db57b002ea16eeac0fa822d7"
+     },
+     "prompt": {
+      "path": "additions/silentMicWarning/review-driver.py.txt",
+      "sha256": "a5df55a9f929fd6a56387b65538ce4a21839132c2f2dfab6c2d915c2c1a12169"
+     },
+     "output": {
+      "path": "additions/silentMicWarning/review-cs.txt",
+      "sha256": "5c7c1b54ac16fdc5d227a5796cff537fe05d9c9b4caf1263a09646b25e78ed75"
+     },
+     "disposition": "adopted in full"
+    },
+    {
+     "kind": "addition-content",
      "id": "unloadPolishModel",
      "issue": 3853,
      "date": "2026-11-22",
@@ -4328,7 +4390,7 @@
   },
   {
    "language": "da",
-   "contentSHA256": "c002d75a9323a45174f0dfe8728e0682451bda06d76ec60bb6f9333fe883ed20",
+   "contentSHA256": "2646ac894af9d6b7816d1a8aac283429ed1c58802f13af5295540f65a9d5bbc0",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -5542,6 +5604,25 @@
     },
     {
      "kind": "addition-content",
+     "id": "silentMicWarning",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with Microphone readiness, Stop recording on silence, the Bluetooth guide, Input device and music during dictation); first draft by scripts/settings-map/draft-vocabulary.sh (#4841)",
+     "date": "2026-11-22",
+     "draft": {
+      "path": "additions/silentMicWarning/draft-silentMicWarning.json",
+      "sha256": "c2d32ee006177906348bcd3cde8997a267089229db57b002ea16eeac0fa822d7"
+     },
+     "prompt": {
+      "path": "additions/silentMicWarning/review-driver.py.txt",
+      "sha256": "a5df55a9f929fd6a56387b65538ce4a21839132c2f2dfab6c2d915c2c1a12169"
+     },
+     "output": {
+      "path": "additions/silentMicWarning/review-da.txt",
+      "sha256": "3468ec216fc5a6af5c365709a35cb8ecd628b4e74a26b7eb63384dd69276cc03"
+     },
+     "disposition": "adopted in full"
+    },
+    {
+     "kind": "addition-content",
      "id": "unloadPolishModel",
      "issue": 3853,
      "date": "2026-11-22",
@@ -5569,7 +5650,7 @@
   },
   {
    "language": "de",
-   "contentSHA256": "4f85482b0c60ade787f1a4a2821ef1bd77dd1ad696e5e14b2030e2f838fd8e3c",
+   "contentSHA256": "83646444fa3a567c4eeb9d12c8cafe4275eee4d6bcd0fd8e5cc88d419b16e742",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -7026,6 +7107,36 @@
      "disposition": "adopted as recorded in reviewed-edits.json"
     },
     {
+     "kind": "addition-content",
+     "id": "silentMicWarning",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with Microphone readiness, Stop recording on silence, the Bluetooth guide, Input device and music during dictation); first draft by scripts/settings-map/draft-vocabulary.sh (#4841)",
+     "date": "2026-11-22",
+     "draft": {
+      "path": "additions/silentMicWarning/draft-silentMicWarning.json",
+      "sha256": "c2d32ee006177906348bcd3cde8997a267089229db57b002ea16eeac0fa822d7"
+     },
+     "prompt": {
+      "path": "additions/silentMicWarning/review-driver.py.txt",
+      "sha256": "a5df55a9f929fd6a56387b65538ce4a21839132c2f2dfab6c2d915c2c1a12169"
+     },
+     "output": {
+      "path": "additions/silentMicWarning/review-de.txt",
+      "sha256": "32ac0248d4856160b3d8091f7db429cb34964ff5933afd87cbf7875b0e4a0493"
+     },
+     "disposition": "adopted in full"
+    },
+    {
+     "kind": "addition-council",
+     "id": "silentMicWarning",
+     "method": "GPT + Gemini council (session ew-silent-mic-notice-l10n-2026-11-22)",
+     "date": "2026-11-22",
+     "output": {
+      "path": "additions/silentMicWarning/council-de-digest.md",
+      "sha256": "f113257a218dc8c25c85de63f92c20c52a8426a40d91e8e9902ad544b7a3c28d"
+     },
+     "disposition": "merged with the Codex review as recorded in the digest; „Hinweis bei Stille“ dropped for colliding with „Aufnahme bei Stille stoppen“"
+    },
+    {
      "kind": "size-search-edit",
      "scope": [
       "aiPolishProvider.egOne"
@@ -7039,6 +7150,36 @@
       "sha256": "58eb8df5494241103ae9383e56400c328c1f1f5eec3f7886664bfa242c27c367"
      },
      "disposition": "the reviewer's FINAL LIST adopted as recorded in reviewed-edits.json (existing words and phrases kept; size words and model-name phrases added); no council run, the wording follows the cards' own reviewed translations"
+    },
+    {
+     "kind": "addition-content",
+     "id": "silentMicWarning",
+     "method": "Codex, one fresh isolated session re-reviewing the block after the merge with #4501, where the meaning pass ranked this switch into the top five for the bare queries 'mic' (pushing out Microphone readiness) and 'Micro'; the new block drops bare 'mic'/'Mikro'/'sound' tokens (#4841)",
+     "date": "2026-11-22",
+     "draft": {
+      "path": "additions/silentMicWarning/draft-retune.json",
+      "sha256": "e45a94f23a2eddf55c2f172845a6fce569b699b75aa1d259dcb159828b16e4bf"
+     },
+     "prompt": {
+      "path": "additions/silentMicWarning/retune-prompt-de.md",
+      "sha256": "4899543be304970c5d230d9f7a6a6ace0f73c4494bac562f8bc3cec9c4efb28c"
+     },
+     "output": {
+      "path": "additions/silentMicWarning/retune-review-de.txt",
+      "sha256": "a617e328b3d90aff30bb53bbfd397a701f13800d1c2ea631b50c715586bed5de"
+     },
+     "disposition": "the reviewer's FINAL LIST adopted in full"
+    },
+    {
+     "kind": "addition-council",
+     "id": "silentMicWarning",
+     "method": "GPT + Gemini council (session ew-4841-silentmic-search-de-2026-11-22) on the same prompt",
+     "date": "2026-11-22",
+     "output": {
+      "path": "additions/silentMicWarning/retune-council-de-digest.md",
+      "sha256": "102c0132e527832a5d00fe67bcc2501934b42f51d6cfb063d7fe5d8a4b5bbbbc"
+     },
+     "disposition": "GPT matched the Codex list; Gemini kept 'Hinweis bei fehlendem Ton' instead of 'Stillewarnung'; the majority list adopted as recorded in the digest"
     },
     {
      "kind": "addition-content",
@@ -7069,7 +7210,7 @@
   },
   {
    "language": "el",
-   "contentSHA256": "701562309cadbef12a03282c52e85ca64e1210055ef7a6f29294b8828104a8c0",
+   "contentSHA256": "1f34053cc769b9c5fa224e45733921d6ba90227decfb4b878f953e4b3bab109a",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -8292,6 +8433,25 @@
     },
     {
      "kind": "addition-content",
+     "id": "silentMicWarning",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with Microphone readiness, Stop recording on silence, the Bluetooth guide, Input device and music during dictation); first draft by scripts/settings-map/draft-vocabulary.sh (#4841)",
+     "date": "2026-11-22",
+     "draft": {
+      "path": "additions/silentMicWarning/draft-silentMicWarning.json",
+      "sha256": "c2d32ee006177906348bcd3cde8997a267089229db57b002ea16eeac0fa822d7"
+     },
+     "prompt": {
+      "path": "additions/silentMicWarning/review-driver.py.txt",
+      "sha256": "a5df55a9f929fd6a56387b65538ce4a21839132c2f2dfab6c2d915c2c1a12169"
+     },
+     "output": {
+      "path": "additions/silentMicWarning/review-el.txt",
+      "sha256": "570674158db63d286f5b12b6047c495750d7a66099f2c7c65fa5271e60ce043b"
+     },
+     "disposition": "adopted in full"
+    },
+    {
+     "kind": "addition-content",
      "id": "unloadPolishModel",
      "issue": 3853,
      "date": "2026-11-22",
@@ -8319,7 +8479,7 @@
   },
   {
    "language": "en",
-   "contentSHA256": "986cf160307e6ad5445488957bf41ec87ccb6f6bd8f197701ca693b8ae5ca4b2",
+   "contentSHA256": "1f9b644ea1d25d61b9e7628c0c87256c0c4b8d0a6b1a5cbf9c042ad6bce3cffb",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -9513,6 +9673,44 @@
      "disposition": "adopted as recorded in reviewed-edits.json"
     },
     {
+     "kind": "addition-content",
+     "id": "silentMicWarning",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with Microphone readiness, Stop recording on silence, the Bluetooth guide, Input device and music during dictation); first draft by scripts/settings-map/draft-vocabulary.sh (#4841)",
+     "date": "2026-11-22",
+     "draft": {
+      "path": "additions/silentMicWarning/draft-silentMicWarning.json",
+      "sha256": "c2d32ee006177906348bcd3cde8997a267089229db57b002ea16eeac0fa822d7"
+     },
+     "prompt": {
+      "path": "additions/silentMicWarning/review-driver.py.txt",
+      "sha256": "a5df55a9f929fd6a56387b65538ce4a21839132c2f2dfab6c2d915c2c1a12169"
+     },
+     "output": {
+      "path": "additions/silentMicWarning/review-en.txt",
+      "sha256": "aaad7ae2863d814856059d63f8b6d1d7330538653b448ecede2834f3a6c4fc8e"
+     },
+     "disposition": "adopted; the review's title omitted because the interface supplies it"
+    },
+    {
+     "kind": "addition-content",
+     "id": "silentMicWarning",
+     "method": "Codex, one fresh isolated session re-reviewing the English block after SettingsSearchMatchingTests found the first block's 'turn off … sound' phrase ranking this switch first for the §18.1b query 'turn off the sound' (#4841)",
+     "date": "2026-11-22",
+     "draft": {
+      "path": "additions/silentMicWarning/draft-en-r2.json",
+      "sha256": "695417cd92871c84bdf7bc307f2581f491ae51d94a1fcef6b1abe4d37e6285b9"
+     },
+     "prompt": {
+      "path": "additions/silentMicWarning/review-driver.py.txt",
+      "sha256": "a5df55a9f929fd6a56387b65538ce4a21839132c2f2dfab6c2d915c2c1a12169"
+     },
+     "output": {
+      "path": "additions/silentMicWarning/review-en-r2.txt",
+      "sha256": "30b1857661f9f869bd515ae4ee35fdd9886ecde36b5c88bf605cc83f49bcf583"
+     },
+     "disposition": "first phrase and 'silent mic warning' adopted; the review's second phrase put 'turn off … sound' back and its word 'no sound alert' carries 'sound', so the author kept 'stop the silent microphone warning on the recording pill' and 'no mic input alert' to keep the §18.1b collision closed"
+    },
+    {
      "kind": "size-search-edit",
      "scope": [
       "aiPolishProvider.egOne"
@@ -9526,6 +9724,25 @@
       "sha256": "cfc8172d27e1fbedf213926173eea4c41170ce3c6bb0e7d714309641ca864fe0"
      },
      "disposition": "the reviewer's FINAL LIST adopted as recorded in reviewed-edits.json (existing words and phrases kept; size words and model-name phrases added); no council run, the wording follows the cards' own reviewed translations"
+    },
+    {
+     "kind": "addition-content",
+     "id": "silentMicWarning",
+     "method": "Codex, one fresh isolated session re-reviewing the block after the merge with #4501, where the meaning pass ranked this switch into the top five for the bare queries 'mic' (pushing out Microphone readiness) and 'Micro'; the new block drops bare 'mic'/'Mikro'/'sound' tokens (#4841)",
+     "date": "2026-11-22",
+     "draft": {
+      "path": "additions/silentMicWarning/draft-retune.json",
+      "sha256": "e45a94f23a2eddf55c2f172845a6fce569b699b75aa1d259dcb159828b16e4bf"
+     },
+     "prompt": {
+      "path": "additions/silentMicWarning/retune-prompt-en.md",
+      "sha256": "bb3c082b51be3d0c1138ed51ee4d6f3ce8ad55fcb6382183550747f9d1ebdf1f"
+     },
+     "output": {
+      "path": "additions/silentMicWarning/retune-review-en.txt",
+      "sha256": "1da16a3fe0bbc1efe7a027f16d4ed0739aeb52d259b11c39a8389c5eb76b5c06"
+     },
+     "disposition": "the reviewer's FINAL LIST adopted in full ('stop' -> 'turn off' in the second phrase)"
     },
     {
      "kind": "addition-content",
@@ -9556,7 +9773,7 @@
   },
   {
    "language": "es",
-   "contentSHA256": "0d8bc919be032f4c146f3d91cb683ca73d66f6844b27c34f27a3644f21bb083e",
+   "contentSHA256": "381978b115d833ce7a99935d9607d7ee92d36221c879e0013deb11677d6153f3",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -10788,6 +11005,25 @@
      "disposition": "adopted as recorded in reviewed-edits.json"
     },
     {
+     "kind": "addition-content",
+     "id": "silentMicWarning",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with Microphone readiness, Stop recording on silence, the Bluetooth guide, Input device and music during dictation); first draft by scripts/settings-map/draft-vocabulary.sh (#4841)",
+     "date": "2026-11-22",
+     "draft": {
+      "path": "additions/silentMicWarning/draft-silentMicWarning.json",
+      "sha256": "c2d32ee006177906348bcd3cde8997a267089229db57b002ea16eeac0fa822d7"
+     },
+     "prompt": {
+      "path": "additions/silentMicWarning/review-driver.py.txt",
+      "sha256": "a5df55a9f929fd6a56387b65538ce4a21839132c2f2dfab6c2d915c2c1a12169"
+     },
+     "output": {
+      "path": "additions/silentMicWarning/review-es.txt",
+      "sha256": "2514a2fd738db32778a8e933f1df3e106ec430b57fe6b94025df76cb8ee954d7"
+     },
+     "disposition": "adopted; the review's title omitted because the interface supplies it"
+    },
+    {
      "kind": "size-search-edit",
      "scope": [
       "aiPolishProvider.egOne"
@@ -10831,7 +11067,7 @@
   },
   {
    "language": "et",
-   "contentSHA256": "506dad06208833d14d5ee85d2f534a83d6aa429f710981527638e4a7fbbea1bc",
+   "contentSHA256": "aae3b3ce6a482207c3394128c97a4af67a46376ac366de661a83d614f5b20582",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -12045,6 +12281,25 @@
     },
     {
      "kind": "addition-content",
+     "id": "silentMicWarning",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with Microphone readiness, Stop recording on silence, the Bluetooth guide, Input device and music during dictation); first draft by scripts/settings-map/draft-vocabulary.sh (#4841)",
+     "date": "2026-11-22",
+     "draft": {
+      "path": "additions/silentMicWarning/draft-silentMicWarning.json",
+      "sha256": "c2d32ee006177906348bcd3cde8997a267089229db57b002ea16eeac0fa822d7"
+     },
+     "prompt": {
+      "path": "additions/silentMicWarning/review-driver.py.txt",
+      "sha256": "a5df55a9f929fd6a56387b65538ce4a21839132c2f2dfab6c2d915c2c1a12169"
+     },
+     "output": {
+      "path": "additions/silentMicWarning/review-et.txt",
+      "sha256": "f29fab94402018c9b6dd574eb804a41c14f88907c55cd6a67292943948971f51"
+     },
+     "disposition": "adopted in full"
+    },
+    {
+     "kind": "addition-content",
      "id": "unloadPolishModel",
      "issue": 3853,
      "date": "2026-11-22",
@@ -12072,7 +12327,7 @@
   },
   {
    "language": "fi",
-   "contentSHA256": "13a4cc0c745fab76504fe5e73ce74b72c9bd4c705257d7fa94dd6f047dee0d4a",
+   "contentSHA256": "0e5b859938710aafe55eab82ec28e3424187558b373023089982cdb9565a50c7",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -13286,6 +13541,25 @@
     },
     {
      "kind": "addition-content",
+     "id": "silentMicWarning",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with Microphone readiness, Stop recording on silence, the Bluetooth guide, Input device and music during dictation); first draft by scripts/settings-map/draft-vocabulary.sh (#4841)",
+     "date": "2026-11-22",
+     "draft": {
+      "path": "additions/silentMicWarning/draft-silentMicWarning.json",
+      "sha256": "c2d32ee006177906348bcd3cde8997a267089229db57b002ea16eeac0fa822d7"
+     },
+     "prompt": {
+      "path": "additions/silentMicWarning/review-driver.py.txt",
+      "sha256": "a5df55a9f929fd6a56387b65538ce4a21839132c2f2dfab6c2d915c2c1a12169"
+     },
+     "output": {
+      "path": "additions/silentMicWarning/review-fi.txt",
+      "sha256": "f1e952474545bda92341c185ccbd06b0d470faa61c3b794f15e6dc3dbd1d54c5"
+     },
+     "disposition": "adopted in full"
+    },
+    {
+     "kind": "addition-content",
      "id": "unloadPolishModel",
      "issue": 3853,
      "date": "2026-11-22",
@@ -13313,7 +13587,7 @@
   },
   {
    "language": "fr",
-   "contentSHA256": "b44ccb8763470ec46302f08715e5d68a6a71ba2ff75e98388d678e3c11c82e9d",
+   "contentSHA256": "54bea507cc01d392eeafa3dc8ee1f75e381d8fe55f77c311f66e050d988b946c",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -14536,6 +14810,25 @@
      "disposition": "adopted as recorded in reviewed-edits.json"
     },
     {
+     "kind": "addition-content",
+     "id": "silentMicWarning",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with Microphone readiness, Stop recording on silence, the Bluetooth guide, Input device and music during dictation); first draft by scripts/settings-map/draft-vocabulary.sh (#4841)",
+     "date": "2026-11-22",
+     "draft": {
+      "path": "additions/silentMicWarning/draft-silentMicWarning.json",
+      "sha256": "c2d32ee006177906348bcd3cde8997a267089229db57b002ea16eeac0fa822d7"
+     },
+     "prompt": {
+      "path": "additions/silentMicWarning/review-driver.py.txt",
+      "sha256": "a5df55a9f929fd6a56387b65538ce4a21839132c2f2dfab6c2d915c2c1a12169"
+     },
+     "output": {
+      "path": "additions/silentMicWarning/review-fr.txt",
+      "sha256": "151ed5167bba07a1278c234df4fd9245fdfbc9901cdaa9905934fa2970343470"
+     },
+     "disposition": "adopted; the review's title omitted because the interface supplies it"
+    },
+    {
      "kind": "size-search-edit",
      "scope": [
       "aiPolishProvider.egOne"
@@ -14579,7 +14872,7 @@
   },
   {
    "language": "hi",
-   "contentSHA256": "3dcf8af170e2071d43836a5b00146a6d3bb7aefa61cc43bab960868a70a74907",
+   "contentSHA256": "44c53d14db8c0591e9aac84a0a84448e2740b7ab75af2cd7b350f21ba07d551c",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -15793,6 +16086,25 @@
     },
     {
      "kind": "addition-content",
+     "id": "silentMicWarning",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with Microphone readiness, Stop recording on silence, the Bluetooth guide, Input device and music during dictation); first draft by scripts/settings-map/draft-vocabulary.sh (#4841)",
+     "date": "2026-11-22",
+     "draft": {
+      "path": "additions/silentMicWarning/draft-silentMicWarning.json",
+      "sha256": "c2d32ee006177906348bcd3cde8997a267089229db57b002ea16eeac0fa822d7"
+     },
+     "prompt": {
+      "path": "additions/silentMicWarning/review-driver.py.txt",
+      "sha256": "a5df55a9f929fd6a56387b65538ce4a21839132c2f2dfab6c2d915c2c1a12169"
+     },
+     "output": {
+      "path": "additions/silentMicWarning/review-hi.txt",
+      "sha256": "c68b8b6a95f0842a8c374c04b3ccb186dc47ada02d2be5d026dc057335160193"
+     },
+     "disposition": "adopted in full"
+    },
+    {
+     "kind": "addition-content",
      "id": "unloadPolishModel",
      "issue": 3853,
      "date": "2026-11-22",
@@ -15820,7 +16132,7 @@
   },
   {
    "language": "hr",
-   "contentSHA256": "2bd77e4ede244b501fd2ce98f19b0e8a48398ad8a1ba573781c81f4f1345acb5",
+   "contentSHA256": "2a7fc4143dae5dd8d3adbcc8759901dcb3d2759555b52178935c2742907c8f87",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -17034,6 +17346,25 @@
     },
     {
      "kind": "addition-content",
+     "id": "silentMicWarning",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with Microphone readiness, Stop recording on silence, the Bluetooth guide, Input device and music during dictation); first draft by scripts/settings-map/draft-vocabulary.sh (#4841)",
+     "date": "2026-11-22",
+     "draft": {
+      "path": "additions/silentMicWarning/draft-silentMicWarning.json",
+      "sha256": "c2d32ee006177906348bcd3cde8997a267089229db57b002ea16eeac0fa822d7"
+     },
+     "prompt": {
+      "path": "additions/silentMicWarning/review-driver.py.txt",
+      "sha256": "a5df55a9f929fd6a56387b65538ce4a21839132c2f2dfab6c2d915c2c1a12169"
+     },
+     "output": {
+      "path": "additions/silentMicWarning/review-hr.txt",
+      "sha256": "e7b8392c64267bd0d0aae1e7dbbb100cafd92b5ac23f60ad5b42988bb3374e65"
+     },
+     "disposition": "adopted in full"
+    },
+    {
+     "kind": "addition-content",
      "id": "unloadPolishModel",
      "issue": 3853,
      "date": "2026-11-22",
@@ -17061,7 +17392,7 @@
   },
   {
    "language": "hu",
-   "contentSHA256": "4fcc0f5ada953f28664e878c541def7abe2b0b9a3b55a3796fba08aa8d3f70b9",
+   "contentSHA256": "23113b5061d29a1cd9ecf3ee356d85b6cc6182b35d57f257c44a0f192204dbd1",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -18275,6 +18606,25 @@
     },
     {
      "kind": "addition-content",
+     "id": "silentMicWarning",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with Microphone readiness, Stop recording on silence, the Bluetooth guide, Input device and music during dictation); first draft by scripts/settings-map/draft-vocabulary.sh (#4841)",
+     "date": "2026-11-22",
+     "draft": {
+      "path": "additions/silentMicWarning/draft-silentMicWarning.json",
+      "sha256": "c2d32ee006177906348bcd3cde8997a267089229db57b002ea16eeac0fa822d7"
+     },
+     "prompt": {
+      "path": "additions/silentMicWarning/review-driver.py.txt",
+      "sha256": "a5df55a9f929fd6a56387b65538ce4a21839132c2f2dfab6c2d915c2c1a12169"
+     },
+     "output": {
+      "path": "additions/silentMicWarning/review-hu.txt",
+      "sha256": "2277e17f71a56ccb962e48cc8029a8e5692f11ccaa6e8737143f395c3eb76a9c"
+     },
+     "disposition": "adopted in full"
+    },
+    {
+     "kind": "addition-content",
      "id": "unloadPolishModel",
      "issue": 3853,
      "date": "2026-11-22",
@@ -18302,7 +18652,7 @@
   },
   {
    "language": "it",
-   "contentSHA256": "89644c84b549b4933ad6e07e4537a160a68b932d2da925cc6a718c003727121d",
+   "contentSHA256": "f15a3e75de9bc0844f15275846495b1511f5bf5e1a54d31b324a6fa9fcb1cea2",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -19525,6 +19875,25 @@
     },
     {
      "kind": "addition-content",
+     "id": "silentMicWarning",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with Microphone readiness, Stop recording on silence, the Bluetooth guide, Input device and music during dictation); first draft by scripts/settings-map/draft-vocabulary.sh (#4841)",
+     "date": "2026-11-22",
+     "draft": {
+      "path": "additions/silentMicWarning/draft-silentMicWarning.json",
+      "sha256": "c2d32ee006177906348bcd3cde8997a267089229db57b002ea16eeac0fa822d7"
+     },
+     "prompt": {
+      "path": "additions/silentMicWarning/review-driver.py.txt",
+      "sha256": "a5df55a9f929fd6a56387b65538ce4a21839132c2f2dfab6c2d915c2c1a12169"
+     },
+     "output": {
+      "path": "additions/silentMicWarning/review-it.txt",
+      "sha256": "90aa97e6cc6c1d5cb516d8e27ed906d768139dc80032663e3711ced5164636e0"
+     },
+     "disposition": "adopted in full"
+    },
+    {
+     "kind": "addition-content",
      "id": "unloadPolishModel",
      "issue": 3853,
      "date": "2026-11-22",
@@ -19552,7 +19921,7 @@
   },
   {
    "language": "ja",
-   "contentSHA256": "a749cd4dc0bf5db39acaeeacf433120bf9062b9e1abc68a81ff098c56dc0c6f4",
+   "contentSHA256": "2f06c35e850aa089f629972842416ad69bdcecc4874f3c166a4ac2709993f1d5",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -20766,6 +21135,25 @@
     },
     {
      "kind": "addition-content",
+     "id": "silentMicWarning",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with Microphone readiness, Stop recording on silence, the Bluetooth guide, Input device and music during dictation); first draft by scripts/settings-map/draft-vocabulary.sh (#4841)",
+     "date": "2026-11-22",
+     "draft": {
+      "path": "additions/silentMicWarning/draft-silentMicWarning.json",
+      "sha256": "c2d32ee006177906348bcd3cde8997a267089229db57b002ea16eeac0fa822d7"
+     },
+     "prompt": {
+      "path": "additions/silentMicWarning/review-driver.py.txt",
+      "sha256": "a5df55a9f929fd6a56387b65538ce4a21839132c2f2dfab6c2d915c2c1a12169"
+     },
+     "output": {
+      "path": "additions/silentMicWarning/review-ja.txt",
+      "sha256": "86fc3cbec760abef29f74d1f80c9a432a261262d9fe764d774ba3fd3ebe565c0"
+     },
+     "disposition": "adopted in full"
+    },
+    {
+     "kind": "addition-content",
      "id": "unloadPolishModel",
      "issue": 3853,
      "date": "2026-11-22",
@@ -20793,7 +21181,7 @@
   },
   {
    "language": "ko",
-   "contentSHA256": "cd276cdd16c075cb60efc443bee65c393f091e9209f77881634fa808197c0c12",
+   "contentSHA256": "a8e0e175cd673c035ca09b20e20504a6fa234c0f681df545e2e765835bc8462e",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -22007,6 +22395,25 @@
     },
     {
      "kind": "addition-content",
+     "id": "silentMicWarning",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with Microphone readiness, Stop recording on silence, the Bluetooth guide, Input device and music during dictation); first draft by scripts/settings-map/draft-vocabulary.sh (#4841)",
+     "date": "2026-11-22",
+     "draft": {
+      "path": "additions/silentMicWarning/draft-silentMicWarning.json",
+      "sha256": "c2d32ee006177906348bcd3cde8997a267089229db57b002ea16eeac0fa822d7"
+     },
+     "prompt": {
+      "path": "additions/silentMicWarning/review-driver.py.txt",
+      "sha256": "a5df55a9f929fd6a56387b65538ce4a21839132c2f2dfab6c2d915c2c1a12169"
+     },
+     "output": {
+      "path": "additions/silentMicWarning/review-ko.txt",
+      "sha256": "2f4d85f23b077e484096ea13120025f13667b439814d85d94dda2d4d1a8b3f25"
+     },
+     "disposition": "adopted in full"
+    },
+    {
+     "kind": "addition-content",
      "id": "unloadPolishModel",
      "issue": 3853,
      "date": "2026-11-22",
@@ -22034,7 +22441,7 @@
   },
   {
    "language": "lt",
-   "contentSHA256": "61489b30dc5ffc2721ab4c70d66d98760242dd058a95b9ef2851b3d95e2d5e43",
+   "contentSHA256": "37327aa1716b044eba4cd88cba640da857b529de4f05b659b0a0702ed798e49c",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -23257,6 +23664,25 @@
     },
     {
      "kind": "addition-content",
+     "id": "silentMicWarning",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with Microphone readiness, Stop recording on silence, the Bluetooth guide, Input device and music during dictation); first draft by scripts/settings-map/draft-vocabulary.sh (#4841)",
+     "date": "2026-11-22",
+     "draft": {
+      "path": "additions/silentMicWarning/draft-silentMicWarning.json",
+      "sha256": "c2d32ee006177906348bcd3cde8997a267089229db57b002ea16eeac0fa822d7"
+     },
+     "prompt": {
+      "path": "additions/silentMicWarning/review-driver.py.txt",
+      "sha256": "a5df55a9f929fd6a56387b65538ce4a21839132c2f2dfab6c2d915c2c1a12169"
+     },
+     "output": {
+      "path": "additions/silentMicWarning/review-lt.txt",
+      "sha256": "5546da93ad4ab5485e2bbd3982c5e67f8ee70d59fdbc358a7f34eb5e8a28dd83"
+     },
+     "disposition": "adopted in full"
+    },
+    {
+     "kind": "addition-content",
      "id": "unloadPolishModel",
      "issue": 3853,
      "date": "2026-11-22",
@@ -23284,7 +23710,7 @@
   },
   {
    "language": "lv",
-   "contentSHA256": "3464697b72f18c2da15f086fdf84b29853babc0c3561dcd28dceb05292c50cd3",
+   "contentSHA256": "a037e289efd8534a3cc121eadfc8e95d2e06d0762be61ae50b9f1851022be167",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -24498,6 +24924,25 @@
     },
     {
      "kind": "addition-content",
+     "id": "silentMicWarning",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with Microphone readiness, Stop recording on silence, the Bluetooth guide, Input device and music during dictation); first draft by scripts/settings-map/draft-vocabulary.sh (#4841)",
+     "date": "2026-11-22",
+     "draft": {
+      "path": "additions/silentMicWarning/draft-silentMicWarning.json",
+      "sha256": "c2d32ee006177906348bcd3cde8997a267089229db57b002ea16eeac0fa822d7"
+     },
+     "prompt": {
+      "path": "additions/silentMicWarning/review-driver.py.txt",
+      "sha256": "a5df55a9f929fd6a56387b65538ce4a21839132c2f2dfab6c2d915c2c1a12169"
+     },
+     "output": {
+      "path": "additions/silentMicWarning/review-lv.txt",
+      "sha256": "4f6d8e0cfb9d19c8622522916655ebddcfd8adee7e093284803a1cecfab6ae37"
+     },
+     "disposition": "adopted in full"
+    },
+    {
+     "kind": "addition-content",
      "id": "unloadPolishModel",
      "issue": 3853,
      "date": "2026-11-22",
@@ -24525,7 +24970,7 @@
   },
   {
    "language": "mt",
-   "contentSHA256": "238ad67dc1bb1bf9a15e7ec8ba069bd7ed4e08cbe67f8a6453e6cc8ea520aedb",
+   "contentSHA256": "be893b0694c751d8600d8682e7989c064b81d04a0ff4ee2fd05659fab50e2cc5",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -25748,6 +26193,25 @@
     },
     {
      "kind": "addition-content",
+     "id": "silentMicWarning",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with Microphone readiness, Stop recording on silence, the Bluetooth guide, Input device and music during dictation); first draft by scripts/settings-map/draft-vocabulary.sh (#4841)",
+     "date": "2026-11-22",
+     "draft": {
+      "path": "additions/silentMicWarning/draft-silentMicWarning.json",
+      "sha256": "c2d32ee006177906348bcd3cde8997a267089229db57b002ea16eeac0fa822d7"
+     },
+     "prompt": {
+      "path": "additions/silentMicWarning/review-driver.py.txt",
+      "sha256": "a5df55a9f929fd6a56387b65538ce4a21839132c2f2dfab6c2d915c2c1a12169"
+     },
+     "output": {
+      "path": "additions/silentMicWarning/review-mt.txt",
+      "sha256": "f1a8ad61b96c853b513b0326df9183ffa0853bd2c61749573bf476925b2339a6"
+     },
+     "disposition": "adopted in full"
+    },
+    {
+     "kind": "addition-content",
      "id": "unloadPolishModel",
      "issue": 3853,
      "date": "2026-11-22",
@@ -25775,7 +26239,7 @@
   },
   {
    "language": "nl",
-   "contentSHA256": "7d8cc98f3de0d8deb53e37d16193c158635f1bf3c26827a4356d9760b7774229",
+   "contentSHA256": "a2357afae667b69d16a6cbbde081d5a31811bf1dd626caad92e92c4731ed3718",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -26989,6 +27453,25 @@
     },
     {
      "kind": "addition-content",
+     "id": "silentMicWarning",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with Microphone readiness, Stop recording on silence, the Bluetooth guide, Input device and music during dictation); first draft by scripts/settings-map/draft-vocabulary.sh (#4841)",
+     "date": "2026-11-22",
+     "draft": {
+      "path": "additions/silentMicWarning/draft-silentMicWarning.json",
+      "sha256": "c2d32ee006177906348bcd3cde8997a267089229db57b002ea16eeac0fa822d7"
+     },
+     "prompt": {
+      "path": "additions/silentMicWarning/review-driver.py.txt",
+      "sha256": "a5df55a9f929fd6a56387b65538ce4a21839132c2f2dfab6c2d915c2c1a12169"
+     },
+     "output": {
+      "path": "additions/silentMicWarning/review-nl.txt",
+      "sha256": "78ffc1ccc16449811cb3643cba7d93f2c57c447c532f43b2dd8f02f7903913e1"
+     },
+     "disposition": "adopted in full"
+    },
+    {
+     "kind": "addition-content",
      "id": "unloadPolishModel",
      "issue": 3853,
      "date": "2026-11-22",
@@ -27016,7 +27499,7 @@
   },
   {
    "language": "pl",
-   "contentSHA256": "5a29f86785542ef8a45beb70bf7409904e321123762ed75c7cc6d4c6119157d6",
+   "contentSHA256": "4f015d3d8d71e87d818d26e349abae64fc186c0699f9b5417dd54f11c81eacf1",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -28230,6 +28713,25 @@
     },
     {
      "kind": "addition-content",
+     "id": "silentMicWarning",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with Microphone readiness, Stop recording on silence, the Bluetooth guide, Input device and music during dictation); first draft by scripts/settings-map/draft-vocabulary.sh (#4841)",
+     "date": "2026-11-22",
+     "draft": {
+      "path": "additions/silentMicWarning/draft-silentMicWarning.json",
+      "sha256": "c2d32ee006177906348bcd3cde8997a267089229db57b002ea16eeac0fa822d7"
+     },
+     "prompt": {
+      "path": "additions/silentMicWarning/review-driver.py.txt",
+      "sha256": "a5df55a9f929fd6a56387b65538ce4a21839132c2f2dfab6c2d915c2c1a12169"
+     },
+     "output": {
+      "path": "additions/silentMicWarning/review-pl.txt",
+      "sha256": "8dfc442a4cca100b2c9b7e20a085bd9eb984103666ed205be7dbd0864e4dabd0"
+     },
+     "disposition": "adopted in full"
+    },
+    {
+     "kind": "addition-content",
      "id": "unloadPolishModel",
      "issue": 3853,
      "date": "2026-11-22",
@@ -28257,7 +28759,7 @@
   },
   {
    "language": "pt",
-   "contentSHA256": "718e03dce9ded9683693736953e6b5f19fa63f79c22fbdf4646fb3273c1c411c",
+   "contentSHA256": "8db5e0178f32c5d142a2e3fe88d9257714a8cf7fb7cf7442123cfbc889363bad",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -29479,6 +29981,25 @@
     },
     {
      "kind": "addition-content",
+     "id": "silentMicWarning",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with Microphone readiness, Stop recording on silence, the Bluetooth guide, Input device and music during dictation); first draft by scripts/settings-map/draft-vocabulary.sh (#4841)",
+     "date": "2026-11-22",
+     "draft": {
+      "path": "additions/silentMicWarning/draft-silentMicWarning.json",
+      "sha256": "c2d32ee006177906348bcd3cde8997a267089229db57b002ea16eeac0fa822d7"
+     },
+     "prompt": {
+      "path": "additions/silentMicWarning/review-driver.py.txt",
+      "sha256": "a5df55a9f929fd6a56387b65538ce4a21839132c2f2dfab6c2d915c2c1a12169"
+     },
+     "output": {
+      "path": "additions/silentMicWarning/review-pt.txt",
+      "sha256": "ae1bbef65459dcef7caad6e0ddae78b82bd838b7ddfa136014a2e27752b7276a"
+     },
+     "disposition": "adopted in full"
+    },
+    {
+     "kind": "addition-content",
      "id": "unloadPolishModel",
      "issue": 3853,
      "date": "2026-11-22",
@@ -29506,7 +30027,7 @@
   },
   {
    "language": "ro",
-   "contentSHA256": "76a1b568855bc66469f1e0e9119c52a30234f9902d9cbabaa19f5a4034ce5fb9",
+   "contentSHA256": "d9a943753f7f6f06bbf671f3537e20a4c2c30e7087322de699af367850fdc168",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -30720,6 +31241,25 @@
     },
     {
      "kind": "addition-content",
+     "id": "silentMicWarning",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with Microphone readiness, Stop recording on silence, the Bluetooth guide, Input device and music during dictation); first draft by scripts/settings-map/draft-vocabulary.sh (#4841)",
+     "date": "2026-11-22",
+     "draft": {
+      "path": "additions/silentMicWarning/draft-silentMicWarning.json",
+      "sha256": "c2d32ee006177906348bcd3cde8997a267089229db57b002ea16eeac0fa822d7"
+     },
+     "prompt": {
+      "path": "additions/silentMicWarning/review-driver.py.txt",
+      "sha256": "a5df55a9f929fd6a56387b65538ce4a21839132c2f2dfab6c2d915c2c1a12169"
+     },
+     "output": {
+      "path": "additions/silentMicWarning/review-ro.txt",
+      "sha256": "6224878b8c7d86e3af09c605c1997f0280c07cf33397a2a27203ea8af00ea6d9"
+     },
+     "disposition": "adopted in full"
+    },
+    {
+     "kind": "addition-content",
      "id": "unloadPolishModel",
      "issue": 3853,
      "date": "2026-11-22",
@@ -30747,7 +31287,7 @@
   },
   {
    "language": "ru",
-   "contentSHA256": "2d692337ab2e1880ac76d3c428e29c1ae0c089d00586c6a8a6dd6702fb0aaa5a",
+   "contentSHA256": "4da0891e826c11a9127d90abdd5d1205a766312381be60e06f288a476152b951",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -31961,6 +32501,25 @@
     },
     {
      "kind": "addition-content",
+     "id": "silentMicWarning",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with Microphone readiness, Stop recording on silence, the Bluetooth guide, Input device and music during dictation); first draft by scripts/settings-map/draft-vocabulary.sh (#4841)",
+     "date": "2026-11-22",
+     "draft": {
+      "path": "additions/silentMicWarning/draft-silentMicWarning.json",
+      "sha256": "c2d32ee006177906348bcd3cde8997a267089229db57b002ea16eeac0fa822d7"
+     },
+     "prompt": {
+      "path": "additions/silentMicWarning/review-driver.py.txt",
+      "sha256": "a5df55a9f929fd6a56387b65538ce4a21839132c2f2dfab6c2d915c2c1a12169"
+     },
+     "output": {
+      "path": "additions/silentMicWarning/review-ru.txt",
+      "sha256": "b8aa4dfcffbd92413fdde7261b7356d05eb2c4310403df3bc062f6c5c8f54e28"
+     },
+     "disposition": "adopted in full"
+    },
+    {
+     "kind": "addition-content",
      "id": "unloadPolishModel",
      "issue": 3853,
      "date": "2026-11-22",
@@ -31988,7 +32547,7 @@
   },
   {
    "language": "sk",
-   "contentSHA256": "0bc9f95e80beebb214c50f32a83ccb7a3551ea8b62712f485bd9aea9bfc92016",
+   "contentSHA256": "19191f369723efe51fbe9bade8a220bcb9b709d86c4249a9bc66c8c49c7d8fd3",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -33202,6 +33761,25 @@
     },
     {
      "kind": "addition-content",
+     "id": "silentMicWarning",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with Microphone readiness, Stop recording on silence, the Bluetooth guide, Input device and music during dictation); first draft by scripts/settings-map/draft-vocabulary.sh (#4841)",
+     "date": "2026-11-22",
+     "draft": {
+      "path": "additions/silentMicWarning/draft-silentMicWarning.json",
+      "sha256": "c2d32ee006177906348bcd3cde8997a267089229db57b002ea16eeac0fa822d7"
+     },
+     "prompt": {
+      "path": "additions/silentMicWarning/review-driver.py.txt",
+      "sha256": "a5df55a9f929fd6a56387b65538ce4a21839132c2f2dfab6c2d915c2c1a12169"
+     },
+     "output": {
+      "path": "additions/silentMicWarning/review-sk.txt",
+      "sha256": "ae6c1a07838fd2c361bd22e96225fde7614bb6c531c6079da0009a9203b5fde3"
+     },
+     "disposition": "adopted in full"
+    },
+    {
+     "kind": "addition-content",
      "id": "unloadPolishModel",
      "issue": 3853,
      "date": "2026-11-22",
@@ -33229,7 +33807,7 @@
   },
   {
    "language": "sl",
-   "contentSHA256": "6f7a7bf3c425e3157fc308b891e2f526df4ca6c6b070975a532c03a6bcbc493c",
+   "contentSHA256": "418124b559d8e0083259212d88726051879061a2d42a0678a03b807648f4d1d2",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -34452,6 +35030,25 @@
     },
     {
      "kind": "addition-content",
+     "id": "silentMicWarning",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with Microphone readiness, Stop recording on silence, the Bluetooth guide, Input device and music during dictation); first draft by scripts/settings-map/draft-vocabulary.sh (#4841)",
+     "date": "2026-11-22",
+     "draft": {
+      "path": "additions/silentMicWarning/draft-silentMicWarning.json",
+      "sha256": "c2d32ee006177906348bcd3cde8997a267089229db57b002ea16eeac0fa822d7"
+     },
+     "prompt": {
+      "path": "additions/silentMicWarning/review-driver.py.txt",
+      "sha256": "a5df55a9f929fd6a56387b65538ce4a21839132c2f2dfab6c2d915c2c1a12169"
+     },
+     "output": {
+      "path": "additions/silentMicWarning/review-sl.txt",
+      "sha256": "bea17d89f51cbec735496bee8b5001829bb9d0abe1fe66c55d48a7565c7ee14e"
+     },
+     "disposition": "adopted in full"
+    },
+    {
+     "kind": "addition-content",
      "id": "unloadPolishModel",
      "issue": 3853,
      "date": "2026-11-22",
@@ -34479,7 +35076,7 @@
   },
   {
    "language": "sv",
-   "contentSHA256": "e9c6b894f36c9dd6824f0b33c10282b074fa332e9bd78fec253846f180c6a30c",
+   "contentSHA256": "b7be12d75f25c629d5e65d54cec38f0bbe20a1341dd500b54fb40d6ef42aea35",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -35693,6 +36290,25 @@
     },
     {
      "kind": "addition-content",
+     "id": "silentMicWarning",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with Microphone readiness, Stop recording on silence, the Bluetooth guide, Input device and music during dictation); first draft by scripts/settings-map/draft-vocabulary.sh (#4841)",
+     "date": "2026-11-22",
+     "draft": {
+      "path": "additions/silentMicWarning/draft-silentMicWarning.json",
+      "sha256": "c2d32ee006177906348bcd3cde8997a267089229db57b002ea16eeac0fa822d7"
+     },
+     "prompt": {
+      "path": "additions/silentMicWarning/review-driver.py.txt",
+      "sha256": "a5df55a9f929fd6a56387b65538ce4a21839132c2f2dfab6c2d915c2c1a12169"
+     },
+     "output": {
+      "path": "additions/silentMicWarning/review-sv.txt",
+      "sha256": "9f7dbf711eaaa5f2dce7a4115f0b3427d876dc09267ce34c4d30a025fbbed0fc"
+     },
+     "disposition": "adopted in full"
+    },
+    {
+     "kind": "addition-content",
      "id": "unloadPolishModel",
      "issue": 3853,
      "date": "2026-11-22",
@@ -35720,7 +36336,7 @@
   },
   {
    "language": "tr",
-   "contentSHA256": "7c7152768596309b5d8621548e630a7ff10b69e5824637b962af48d32776c7d2",
+   "contentSHA256": "b8e0e25af22469ae06f880e53adfaf5016d494478c8f37e948812a0c9de61063",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -36934,6 +37550,25 @@
     },
     {
      "kind": "addition-content",
+     "id": "silentMicWarning",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with Microphone readiness, Stop recording on silence, the Bluetooth guide, Input device and music during dictation); first draft by scripts/settings-map/draft-vocabulary.sh (#4841)",
+     "date": "2026-11-22",
+     "draft": {
+      "path": "additions/silentMicWarning/draft-silentMicWarning.json",
+      "sha256": "c2d32ee006177906348bcd3cde8997a267089229db57b002ea16eeac0fa822d7"
+     },
+     "prompt": {
+      "path": "additions/silentMicWarning/review-driver.py.txt",
+      "sha256": "a5df55a9f929fd6a56387b65538ce4a21839132c2f2dfab6c2d915c2c1a12169"
+     },
+     "output": {
+      "path": "additions/silentMicWarning/review-tr.txt",
+      "sha256": "574e76a72e9e609ef457f9e4fc837a6d2f2fc8bb68769dcf57cd4125aaf247c3"
+     },
+     "disposition": "adopted in full"
+    },
+    {
+     "kind": "addition-content",
      "id": "unloadPolishModel",
      "issue": 3853,
      "date": "2026-11-22",
@@ -36961,7 +37596,7 @@
   },
   {
    "language": "uk",
-   "contentSHA256": "d7562d8a2f4db8564039f1d25b77732b261a2740aac1d944be4d2164d84cc95a",
+   "contentSHA256": "c7c9ca61fe81329fb2c40130d8a5ff31e0e8b020cc11bd94764bcce3e99f8c5c",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -38184,6 +38819,25 @@
     },
     {
      "kind": "addition-content",
+     "id": "silentMicWarning",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with Microphone readiness, Stop recording on silence, the Bluetooth guide, Input device and music during dictation); first draft by scripts/settings-map/draft-vocabulary.sh (#4841)",
+     "date": "2026-11-22",
+     "draft": {
+      "path": "additions/silentMicWarning/draft-silentMicWarning.json",
+      "sha256": "c2d32ee006177906348bcd3cde8997a267089229db57b002ea16eeac0fa822d7"
+     },
+     "prompt": {
+      "path": "additions/silentMicWarning/review-driver.py.txt",
+      "sha256": "a5df55a9f929fd6a56387b65538ce4a21839132c2f2dfab6c2d915c2c1a12169"
+     },
+     "output": {
+      "path": "additions/silentMicWarning/review-uk.txt",
+      "sha256": "741279f8f789f73a07cc773131adb2931e6b14bf7d2789bfa989f8c1a42c9957"
+     },
+     "disposition": "adopted in full"
+    },
+    {
+     "kind": "addition-content",
      "id": "unloadPolishModel",
      "issue": 3853,
      "date": "2026-11-22",
@@ -38211,7 +38865,7 @@
   },
   {
    "language": "vi",
-   "contentSHA256": "c2bba38ac554aba129883080e161c871cde9b13de269a4c4d5a40fcfccc3dcc6",
+   "contentSHA256": "87a252a0e8231eff51abdc0bcb72a312f4dafcf32923ac04a1102960485a0a9b",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -39425,6 +40079,25 @@
     },
     {
      "kind": "addition-content",
+     "id": "silentMicWarning",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with Microphone readiness, Stop recording on silence, the Bluetooth guide, Input device and music during dictation); first draft by scripts/settings-map/draft-vocabulary.sh (#4841)",
+     "date": "2026-11-22",
+     "draft": {
+      "path": "additions/silentMicWarning/draft-silentMicWarning.json",
+      "sha256": "c2d32ee006177906348bcd3cde8997a267089229db57b002ea16eeac0fa822d7"
+     },
+     "prompt": {
+      "path": "additions/silentMicWarning/review-driver.py.txt",
+      "sha256": "a5df55a9f929fd6a56387b65538ce4a21839132c2f2dfab6c2d915c2c1a12169"
+     },
+     "output": {
+      "path": "additions/silentMicWarning/review-vi.txt",
+      "sha256": "0915c9d4251101e080daf0517c76682740c691a7aa5e29542a1f92a3b9482bf3"
+     },
+     "disposition": "adopted in full"
+    },
+    {
+     "kind": "addition-content",
      "id": "unloadPolishModel",
      "issue": 3853,
      "date": "2026-11-22",
@@ -39452,7 +40125,7 @@
   },
   {
    "language": "zh",
-   "contentSHA256": "dc87fe7f6df364932ef11968bb6422d33ed0214e007c718077bfa0403fdb5039",
+   "contentSHA256": "bb9cb0b030a8587c7c4cea2c14c86043c8378671dad424e7a593b4c804391895",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -40666,6 +41339,25 @@
     },
     {
      "kind": "addition-content",
+     "id": "silentMicWarning",
+     "method": "Codex, one fresh isolated session for this language (accuracy, naturalness, collisions with Microphone readiness, Stop recording on silence, the Bluetooth guide, Input device and music during dictation); first draft by scripts/settings-map/draft-vocabulary.sh (#4841)",
+     "date": "2026-11-22",
+     "draft": {
+      "path": "additions/silentMicWarning/draft-silentMicWarning.json",
+      "sha256": "c2d32ee006177906348bcd3cde8997a267089229db57b002ea16eeac0fa822d7"
+     },
+     "prompt": {
+      "path": "additions/silentMicWarning/review-driver.py.txt",
+      "sha256": "a5df55a9f929fd6a56387b65538ce4a21839132c2f2dfab6c2d915c2c1a12169"
+     },
+     "output": {
+      "path": "additions/silentMicWarning/review-zh.txt",
+      "sha256": "c0bb9b73889be317f66c48aa1fd9a20b437a14141e3c44a53b4303af78c0f111"
+     },
+     "disposition": "adopted in full"
+    },
+    {
+     "kind": "addition-content",
      "id": "unloadPolishModel",
      "issue": 3853,
      "date": "2026-11-22",
@@ -40991,6 +41683,7 @@
   "fixLearnedWords": "974b844c17efb198324180a5e5fd890282108fbeaa0512d9077fa73694a9c0e3",
   "automaticDictationPaste": "b672f5f91a9715f212c55a07f5770fe119fcda154813dd9746e2abc04389e1c6",
   "dictationOutputLanguage": "9e149372fb352030a5d520bdd80b2f92c7f26d88bbcf87f385b6b9baf57de396",
+  "silentMicWarning": "1ca0df570a1b90116e23622263e988143f6c051d712e87662265ac1c5f4ee6db",
   "unloadPolishModel": "46834ff70c40d0e3476f9ce29c35b4c3b363412845730b1310fc3b5b2294bfcb",
   "unloadPolishModel.fifteenMinutes": "2cb52811de2c70c38a9f0f9c8d6f2c1dd3ae81af44e105b57587777276d8cb17",
   "unloadPolishModel.fiveMinutes": "b121e837b5608cf69ce624794373389f93664cde3bc81daa6c5bedc374014022",

@@ -1244,16 +1244,6 @@ public final class KernelDictationDriver: HeartPathTelemetryTarget {
   public var asrRetryOutcome: ASRRetryOutcome? {
     kernel.asrRetryOutcome
   }
-  /// #1317: non-nil when the most recent recording was classified as the
-  /// mic-harness all-zero glitch (`allZeroFromStart` = the `.zeroSignal`
-  /// pill; `becameZeroMidCapture` = a normal completion whose disclosure
-  /// must say "may be missing its tail" instead of the interruption-cause
-  /// derived sentence, since no `EngineInterruptionCause` is ever stamped
-  /// for this path, §3.5). LIVE pass-through from the kernel; never
-  /// persisted.
-  public var lastZeroSignalFailureMode: CaptureStallFailureMode? {
-    kernel.zeroSignalFailureMode
-  }
   /// #1376: the resolved-route transports for the most recent recording, for
   /// the App layer's `dictation.completed` telemetry. LIVE pass-through from the
   /// kernel; never persisted. Low-cardinality transport/reason strings only.
@@ -1546,27 +1536,15 @@ public final class KernelDictationDriver: HeartPathTelemetryTarget {
     //      `audio.dead_mic_retire_attempted` and its breadcrumb instead.
     //   2. kernel.externalCaptureStalled — flips the kernel FSM to
     //      `failed(.captureStalled)` so the session actually stops.
-    // **The arms are independent and #1810 changed only arm 1.** Every failure
-    // mode still ends the take, and source retirement still happens on the stop
-    // path; a quieter Sentry channel is not a quieter product.
+    // **The arms are independent and #1810 changed only arm 1.** A `.noBuffers`
+    // stall still ends the take; since #4841 capture never reports the two
+    // zero-sample shapes, which STOP classifies instead.
     // PR-4b.1 dropped the kernel's direct `audioCapture.onCaptureStalled`
     // subscription; PR-4b.2 closes the loop by fanning out from this
     // App-facing entry. Without the kernel call, a real stall would
     // leave the session stuck in `.recording` (Codex review #11 r3).
     observer.handleCaptureStall(ctx)
     kernel.externalCaptureStalled(ctx)
-  }
-
-  /// #1578: ONE arm, deliberately — the observer only.
-  ///
-  /// This is the asymmetry with `handleCaptureStall` directly above, and the
-  /// single easiest mistake in this change. A refusal means the discriminator
-  /// DECLINED to treat the silence as a harness glitch, so the take stays on
-  /// today's silent no-speech path. Calling `kernel.externalCaptureStalled`
-  /// here would latch a recording exit and turn an observability change into a
-  /// behaviour regression.
-  public func handleZeroSignalRefusal(_ context: ZeroSignalRefusalContext) {
-    observer.handleZeroSignalRefusal(context)
   }
 
   // MARK: DEBUG

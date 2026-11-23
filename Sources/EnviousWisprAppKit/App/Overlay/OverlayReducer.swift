@@ -45,6 +45,9 @@ enum OverlayEvent: Equatable {
   case polishDownloadComplete(PolishDownloadPillModel)
   /// A notice that morphs a LIVE recording pill rather than replacing it.
   case inPanelNotice(RecordingNoticeReason, dismissAfter: Double?)
+  /// #4841: clear the live recording pill's notice only when it is of this kind.
+  /// Never touches another kind's notice or its timer; a no-op otherwise.
+  case clearInPanelNotice(RecordingNoticeKind)
   /// Hands-free lock engaged or released. updateLockState today; it
   /// morphs the live recording pill and does nothing otherwise. The first model
   /// carried `isLocked` on the presentation with no event able to change it.
@@ -308,6 +311,8 @@ struct OverlayReducer {
       return admitEntry(PillCatalog.entry(for: .polishDownloadComplete(model), id: makeID()))
     case .inPanelNotice(let reason, let dismissAfter):
       return reduceInPanelNotice(reason, dismissAfter: dismissAfter)
+    case .clearInPanelNotice(let kind):
+      return reduceClearInPanelNotice(kind)
     case .lockStateChanged(let locked):
       return reduceLockState(locked)
     case .action(let id, let action):
@@ -974,14 +979,34 @@ struct OverlayReducer {
     return OverlayPlan(presentation: updated, didChange: true, expiryCommand: expiry)
   }
 
+  /// #4841: clear the notice only when it is of `kind`. The pill, its identity,
+  /// its lock and any timer stay as they are (`.unchanged`): a persistent notice
+  /// armed nothing, and another kind's timed notice keeps its own dwell.
+  private mutating func reduceClearInPanelNotice(_ kind: RecordingNoticeKind) -> OverlayPlan {
+    guard let current = state.current,
+      case .recording(let level, let isLocked, let notice?, let design) = current.content,
+      notice.reason.kind == kind
+    else { return .noChange }
+
+    let updated = PillDefinition(
+      id: current.id,
+      content: .recording(audioLevel: level, isLocked: isLocked, notice: nil, design: design),
+      expiry: current.expiry,
+      requestedWidth: current.requestedWidth,
+      reservesFixedHeight: current.reservesFixedHeight)
+    state.set(current: updated)
+    return OverlayPlan(presentation: updated, didChange: true, expiryCommand: .unchanged)
+  }
+
   /// The in-panel notice's dwell elapsed: clear the BANNER, keep the pill.
   ///
   /// Distinct from `reduceExpiry`, which ends a whole presentation. A recording
-  /// outlives its banner.
+  /// outlives its banner. #4841: only a TIMED notice can expire, so a late timer
+  /// can never clear a persistent notice that replaced the timed one.
   mutating func reduceInPanelNoticeExpiry(_ id: PresentationID) -> OverlayPlan {
     guard isCurrent(id), let current = state.current,
-      case .recording(let level, let isLocked, let notice, let design) = current.content,
-      notice != nil
+      case .recording(let level, let isLocked, let notice?, let design) = current.content,
+      notice.dismissAfter != nil
     else { return .noChange }
 
     let updated = PillDefinition(

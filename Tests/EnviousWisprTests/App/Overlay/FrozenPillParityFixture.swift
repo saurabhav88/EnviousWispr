@@ -142,7 +142,7 @@ enum FrozenPillParity {
 
     FrozenRow(
       label: "recording", hasDefinition: true, contentTag: "recording", notice: nil,
-      width: .fixed(185), fixedHeight: 92, expiry: .untilReplaced,
+      width: .fixed(185), fixedHeight: nil, expiry: .untilReplaced,
       announcement: FrozenAnnouncement(text: "Recording started", isHighPriority: true)),
 
     FrozenRow(
@@ -363,11 +363,11 @@ enum FrozenPillParity {
   ///
   /// **Compare `withWords.effectiveWidth` (400) against the `recording` row's
   /// `width` (185) above: that is the dead-literal defect, measured rather than
-  /// argued.** The reducer's 185/92 is the without-words answer and is discarded
-  /// for the with-words case.
+  /// argued.** The reducer's 185 is the without-words answer and is discarded for
+  /// the with-words case. Neither reserves a height since #4841.
   static let recordingRows: [FrozenRecordingRow] = [
     FrozenRecordingRow(
-      capability: .withoutWords, effectiveWidth: 185, fixedHeight: 92,
+      capability: .withoutWords, effectiveWidth: 185, fixedHeight: nil,
       usesPreviewLayout: false),
     FrozenRecordingRow(
       capability: .withWords, effectiveWidth: 400, fixedHeight: nil,

@@ -79,6 +79,12 @@ public struct DictationSessionConfig: Sendable {
   public let vadSensitivity: Float
   public let vadEnergyGate: Bool
 
+  /// #4841: show the silent-mic notice on the pill when the microphone sends
+  /// exact digital silence. Frozen per take like every other field here: a
+  /// change in Settings applies to the next dictation. It only chooses whether
+  /// the notice shows; exact zeros never end a take either way.
+  public let silentMicWarningsEnabled: Bool
+
   // MARK: ASR
 
   /// Single source of truth for language selection. Pipelines derive
@@ -177,6 +183,7 @@ public struct DictationSessionConfig: Sendable {
     vadSilenceTimeout: Double,
     vadSensitivity: Float,
     vadEnergyGate: Bool,
+    silentMicWarningsEnabled: Bool = true,
     languageMode: LanguageMode,
     englishSpelling: EnglishSpelling,
     fixLearnedWords: Bool = true,
@@ -206,6 +213,7 @@ public struct DictationSessionConfig: Sendable {
     self.vadSilenceTimeout = vadSilenceTimeout
     self.vadSensitivity = vadSensitivity
     self.vadEnergyGate = vadEnergyGate
+    self.silentMicWarningsEnabled = silentMicWarningsEnabled
     self.languageMode = languageMode
     self.englishSpelling = englishSpelling
     self.fixLearnedWords = fixLearnedWords

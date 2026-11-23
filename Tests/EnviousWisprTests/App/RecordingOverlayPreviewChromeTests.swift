@@ -42,8 +42,9 @@ struct RecordingOverlayPreviewChromeTests {
       livePreviewProvider: { display },
       onContentHeightChange: { log.record($0) },
       chrome: design.chrome,
+      position: .top,
       isLocked: locked,
-      noticeText: nil,
+      notice: nil,
       initialPreview: display
     )
     let host = NSHostingView(rootView: view.frame(width: Self.previewWidth))
@@ -152,8 +153,9 @@ struct RecordingOverlayPreviewChromeTests {
       livePreviewProvider: { text },
       onContentHeightChange: { log.record($0) },
       chrome: RecordingPillDesign.readingWell.chrome,
+      position: .top,
       isLocked: false,
-      noticeText: "Recording stops in one minute.",
+      notice: .layoutFixture("Recording stops in one minute."),
       initialPreview: text
     )
     let host = NSHostingView(rootView: view.frame(width: Self.previewWidth))

@@ -10,20 +10,20 @@ import Testing
 // Release test-target lane must not compile it.
 #if DEBUG
 
-  /// #1810 — the all-zero abort bar must mean 1.0s of LIVE capture.
+  /// #1810 / #4841 — drained pre-roll is never live capture.
   ///
   /// `PreRollForwarder` drains up to 8,000 buffered samples (500ms) through
   /// `onSamples` at activation, and `AudioCaptureManager.feedDeadAirDetector` ingests
-  /// that batch exactly like live audio. Before this change the ceiling was compared
-  /// against a total that already included the drain, so a press whose pre-roll was
-  /// itself silent lost that much of its budget — measured at 147-553ms on production
-  /// takes, and observed firing at 498ms against a documented 1,000ms bar.
+  /// that batch exactly like live audio. The silent-mic notice (`exactZeroRun`) must
+  /// subtract it: counted as live, a warm microphone's silent ring would bring the
+  /// notice forward (measured drains: 147-553ms) and could make a take that spoke in
+  /// its first second look "silent since start".
   ///
-  /// Product Outcome: when these fail, a microphone is called dead sooner than the
-  /// software promises and the user's words are lost.
+  /// Product Outcome: when these fail, the silent-mic notice fires on the wrong
+  /// threshold, earlier than the 5 s / 6 s the product promises.
   @MainActor
   @Suite(
-    "Pre-roll must not be charged against the all-zero ceiling (#1810)",
+    "Pre-roll is never counted as live silence (#1810, #4841)",
     .tags(.productOutcome))
   struct PreRollCeilingTests {
 
@@ -74,52 +74,72 @@ import Testing
       return manager
     }
 
-    // MARK: - The bar is a bar on LIVE capture
+    // MARK: - The live run excludes the drain
 
-    @Test("a capture that drained 8,000 silent pre-roll samples still gets a full 1.0s of live")
-    func ceilingAddsTheDrain() {
-      let base = AudioConstants.minimumTranscriptionSamples
-      #expect(manager(drained: 0).allZeroCeilingSamples == base)
-      #expect(manager(drained: 8_000).allZeroCeilingSamples == base + 8_000)
-      // The production measurement that motivated this: an abort at 498ms against a
-      // 1,000ms bar means ~502ms of the budget had gone on drained pre-roll.
-      #expect(manager(drained: 8_032).allZeroCeilingSamples == base + 8_032)
+    @Test("a silent drained ring does not count toward the live run")
+    func liveRunExcludesTheDrain() {
+      // 8,000 drained + 16,000 live, all zero: the live run is 16,000, since start.
+      let run = AudioCaptureManager.exactZeroRun(
+        totalSampleCount: 24_000, consecutiveExactZeroSuffix: 24_000,
+        drainedPreRollSampleCount: 8_000)
+      #expect(run == ExactZeroRun(sampleCount: 16_000, sinceTakeStart: true))
     }
 
-    /// The DEBUG override is a bar on LIVE capture too. If it were not, every local
-    /// hardware measurement would be taken against a different rule from the one the
-    /// fleet runs, which is the opposite of what the override exists for.
-    /// `AudioCaptureManagerDeadAirLatchTests` already pins the override with no
-    /// source installed; this pins the composition with one. Same `defer` cleanup
-    /// pattern as that suite.
-    @Test("the DEBUG ceiling override is also a live-capture bar")
-    func debugOverrideAlsoAddsTheDrain() {
-      defer { UserDefaults.standard.removeObject(forKey: "EWDebugAllZeroCeilingSamples") }
-      UserDefaults.standard.set(160_000, forKey: "EWDebugAllZeroCeilingSamples")
-      #expect(manager(drained: 8_000).allZeroCeilingSamples == 168_000)
-      #expect(manager(drained: 0).allZeroCeilingSamples == 160_000)
-      #expect(manager(drained: -8_000).allZeroCeilingSamples == 160_000)
+    @Test("speech in the drained ring does not make a silent live take look mid-take")
+    func liveSilenceAfterNoisyRingIsSinceStart() {
+      // The ring carried sound, then every live sample was zero: silent since the
+      // take started, so the 6 s threshold applies, not the 5 s one.
+      let run = AudioCaptureManager.exactZeroRun(
+        totalSampleCount: 24_000, consecutiveExactZeroSuffix: 16_000,
+        drainedPreRollSampleCount: 8_000)
+      #expect(run == ExactZeroRun(sampleCount: 16_000, sinceTakeStart: true))
+    }
+
+    @Test("live sound then live silence is a mid-take run")
+    func liveSoundThenSilenceIsMidTake() {
+      let run = AudioCaptureManager.exactZeroRun(
+        totalSampleCount: 24_000, consecutiveExactZeroSuffix: 10_000,
+        drainedPreRollSampleCount: 8_000)
+      #expect(run == ExactZeroRun(sampleCount: 10_000, sinceTakeStart: false))
+    }
+
+    @Test("before any live sample there is no run and nothing is since start")
+    func noLiveSamplesNoRun() {
+      let run = AudioCaptureManager.exactZeroRun(
+        totalSampleCount: 8_000, consecutiveExactZeroSuffix: 8_000,
+        drainedPreRollSampleCount: 8_000)
+      #expect(run == ExactZeroRun(sampleCount: 0, sinceTakeStart: false))
+    }
+
+    @Test("a negative drain is treated as no drain")
+    func negativeDrainInPureFormulaIsClamped() {
+      let run = AudioCaptureManager.exactZeroRun(
+        totalSampleCount: 16_000, consecutiveExactZeroSuffix: 16_000,
+        drainedPreRollSampleCount: -500)
+      #expect(run == ExactZeroRun(sampleCount: 16_000, sinceTakeStart: true))
+    }
+
+    @Test("the reading is nil outside active capture")
+    func nilOutsideCapture() {
+      #expect(AudioCaptureManager().exactZeroRun == nil)
     }
 
     // MARK: - The clamp
 
-    /// The protocol member is typed `Int`. A negative would SHRINK the ceiling and
-    /// make the abort fire EARLIER — the one direction this change promises is
-    /// impossible — so the clamp is asserted, never assumed.
-    @Test("a negative drain cannot shorten the bar")
+    /// The protocol member is typed `Int`. A negative would count pre-roll as live
+    /// capture, so the clamp is asserted, never assumed.
+    @Test("a negative drain reads as zero")
     func negativeDrainIsClamped() {
-      let base = AudioConstants.minimumTranscriptionSamples
-      #expect(manager(drained: -1).allZeroCeilingSamples == base)
-      #expect(manager(drained: -8_000).allZeroCeilingSamples == base)
+      #expect(manager(drained: -1).drainedPreRollSampleCount == 0)
       #expect(manager(drained: -8_000).drainedPreRollSampleCount == 0)
+      #expect(manager(drained: 8_000).drainedPreRollSampleCount == 8_000)
     }
 
     /// THE cloud-review finding (PR #2200, P2). `stopCapture()`'s documented
     /// `activeSource == nil` early return — reachable when an engine interruption is
     /// followed by the user switching "Keep engine warm" off — used to leave the
-    /// STOP-time reader with no drain at all, reinstating the early abort on exactly
-    /// that path. The manager caches the value, so the drain survives the source
-    /// going away.
+    /// STOP-time reader with no drain at all. The manager caches the value, so the
+    /// drain survives the source going away.
     @Test("#2200 review: the drain survives the source being torn down")
     func drainSurvivesSourceTeardown() {
       let manager = AudioCaptureManager()
@@ -131,22 +151,7 @@ import Testing
       manager.tearDownActiveSourceForTesting()
       #expect(
         manager.drainedPreRollSampleCount == 8_000,
-        "the stop-time bar silently reverted to the shipping one when the source went away")
-      #expect(manager.allZeroCeilingSamples == AudioConstants.minimumTranscriptionSamples + 8_000)
-    }
-
-    /// The whole safety argument for shipping this is that it can only ever make the
-    /// abort fire LATER. Asserted across the range rather than at a single point.
-    @Test("the ceiling is non-decreasing in the drain and never below the shipping bar")
-    func ceilingNeverShrinks() {
-      let base = AudioConstants.minimumTranscriptionSamples
-      var previous = 0
-      for drain in stride(from: -2_000, through: 8_000, by: 500) {
-        let ceiling = manager(drained: drain).allZeroCeilingSamples
-        #expect(ceiling >= base)
-        #expect(ceiling >= previous)
-        previous = ceiling
-      }
+        "the stop-time drain silently reverted to zero when the source went away")
     }
   }
 #endif

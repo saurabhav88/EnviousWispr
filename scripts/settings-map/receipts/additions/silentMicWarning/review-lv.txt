@@ -1,0 +1,10 @@
+{
+  "language": "lv",
+  "title": "brīdināt, ja mikrofons neuztver skaņu",
+  "words": [
+    "brīdinājums par mikrofona klusumu"
+  ],
+  "phrases": [
+    "kā ieslēgt brīdinājumu, ja diktējot mikrofons neuztver skaņu"
+  ]
+}

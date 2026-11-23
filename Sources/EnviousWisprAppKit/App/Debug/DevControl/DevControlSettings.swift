@@ -54,7 +54,7 @@
       .meetingSummaryLLMProvider, .meetingSummaryLLMModel, .meetingSummaryOllamaModel,
       .s1MiniStyling, .s1MiniStructure, .s1MiniContext,
       .automaticDictationPasteEnabled, .autoCopyToClipboard,
-      .meetingCaptureCallSound, .meetingCallSoundExplained, .meetingWriteSummary, .meetingTurnsOffDictation, .meetingFollowsCallMute, .meetingOnboardingComplete, .meetingUseCalendarForNames, .meetingCallDetection, .meetingCallAppsOff, .meetingCallNoCounts, .meetingCallFirstTipShown, .meetingLanguageMode, .meetingTranscriptEngine, .meetingLiveWordsEngine, .meetingLiveWordsLanguage, .hotkeyEnabled, .vadAutoStop, .vadSilenceTimeout, .vadSensitivity, .vadEnergyGate, .onboardingState,
+      .meetingCaptureCallSound, .meetingCallSoundExplained, .meetingWriteSummary, .meetingTurnsOffDictation, .meetingFollowsCallMute, .meetingOnboardingComplete, .meetingUseCalendarForNames, .meetingCallDetection, .meetingCallAppsOff, .meetingCallNoCounts, .meetingCallFirstTipShown, .meetingLanguageMode, .meetingTranscriptEngine, .meetingLiveWordsEngine, .meetingLiveWordsLanguage, .hotkeyEnabled, .vadAutoStop, .silentMicWarnings, .vadSilenceTimeout, .vadSensitivity, .vadEnergyGate, .onboardingState,
       .hasCompletedOnboarding, .cancelKeyCode, .cancelModifiers, .quickAddKeyCode,
       .quickAddModifiers, .pasteLastKeyCode, .pasteLastModifiers, .copyLastKeyCode,
       .copyLastModifiers, .toggleKeyCode, .toggleModifiers, .pushToTalkKeyCode,
@@ -95,7 +95,7 @@
         .meetingFollowsCallMute, .meetingOnboardingComplete,
         .meetingUseCalendarForNames, .meetingCallDetection, .meetingCallAppsOff,
         .meetingCallNoCounts, .meetingCallFirstTipShown, .meetingLanguageMode,
-        .meetingTranscriptEngine, .meetingLiveWordsEngine, .meetingLiveWordsLanguage, .vadAutoStop, .modelUnloadPolicy, .localPolishUnloadPolicy,
+        .meetingTranscriptEngine, .meetingLiveWordsEngine, .meetingLiveWordsLanguage, .vadAutoStop, .silentMicWarnings, .modelUnloadPolicy, .localPolishUnloadPolicy,
         .restoreClipboardAfterPaste, .keepDictationsOutOfClipboardHistory,
         .quickAddClipboardFallback, .smartInsertion, .escapeRecoveryEnabled,
         .wordCorrectionEnabled, .fillerRemovalEnabled, .emojiFormatterEnabled,
@@ -166,6 +166,7 @@
       case .meetingCallFirstTipShown: return settings.meetingCallFirstTipShown
       case .hotkeyEnabled: return settings.hotkeyEnabled
       case .vadAutoStop: return settings.vadAutoStop
+      case .silentMicWarnings: return settings.silentMicWarnings
       case .vadSilenceTimeout: return settings.vadSilenceTimeout
       case .vadSensitivity: return Double(settings.vadSensitivity)
       case .vadEnergyGate: return settings.vadEnergyGate
@@ -344,6 +345,8 @@
         return set(Codec.bool(value)) { settings.hotkeyEnabled = $0 }
       case .vadAutoStop:
         return set(Codec.bool(value)) { settings.vadAutoStop = $0 }
+      case .silentMicWarnings:
+        return set(Codec.bool(value)) { settings.silentMicWarnings = $0 }
       case .vadSilenceTimeout:
         guard let seconds = Codec.double(value) else { return .badValue("wrong type") }
         guard Self.silenceTimeoutIsConvertible(seconds) else {
@@ -651,7 +654,7 @@
         .meetingOnboardingComplete, .meetingUseCalendarForNames,
         .meetingCallDetection, .meetingCallAppsOff, .meetingCallNoCounts, .meetingCallFirstTipShown,
         .meetingLanguageMode, .meetingTranscriptEngine, .meetingLiveWordsEngine, .meetingLiveWordsLanguage, .hotkeyEnabled,
-        .vadAutoStop, .vadSensitivity,
+        .vadAutoStop, .silentMicWarnings, .vadSensitivity,
         .vadEnergyGate, .onboardingState, .hasCompletedOnboarding, .pushToTalkKeyCode,
         .pushToTalkModifiers, .modelUnloadPolicy, .localPolishUnloadPolicy, .restoreClipboardAfterPaste,
         .keepDictationsOutOfClipboardHistory, .quickAddClipboardFallback, .smartInsertion,

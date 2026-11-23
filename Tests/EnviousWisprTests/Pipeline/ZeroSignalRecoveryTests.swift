@@ -9,15 +9,13 @@ import Testing
 // MARK: - #1317 zero-signal (mic-harness all-zero glitch) kernel routing
 //
 // Drives the REAL `RecordingSessionKernel` through the simulator fakes.
-// Covers both classification paths the plan names: the REACTIVE exit (the
-// app-side detector already fired, delivered via `externalCaptureStalled`)
-// and the STOP-win backstop (the detector never fired — capture ended before
-// its own confidence threshold, or STOP raced it — so the kernel classifies
-// the complete `captureResult.samples` itself at stop time, §3.6).
+// #4841: STOP is the only zero-signal classifier — capture never ends a take on
+// exact zeros, so the kernel classifies the complete `captureResult.samples` at
+// stop time (§3.6). A whole-zero take keeps today's outcome; a speech-then-zero
+// take completes on every route with no stamp, no refusal and no retire.
 //
 // `zeroSignalDecisionSnapshot` is injected per-scenario (deterministic — never
-// depends on the test machine's real microphone or device state). #1578 widened
-// it from a Boolean to a categorical reason plus the reactively-classified flag.
+// depends on the test machine's real microphone or device state).
 
 @MainActor
 @Suite("RecordingSessionKernel — zero-signal recovery (#1317)")
@@ -34,7 +32,7 @@ struct ZeroSignalRecoveryTests {
 
   private func makeContext(
     zeroSignalDecisionSnapshot: @escaping @MainActor () -> ZeroSignalDecisionSnapshot = {
-      ZeroSignalDecisionSnapshot(eligibility: .eligible, currentRunWasClassifiedReactively: false)
+      ZeroSignalDecisionSnapshot(eligibility: .eligible)
     },
     zeroSignalRefusalSink: @escaping @MainActor ([ZeroSignalRefusalContext]) -> Void = { _ in },
     minimumRecordingTicks: Int = 0,
@@ -77,32 +75,7 @@ struct ZeroSignalRecoveryTests {
     await ctx.wrapper.drainReadyWork()
   }
 
-  // MARK: - Reactive exit: allZeroFromStart
-
-  @Test("reactive allZeroFromStart → the honest zero-signal terminal, no salvage, ONE retire")
-  func reactiveAllZeroFromStartFinishesHonestly() async {
-    let ctx = makeContext()
-    await startToRecording(ctx)
-    // The all-zero buffers the app-side detector fired ON. Production always
-    // has these — the detector's whole trigger is zero-valued audio ARRIVING —
-    // so the kernel's own buffer counter is non-zero by the time the reactive
-    // exit lands. (PR3: without them this session would legitimately discard
-    // as `.tooShort` on the zero-buffer branch of the duration gate, which is
-    // exactly what `shortDeadTapDiscardsAndNeverRebuilds` below pins.)
-    ctx.capture.deliverBuffer(frameCount: threshold, amplitude: 0)
-
-    ctx.wrapper.testKernel.externalCaptureStalled(
-      stallContext(ctx, failureMode: .allZeroFromStart))
-    await ctx.wrapper.drainUntilConcluded()
-
-    #expect(ctx.wrapper.testKernel.recordingOutcome == .failed(.zeroSignal))
-    #expect(ctx.wrapper.testKernel.zeroSignalFailureMode == .allZeroFromStart)
-    #expect(ctx.wrapper.testKernel.deliveredTranscript == nil)
-    // Heartpath 5b: the poisoned source is RETIRED exactly once (fenced signal-only
-    // path); the old eligibility-gated rebuild route is gone.
-    #expect(ctx.capture.retireCapturingSourceCallCount == 1)
-    #expect(ctx.capture.rebuildEngineCallCount == 0)
-  }
+  // MARK: - No-buffer stalls (the only capture stall that ends a take)
 
   @Test(
     "noBuffers with no audio received concludes noTransport (dead mic, not captureStall), NO rebuild"
@@ -160,91 +133,7 @@ struct ZeroSignalRecoveryTests {
     }
   }
 
-  @Test(
-    "a mid-capture zero-signal latched while Arming is honored over a stop before Live, not overwritten by discard/cancel (Codex code-diff P2)"
-  )
-  func armingZeroSignalWinsOverLaterStop() async {
-    // #1548 D2 first-wins: a `.becameZeroMidCapture` latches a recording exit while
-    // `beginCapturePhase` is suspended (parked at stabilization). A stop pressed
-    // BEFORE the forward path reaches Live must be FULLY inert — not even
-    // `detachedAdapterCancel()`, which would mark the adapter cancelled and drop a
-    // salvageable prefix (Codex r2). The exit is consumed at the post-establish
-    // checkpoint. (This harness cannot stage a pre-Live prefix — `beginCapturePhase`
-    // clears the fake's samples and pre-`beginSession` buffers are not counted — so
-    // we assert the exit is honored and the outcome is neither the stop's discard
-    // nor a `.cancelled` from a prematurely cancelled adapter.)
-    let ctx = makeContext()
-    ctx.capture.gateStabilizationCall = 1  // park the forward path in `.arming`
-    await ctx.wrapper.apply(.start)
-    await ctx.capture.awaitStabilizationGateReached()
-    #expect(ctx.wrapper.testKernel.state == .arming)
-
-    // Zero-signal latches a recording exit, THEN the user stops — both before Live.
-    ctx.wrapper.testKernel.externalCaptureStalled(
-      stallContext(ctx, failureMode: .becameZeroMidCapture))
-    await ctx.wrapper.apply(.stop)
-    ctx.capture.releaseStabilizationGate()
-    await ctx.wrapper.drainUntilConcluded()
-
-    // The zero-signal exit was consumed and processed (its failure mode is
-    // stamped), NOT overwritten by the later stop's discard or a cancelled adapter.
-    #expect(ctx.wrapper.testKernel.zeroSignalFailureMode == .becameZeroMidCapture)
-    #expect(ctx.wrapper.testKernel.recordingOutcome != .discarded(.releasedBeforeRecording))
-    #expect(ctx.wrapper.testKernel.recordingOutcome != .cancelled)
-  }
-
-  @Test(
-    "a zero-signal queued while still Arming preserves a non-nil recording duration (Codex r2 defect 4)"
-  )
-  func preLiveZeroSignalPreservesDuration() async {
-    // #1548 D2 §3.4: a `.becameZeroMidCapture` can fire while still `.arming` (a
-    // pre-roll signal during a suspended establish). It is queued via the
-    // recording-exit pending slot BEFORE `beginLiveRecording` stamps the
-    // recording-start date, so `deliverRecordingExit` cannot record the length.
-    // `awaitRecordingExit` stamps it on consume, after Live timing exists — so the
-    // duration must NOT be nil.
-    let ctx = makeContext()
-    ctx.capture.gateStabilizationCall = 1  // park the forward path in `.arming`
-    await ctx.wrapper.apply(.start)
-    await ctx.capture.awaitStabilizationGateReached()
-    #expect(ctx.wrapper.testKernel.state == .arming)
-
-    // Zero-signal arrives before Live — queued into the pending recording-exit slot.
-    ctx.wrapper.testKernel.externalCaptureStalled(
-      stallContext(ctx, failureMode: .becameZeroMidCapture))
-    ctx.capture.releaseStabilizationGate()
-    await ctx.wrapper.drainUntil(
-      { ctx.wrapper.testKernel.lastRecordingDurationSeconds != nil },
-      what: "recording duration stamped")
-
-    #expect(
-      ctx.wrapper.testKernel.lastRecordingDurationSeconds != nil,
-      "a pre-Live zero exit must still report a recording duration once Live timing exists")
-  }
-
-  // MARK: - Reactive exit: becameZeroMidCapture — normal-stop-path salvage
-
-  @Test("reactive becameZeroMidCapture completes normally, transcribing the captured prefix")
-  func reactiveBecameZeroMidCaptureSalvagesPrefix() async {
-    let ctx = makeContext()
-    await startToRecording(ctx)
-    ctx.capture.deliverBuffer(frameCount: 8_000, amplitude: 0.2)
-    ctx.vad.evidence = .voiced
-    ctx.vad.segments = [SpeechSegment(startSample: 0, endSample: 8_000)]
-
-    ctx.wrapper.testKernel.externalCaptureStalled(
-      stallContext(ctx, failureMode: .becameZeroMidCapture))
-    await ctx.wrapper.drainUntilConcluded()
-
-    #expect(ctx.wrapper.testKernel.recordingOutcome == .completed)
-    #expect(ctx.wrapper.testKernel.deliveredTranscript == "hello")
-    #expect(ctx.wrapper.testKernel.zeroSignalFailureMode == .becameZeroMidCapture)
-    // Heartpath 5b: the mic is RETIRED AND the user still keeps the words they said.
-    #expect(ctx.capture.retireCapturingSourceCallCount == 1)
-    #expect(ctx.capture.rebuildEngineCallCount == 0)
-  }
-
-  // MARK: - STOP-win: the detector never fired, classify at stop
+  // MARK: - STOP: the only zero-signal classifier (#4841)
 
   // MARK: - #3960 access turned off while recording
 
@@ -254,23 +143,6 @@ struct ZeroSignalRecoveryTests {
   /// passes), then reads denied by the time the take is judged: the zeros are
   /// the missing permission, so the user is told that, not to check hardware.
   /// The retire still runs; only the ending changes.
-  @Test("reactive allZeroFromStart with access now off ends permissionDenied, still one retire")
-  func reactiveAllZeroWithAccessOffEndsPermissionDenied() async {
-    let access = AccessBox()
-    let ctx = makeContext(microphonePermissionIsDenied: { access.denied })
-    await startToRecording(ctx)
-    ctx.capture.deliverBuffer(frameCount: threshold, amplitude: 0)
-    access.denied = true
-
-    ctx.wrapper.testKernel.externalCaptureStalled(
-      stallContext(ctx, failureMode: .allZeroFromStart))
-    await ctx.wrapper.drainUntilConcluded()
-
-    #expect(ctx.wrapper.testKernel.recordingOutcome == .failed(.permissionDenied))
-    #expect(ctx.wrapper.testKernel.deliveredTranscript == nil)
-    #expect(ctx.capture.retireCapturingSourceCallCount == 1)
-  }
-
   @Test("STOP-win all-zero with access now off ends permissionDenied")
   func stopWinAllZeroWithAccessOffEndsPermissionDenied() async {
     let access = AccessBox()
@@ -286,6 +158,7 @@ struct ZeroSignalRecoveryTests {
 
     #expect(ctx.wrapper.testKernel.recordingOutcome == .failed(.permissionDenied))
     #expect(ctx.wrapper.testKernel.zeroSignalFailureMode == .allZeroFromStart)
+    #expect(ctx.capture.retireCapturingSourceCallCount == 1)
   }
 
   @Test("STOP-win: an all-zero capture at stop classifies as zeroSignal, not ordinary no-speech")
@@ -311,7 +184,9 @@ struct ZeroSignalRecoveryTests {
     #expect(ctx.capture.rebuildEngineCallCount == 0)
   }
 
-  @Test("STOP-win: meaningful prefix then zero suffix at stop salvages and completes")
+  /// #4841: when this fails, a user who paused after speaking gets an
+  /// "interrupted" ending or a retired microphone instead of their words.
+  @Test("STOP: meaningful prefix then zero suffix completes with no stamp, telemetry or retire")
   func stopWinBecameZeroCompletesWithSalvage() async {
     let ctx = makeContext()
     await startToRecording(ctx)
@@ -328,9 +203,9 @@ struct ZeroSignalRecoveryTests {
 
     #expect(ctx.wrapper.testKernel.recordingOutcome == .completed)
     #expect(ctx.wrapper.testKernel.deliveredTranscript == "hello")
-    #expect(ctx.wrapper.testKernel.zeroSignalFailureMode == .becameZeroMidCapture)
-    #expect(ctx.wrapper.stopTimeZeroSignalTelemetryFired.count == 1)
-    #expect(ctx.capture.retireCapturingSourceCallCount == 1)
+    #expect(ctx.wrapper.testKernel.zeroSignalFailureMode == nil)
+    #expect(ctx.wrapper.stopTimeZeroSignalTelemetryFired.isEmpty)
+    #expect(ctx.capture.retireCapturingSourceCallCount == 0)
     #expect(ctx.capture.rebuildEngineCallCount == 0)
   }
 
@@ -362,28 +237,7 @@ struct ZeroSignalRecoveryTests {
 
     #expect(ctx.wrapper.testKernel.recordingOutcome == .completed)
     #expect(ctx.wrapper.testKernel.deliveredTranscript == "hello")
-    #expect(ctx.wrapper.testKernel.zeroSignalFailureMode == .becameZeroMidCapture)
-  }
-
-  @Test(
-    "reactive becameZeroMidCapture: a quiet prefix that would be diluted below the dead-air floor by the zero suffix is trimmed and survives"
-  )
-  func reactiveQuietPrefixSurvivesZeroSuffixDilution() async {
-    let ctx = makeContext()
-    await startToRecording(ctx)
-    ctx.capture.deliverBuffer(frameCount: threshold, amplitude: 0.0013)
-    ctx.capture.deliverBuffer(frameCount: threshold, amplitude: 0)
-    ctx.vad.evidence = .confirmedNoSpeech
-
-    ctx.wrapper.testKernel.externalCaptureStalled(
-      stallContext(ctx, failureMode: .becameZeroMidCapture))
-    await ctx.wrapper.drainUntilConcluded()
-
-    #expect(ctx.wrapper.testKernel.recordingOutcome == .completed)
-    #expect(ctx.wrapper.testKernel.deliveredTranscript == "hello")
-    #expect(ctx.wrapper.testKernel.zeroSignalFailureMode == .becameZeroMidCapture)
-    // The reactive win must still suppress STOP-time re-classification (§3.6 N4).
-    #expect(ctx.wrapper.stopTimeZeroSignalTelemetryFired.isEmpty)
+    #expect(ctx.wrapper.testKernel.zeroSignalFailureMode == nil)
   }
 
   @Test(
@@ -395,9 +249,8 @@ struct ZeroSignalRecoveryTests {
     ctx.capture.deliverBuffer(frameCount: 8_000, amplitude: 0.2)
     ctx.capture.deliverBuffer(frameCount: threshold, amplitude: 0)
     ctx.vad.evidence = .voiced
-    // An OPEN segment that never resolved to silence before the zero-signal
-    // detector fired — its end still references the ORIGINAL (pre-trim)
-    // full sample count (Grounded Review r1).
+    // An OPEN segment that never resolved to silence before the take ended —
+    // its end still references the ORIGINAL (pre-trim) full sample count.
     ctx.vad.segments = [SpeechSegment(startSample: 0, endSample: 8_000 + threshold)]
 
     // #1548 D1: commit the first buffer (Arming -> Live) before stopping;
@@ -418,9 +271,8 @@ struct ZeroSignalRecoveryTests {
   func stopWinFailsClosedWhenDeviceNotEligible() async {
     let ctx = makeContext(
       zeroSignalDecisionSnapshot: {
-        // #1578: "ineligible" is now a NAMED reason, not a bare false.
-        ZeroSignalDecisionSnapshot(
-          eligibility: .deviceMuted, currentRunWasClassifiedReactively: false)
+        // #1578: "ineligible" is a NAMED reason, not a bare false.
+        ZeroSignalDecisionSnapshot(eligibility: .deviceMuted)
       })
     await startToRecording(ctx)
     ctx.capture.deliverBuffer(frameCount: threshold, amplitude: 0)
@@ -467,34 +319,6 @@ struct ZeroSignalRecoveryTests {
     // The false-alarm guard that matters most: a healthy mic in a silent room
     // (tiny non-zero noise, never exact zero) must never be retired or rebuilt.
     #expect(ctx.capture.retireCapturingSourceCallCount == 0)
-    #expect(ctx.capture.rebuildEngineCallCount == 0)
-  }
-
-  // MARK: - Exactly one classified event (Set-dedup, §3.6 N4)
-
-  @Test("a reactive win before stop means STOP-time classification never re-submits")
-  func reactiveWinSuppressesStopTimeResubmission() async {
-    let ctx = makeContext()
-    await startToRecording(ctx)
-    // The reactive exit already stamped the side-channel; feed the SAME
-    // shape of samples so, if the STOP-time guard were missing, it would
-    // also confidently classify — proving the `telemetryState
-    // .zeroSignalFailureMode == nil` guard is what suppresses the second
-    // submission, not an accidental sample-shape mismatch.
-    ctx.capture.deliverBuffer(frameCount: threshold, amplitude: 0)
-    ctx.vad.evidence = .confirmedNoSpeech
-
-    ctx.wrapper.testKernel.externalCaptureStalled(
-      stallContext(ctx, failureMode: .allZeroFromStart))
-    await ctx.wrapper.drainUntilConcluded()
-
-    #expect(ctx.wrapper.testKernel.recordingOutcome == .failed(.zeroSignal))
-    // STOP-time telemetry never fires for a reactive win — the reactive
-    // path's own event rides the WedgeRecoveryRouter funnel instead (§3.6).
-    #expect(ctx.wrapper.stopTimeZeroSignalTelemetryFired.isEmpty)
-    // Both confirmation routes converge on ONE retire, so a session confirmed by
-    // BOTH (had the guard been missing) still retires exactly once, no rebuild.
-    #expect(ctx.capture.retireCapturingSourceCallCount == 1)
     #expect(ctx.capture.rebuildEngineCallCount == 0)
   }
 
@@ -613,9 +437,8 @@ struct ZeroSignalRecoveryTests {
   func deadMicTelemetryIneligibleAllZero() async {
     let ctx = makeContext(
       zeroSignalDecisionSnapshot: {
-        // #1578: "ineligible" is now a NAMED reason, not a bare false.
-        ZeroSignalDecisionSnapshot(
-          eligibility: .deviceMuted, currentRunWasClassifiedReactively: false)
+        // #1578: "ineligible" is a NAMED reason, not a bare false.
+        ZeroSignalDecisionSnapshot(eligibility: .deviceMuted)
       })
     await startToRecording(ctx)
     ctx.capture.deliverBuffer(frameCount: threshold, amplitude: 0)
@@ -677,24 +500,7 @@ struct ZeroSignalRecoveryTests {
     #expect(ctx.wrapper.deadMicRecoveries.first?.resolution == "later_retire")
   }
 
-  // MARK: - #1578 group 1: STOP snapshot cardinality
-  //
-  // STOP reads the snapshot ONCE and splits three ways. These four rows pin every
-  // reachable combination, and the two reactive-true rows matter most: whether the
-  // reactive forward was ACCEPTED (empty backlog) or REJECTED (a pending context)
-  // must make no difference to STOP. If it ever did, a rejected refusal would be
-  // emitted from the backlog AND re-emitted here.
-
-  private static func refusal(
-    _ sessionID: UInt64, _ reason: ZeroSignalEligibility = .deviceMuted,
-    _ transport: String = "usb", _ shape: CaptureStallFailureMode = .becameZeroMidCapture
-  ) -> ZeroSignalRefusalContext {
-    ZeroSignalRefusalContext(
-      sessionID: sessionID, reason: reason, transport: transport, failureShape: shape)
-  }
-
-  /// Collects everything the kernel hands the refusal sink, flattened in order.
-  // MARK: - #4154 — confirmed-bound USB takes at STOP
+  // MARK: - #4841 — the suffix rule on every route (widening #4154's USB rule)
 
   /// A speech prefix at least the conditioner's minimum length, so ASR input is
   /// never padded and its length shows whether the zero suffix was trimmed.
@@ -729,13 +535,21 @@ struct ZeroSignalRecoveryTests {
     await ctx.wrapper.drainUntilConcluded()
   }
 
-  /// When this fails, a USB-mic user who stops talking a second before releasing
-  /// the key sees a false "interrupted" notice and the next press opens cold.
-  @Test("USB: a qualifying zero suffix completes normally, trimmed, with no retire")
-  func usbSuffixCompletesNormallyWithoutRetire() async throws {
+  /// When this fails, a user who stops talking a second before releasing the key
+  /// sees a false "interrupted" notice and the next press opens cold (#4841: on
+  /// every route, not only a confirmed USB one).
+  @Test(
+    "every route: a qualifying zero suffix completes normally, trimmed, with no retire",
+    arguments: [
+      ("usb", "helper_reported"), ("built_in", "helper_reported"),
+      ("bluetooth", "helper_reported"), ("usb", "app_derived"), ("unknown", "app_derived"),
+    ]
+  )
+  func suffixCompletesNormallyWithoutRetire(effective: String, source: String) async throws {
     let ctx = makeContext()
     ctx.vad.evidence = .voiced  // no segments: ASR receives the whole buffer
-    try await runTake(ctx, route: Self.route("usb"), buffers: [(prefix, 0.2), (threshold, 0)])
+    try await runTake(
+      ctx, route: Self.route(effective, source: source), buffers: [(prefix, 0.2), (threshold, 0)])
 
     #expect(ctx.wrapper.testKernel.recordingOutcome == .completed)
     #expect(ctx.wrapper.testKernel.deliveredTranscript == "hello")
@@ -747,15 +561,29 @@ struct ZeroSignalRecoveryTests {
     #expect(asrInput.count == prefix, "the qualifying zero suffix is trimmed before ASR")
   }
 
-  /// The USB trim is sample-qualified: an ineligible device must not leave the
-  /// zero suffix in place, and the device snapshot is never consulted.
-  @Test("USB: the suffix trim does not need device eligibility, and eligibility is never read")
-  func usbSuffixTrimDoesNotRequireEligibility() async throws {
+  /// The streaming route gets the same trimmed buffer for its final rescue pass:
+  /// the trim sits on the capture result before the batch/streaming split.
+  @Test("streaming: a qualifying zero suffix is trimmed from the buffer handed to finalize")
+  func streamingSuffixIsTrimmedBeforeFinalize() async throws {
+    let ctx = makeContext(engineBehavior: .streamingSuccess(partials: ["hel"], final: "hello"))
+    ctx.vad.evidence = .voiced
+    try await runTake(ctx, route: Self.route("bluetooth"), buffers: [(prefix, 0.2), (threshold, 0)])
+
+    #expect(ctx.engine.lastStreamingRequested == true, "precondition: the streaming route ran")
+    #expect(ctx.wrapper.testKernel.recordingOutcome == .completed)
+    #expect(ctx.wrapper.testKernel.zeroSignalFailureMode == nil)
+    #expect(ctx.capture.retireCapturingSourceCallCount == 0)
+    #expect(try #require(ctx.engine.lastFinalizeBatchSamples).count == prefix)
+  }
+
+  /// The trim is sample-qualified: an ineligible device must not leave the zero
+  /// suffix in place, and the device snapshot is never consulted.
+  @Test("the suffix trim does not need device eligibility, and eligibility is never read")
+  func suffixTrimDoesNotRequireEligibility() async throws {
     var snapshotReads = 0
     let ctx = makeContext(zeroSignalDecisionSnapshot: {
       snapshotReads += 1
-      return ZeroSignalDecisionSnapshot(
-        eligibility: .deviceMuted, currentRunWasClassifiedReactively: false)
+      return ZeroSignalDecisionSnapshot(eligibility: .deviceMuted)
     })
     ctx.vad.evidence = .voiced  // no segments: ASR receives the whole buffer
     try await runTake(ctx, route: Self.route("usb"), buffers: [(prefix, 0.2), (threshold, 0)])
@@ -763,27 +591,6 @@ struct ZeroSignalRecoveryTests {
     #expect(ctx.wrapper.testKernel.recordingOutcome == .completed)
     #expect(snapshotReads == 0)
     #expect(ctx.capture.retireCapturingSourceCallCount == 0)
-    #expect(try #require(ctx.engine.lastFinalizeBatchSamples).count == prefix)
-  }
-
-  /// Controls: the same suffix on a non-USB route, or a USB guess the bound
-  /// source never confirmed, keeps today's stamp, trim and retire.
-  @Test(
-    "non-enrolled routes keep today's suffix outcome",
-    arguments: [
-      ("built_in", "helper_reported"), ("bluetooth", "helper_reported"), ("usb", "app_derived"),
-    ]
-  )
-  func nonEnrolledSuffixKeepsExistingOutcome(effective: String, source: String) async throws {
-    let ctx = makeContext()
-    ctx.vad.evidence = .voiced  // no segments: ASR receives the whole buffer
-    try await runTake(
-      ctx, route: Self.route(effective, source: source), buffers: [(prefix, 0.2), (threshold, 0)])
-
-    #expect(ctx.wrapper.testKernel.recordingOutcome == .completed)
-    #expect(ctx.wrapper.testKernel.zeroSignalFailureMode == .becameZeroMidCapture)
-    #expect(ctx.wrapper.stopTimeZeroSignalTelemetryFired.count == 1)
-    #expect(ctx.capture.retireCapturingSourceCallCount == 1)
     #expect(try #require(ctx.engine.lastFinalizeBatchSamples).count == prefix)
   }
 
@@ -816,8 +623,7 @@ struct ZeroSignalRecoveryTests {
     #expect(denied.capture.retireCapturingSourceCallCount == 1)
 
     let ineligible = makeContext(zeroSignalDecisionSnapshot: {
-      ZeroSignalDecisionSnapshot(
-        eligibility: .deviceMuted, currentRunWasClassifiedReactively: false)
+      ZeroSignalDecisionSnapshot(eligibility: .deviceMuted)
     })
     ineligible.vad.evidence = .confirmedNoSpeech
     try await runTake(ineligible, route: Self.route("usb"), buffers: [(threshold * 2, 0)])
@@ -839,14 +645,18 @@ struct ZeroSignalRecoveryTests {
     #expect(ctx.capture.retireCapturingSourceCallCount == 0)
   }
 
-  /// When this fails, a USB-mic user's quiet sentence with a long pause in the
-  /// middle is discarded as "no speech" (D-Q). The full take reaches ASR.
-  @Test("USB: quiet speech around a long interior pause reaches ASR")
-  func usbQuietInteriorPauseReachesASR() async throws {
+  /// When this fails, a user's quiet sentence with a long pause in the middle is
+  /// discarded as "no speech" (D-Q, every route since #4841). The full take
+  /// reaches ASR.
+  @Test(
+    "every route: quiet speech around a long interior pause reaches ASR",
+    arguments: [("usb", "helper_reported"), ("built_in", "helper_reported"), ("usb", "app_derived")]
+  )
+  func quietInteriorPauseReachesASR(effective: String, source: String) async throws {
     let ctx = makeContext()
     ctx.vad.evidence = .confirmedNoSpeech
     try await runTake(
-      ctx, route: Self.route("usb"),
+      ctx, route: Self.route(effective, source: source),
       buffers: [(threshold, 0.0013), (threshold * 5, 0), (threshold, 0.0013)])
 
     #expect(ctx.wrapper.testKernel.recordingOutcome == .completed)
@@ -870,23 +680,6 @@ struct ZeroSignalRecoveryTests {
     #expect(ctx.capture.retireCapturingSourceCallCount == 0)
   }
 
-  /// Controls for D-Q: the same quiet take on a non-enrolled route stays today's
-  /// no-speech verdict and never reaches ASR.
-  @Test(
-    "non-enrolled routes keep today's no-speech verdict for the quiet pause",
-    arguments: [("built_in", "helper_reported"), ("usb", "app_derived")]
-  )
-  func nonEnrolledQuietPauseStaysNoSpeech(effective: String, source: String) async throws {
-    let ctx = makeContext()
-    ctx.vad.evidence = .confirmedNoSpeech
-    try await runTake(
-      ctx, route: Self.route(effective, source: source),
-      buffers: [(threshold, 0.0013), (threshold * 5, 0), (threshold, 0.0013)])
-
-    #expect(ctx.wrapper.testKernel.recordingOutcome.kind == .noSpeech)
-    #expect(ctx.engine.finalizeCallCount == 0)
-  }
-
   /// D-Q admits the take; an empty decode then maps to the quiet no-speech
   /// outcome (#964 R2), not a failure. This pins the mapping only; it does not
   /// claim the engine always returns empty on non-speech.
@@ -902,7 +695,7 @@ struct ZeroSignalRecoveryTests {
     #expect(ctx.wrapper.testKernel.recordingOutcome == .noSpeech(.asrEmptyNoSpeech))
   }
 
-  /// The open-segment clamp still applies after the USB sample-qualified trim.
+  /// The open-segment clamp still applies after the sample-qualified trim.
   @Test("USB: an open VAD segment past the trim boundary is clamped")
   func usbQualifiedSuffixClampsVADSegments() async throws {
     let ctx = makeContext()
@@ -919,8 +712,8 @@ struct ZeroSignalRecoveryTests {
 
   // MARK: - #4154 chunk 4 — downstream checks on a USB take
 
-  /// VAD auto-stop and the hard cap now own the exit on a USB take that went
-  /// quiet (the zero run no longer wins first), and it completes normally.
+  /// VAD auto-stop and the hard cap own the exit on a take that went quiet (the
+  /// zero run never wins first), and it completes normally.
   @Test(
     "USB: VAD auto-stop and the cap own the exit and complete without a retire",
     arguments: ["vad_auto_stop", "max_duration"]
@@ -963,7 +756,7 @@ struct ZeroSignalRecoveryTests {
   }
 
   /// A genuine device removal on a USB take still carries its own cause, so the
-  /// completion disclosure says the microphone disconnected; the USB bypass only
+  /// completion disclosure says the microphone disconnected; the suffix rule only
   /// removes the zero-mode override, never a real interruption.
   @Test("USB: a real device removal keeps its cause and no zero-mode override")
   func usbDeviceRemovalKeepsItsCause() async throws {
@@ -975,8 +768,7 @@ struct ZeroSignalRecoveryTests {
     ctx.capture.deliverBuffer(frameCount: threshold, amplitude: 0)
     await ctx.wrapper.drainReadyWork()
     // The simulator has no app-side router for engine interruptions, so the
-    // test calls the kernel entry the router calls (as `externalCaptureStalled`
-    // is called elsewhere in this suite).
+    // test calls the kernel entry the router calls.
     ctx.wrapper.testKernel.externalEngineInterrupted(.deviceRemoved)
     await ctx.wrapper.drainUntilConcluded()
 
@@ -984,10 +776,10 @@ struct ZeroSignalRecoveryTests {
     #expect(ctx.wrapper.testKernel.zeroSignalFailureMode == nil)
   }
 
-  /// The legacy zombie fallback stays silent on a USB suffix completion (the
-  /// prefix has real energy), and the observation is live: an unclassified
-  /// whole-zero take on a refused non-USB device still emits it.
-  @Test("USB: a suffix completion emits no zombie fallback; a refused whole-zero take does")
+  /// The legacy zombie fallback stays silent on a suffix completion (the prefix
+  /// has real energy), and the observation is live: an unclassified whole-zero
+  /// take on a refused device still emits it.
+  @Test("a suffix completion emits no zombie fallback; a refused whole-zero take does")
   func usbSuffixEmitsNoZombieFallback() async throws {
     let usb = makeContext()
     usb.vad.evidence = .voiced
@@ -996,8 +788,7 @@ struct ZeroSignalRecoveryTests {
     #expect(usb.wrapper.zombieZeroPeaks.isEmpty)
 
     let control = makeContext(zeroSignalDecisionSnapshot: {
-      ZeroSignalDecisionSnapshot(
-        eligibility: .deviceMuted, currentRunWasClassifiedReactively: false)
+      ZeroSignalDecisionSnapshot(eligibility: .deviceMuted)
     })
     control.vad.evidence = .confirmedNoSpeech
     try await runTake(
@@ -1028,49 +819,12 @@ struct ZeroSignalRecoveryTests {
     await ctx.wrapper.drainUntilConcluded()
   }
 
-  @Test("#1578 STOP: a run already classified reactively and ACCEPTED adds nothing")
-  func stopAddsNothingWhenReactivelyClassifiedAndAccepted() async {
-    let log = RefusalSinkLog()
-    let ctx = makeRefusalContext(
-      snapshot: {
-        ZeroSignalDecisionSnapshot(
-          eligibility: .deviceMuted, currentRunWasClassifiedReactively: true)
-      }, log: log)
-    // Accepted forward ⇒ nothing left pending.
-    ctx.capture.stubbedPendingZeroSignalRefusals = []
-
-    await driveZeroSignalStop(ctx)
-
-    #expect(log.flattened.isEmpty, "STOP re-emitted a run the reactive path already owned")
-    #expect(ctx.wrapper.stopTimeZeroSignalTelemetryFired.isEmpty)
-  }
-
-  @Test("#1578 STOP: a run classified reactively but REJECTED emits only from the backlog")
-  func stopEmitsOnlyBacklogWhenReactivelyClassifiedAndRejected() async {
-    let log = RefusalSinkLog()
-    let ctx = makeRefusalContext(
-      snapshot: {
-        ZeroSignalDecisionSnapshot(
-          eligibility: .deviceMuted, currentRunWasClassifiedReactively: true)
-      }, log: log)
-    ctx.capture.stubbedPendingZeroSignalRefusals = [Self.refusal(1)]
-
-    await driveZeroSignalStop(ctx)
-
-    // Exactly one — the drained one. STOP must not add a second for the same run,
-    // which is why forwarding success never controls suppression.
-    #expect(log.flattened.count == 1)
-    #expect(log.flattened.first == Self.refusal(1))
-    #expect(ctx.wrapper.stopTimeZeroSignalTelemetryFired.isEmpty)
-  }
-
-  @Test("#1578 STOP: an unclassified ELIGIBLE run keeps today's stall behaviour exactly")
+  @Test("#1578 STOP: an ELIGIBLE whole-zero take keeps today's stall behaviour exactly")
   func stopEligibleUnclassifiedPreservesStallPath() async {
     let log = RefusalSinkLog()
     let ctx = makeRefusalContext(
       snapshot: {
-        ZeroSignalDecisionSnapshot(
-          eligibility: .eligible, currentRunWasClassifiedReactively: false)
+        ZeroSignalDecisionSnapshot(eligibility: .eligible)
       }, log: log)
 
     await driveZeroSignalStop(ctx)
@@ -1080,13 +834,12 @@ struct ZeroSignalRecoveryTests {
     #expect(log.flattened.isEmpty, "an eligible run must produce no refusal")
   }
 
-  @Test("#1578 STOP: an unclassified NON-ELIGIBLE run emits one refusal and no stall")
+  @Test("#1578 STOP: a NON-ELIGIBLE whole-zero take emits one refusal and no stall")
   func stopNonEligibleUnclassifiedEmitsOneRefusal() async {
     let log = RefusalSinkLog()
     let ctx = makeRefusalContext(
       snapshot: {
-        ZeroSignalDecisionSnapshot(
-          eligibility: .notAlive, currentRunWasClassifiedReactively: false)
+        ZeroSignalDecisionSnapshot(eligibility: .notAlive)
       }, log: log)
 
     await driveZeroSignalStop(ctx)
@@ -1099,216 +852,38 @@ struct ZeroSignalRecoveryTests {
     #expect(ctx.wrapper.stopTimeZeroSignalTelemetryFired.isEmpty)
   }
 
-  // MARK: - #1578 group 2: terminal × backlog cross-product
-  //
-  // Three terminals reach a drain point, each with an empty and a non-empty
-  // backlog. The non-empty cells use TWO distinct contexts so order and
-  // completeness are observable, not just "something arrived".
-
-  private static let twoPending: [ZeroSignalRefusalContext] = [
-    refusal(7, .deviceMuted, "usb", .becameZeroMidCapture),
-    refusal(7, .notAlive, "bluetooth", .allZeroFromStart),
-  ]
-
-  private func assertDrainedExactlyOnce(_ ctx: Context, _ log: RefusalSinkLog) {
-    #expect(log.flattened == Self.twoPending, "contexts lost, reordered, or duplicated")
-    #expect(
-      ctx.capture.stubbedPendingZeroSignalRefusals.isEmpty,
-      "the backlog was not cleared by the take")
-  }
-
-  @Test("#1578 terminal: normal STOP drains a non-empty backlog exactly once, in order")
-  func normalStopDrainsBacklogInOrder() async {
-    let log = RefusalSinkLog()
-    let ctx = makeRefusalContext(
-      snapshot: {
-        ZeroSignalDecisionSnapshot(
-          eligibility: .eligible, currentRunWasClassifiedReactively: true)
-      }, log: log)
-    ctx.capture.stubbedPendingZeroSignalRefusals = Self.twoPending
-
-    await startToRecording(ctx)
-    ctx.capture.deliverBuffer(frameCount: threshold, amplitude: 0.5)
-    await ctx.wrapper.apply(.stop)
-    await ctx.wrapper.drainUntilConcluded()
-
-    assertDrainedExactlyOnce(ctx, log)
-  }
-
-  @Test("#1578 terminal: normal STOP with an empty backlog emits nothing")
-  func normalStopEmptyBacklogEmitsNothing() async {
-    let log = RefusalSinkLog()
-    let ctx = makeRefusalContext(
-      snapshot: {
-        ZeroSignalDecisionSnapshot(
-          eligibility: .eligible, currentRunWasClassifiedReactively: true)
-      }, log: log)
-
-    await startToRecording(ctx)
-    ctx.capture.deliverBuffer(frameCount: threshold, amplitude: 0.5)
-    await ctx.wrapper.apply(.stop)
-    await ctx.wrapper.drainUntilConcluded()
-
-    // The paired control: without it, a sink that fired unconditionally would
-    // satisfy every positive cell above.
-    #expect(log.batches.isEmpty)
-  }
-
-  @Test("#1578 terminal: cancel drains a non-empty backlog exactly once, in order")
-  func cancelDrainsBacklogInOrder() async {
-    let log = RefusalSinkLog()
-    let ctx = makeRefusalContext(
-      snapshot: {
-        ZeroSignalDecisionSnapshot(
-          eligibility: .eligible, currentRunWasClassifiedReactively: true)
-      }, log: log)
-    ctx.capture.stubbedPendingZeroSignalRefusals = Self.twoPending
-
-    await startToRecording(ctx)
-    ctx.capture.deliverBuffer(frameCount: threshold, amplitude: 0.5)
-    await ctx.wrapper.apply(.cancel)
-    await ctx.wrapper.drainUntilConcluded()
-
-    assertDrainedExactlyOnce(ctx, log)
-  }
-
-  @Test("#1578 terminal: cancel with an empty backlog emits nothing")
-  func cancelEmptyBacklogEmitsNothing() async {
-    let log = RefusalSinkLog()
-    let ctx = makeRefusalContext(
-      snapshot: {
-        ZeroSignalDecisionSnapshot(
-          eligibility: .eligible, currentRunWasClassifiedReactively: true)
-      }, log: log)
-
-    await startToRecording(ctx)
-    ctx.capture.deliverBuffer(frameCount: threshold, amplitude: 0.5)
-    await ctx.wrapper.apply(.cancel)
-    await ctx.wrapper.drainUntilConcluded()
-
-    #expect(log.batches.isEmpty)
-  }
-
-  @Test("#1578 terminal: a recoverable device-removed interruption drains the backlog")
-  func deviceRemovedInterruptionDrainsBacklog() async {
-    let log = RefusalSinkLog()
-    let ctx = makeRefusalContext(
-      snapshot: {
-        ZeroSignalDecisionSnapshot(
-          eligibility: .eligible, currentRunWasClassifiedReactively: true)
-      }, log: log)
-    ctx.capture.stubbedPendingZeroSignalRefusals = Self.twoPending
-
-    await startToRecording(ctx)
-    ctx.capture.deliverBuffer(frameCount: threshold, amplitude: 0.5)
-    // Both current causes are RECOVERABLE, so both fall through the normal stop
-    // tail rather than a direct terminal — that is the #1408 salvage design, and
-    // it is why the normal-STOP drain point covers interruption too.
-    ctx.wrapper.testKernel.externalEngineInterrupted(.deviceRemoved)
-    await ctx.wrapper.drainUntilConcluded()
-
-    assertDrainedExactlyOnce(ctx, log)
-  }
-
-  @Test("#1578 terminal: a recoverable engine-lost interruption with an empty backlog is silent")
-  func engineLostInterruptionEmptyBacklogEmitsNothing() async {
-    let log = RefusalSinkLog()
-    let ctx = makeRefusalContext(
-      snapshot: {
-        ZeroSignalDecisionSnapshot(
-          eligibility: .eligible, currentRunWasClassifiedReactively: true)
-      }, log: log)
-
-    await startToRecording(ctx)
-    ctx.capture.deliverBuffer(frameCount: threshold, amplitude: 0.5)
-    ctx.wrapper.testKernel.externalEngineInterrupted(.engineLost)
-    await ctx.wrapper.drainUntilConcluded()
-
-    #expect(log.batches.isEmpty)
-  }
-
-  // MARK: - #1578 group 3: cancel landing while STOP is suspended
-  //
-  // THE hardest case in the plan, and the reason the drain sits BEFORE the await.
-  // Normal STOP claims the backlog, then suspends inside `stopCapture()`. A cancel
-  // concludes the session and drains again — finding nothing, because the take was
-  // atomic. A new session then starts and queues its OWN context. When the stale
-  // continuation finally resumes it must consume none of it.
-
-  @Test("#1578 interleaving: a cancel during a suspended STOP double-drains nothing")
-  func cancelDuringSuspendedStopConsumesNothingTwice() async {
-    let log = RefusalSinkLog()
-    let ctx = makeRefusalContext(
-      snapshot: {
-        ZeroSignalDecisionSnapshot(
-          eligibility: .eligible, currentRunWasClassifiedReactively: true)
-      }, log: log)
-    ctx.capture.stubbedPendingZeroSignalRefusals = Self.twoPending
-    ctx.capture.gateStopCaptureCall = 1  // park the first stop
-
-    await startToRecording(ctx)
-    ctx.capture.deliverBuffer(frameCount: threshold, amplitude: 0.5)
-    await ctx.wrapper.apply(.stop)
-    // Signal-based, never a sleep: resume only once the stop has genuinely parked.
-    await ctx.capture.awaitStopCaptureGateReached()
-
-    // The drain ran BEFORE the suspension, so the old contexts are already out.
-    #expect(log.flattened == Self.twoPending)
-    #expect(ctx.capture.stubbedPendingZeroSignalRefusals.isEmpty)
-    #expect(ctx.capture.takePendingZeroSignalRefusalsCallCount == 1)
-
-    // The cancel concludes while the stop is still suspended. Its second drain
-    // genuinely runs but atomically finds nothing — the take counter is what
-    // distinguishes "ran and found nothing" from "never ran at all".
-    await ctx.wrapper.apply(.cancel)
-    #expect(ctx.wrapper.testKernel.state == .idle)
-    #expect(log.flattened == Self.twoPending, "the cancel duplicated an already-drained context")
-    #expect(ctx.capture.takePendingZeroSignalRefusalsCallCount == 2)
-
-    // Start a GENUINELY new session while the old STOP continuation is parked.
-    // Inserting a context without starting one would model a window production
-    // never reaches, and would not exercise the stale continuation's fence.
-    await startToRecording(ctx)
-    #expect(ctx.wrapper.testKernel.state == .live)
-
-    let newSessionContext = Self.refusal(
-      ctx.capture.currentCaptureSessionID,
-      .identityMismatch,
-      "built_in",
-      .allZeroFromStart)
-    ctx.capture.stubbedPendingZeroSignalRefusals = [newSessionContext]
-
-    ctx.capture.releaseStopCaptureGate()
-    await ctx.wrapper.drainReadyWork()
-
-    // The stale continuation returned through its session fence without taking
-    // anything owned by the new session.
-    #expect(
-      log.flattened == Self.twoPending,
-      "a stale STOP continuation consumed a later session's refusal")
-    #expect(ctx.capture.stubbedPendingZeroSignalRefusals == [newSessionContext])
-    #expect(ctx.capture.takePendingZeroSignalRefusalsCallCount == 2)
-
-    // Clean up the new session and prove its OWN terminal is the consumer.
-    await ctx.wrapper.apply(.cancel)
-    await ctx.wrapper.drainUntilConcluded()
-    #expect(ctx.capture.takePendingZeroSignalRefusalsCallCount == 3)
-    #expect(log.flattened == Self.twoPending + [newSessionContext])
-  }
-
   // MARK: - #1578 group 4: refusal and retire CO-FIRE
   //
   // These are not mutually exclusive, and a test asserting exclusivity would
   // enforce a contract the code does not have. A refused FINAL run legitimately
   // produces both.
 
+  /// #4841: a speech-then-zero take on a refused device emits neither a refusal
+  /// nor a retire — the suffix is not a zero-signal shape any more.
+  @Test("#4841: a refused device's suffix take emits no refusal and no retire")
+  func refusedSuffixTakeEmitsNothing() async {
+    let log = RefusalSinkLog()
+    let ctx = makeRefusalContext(
+      snapshot: { ZeroSignalDecisionSnapshot(eligibility: .deviceMuted) }, log: log)
+    await startToRecording(ctx)
+    ctx.capture.deliverBuffer(frameCount: 8_000, amplitude: 0.2)
+    ctx.capture.deliverBuffer(frameCount: threshold, amplitude: 0)
+    ctx.vad.evidence = .voiced
+    await ctx.wrapper.drainReadyWork()
+    await ctx.wrapper.apply(.stop)
+    await ctx.wrapper.drainUntilConcluded()
+
+    #expect(ctx.wrapper.testKernel.recordingOutcome == .completed)
+    #expect(log.flattened.isEmpty)
+    #expect(ctx.wrapper.deadMicRetireAttempts.isEmpty)
+  }
+
   @Test("#1578 co-fire: a refused FINAL run emits one refusal AND one refused retire")
   func refusedFinalRunCoFiresRefusalAndRetire() async {
     let log = RefusalSinkLog()
     let ctx = makeRefusalContext(
       snapshot: {
-        ZeroSignalDecisionSnapshot(
-          eligibility: .deviceMuted, currentRunWasClassifiedReactively: false)
+        ZeroSignalDecisionSnapshot(eligibility: .deviceMuted)
       }, log: log)
 
     await driveZeroSignalStop(ctx)
@@ -1326,8 +901,7 @@ struct ZeroSignalRecoveryTests {
     let log = RefusalSinkLog()
     let ctx = makeRefusalContext(
       snapshot: {
-        ZeroSignalDecisionSnapshot(
-          eligibility: .eligible, currentRunWasClassifiedReactively: false)
+        ZeroSignalDecisionSnapshot(eligibility: .eligible)
       }, log: log)
 
     await driveZeroSignalStop(ctx)
@@ -1335,27 +909,5 @@ struct ZeroSignalRecoveryTests {
     #expect(log.flattened.isEmpty)
     #expect(ctx.wrapper.deadMicRetireAttempts.count == 1)
     #expect(ctx.wrapper.deadMicRetireAttempts.first?.healthGuessRefused == false)
-  }
-
-  @Test("#1578 co-fire: a refused RECOVERED run emits its refusal and no retire")
-  func refusedRecoveredRunEmitsRefusalWithoutRetire() async {
-    let log = RefusalSinkLog()
-    let ctx = makeRefusalContext(
-      snapshot: {
-        ZeroSignalDecisionSnapshot(
-          eligibility: .eligible, currentRunWasClassifiedReactively: true)
-      }, log: log)
-    // The refusal happened earlier in the take and was rejected; the microphone
-    // then recovered, so the take ends with real audio and never retires.
-    ctx.capture.stubbedPendingZeroSignalRefusals = [Self.refusal(3, .muteUnverified)]
-
-    await startToRecording(ctx)
-    ctx.capture.deliverBuffer(frameCount: threshold, amplitude: 0.5)
-    await ctx.wrapper.apply(.stop)
-    await ctx.wrapper.drainUntilConcluded()
-
-    #expect(log.flattened.count == 1)
-    #expect(log.flattened.first?.reason == .muteUnverified)
-    #expect(ctx.wrapper.deadMicRetireAttempts.isEmpty, "a recovered take must not retire")
   }
 }

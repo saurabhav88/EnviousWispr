@@ -59,12 +59,17 @@ struct RecordingTransactionTests {
     try check(r.reduce(.lockStateChanged(true)), "locking")
     // 3. lock off
     try check(r.reduce(.lockStateChanged(false)), "unlocking")
-    // 4. in-panel notice arriving
+    // 4. in-panel notice arriving (a TIMED one: #4841 lets only a timed notice
+    // expire, so a late timer can never clear a persistent replacement)
     try check(
-      r.reduce(.inPanelNotice(.approachingCap, dismissAfter: nil)), "an in-panel notice")
+      r.reduce(.inPanelNotice(.autoStopUnavailable, dismissAfter: 4.0)), "an in-panel notice")
     // 5. that notice clearing
     let id = try #require(r.state.current?.id)
     try check(r.reduce(.inPanelNoticeExpiryFired(id)), "an in-panel notice clearing")
+    // #4841: a persistent silence notice arriving and clearing by kind
+    try check(
+      r.reduce(.inPanelNotice(.micSilent(.calm), dismissAfter: nil)), "a silence notice")
+    try check(r.reduce(.clearInPanelNotice(.micSilent)), "a silence notice clearing by kind")
   }
 
   /// The morph path reads NOTHING: no capability, no selections, no position. It

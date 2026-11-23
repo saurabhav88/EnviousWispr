@@ -1,0 +1,11 @@
+{
+  "language": "en",
+  "words": [
+    "no audio alert",
+    "silent mic warning"
+  ],
+  "phrases": [
+    "how do i get a warning if no sound comes through while dictating?",
+    "turn off the warning when my mic isn't picking up sound"
+  ]
+}

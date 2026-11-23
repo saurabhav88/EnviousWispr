@@ -203,8 +203,11 @@ struct RecordingDirectorCaptureTests {
       counts.displayReads == (capabilityHasWords ? 1 : 0),
       "a pill that cannot hold words was still reading the live preview")
     #expect(
-      host.resizes == (capabilityHasWords ? [CGSize(width: 400, height: 123)] : []),
-      "preview growth did not follow the captured design")
+      // #4841: both designs grow (words or a notice bubble), each at its own
+      // captured width.
+      host.resizes
+        == [CGSize(width: capabilityHasWords ? 400 : 185, height: 123)],
+      "growth did not follow the captured design")
   }
 
   /// **The discriminating pairing: a with-words DESIGN under a without-words
@@ -282,7 +285,10 @@ struct RecordingDirectorCaptureTests {
     frame?.onContentHeightChange(123)
 
     #expect(counts.displayReads == 0, "the live provider was read for a pill that shows no words")
-    #expect(host.resizes.isEmpty, "a pill that cannot grow asked its window to resize")
+    // #4841: the height still reaches the window, so a notice bubble can grow it.
+    #expect(
+      host.resizes == [CGSize(width: 185, height: 123)],
+      "a wordless design's height never reached its window")
   }
 
   /// Publish a recording for `design` and hand back the frame the root would be
@@ -301,7 +307,7 @@ struct RecordingDirectorCaptureTests {
         content: .recording(audioLevel: 0, isLocked: false, notice: nil, design: design),
         expiry: .untilReplaced,
         requestedWidth: .fixed(design.width),
-        reservesFixedHeight: design.reservedHeight))
+        reservesFixedHeight: nil))
     return model.state.recording
   }
 

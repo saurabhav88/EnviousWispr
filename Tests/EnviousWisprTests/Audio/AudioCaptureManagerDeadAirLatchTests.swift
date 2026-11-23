@@ -4,372 +4,73 @@ import Testing
 
 @testable import EnviousWisprAudio
 
-// MARK: - #1317 / #1543 / #1578 — reactive dead-air refusal state
+// MARK: - #4841 — exact zeros never end a take
 //
 // The manager feeds authoritative captured samples into a
-// `DeadAirStreamingDetector` on the MainActor through `ingestSamples`. When an
-// all-zero run crosses the confidence threshold and the frozen-device
-// discriminator returns any non-eligible reason, the manager records that
-// categorical reason and attempts one forward for the run. The current-run
-// reason and reactive-classification flag clear when a non-zero sample breaks
-// the run; rejected contexts remain in the per-session backlog. The detector's
-// tile and zero-run math is covered by `DeadAirStreamingDetectorTests`; this
-// suite pins the manager's refusal, reset, forwarding, and backlog wiring.
+// `DeadAirStreamingDetector` on the MainActor through `ingestSamples`. Since
+// #4841 that detector only observes: no exact-zero run, at the start or mid-take,
+// on any transport, raises a capture stall. The silent-mic notice reads
+// `exactZeroRun`; STOP classifies the whole buffer. The counter math is covered by
+// `DeadAirStreamingDetectorTests`; this suite pins the manager wiring.
 @MainActor
-@Suite("AudioCaptureManager dead-air refusal reason (#1317/#1543/#1578)")
+@Suite("AudioCaptureManager exact zeros never end a take (#4841)")
 struct AudioCaptureManagerDeadAirLatchTests {
 
   /// A manager armed to ingest without real hardware. No `startEnginePhase`, so
-  /// the frozen discriminator device is `nil` — which the classifier owns as
-  /// `.boundDeviceUnavailable`, driving the fail-closed refusal path.
+  /// the frozen discriminator device is `nil`.
   private func armedManager() -> AudioCaptureManager {
     let manager = AudioCaptureManager()
     manager.isCapturing = true  // internal(set): arm ingest without hardware
     return manager
   }
 
-  @Test("a non-zero sample breaks the trailing zero-run and clears the refusal reason")
-  func nonZeroClearsTheCompatibilityView() {
+  private static func zeros(_ n: Int) -> [Float] { [Float](repeating: 0, count: n) }
+
+  @Test("a long all-zero start raises no stall and keeps every sample")
+  func allZeroStartRaisesNoStall() {
     let manager = armedManager()
-    manager.ingestSamples(
-      [Float](repeating: 0, count: AudioConstants.minimumTranscriptionSamples), level: 0)
-    #expect(manager.zeroSignalRefusalReason != nil, "precondition: refused")
+    var stalls: [CaptureStallContext] = []
+    manager.onCaptureStalled = { stalls.append($0) }
 
-    // The refused-then-recovered negative: real audio breaks the trailing
-    // zero-run, so the earlier refusal must no longer stick.
-    manager.ingestSamples([0.5], level: 0.5)
-    #expect(manager.zeroSignalRefusalReason == nil)
+    manager.ingestSamples(Self.zeros(160_000), level: 0)
+
+    #expect(stalls.isEmpty, "10 s of exact zeros must not end the take")
+    #expect(manager.isCapturing)
+    #expect(manager.capturedSamples.count == 160_000)
+    #expect(manager.exactZeroRun == ExactZeroRun(sampleCount: 160_000, sinceTakeStart: true))
   }
 
-  // MARK: - #1578 — the refusal carries a reason, and is counted exactly once
-
-  private static func zeros(_ n: Int = AudioConstants.minimumTranscriptionSamples) -> [Float] {
-    [Float](repeating: 0, count: n)
-  }
-
-  /// Enough real signal for `meaningfulSignalSeen` to latch, which is what turns
-  /// a following zero run into `.becameZeroMidCapture` rather than
-  /// `.allZeroFromStart`.
-  private static func loud(_ n: Int = 8_000) -> [Float] {
-    [Float](repeating: 0.5, count: n)
-  }
-
-  @Test("an ineligible zero run records WHY, not just THAT")
-  func refusalRecordsTheReason() {
+  @Test("speech, a long silent pause, then speech: no stall, every sample captured")
+  func pauseAndResumeRaisesNoStall() {
     let manager = armedManager()
-    #expect(manager.zeroSignalRefusalReason == nil)
-    #expect(!manager.zeroSignalRunWasClassifiedReactively)
-    #expect(manager.zeroSignalRefusalReason == nil)
+    var stalls: [CaptureStallContext] = []
+    manager.onCaptureStalled = { stalls.append($0) }
 
-    manager.ingestSamples(Self.zeros(), level: 0)
+    manager.ingestSamples([Float](repeating: 0.5, count: 8_000), level: 0.5)
+    manager.ingestSamples(Self.zeros(96_000), level: 0)
+    #expect(manager.exactZeroRun == ExactZeroRun(sampleCount: 96_000, sinceTakeStart: false))
+    manager.ingestSamples([Float](repeating: 0.25, count: 8_000), level: 0.25)
 
-    // No `startEnginePhase`, so no frozen bind — the classifier owns that
-    // outcome, and the manager must report it rather than a generic refusal.
-    #expect(manager.zeroSignalRefusalReason == .boundDeviceUnavailable)
-    #expect(manager.zeroSignalRunWasClassifiedReactively)
+    #expect(stalls.isEmpty)
+    #expect(manager.capturedSamples.count == 112_000)
+    #expect(manager.capturedSamples.last == 0.25, "the resumed speech reached capture")
+    #expect(manager.exactZeroRun == ExactZeroRun(sampleCount: 0, sinceTakeStart: false))
   }
-
-  @Test("meaningful signal records no reason, attempts no forward, adds no backlog")
-  func healthySignalRecordsNothing() {
-    let manager = armedManager()
-    var attempts = 0
-    manager.onZeroSignalRefused = { _ in
-      attempts += 1
-      return true
-    }
-
-    manager.ingestSamples(Self.loud(AudioConstants.minimumTranscriptionSamples), level: 0.5)
-
-    // The paired negative control for every positive below: without it, a
-    // manager that refused unconditionally would satisfy all of them.
-    #expect(manager.zeroSignalRefusalReason == nil)
-    #expect(!manager.zeroSignalRunWasClassifiedReactively)
-    #expect(attempts == 0)
-    #expect(manager.takePendingZeroSignalRefusals().isEmpty)
-    #expect(manager.zeroSignalRefusalReason == nil)
-  }
-
-  @Test("a zero run spanning many batches forwards exactly once")
-  func multiBatchRunForwardsOnce() {
-    let manager = armedManager()
-    var attempts = 0
-    manager.onZeroSignalRefused = { _ in
-      attempts += 1
-      return true
-    }
-
-    // First batch crosses the candidate threshold; the next three stay inside
-    // the SAME uninterrupted zero run and must be silent.
-    manager.ingestSamples(Self.zeros(), level: 0)
-    manager.ingestSamples(Self.zeros(4_000), level: 0)
-    manager.ingestSamples(Self.zeros(4_000), level: 0)
-    manager.ingestSamples(Self.zeros(4_000), level: 0)
-
-    #expect(attempts == 1)
-    #expect(manager.takePendingZeroSignalRefusals().isEmpty)
-  }
-
-  @Test("an accepted forward leaves the backlog empty; a rejected one holds exactly one")
-  func acceptedVersusRejectedForward() {
-    let accepted = armedManager()
-    accepted.onZeroSignalRefused = { _ in true }
-    accepted.ingestSamples(Self.zeros(), level: 0)
-    #expect(accepted.takePendingZeroSignalRefusals().isEmpty)
-
-    let rejected = armedManager()
-    rejected.onZeroSignalRefused = { _ in false }
-    rejected.ingestSamples(Self.zeros(), level: 0)
-    #expect(rejected.takePendingZeroSignalRefusals().count == 1)
-
-    // No subscriber at all is the same answer as an explicit refusal: not
-    // delivered. This is the state production is in until the route is wired.
-    let unsubscribed = armedManager()
-    unsubscribed.ingestSamples(Self.zeros(), level: 0)
-    #expect(unsubscribed.takePendingZeroSignalRefusals().count == 1)
-  }
-
-  @Test("both an accepted and a rejected forward mark the run classified")
-  func bothOutcomesMarkTheRunClassified() {
-    // Forwarding success must never be what suppresses STOP-time
-    // reclassification — otherwise a rejected refusal would be emitted from the
-    // backlog AND re-emitted by STOP.
-    let accepted = armedManager()
-    accepted.onZeroSignalRefused = { _ in true }
-    accepted.ingestSamples(Self.zeros(), level: 0)
-    #expect(accepted.zeroSignalRunWasClassifiedReactively)
-
-    let rejected = armedManager()
-    rejected.onZeroSignalRefused = { _ in false }
-    rejected.ingestSamples(Self.zeros(), level: 0)
-    #expect(rejected.zeroSignalRunWasClassifiedReactively)
-  }
-
-  @Test("recovery clears the current run but never the rejected backlog")
-  func recoveryClearsRunStateAndKeepsBacklog() {
-    let manager = armedManager()
-    manager.ingestSamples(Self.zeros(), level: 0)
-    #expect(manager.zeroSignalRefusalReason != nil, "precondition: refused")
-    #expect(manager.zeroSignalRefusalReason != nil, "precondition: refused")
-
-    manager.ingestSamples(Self.loud(), level: 0.5)
-
-    // Current-run facts are gone, so the next run gets its own forward…
-    #expect(manager.zeroSignalRefusalReason == nil)
-    #expect(manager.zeroSignalRefusalReason == nil)
-    #expect(!manager.zeroSignalRunWasClassifiedReactively)
-    // …but the refusal that already happened is NOT undone by the microphone
-    // coming back. This is the case that produces nothing at all today.
-    #expect(manager.takePendingZeroSignalRefusals().count == 1)
-  }
-
-  @Test("an accepted refusal that recovers clears run state and leaves no backlog")
-  func acceptedRecoveredRunClearsWithoutBacklog() {
-    // The fourth cell of accepted/rejected × final/recovered. Without it, a
-    // recovery that wrongly re-forwarded an already-delivered refusal would go
-    // unnoticed, because the other three cells never re-run the callback.
-    let manager = armedManager()
-    var attempts = 0
-    manager.onZeroSignalRefused = { _ in
-      attempts += 1
-      return true
-    }
-
-    manager.ingestSamples(Self.zeros(), level: 0)
-    #expect(attempts == 1)
-    #expect(manager.zeroSignalRefusalReason != nil)
-    #expect(manager.zeroSignalRunWasClassifiedReactively)
-
-    manager.ingestSamples(Self.loud(), level: 0.5)
-
-    #expect(attempts == 1)
-    #expect(manager.zeroSignalRefusalReason == nil)
-    #expect(!manager.zeroSignalRunWasClassifiedReactively)
-    #expect(manager.takePendingZeroSignalRefusals().isEmpty)
-  }
-
-  @Test("two rejected runs in one take keep both contexts, in order, with their own shapes")
-  func twoRejectedRunsPreserveOrderAndShape() {
-    let manager = armedManager()
-
-    // Run 1: silent from the very first sample.
-    manager.ingestSamples(Self.zeros(), level: 0)
-    // Recovery: real audio breaks the run and re-arms classification.
-    manager.ingestSamples(Self.loud(), level: 0.5)
-    // Run 2: silence AFTER real speech — a different failure shape entirely.
-    manager.ingestSamples(Self.zeros(), level: 0)
-
-    let pending = manager.takePendingZeroSignalRefusals()
-    #expect(pending.count == 2)
-    #expect(pending.first?.failureShape == .allZeroFromStart)
-    #expect(pending.last?.failureShape == .becameZeroMidCapture)
-    // Both describe the same session and the same absent bind.
-    #expect(pending.allSatisfy { $0.reason == .boundDeviceUnavailable })
-    #expect(pending.allSatisfy { $0.sessionID == manager.currentCaptureSessionID })
-  }
-
-  @Test("the context carries session, reason, transport and shape from the shipped authorities")
-  func contextPayloadUsesExistingAuthorities() {
-    let manager = armedManager()
-    var seen: ZeroSignalRefusalContext?
-    manager.onZeroSignalRefused = { ctx in
-      seen = ctx
-      return true
-    }
-
-    manager.ingestSamples(Self.zeros(), level: 0)
-
-    #expect(seen?.sessionID == manager.currentCaptureSessionID)
-    #expect(seen?.reason == .boundDeviceUnavailable)
-    #expect(seen?.failureShape == .allZeroFromStart)
-    // No route has resolved on a manager armed without hardware, so the shared
-    // low-cardinality fallback applies — the same expression the dead-air stall
-    // diagnostic uses, not a second transport source.
-    #expect(seen?.transport == "unknown")
-  }
-
-  @Test("the atomic take hands over everything once, then reports empty")
-  func atomicTakeIsExactlyOnce() {
-    let manager = armedManager()
-    manager.ingestSamples(Self.zeros(), level: 0)
-
-    let first = manager.takePendingZeroSignalRefusals()
-    #expect(first.count == 1)
-
-    // The whole point: a second consumer — a cancel landing while a stop is
-    // suspended — must get nothing rather than a duplicate.
-    #expect(manager.takePendingZeroSignalRefusals().isEmpty)
-  }
-
-  // MARK: - #1788 — the mid-take all-zero ceiling has ONE owner
-
-  /// The production-critical claim: with no DEBUG override set, the ceiling is
-  /// the shipping 1.0s value, so release behaviour is unchanged by the #1788
-  /// instrument. This is the assertion that must never regress — if the default
-  /// ever drifts, every transport silently changes how long it tolerates silence.
-  @Test("no override -> ceiling is the shipping minimumTranscriptionSamples")
-  func ceilingDefaultsToShippingValue() {
-    UserDefaults.standard.removeObject(forKey: "EWDebugAllZeroCeilingSamples")
-    let manager = AudioCaptureManager()
-    #expect(manager.allZeroCeilingSamples == AudioConstants.minimumTranscriptionSamples)
-    #expect(manager.allZeroCeilingSamples == 16_000)
-  }
-
-  /// A non-positive override must be IGNORED rather than producing a zero or
-  /// negative ceiling — a 0 ceiling would abort every capture instantly, which is
-  /// the worst possible failure for a debug knob to be able to cause by typo.
-  @Test("non-positive override is ignored, never applied")
-  func nonPositiveOverrideIsIgnored() {
-    defer { UserDefaults.standard.removeObject(forKey: "EWDebugAllZeroCeilingSamples") }
-    for bad in [0, -1, -160_000] {
-      UserDefaults.standard.set(bad, forKey: "EWDebugAllZeroCeilingSamples")
-      let manager = AudioCaptureManager()
-      #expect(manager.allZeroCeilingSamples == AudioConstants.minimumTranscriptionSamples)
-    }
-  }
-
-  // MARK: - #1788 — the Bluetooth-only ceiling
-
-  /// The fix: Bluetooth alone waits 3.0s for the link to wake.
-  @Test("bluetooth gets the 3.0s ceiling")
-  func bluetoothGetsTheLongerCeiling() {
-    #expect(
-      AudioCaptureManager.allZeroFromStartCeilingSamples(forEffectiveTransport: "bluetooth")
-        == AudioConstants.bluetoothAllZeroMidTakeCeilingSamples)
-    #expect(
-      AudioCaptureManager.allZeroFromStartCeilingSamples(forEffectiveTransport: "bluetooth")
-        == 48_000)
-  }
-
-  /// THE WIRED-UNCHANGED GUARANTEE, asserted rather than assumed. This is the test
-  /// that must be GREEN on both pre-fix and post-fix code — that is what proves the
-  /// change is Bluetooth-scoped instead of a universal ceiling raise, which is the
-  /// design coverage review rejected. A nil or unreadable transport falls to TODAY's
-  /// behaviour, never to the longer one: an unknown route must not silently buy
-  /// every user three seconds of tolerated silence.
-  @Test("every non-bluetooth transport, including nil and unknown, keeps 1.0s")
-  func everyOtherTransportKeepsTheShippingCeiling() {
-    for transport in ["built_in", "usb", "unknown", "", "Bluetooth", "BLUETOOTH"] {
-      #expect(
-        AudioCaptureManager.allZeroFromStartCeilingSamples(forEffectiveTransport: transport)
-          == AudioConstants.minimumTranscriptionSamples,
-        "\(transport) must keep the shipping ceiling")
-    }
-    #expect(
-      AudioCaptureManager.allZeroFromStartCeilingSamples(forEffectiveTransport: nil)
-        == AudioConstants.minimumTranscriptionSamples)
-  }
-
-  // MARK: - #4154 — only a confirmed-bound USB microphone tolerates zero runs
-
-  /// Every label `AudioDeviceEnumerator.transportLabel(forTransportType:)` can
-  /// produce, plus near-miss spellings, nil and unknown. Only exact "usb" opts out
-  /// of zero-signal termination; everything else keeps today's behaviour.
-  @Test("only exact usb opts out of zero-signal termination")
-  func onlyUSBOptsOutOfZeroSignalTermination() {
-    #expect(AudioCaptureManager.zeroSamplesEndTake(forEffectiveTransport: "usb") == false)
-    let keepToday = [
-      "built_in", "bluetooth", "aggregate", "virtual", "display_port", "hdmi", "air_play",
-      "pci", "fire_wire", "thunderbolt", "continuity_capture_wired",
-      "continuity_capture_wireless", "avb", "unknown", "", "USB", "Usb", "usb ",
-    ]
-    for transport in keepToday {
-      #expect(
-        AudioCaptureManager.zeroSamplesEndTake(forEffectiveTransport: transport) == true,
-        "\(transport) must keep today's zero-signal behaviour")
-    }
-    #expect(AudioCaptureManager.zeroSamplesEndTake(forEffectiveTransport: nil) == true)
-  }
-
-  // The override exists ONLY in DEBUG, so these two tests are mirror images and
-  // both must be compiled — asserting the override works where it exists, and
-  // asserting it is genuinely ABSENT where it must not exist. A single
-  // unconditional test would fail the `scripts/xcode-test.sh --release` lane,
-  // which strips `#if DEBUG` and returns the shipping ceiling (Codex review r1).
-
-  #if DEBUG
-    /// A positive override is honoured. This is what made the #1788 hardware
-    /// measurement possible — without it a slow Bluetooth wake is censored by the
-    /// abort rather than observed.
-    @Test("positive override is honoured in DEBUG")
-    func positiveOverrideIsHonoured() {
-      defer { UserDefaults.standard.removeObject(forKey: "EWDebugAllZeroCeilingSamples") }
-      UserDefaults.standard.set(160_000, forKey: "EWDebugAllZeroCeilingSamples")
-      let manager = AudioCaptureManager()
-      #expect(manager.allZeroCeilingSamples == 160_000)
-    }
-  #else
-    /// The release-lane twin, and the more important of the two: it proves the
-    /// debug knob cannot influence a shipped build. Setting the key must change
-    /// NOTHING — if this ever fails, a diagnostic override has leaked into
-    /// production and can alter how long every capture tolerates silence.
-    @Test("override key has NO effect in release — the knob cannot ship")
-    func overrideIsInertInRelease() {
-      defer { UserDefaults.standard.removeObject(forKey: "EWDebugAllZeroCeilingSamples") }
-      UserDefaults.standard.set(160_000, forKey: "EWDebugAllZeroCeilingSamples")
-      let manager = AudioCaptureManager()
-      #expect(manager.allZeroCeilingSamples == AudioConstants.minimumTranscriptionSamples)
-    }
-  #endif
 }
 
 #if DEBUG
-  // #1578: the two claims that cannot be made without driving a real capture
-  // session. Both need the manager's existing `#if DEBUG` source-factory seam,
-  // so this whole suite is DEBUG-only — the Release lane strips the seam and
-  // must not try to compile against it (the trap that turned main red in #1520).
+  // Real session paths: both need the manager's `#if DEBUG` source-factory seam,
+  // so this suite is DEBUG-only — the Release lane strips the seam and must not
+  // try to compile against it (the trap that turned main red in #1520).
   //
   // The stub source is the one `BoundDeviceAdoptionTests` already maintains for
   // exactly this purpose. A second copy would be a second thing to keep true.
   @MainActor
-  @Suite("AudioCaptureManager zero-signal refusal — real session paths (#1578)")
+  @Suite("AudioCaptureManager exact zeros — real session paths (#4841)")
   struct AudioCaptureManagerRefusalSessionTests {
 
-    private static func zeros(_ n: Int = AudioConstants.minimumTranscriptionSamples) -> [Float] {
-      [Float](repeating: 0, count: n)
-    }
+    private static func zeros(_ n: Int) -> [Float] { [Float](repeating: 0, count: n) }
 
-    /// A manager that will build its source from the stub, so `startEnginePhase`
-    /// and `beginCapturePhase` run for real without hardware.
     private static func makeManager(_ stub: BoundDeviceAdoptionTests.StubSource)
       -> AudioCaptureManager
     {
@@ -377,70 +78,6 @@ struct AudioCaptureManagerDeadAirLatchTests {
       manager.installSourceFactoryForTesting { _ in stub }
       return manager
     }
-
-    @Test("starting a new session clears the reason, the flag AND the backlog")
-    func sessionStartClearsEverythingIncludingBacklog() async throws {
-      let stub = BoundDeviceAdoptionTests.StubSource()
-      let manager = Self.makeManager(stub)
-
-      // Strand a rejected refusal from a prior take.
-      manager.isCapturing = true
-      manager.ingestSamples(Self.zeros(), level: 0)
-      #expect(manager.zeroSignalRefusalReason != nil, "precondition: refused")
-      #expect(manager.zeroSignalRunWasClassifiedReactively, "precondition: classified")
-
-      try await manager.startEnginePhase(startDeadline: MicrophoneStartBudget.deadline(from: .now))
-      _ = try await manager.beginCapturePhase()
-
-      // A new session must inherit none of it. Recovery keeps the backlog; a new
-      // session is the one place it is dropped without a consumer taking it.
-      #expect(manager.zeroSignalRefusalReason == nil)
-      #expect(!manager.zeroSignalRunWasClassifiedReactively)
-      #expect(manager.takePendingZeroSignalRefusals().isEmpty)
-    }
-
-    @Test("a refusal leaves the genuine capture-stall path armed for the same take")
-    func refusalDoesNotConsumeTheStallLatch() async throws {
-      let stub = BoundDeviceAdoptionTests.StubSource()
-      // #4154: the stub binds "usb" by default, and a USB bind now tolerates zero
-      // runs without classifying them, so it can no longer produce the refusal
-      // this test needs. Pin a non-USB bind; the outcome asserted is unchanged.
-      stub.boundToReturn = BoundInputDevice(
-        deviceID: 99, deviceUID: "stub-uid-99", transportLabel: "built_in",
-        resolutionSource: "system_default", inputChannel: 0)
-      let manager = Self.makeManager(stub)
-      var stalls: [CaptureStallContext] = []
-      manager.onCaptureStalled = { stalls.append($0) }
-
-      try await manager.startEnginePhase(startDeadline: MicrophoneStartBudget.deadline(from: .now))
-      _ = try await manager.beginCapturePhase()
-
-      // The bound stub device cannot pass the identity re-check, so this refuses.
-      manager.ingestSamples(Self.zeros(), level: 0)
-      #expect(manager.zeroSignalRefusalReason != nil, "precondition: refused")
-      #expect(stalls.isEmpty, "a refusal must not itself raise a capture stall")
-
-      // Now the SOURCE reports a genuine stall in the same take. The manager's
-      // forwarding is gated on `captureStallReported`, so this arriving at the
-      // consumer is the proof that the refusal did not consume that latch.
-      stub.onCaptureStalled?(
-        CaptureStallContext(
-          sessionID: manager.currentCaptureSessionID,
-          armedAtUptimeNs: 0,
-          firedAtUptimeNs: 1,
-          route: "stub",
-          sourceType: "stub",
-          engineStartedSuccessfully: true,
-          tapInstalled: true,
-          formatMismatchObserved: false,
-          inputDeviceUIDPreferred: nil,
-          inputDeviceUIDSystemDefault: nil,
-          failureMode: .noBuffers))
-
-      #expect(stalls.count == 1)
-    }
-
-    // MARK: #4154 — a confirmed-bound USB take tolerates zero runs
 
     /// A manager in a real session bound to the stub with `transport`.
     private static func boundSession(transport: String) async throws -> (
@@ -457,62 +94,56 @@ struct AudioCaptureManagerDeadAirLatchTests {
       return (manager, stub)
     }
 
-    /// When this fails, a USB-mic user's take ends (or is refused and relabelled)
-    /// because they paused, or because they thought for a second before speaking.
-    /// Zeros at the start, then signal, a 2 s zero run, and resumed signal: no
-    /// stall, no refusal, no classification, and every sample is still captured.
-    @Test("a USB bind tolerates startup and mid-take zero runs and keeps capturing")
-    func usbBindToleratesZeroRunsAndKeepsCapturing() async throws {
-      let (manager, _) = try await Self.boundSession(transport: "usb")
+    /// When this fails, a user's take ends because they paused, or because they
+    /// thought for a second before speaking — the #4841 report. A 3.5 s silent
+    /// start (past the deleted 3.0 s Bluetooth ceiling), then signal, a 2 s zero
+    /// run, and resumed signal, on every transport.
+    @Test(
+      "no transport ends a take on startup or mid-take zero runs",
+      arguments: ["built_in", "bluetooth", "usb", "unknown"])
+    func noTransportEndsATakeOnZeros(transport: String) async throws {
+      let (manager, _) = try await Self.boundSession(transport: transport)
       var stalls: [CaptureStallContext] = []
-      var refusals: [ZeroSignalRefusalContext] = []
       manager.onCaptureStalled = { stalls.append($0) }
-      manager.onZeroSignalRefused = {
-        refusals.append($0)
-        return true
-      }
 
       let batches: [[Float]] = [
-        Self.zeros(32_000),
+        Self.zeros(56_000),
         [Float](repeating: 0.5, count: 8_000),
         Self.zeros(32_000),
         [Float](repeating: 0.25, count: 8_000),
       ]
       for batch in batches { manager.ingestSamples(batch, level: 0) }
 
-      #expect(stalls.isEmpty, "a USB zero run must not end the take")
-      #expect(refusals.isEmpty, "a USB zero run must not be classified at all")
-      #expect(manager.zeroSignalRefusalReason == nil)
-      #expect(manager.zeroSignalRunWasClassifiedReactively == false)
-      #expect(manager.takePendingZeroSignalRefusals().isEmpty)
+      #expect(stalls.isEmpty, "a \(transport) zero run must not end the take")
       #expect(manager.isCapturing == true)
-      #expect(manager.capturedSamples.count == 80_000, "every batch was captured")
+      #expect(manager.capturedSamples.count == 104_000, "every batch was captured")
       #expect(manager.capturedSamples.last == 0.25, "the resumed speech reached capture")
     }
 
-    /// The same input on a non-USB bind keeps today's behaviour: the zero run is
-    /// classified (the stub cannot pass the identity re-check, so it is refused).
-    /// This is the control that shows the USB row is the policy, not the fixture.
-    @Test("a non-USB bind still classifies the same zero run")
-    func nonUSBBindStillClassifiesTheZeroRun() async throws {
-      let (manager, _) = try await Self.boundSession(transport: "built_in")
-      manager.ingestSamples([Float](repeating: 0.5, count: 8_000), level: 0)
+    @Test("starting a new session resets the live zero run")
+    func sessionStartResetsTheRun() async throws {
+      let stub = BoundDeviceAdoptionTests.StubSource()
+      let manager = Self.makeManager(stub)
+      manager.isCapturing = true
       manager.ingestSamples(Self.zeros(32_000), level: 0)
+      #expect(manager.exactZeroRun?.sampleCount == 32_000, "precondition: a run exists")
 
-      #expect(manager.zeroSignalRefusalReason != nil)
-      #expect(manager.zeroSignalRunWasClassifiedReactively == true)
+      try await manager.startEnginePhase(startDeadline: MicrophoneStartBudget.deadline(from: .now))
+      _ = try await manager.beginCapturePhase()
+
+      #expect(manager.exactZeroRun?.sampleCount ?? 0 == 0)
     }
 
-    /// Tolerating USB zeros must not consume the shared stall latch: a genuine
-    /// no-buffer stall from the source in the same take still reaches the consumer.
-    @Test("a genuine no-buffer stall still forwards after tolerated USB zeros")
-    func noBufferStallStillForwardsAfterToleratedUSBZeros() async throws {
-      let (manager, stub) = try await Self.boundSession(transport: "usb")
+    /// Exact zeros must not consume the stall latch: a genuine no-buffer stall from
+    /// the source in the same take still reaches the consumer.
+    @Test("a genuine no-buffer stall still forwards after a long zero run")
+    func noBufferStallStillForwardsAfterZeros() async throws {
+      let (manager, stub) = try await Self.boundSession(transport: "bluetooth")
       var stalls: [CaptureStallContext] = []
       manager.onCaptureStalled = { stalls.append($0) }
 
       manager.ingestSamples(Self.zeros(32_000), level: 0)
-      #expect(stalls.isEmpty, "precondition: tolerated")
+      #expect(stalls.isEmpty, "precondition: zeros raised nothing")
 
       stub.onCaptureStalled?(
         CaptureStallContext(

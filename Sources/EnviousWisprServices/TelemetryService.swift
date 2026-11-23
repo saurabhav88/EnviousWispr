@@ -2099,6 +2099,7 @@ public final class TelemetryService {
         "vad_stage_reached", "vad_backend", "vad_input_route", "polish_language_hint",
         "polish_setup_problem", "asr_model", "asr_model_revision", "asr_model_variant",
         "outside_stop_engine", "outside_stop_memory_pressure", "outside_stop_polish_result",
+        "silent_mic_notice",
       ] {
         if let value = props[key] as? String { stringProps[key] = value }
       }
@@ -2121,7 +2122,7 @@ public final class TelemetryService {
       var boolProps: [String: Bool] = [:]
       for key in [
         "vad_ready", "vad_model_reused", "vad_first_chunk_should_stop", "asr_model_loaded",
-        "asr_model_inference_reached",
+        "asr_model_inference_reached", "silent_mic_cleared",
       ] {
         if let value = props[key] as? Bool { boolProps[key] = value }
       }
@@ -5771,6 +5772,23 @@ public final class TelemetryService {
       if let route { $0.otherAudio?.mediaRoute = route }
       if let adapterFailure { $0.otherAudio?.adapterFailure = adapterFailure }
     }
+  }
+
+  // MARK: - Silent-mic notice (#4841, folded onto the terminal row)
+
+  /// Records that the pill accepted a silent-mic notice of `level` for `takeID`; keeps the
+  /// highest level seen (`strong` outranks `calm`). Zero new rows: it folds onto that take's
+  /// `dictation.terminal` through the take ledger, by the explicit take ID. A take with no open
+  /// entry records nothing.
+  public func recordSilentMicNotice(takeID: String, strong: Bool) {
+    takeStages.update(takeID: takeID) {
+      if strong || $0.silentMicNotice == nil { $0.silentMicNotice = strong ? "strong" : "calm" }
+    }
+  }
+
+  /// Records that a displayed silent-mic notice on `takeID` was cleared because sound returned.
+  public func recordSilentMicCleared(takeID: String) {
+    takeStages.update(takeID: takeID) { $0.silentMicCleared = true }
   }
 
   // MARK: - EG-1 language naming (#3111)

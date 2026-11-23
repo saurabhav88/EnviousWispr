@@ -71,8 +71,9 @@ struct RecordingOverlayPreviewSizingTests {
       livePreviewProvider: { display },
       onContentHeightChange: { log.record($0) },
       chrome: design.chrome,
+      position: .top,
       isLocked: locked,
-      noticeText: notice,
+      notice: notice.map(RecordingNoticeDisplay.layoutFixture),
       initialPreview: display
     )
 
@@ -243,8 +244,9 @@ struct RecordingOverlayPreviewSizingTests {
       livePreviewProvider: { .text(Self.threeLines) },
       onContentHeightChange: { log.record($0) },
       chrome: RecordingPillDesign.readingWell.chrome,
+      position: .top,
       isLocked: false,
-      noticeText: nil,
+      notice: nil,
       initialPreview: .text(Self.threeLines)
     )
     let host = NSHostingView(rootView: view.frame(width: Self.previewWidth))
@@ -290,8 +292,9 @@ struct RecordingOverlayPreviewSizingTests {
       livePreviewProvider: { .off },
       onContentHeightChange: { log.record($0) },
       chrome: RecordingPillDesign.classic.chrome,
+      position: .top,
       isLocked: false,
-      noticeText: nil,
+      notice: nil,
       initialPreview: .off
     )
     let host = NSHostingView(rootView: view.frame(width: 185, height: 92))
@@ -303,9 +306,9 @@ struct RecordingOverlayPreviewSizingTests {
     host.layoutSubtreeIfNeeded()
     window.displayIfNeeded()
 
-    // Production wires a no-op callback for the non-preview layout
-    // (`createPanel`), so this suite's own instrumentation is the only reader.
-    // What matters is that the view still lays out at the fixed frame it is given.
+    // What matters here is that the view still lays out at the frame it is
+    // given. (#4841: production now also wires the growth callback for this
+    // layout, so a notice bubble can grow the window.)
     #expect(host.frame.height == 92, "the non-preview capsule's frame moved")
   }
 }

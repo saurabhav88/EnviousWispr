@@ -4,7 +4,7 @@ import EnviousWisprAudio
 import EnviousWisprCore
 import EnviousWisprLLM
 import EnviousWisprPipeline
-import EnviousWisprServices
+@testable import EnviousWisprServices
 import EnviousWisprStorage
 import Foundation
 import Testing
@@ -81,6 +81,44 @@ struct DictationSessionConfigFactoryTests {
 
     #expect(captured.smartInsertion == true, "the in-flight config must not follow the setting")
     #expect(next.smartInsertion == false, "the next recording observes the new value")
+  }
+
+  @Test("#4841: the silent-mic warning switch is frozen at recording start by the production factory")
+  func silentMicWarningsFrozenAtRecordingStart() async throws {
+    let harness = try Harness.make(backend: .parakeet)
+    // The harness store outlives this test, and this test turns the switch off below; it sets its
+    // own starting value and puts it back, so neither run order nor a rerun decides the outcome.
+    #expect(SettingsDefaultValues.silentMicWarnings == true, "the switch ships on (founder decision)")
+    let original = harness.settings.silentMicWarnings
+    harness.settings.silentMicWarnings = true
+    defer { harness.settings.silentMicWarnings = original }
+
+    let captured = DictationSessionConfigFactory.make(
+      asrManager: harness.asrManager,
+      kernelDriver: harness.kernelDriver,
+      whisperKernelDriver: harness.whisperKernelDriver,
+      settings: harness.settings,
+      polishModel: harness.settings.polishModelID(for: harness.settings.llmProvider),
+      polishWireModel: harness.settings.effectiveLLMModel,
+      fixLearnedWords: harness.settings.fixLearnedWords,
+      triggerSource: .pttHotkey
+    )
+
+    // The user turns the warning off mid-dictation.
+    harness.settings.silentMicWarnings = false
+    let next = DictationSessionConfigFactory.make(
+      asrManager: harness.asrManager,
+      kernelDriver: harness.kernelDriver,
+      whisperKernelDriver: harness.whisperKernelDriver,
+      settings: harness.settings,
+      polishModel: harness.settings.polishModelID(for: harness.settings.llmProvider),
+      polishWireModel: harness.settings.effectiveLLMModel,
+      fixLearnedWords: harness.settings.fixLearnedWords,
+      triggerSource: .pttHotkey
+    )
+
+    #expect(captured.silentMicWarningsEnabled == true, "the in-flight config must not follow the setting")
+    #expect(next.silentMicWarningsEnabled == false, "the next recording observes the new value")
   }
 
   /// #3124: the factory freezes the EFFECTIVE spelling. British needs an English lock; the same

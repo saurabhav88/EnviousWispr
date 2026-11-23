@@ -635,11 +635,13 @@ private struct RecordingPillPreview: View {
       // lets `theTileDrawsItsOwnChrome` be an exact question instead of a
       // name-resolution guess.
       chrome: self.design.chrome,
+      // A picker shows no notice, so the bubble's side never matters here.
+      position: .top,
       // Hands free is not what is being chosen here, and the locked variants
       // differ per design, so a picker showing ONE mode is the honest one.
       isLocked: false,
       // #1060's banner is a runtime event, not an appearance.
-      noticeText: nil,
+      notice: nil,
       // **Seeded, or the reading well renders empty on its first frame and
       // visibly fills in.** `preview` is `@State`, so this parameter is the only
       // way to make the first frame the right one.

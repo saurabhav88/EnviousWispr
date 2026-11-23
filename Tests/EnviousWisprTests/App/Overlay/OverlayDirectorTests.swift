@@ -57,7 +57,7 @@ struct OverlayDirectorTests {
         content: .recording(audioLevel: 0, isLocked: false, notice: nil, design: design),
         expiry: .untilReplaced,
         requestedWidth: .fixed(design.width),
-        reservesFixedHeight: design.reservedHeight))
+        reservesFixedHeight: nil))
     #expect(
       model.state.recording?.audioLevelProvider() == 0,
       "the released dictation's level closure was staged and reappeared on the next pill")
@@ -204,7 +204,8 @@ struct OverlayDirectorTests {
       scheduler: .manual { _ in },
       announce: { _ in },
       livePreview: .disabled,
-      grantAccessibility: {}, openMicrophoneSettings: {}, openMicrophoneHelp: {}, advisoryHint: { _ in nil },
+      grantAccessibility: {}, openMicrophoneSettings: {}, openMicrophoneHelp: {},
+      advisoryHint: { _ in nil },
       selections: { .shipped },
       firstRenderSchedule: { deferral.block = $0 })
   }
@@ -334,7 +335,8 @@ struct OverlayDirectorTests {
       scheduler: .manual { armed.work = $0 },
       announce: { _ in },
       livePreview: .disabled,
-      grantAccessibility: {}, openMicrophoneSettings: {}, openMicrophoneHelp: {}, advisoryHint: { _ in nil },
+      grantAccessibility: {}, openMicrophoneSettings: {}, openMicrophoneHelp: {},
+      advisoryHint: { _ in nil },
       selections: { .shipped },
       firstRenderSchedule: { deferral.block = $0 })
 
@@ -477,7 +479,8 @@ struct OverlayDirectorTests {
       d.present(
         .escapeRecovery(
           payload: CancelUndoPayload(
-            transcriptID: transcript, targetApp: nil, targetElement: nil, targetWindow: nil, takeFacts: .testNone),
+            transcriptID: transcript, targetApp: nil, targetElement: nil, targetWindow: nil,
+            takeFacts: .testNone),
           onPaste: { restored.append($0.transcriptID) })))
 
     d.dismissCurrent(.announced)
@@ -501,7 +504,8 @@ struct OverlayDirectorTests {
       d.present(
         .escapeRecovery(
           payload: CancelUndoPayload(
-            transcriptID: transcript, targetApp: nil, targetElement: nil, targetWindow: nil, takeFacts: .testNone),
+            transcriptID: transcript, targetApp: nil, targetElement: nil, targetWindow: nil,
+            takeFacts: .testNone),
           onPaste: { restored.append($0.transcriptID) })))
 
     Self.record(d, level: 0.3)
@@ -530,7 +534,8 @@ struct OverlayDirectorTests {
       d.present(
         .escapeRecovery(
           payload: CancelUndoPayload(
-            transcriptID: transcript, targetApp: nil, targetElement: nil, targetWindow: nil, takeFacts: .testNone),
+            transcriptID: transcript, targetApp: nil, targetElement: nil, targetWindow: nil,
+            takeFacts: .testNone),
           onPaste: { _ in pressed.append(.pasteEscapeRecovery(transcriptID: transcript)) })))
 
     try host.sendUserActionThroughRoot(
@@ -969,7 +974,8 @@ struct OverlayDirectorTests {
         isEnabledForGeometry: { recordingStarted },
         wordsCapability: { recordingStarted ? .available : .previewOff },
         display: { .off }),
-      grantAccessibility: {}, openMicrophoneSettings: {}, openMicrophoneHelp: {}, advisoryHint: { _ in nil },
+      grantAccessibility: {}, openMicrophoneSettings: {}, openMicrophoneHelp: {},
+      advisoryHint: { _ in nil },
       selections: { .shipped },
       firstRenderSchedule: { $0() })
     Self.hosts.append(host)
@@ -1109,9 +1115,11 @@ struct OverlayDirectorTests {
     Self.record(preview, level: 0.2, preview: true, previewSetting: previewSetting)
     let wide = try #require(previewHost.presented.last)
 
+    // #4841: neither reserves a height any more; the Capsule grows for its
+    // notice bubble exactly as the preview pill grows for its words.
     #expect(
-      compact.fixedHeight == 92,
-      "the non-preview recording pill lost its reserved 92-point frame")
+      compact.fixedHeight == nil,
+      "the non-preview recording pill still reserves a frame")
     #expect(
       wide.fixedHeight == nil,
       "the Live Preview pill reserved a frame instead of sizing to its content")
@@ -1442,7 +1450,8 @@ struct OverlayDirectorTests {
     let deferral = Deferral()
     let d = OverlayDirector(
       host: host, scheduler: .manual { _ in }, announce: { _ in }, livePreview: .disabled,
-      grantAccessibility: {}, openMicrophoneSettings: {}, openMicrophoneHelp: {}, advisoryHint: { _ in nil },
+      grantAccessibility: {}, openMicrophoneSettings: {}, openMicrophoneHelp: {},
+      advisoryHint: { _ in nil },
       selections: { .shipped },
       firstRenderSchedule: { deferral.block = $0 })
     defer { recorder.panel?.orderOut() }
@@ -1473,7 +1482,8 @@ struct OverlayDirectorTests {
     var announcements: [OverlayAnnouncement] = []
     let d = OverlayDirector(
       host: host, scheduler: .manual { _ in }, announce: { announcements.append($0) },
-      livePreview: .disabled, grantAccessibility: {}, openMicrophoneSettings: {}, openMicrophoneHelp: {},
+      livePreview: .disabled, grantAccessibility: {}, openMicrophoneSettings: {},
+      openMicrophoneHelp: {},
       advisoryHint: { _ in nil },
       selections: { .shipped },
       firstRenderSchedule: { deferral.block = $0 })
@@ -1503,7 +1513,8 @@ struct OverlayDirectorTests {
     let deferral = Deferral()
     let d = OverlayDirector(
       host: host, scheduler: .manual { _ in }, announce: { _ in },
-      livePreview: .disabled, grantAccessibility: {}, openMicrophoneSettings: {}, openMicrophoneHelp: {},
+      livePreview: .disabled, grantAccessibility: {}, openMicrophoneSettings: {},
+      openMicrophoneHelp: {},
       advisoryHint: { _ in nil },
       selections: { .shipped },
       firstRenderSchedule: { deferral.block = $0 })
@@ -1518,6 +1529,112 @@ struct OverlayDirectorTests {
     #expect(
       d.renderModel.state.dwell == nil,
       "a `.cancel` coalesced onto a pending `.arm` left a dwell armed anyway")
+  }
+
+  // MARK: - #4841 silent-mic notice receipt
+
+  @Test("a silence notice bound to the live recording is accepted and reported by kind")
+  func silenceNoticeOnTheLiveRecordingIsAccepted() throws {
+    let (d, _, _) = Self.director()
+    Self.record(d)
+    let id = try #require(d.currentRecordingPresentationID)
+
+    #expect(d.showInPanelNotice(.micSilent(.calm), dismissAfter: nil, on: id) == id)
+    #expect(d.currentInPanelNoticeKind == .micSilent)
+    #expect(d.clearInPanelNotice(.micSilent, on: id))
+    #expect(d.currentInPanelNoticeKind == nil)
+  }
+
+  @Test("a silence notice bound to another recording is refused and changes nothing")
+  func staleSilenceNoticeIsRefused() throws {
+    let (d, _, _) = Self.director()
+    Self.record(d)
+    let stale = PresentationID()
+    #expect(try #require(d.currentRecordingPresentationID) != stale)
+
+    #expect(d.showInPanelNotice(.micSilent(.strong), dismissAfter: nil, on: stale) == nil)
+    #expect(d.currentInPanelNoticeKind == nil)
+    let live = try #require(d.currentRecordingPresentationID)
+    _ = d.showInPanelNotice(.micSilent(.calm), dismissAfter: nil, on: live)
+    #expect(d.clearInPanelNotice(.micSilent, on: stale) == false)
+    #expect(d.currentInPanelNoticeKind == .micSilent, "a stale clear removed the live notice")
+  }
+
+  @Test("clearing silence reports false and keeps the dwell when another notice is showing")
+  func clearSilenceOverAnotherNoticeReportsFalse() throws {
+    let host = RefusingWindowlessHost()
+    let deferral = Deferral()
+    let d = OverlayDirector(
+      host: host, scheduler: .manual { _ in }, announce: { _ in },
+      livePreview: .disabled, grantAccessibility: {}, openMicrophoneSettings: {},
+      openMicrophoneHelp: {},
+      advisoryHint: { _ in nil },
+      selections: { .shipped },
+      firstRenderSchedule: { deferral.block = $0 })
+    Self.record(d)
+    let id = try #require(d.currentRecordingPresentationID)
+    #expect(d.clearInPanelNotice(.micSilent, on: id) == false, "no notice: nothing was cleared")
+
+    #expect(d.showInPanelNotice(.secureInputActive, dismissAfter: 5.0))
+    #expect(d.clearInPanelNotice(.micSilent, on: id) == false, "another kind is not cleared")
+    #expect(d.currentInPanelNoticeKind == .secureInputActive)
+    deferral.fireAll()
+    #expect(d.renderModel.state.dwell?.seconds == 5.0, "the Secure Input dwell was lost")
+  }
+
+  private static func refusableDirector(
+    _ host: RefusingWindowlessHost, firstRender: @escaping (@escaping () -> Void) -> Void = { $0() }
+  ) -> OverlayDirector {
+    OverlayDirector(
+      host: host, scheduler: .manual { _ in }, announce: { _ in },
+      livePreview: .disabled, grantAccessibility: {}, openMicrophoneSettings: {},
+      openMicrophoneHelp: {},
+      advisoryHint: { _ in nil },
+      selections: { .shipped },
+      firstRenderSchedule: firstRender)
+  }
+
+  /// When this fails, a take's telemetry says the user saw a silent-mic warning (or saw it clear)
+  /// that the window never drew.
+  @Test("a silence notice or clear the host refuses to draw gets no credit")
+  func refusedSilenceNoticeGetsNoCredit() throws {
+    let host = RefusingWindowlessHost()
+    let d = Self.refusableDirector(host)
+    Self.record(d)
+    let id = try #require(d.currentRecordingPresentationID)
+    host.accepts = false
+    #expect(d.showInPanelNotice(.micSilent(.calm), dismissAfter: nil, on: id) == nil)
+
+    let host2 = RefusingWindowlessHost()
+    let d2 = Self.refusableDirector(host2)
+    Self.record(d2)
+    let id2 = try #require(d2.currentRecordingPresentationID)
+    #expect(d2.showInPanelNotice(.micSilent(.strong), dismissAfter: nil, on: id2) == id2)
+    host2.accepts = false
+    #expect(d2.clearInPanelNotice(.micSilent, on: id2) == false)
+  }
+
+  @Test("a silence notice on a pill not drawn yet is not credited until the pill is drawn")
+  func silenceNoticeOnAnUndrawnPillWaits() throws {
+    let host = RefusingWindowlessHost()
+    let deferral = Deferral()
+    let d = Self.refusableDirector(host, firstRender: { deferral.block = $0 })
+    Self.record(d)
+    let id = try #require(d.currentRecordingPresentationID)
+    #expect(d.showInPanelNotice(.micSilent(.calm), dismissAfter: nil, on: id) == nil)
+    deferral.fireAll()
+    #expect(d.currentInPanelNoticeKind == .micSilent)
+    #expect(
+      d.showInPanelNotice(.micSilent(.calm), dismissAfter: nil, on: id) == id,
+      "once drawn, the same notice is already on screen")
+  }
+
+  @Test("with no recording on screen there is nothing to bind a silence notice to")
+  func noRecordingNoSilenceNotice() {
+    let (d, _, _) = Self.director()
+    #expect(d.currentRecordingPresentationID == nil)
+    #expect(d.currentInPanelNoticeKind == nil)
+    #expect(d.showInPanelNotice(.micSilent(.calm), dismissAfter: nil, on: PresentationID()) == nil)
   }
 
   /// **A REENTRANT `present` from inside a supersession callback must not be
@@ -1712,7 +1829,8 @@ struct OverlayDirectorTests {
     // The production `firstRenderSchedule` — the default — is the subject here.
     let d = OverlayDirector(
       host: host, announce: { _ in },
-      livePreview: .disabled, grantAccessibility: {}, openMicrophoneSettings: {}, openMicrophoneHelp: {},
+      livePreview: .disabled, grantAccessibility: {}, openMicrophoneSettings: {},
+      openMicrophoneHelp: {},
       advisoryHint: { _ in nil },
       selections: { .shipped })
 
@@ -1740,7 +1858,8 @@ struct OverlayDirectorTests {
     let host = WindowlessOverlayHost()
     let d = OverlayDirector(
       host: host, announce: { _ in },
-      livePreview: .disabled, grantAccessibility: {}, openMicrophoneSettings: {}, openMicrophoneHelp: {},
+      livePreview: .disabled, grantAccessibility: {}, openMicrophoneSettings: {},
+      openMicrophoneHelp: {},
       advisoryHint: { _ in nil },
       selections: { .shipped })
 
@@ -1766,7 +1885,8 @@ struct OverlayDirectorTests {
     let host = WindowlessOverlayHost()
     let d = OverlayDirector(
       host: host, announce: { _ in },
-      livePreview: .disabled, grantAccessibility: {}, openMicrophoneSettings: {}, openMicrophoneHelp: {},
+      livePreview: .disabled, grantAccessibility: {}, openMicrophoneSettings: {},
+      openMicrophoneHelp: {},
       advisoryHint: { _ in nil },
       selections: { .shipped })
     d.present(.warning(reason: .polishFailed))
@@ -2213,7 +2333,10 @@ struct OverlayDirectorTests {
     }
   }
 
-  private struct UndoRigError: Error { let message: String; init(_ message: String) { self.message = message } }
+  private struct UndoRigError: Error {
+    let message: String
+    init(_ message: String) { self.message = message }
+  }
 
   @Test(
     "the host refuses the Pending morph of an accepted Undo: no Pending deadline arms, the outgoing dwell is cancelled, the slot is closed, and the accepted write still completes with its result leaving the slot closed"
@@ -2275,7 +2398,8 @@ struct OverlayDirectorTests {
 
     try rig.host.press(.undoLearnedCorrection(pillID: model.id), over: receipt)
 
-    #expect(rig.director.renderModel.state.presentation == nil, "the stale plan resurrected the pill")
+    #expect(
+      rig.director.renderModel.state.presentation == nil, "the stale plan resurrected the pill")
     #expect(rig.host.presentCount == 1, "the Pending morph was rendered after the pill was closed")
     #expect(rig.clock.armedSeconds == [12], "a Pending deadline armed for a pill that was closed")
     #expect(rig.clock.armed.allSatisfy { $0.work.isCancelled })
@@ -2299,7 +2423,9 @@ struct OverlayDirectorTests {
 
     #expect(rig.host.presentCount == 2 && rig.phase == .undoPending)
     #expect(rig.director.isCurrent(receipt))
-    #expect(rig.coordinator.undoRecord == nil, "the claim is what makes Pending render with an unwanted offer")
+    #expect(
+      rig.coordinator.undoRecord == nil,
+      "the claim is what makes Pending render with an unwanted offer")
     #expect(rig.clock.armedSeconds == [12, 3], "1.5 s were left, so Pending armed its 3 s minimum")
     let announcedAtPending = rig.announcements.count
 
@@ -2323,13 +2449,15 @@ struct OverlayDirectorTests {
     let presentsAtPending = late.host.presentCount
     let announcedAtLatePending = late.announcements.count
     late.clock.advance(to: 13.5)
-    #expect(late.director.renderModel.state.presentation == nil, "Pending did not close at its deadline")
+    #expect(
+      late.director.renderModel.state.presentation == nil, "Pending did not close at its deadline")
     #expect(late.library.userWords.count == 1, "the write finished before the pill closed")
     #expect(late.coordinator.undoRecord == nil)
 
     await late.presenter.awaitUndoForTesting()
     #expect(late.library.userWords.isEmpty, "the accepted write did not survive the closed pill")
-    #expect(late.director.renderModel.state.presentation == nil, "the late result reopened the slot")
+    #expect(
+      late.director.renderModel.state.presentation == nil, "the late result reopened the slot")
     #expect(late.host.presentCount == presentsAtPending, "the late result caused a render")
     #expect(late.announcements.count == announcedAtLatePending, "the late result was announced")
     #expect(late.clock.armedSeconds == [12, 3], "the late result armed a dwell")

@@ -61,6 +61,8 @@ public final class SettingsManager {
     case meetingLiveWordsLanguage
     case hotkeyEnabled
     case vadAutoStop
+    /// #4841: show the silent-mic notice on the pill. Default on.
+    case silentMicWarnings
     case vadSilenceTimeout
     case vadSensitivity
     case vadEnergyGate
@@ -174,7 +176,7 @@ public final class SettingsManager {
     "s1MiniStyling", "s1MiniStructure", "s1MiniContext",
     "automaticDictationPasteEnabled",
     "autoCopyToClipboard", "meetingCaptureCallSound", "meetingCallSoundExplained", "meetingWriteSummary", "meetingTurnsOffDictation", "meetingFollowsCallMute", "meetingOnboardingComplete", "meetingUseCalendarForNames", "meetingCallDetection", "meetingCallAppsOff", "meetingCallNoCounts", "meetingCallFirstTipShown", "meetingLanguageMode", "meetingTranscriptEngine", "meetingLiveWordsEngine", "meetingLiveWordsLanguage", "hotkeyEnabled", "vadAutoStop", "vadSilenceTimeout",
-    "vadSensitivity", "vadEnergyGate", "onboardingState", "hasCompletedOnboarding",
+    "vadSensitivity", "vadEnergyGate", "silentMicWarnings", "onboardingState", "hasCompletedOnboarding",
     SettingsManager.onboardingCheckpointKey,
     "cancelKeyCode", "cancelModifiersRaw", "toggleKeyCode", "toggleModifiersRaw",
     "quickAddKeyCode", "quickAddModifiersRaw",
@@ -1073,6 +1075,15 @@ public final class SettingsManager {
     didSet {
       defaults.set(vadAutoStop, forKey: "vadAutoStop")
       onChange?(.vadAutoStop)
+    }
+  }
+
+  /// #4841: "Warn when the microphone is silent". Default on; a missing key
+  /// reads `true`, so existing installs need no migration.
+  public var silentMicWarnings: Bool {
+    didSet {
+      defaults.set(silentMicWarnings, forKey: "silentMicWarnings")
+      onChange?(.silentMicWarnings)
     }
   }
 
@@ -2184,6 +2195,9 @@ public final class SettingsManager {
     hotkeyEnabled = SettingsDefaultValues.hotkeyEnabled  // toggle removed; always enabled
     vadAutoStop =
       defaults.object(forKey: "vadAutoStop") as? Bool ?? SettingsDefaultValues.vadAutoStop
+    silentMicWarnings =
+      defaults.object(forKey: "silentMicWarnings") as? Bool
+      ?? SettingsDefaultValues.silentMicWarnings
     vadSilenceTimeout =
       defaults.object(forKey: "vadSilenceTimeout") as? Double
       ?? SettingsDefaultValues.vadSilenceTimeout

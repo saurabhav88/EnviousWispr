@@ -489,17 +489,15 @@ enum PillCatalog {
       // now one. The definition carries the RESOLVED design's own width and
       // height, so nothing downstream has anything left to override.
       //
-      // The values are unchanged: classic is 185 wide with a fixed 92-point
-      // interaction frame that holds the normal capsule, the locked state and the
-      // #1060 notice expansion without resizing on every morph; the reading well
-      // is 400 wide and content-sized from the first frame so it does not visibly
-      // snap. Both are properties of `RecordingPillDesign`, measured at the sites
-      // its own doc comments cite.
+      // #4841: every design is content-sized from the first frame. The Capsule
+      // and Level Rail used to reserve a fixed 92-point box for the #1060 banner,
+      // because they could not grow; their notice is now a separate bubble and
+      // the window follows its measured height like the reading well's.
       return PillDefinition(
         id: id,
         content: .recording(audioLevel: level, isLocked: false, notice: nil, design: design),
         expiry: .untilReplaced, requestedWidth: .fixed(design.width),
-        reservesFixedHeight: design.reservedHeight)
+        reservesFixedHeight: nil)
 
     case .importStatus(let message):
       // Lifted from `reduceImportStatus`, where it was minted inline. The

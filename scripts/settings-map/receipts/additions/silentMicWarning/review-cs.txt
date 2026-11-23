@@ -1,0 +1,11 @@
+{
+  "language": "cs",
+  "title": "upozornit, když z mikrofonu nepřichází žádný zvuk",
+  "words": [
+    "upozornění na výpadek mikrofonu",
+    "mikrofon bez zvuku"
+  ],
+  "phrases": [
+    "jak zapnout upozornění, když mikrofon při diktování nezachytí žádný zvuk"
+  ]
+}

@@ -267,6 +267,85 @@ struct OverlayReducerTests {
     #expect(r.state.current == nil)
   }
 
+  // MARK: - #4841 silent-mic notice: clear by kind
+
+  private static func notice(_ r: OverlayReducer) -> InPanelNotice? {
+    guard case .recording(_, _, let notice, _)? = r.state.current?.content else { return nil }
+    return notice
+  }
+
+  @Test("clearing mic silence removes the silence notice and keeps the pill, lock and identity")
+  func clearMicSilenceRemovesOnlyThatNotice() {
+    var r = Self.makeReducer()
+    _ = r.startRecordingForTests(audioLevel: 0.2)
+    _ = r.reduce(.lockStateChanged(true))
+    let id = try! #require(r.state.current?.id)
+    _ = r.reduce(.inPanelNotice(.micSilent(.strong), dismissAfter: nil))
+
+    let plan = r.reduce(.clearInPanelNotice(.micSilent))
+
+    #expect(plan.didChange)
+    #expect(plan.expiryCommand == .unchanged, "a clear must not touch any armed timer")
+    #expect(r.state.current?.id == id)
+    #expect(Self.notice(r) == nil)
+    guard case .recording(_, let locked, _, _)? = r.state.current?.content else {
+      Issue.record("the recording pill did not survive the clear")
+      return
+    }
+    #expect(locked)
+  }
+
+  @Test("clearing mic silence leaves another kind's notice and its timer alone")
+  func clearMicSilenceIgnoresOtherKinds() {
+    var r = Self.makeReducer()
+    _ = r.startRecordingForTests(audioLevel: 0.2)
+    let id = try! #require(r.state.current?.id)
+    let armed = r.reduce(.inPanelNotice(.secureInputActive, dismissAfter: 5.0))
+    #expect(armed.expiryCommand == .arm(id: id, seconds: 5.0, target: .inPanelNotice))
+
+    let plan = r.reduce(.clearInPanelNotice(.micSilent))
+
+    #expect(plan.didChange == false)
+    #expect(Self.notice(r)?.reason == .secureInputActive)
+    // The Secure Input dwell still ends it.
+    #expect(r.reduce(.inPanelNoticeExpiryFired(id)).didChange)
+    #expect(Self.notice(r) == nil)
+  }
+
+  @Test("calm and strong are one kind: a strong notice replaces calm and one clear removes it")
+  func calmAndStrongShareAKind() {
+    var r = Self.makeReducer()
+    _ = r.startRecordingForTests(audioLevel: 0.2)
+    _ = r.reduce(.inPanelNotice(.micSilent(.calm), dismissAfter: nil))
+    _ = r.reduce(.inPanelNotice(.micSilent(.strong), dismissAfter: nil))
+    #expect(Self.notice(r)?.reason == .micSilent(.strong))
+    #expect(r.reduce(.clearInPanelNotice(.micSilent)).didChange)
+    #expect(Self.notice(r) == nil)
+  }
+
+  @Test("a late timed expiry never clears the persistent silence notice that replaced it")
+  func staleExpiryNeverClearsAPersistentReplacement() {
+    var r = Self.makeReducer()
+    _ = r.startRecordingForTests(audioLevel: 0.2)
+    let id = try! #require(r.state.current?.id)
+    _ = r.reduce(.inPanelNotice(.autoStopUnavailable, dismissAfter: 4.0))
+    let replaced = r.reduce(.inPanelNotice(.micSilent(.calm), dismissAfter: nil))
+    #expect(replaced.expiryCommand == .cancel)
+
+    let late = r.reduce(.inPanelNoticeExpiryFired(id))
+
+    #expect(late.didChange == false)
+    #expect(Self.notice(r)?.reason == .micSilent(.calm))
+  }
+
+  @Test("a clear with no recording, or no notice, is a no-op")
+  func clearWithoutRecordingOrNoticeIsIgnored() {
+    var r = Self.makeReducer()
+    #expect(r.reduce(.clearInPanelNotice(.micSilent)).didChange == false)
+    _ = r.startRecordingForTests(audioLevel: 0.2)
+    #expect(r.reduce(.clearInPanelNotice(.micSilent)).didChange == false)
+  }
+
   // MARK: - Hover
 
   @Test("hovering a pausable presentation stops it expiring, and leaving re-arms it")
@@ -308,22 +387,14 @@ struct OverlayReducerTests {
 
   // MARK: - The reserved interaction frame
 
-  @Test("only the NON-PREVIEW recording pill reserves a fixed height")
-  func onlyRecordingReservesAFixedFrame() {
-    // #1060: the 92-point recording frame is deliberate — it holds the normal
-    // 185x44, the locked 120x64 and the in-panel notice expansion without
-    // resizing on every morph. This migration does NOT make every kind
-    // content-sized, and asserting that here is what stops a later chunk
-    // "simplifying" it away.
-    //
-    // Scoped to NON-PREVIEW deliberately. With Live Preview on, the shipped
-    // path is content-sized (`05411427:Sources/EnviousWisprAppKit/App/RecordingOverlayPanel.swift`), so the
-    // earlier unscoped name claimed more than the code does. The reducer cannot
-    // yet tell the two apart — the preview flag is a provider the director owns
-    // — so C3 adds that branch and this test gains its pair.
+  @Test("the recording pill is content-sized, with no reserved height (#4841)")
+  func recordingPillIsContentSized() {
+    // #4841: the Capsule used to reserve a 92-point frame so the #1060 banner fit
+    // a pill that could not grow. Its notice is now a separate bubble and the
+    // window follows the measured height, so nothing is reserved.
     var r = Self.makeReducer()
     _ = r.startRecordingForTests(audioLevel: 0.1)
-    #expect(r.state.current?.reservesFixedHeight == 92)
+    #expect(r.state.current?.reservesFixedHeight == nil)
     #expect(r.state.current?.requestedWidth == .fixed(185))
 
     _ = r.reduce(.pipeline(.hidden))

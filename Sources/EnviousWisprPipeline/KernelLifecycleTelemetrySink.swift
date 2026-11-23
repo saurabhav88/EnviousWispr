@@ -1098,9 +1098,9 @@ final class KernelLifecycleTelemetrySink {
     case .zeroSignal:
       // #1317: same posture as `.captureStalled` above — NO second Sentry
       // emission. `HeartPathTelemetryEmitter.stallFired(ctx:)` already owns
-      // the classified event, submitted either through the reactive
-      // `WedgeRecoveryRouter` funnel or the kernel's STOP-time telemetry
-      // closure (§3.6 N4). The lifecycle event still fires here.
+      // the classified event, submitted through the kernel's STOP-time
+      // telemetry closure (§3.6 N4; the only route since #4841). The lifecycle
+      // event still fires here.
       //
       // #1810 (2026-09-03) narrowed what "owns" means and the skip still
       // stands, so read the reason rather than the conclusion: `stallFired`

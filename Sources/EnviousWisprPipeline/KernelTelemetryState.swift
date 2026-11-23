@@ -110,10 +110,9 @@ final class KernelTelemetryState {
     }
   }
   /// #1317: the classified zero-signal failure mode for this session (nil =
-  /// never classified). Stamped once, by whichever classification wins
-  /// (reactive `.zeroSignal` exit OR STOP-time, §3.6) — drives the
-  /// `.zeroSignal` pill for `allZeroFromStart` and the partial-capture
-  /// disclosure for `becameZeroMidCapture` (§3.5).
+  /// never classified). Stamped once, only by the eligible STOP-time
+  /// classification of a whole-zero take (#4841) — drives the `.zeroSignal`
+  /// pill for `allZeroFromStart`.
   var zeroSignalFailureMode: CaptureStallFailureMode?
 
   /// #1890: hardware and signal facts for a take that captured nothing usable,

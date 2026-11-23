@@ -80,6 +80,8 @@ enum SettingsDefaultValues {
   static let hotkeyEnabled = true
 
   static let vadAutoStop = false
+  /// #4841: founder decision 2026-11-22, on by default.
+  static let silentMicWarnings = true
   static let vadSilenceTimeout: Double = 1.5
   static let vadSensitivity: Float = 0.5
   static let vadEnergyGate = true

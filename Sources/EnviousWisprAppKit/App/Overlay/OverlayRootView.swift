@@ -140,12 +140,10 @@ struct OverlayRootView: View {
       //
       // **The FRAME is part of the composition, not a detail of the window.** The
       // shipped site frames this view before handing it to `showPanel`, and the
-      // panel is then sized to match. Dropping the frame leaves the capsule to
-      // size itself inside a 92-point window: the #1341 Bottom case in
-      // particular depends on the ALIGNMENT here, because bottom-aligning the
-      // content is what makes the panel's Y origin the capsule's visible bottom
-      // edge. The DESIGN owns the size and the captured position owns the
-      // alignment; nothing bundles them together any more.
+      // panel is then sized to match. The DESIGN owns the width; the height is
+      // the content's (#4841), and the captured position decides on which side
+      // of the pill a notice bubble opens. #1341's Bottom alignment needs no
+      // frame alignment any more: a content-sized panel has no spare space.
       //
       // **`frame.recording` is non-nil exactly when this case matched**, because
       // `OverlayRenderModel.recordingFrame(for:)` builds it from the same
@@ -252,7 +250,7 @@ struct OverlayRootView: View {
   @ViewBuilder
   private func recording(_ recordingFrame: RecordingFrame, id: PresentationID) -> some View {
     let _ = Self.leafObserverForTesting?(
-      id, recordingFrame.isLocked, recordingFrame.noticeText)
+      id, recordingFrame.isLocked, recordingFrame.notice?.text)
     let design = recordingFrame.design
     let view = RecordingOverlayView(
       audioLevelProvider: recordingFrame.audioLevelProvider,
@@ -260,25 +258,16 @@ struct OverlayRootView: View {
       livePreviewProvider: recordingFrame.livePreviewProvider,
       onContentHeightChange: recordingFrame.onContentHeightChange,
       chrome: design.chrome,
+      position: recordingFrame.position,
       isLocked: recordingFrame.isLocked,
-      noticeText: recordingFrame.noticeText)
+      notice: recordingFrame.notice)
 
+    // Width only, for every design (#4841). The height is content-driven, so a
+    // notice bubble grows the window and its departure shrinks it again; the
+    // host keeps the anchored edge (Top: top edge, Bottom: bottom edge).
     switch design {
-    case .readingWell:
-      // Width only. The height is content-driven so the pill earns its size a
-      // line at a time rather than snapping once the real height is measured.
+    case .readingWell, .classic, .levelRail:
       view.frame(width: design.width)
-    case .classic, .levelRail:
-      // The shared without-words arm: both reserve a fixed interaction frame, and
-      // both do it for the same reason — the #1060 banner has to fit a box neither
-      // can grow out of.
-      //
-      // #1341: Bottom bottom-aligns, Top centres. Centring in Bottom leaves ~24
-      // points of invisible space under a ~44-point capsule, which mutes the
-      // Bottom offset and visibly misaligns the polishing pill that replaces it.
-      view.frame(
-        width: design.width, height: design.reservedHeight,
-        alignment: recordingFrame.position == .bottom ? .bottom : .center)
     }
   }
 

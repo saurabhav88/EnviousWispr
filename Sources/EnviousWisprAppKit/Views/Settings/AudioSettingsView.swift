@@ -167,6 +167,22 @@ struct AudioSettingsView: View {
           }
         }
 
+        // #4841: the silent-mic notice switch, after Microphone readiness and
+        // before the Bluetooth row (founder 2026-11-22).
+        BrandedRow {
+          SettingsRow(
+            map: .id(.silentMicWarning),
+            icon: "mic.slash",
+            help: DictationSettingsCopy.Microphone.silentMicHelp
+          ) {
+            Toggle("", isOn: $settings.silentMicWarnings)
+              .labelsHidden()
+              .toggleStyle(BrandedToggleStyle())
+              .fixedSize()
+              .accessibilityLabel(Text(DictationSettingsCopy.Microphone.silentMicTitle))
+          }
+        }
+
         // #1480: compact Bluetooth guide row, matching the founder's mockup
         // (2026-09-16) — the full guide (tips, preferred mic order, the toggle
         // for the once-per-launch popover) now lives behind "Learn more"

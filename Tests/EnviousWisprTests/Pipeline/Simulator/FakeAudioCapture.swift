@@ -115,6 +115,10 @@ final class FakeAudioCapture: AudioCaptureInterface {
   // MARK: AudioCaptureInterface — observable state (inert constants)
 
   private(set) var isCapturing = false
+  /// #4841: what `exactZeroRun` reports while capturing. Like `AudioCaptureManager`, the
+  /// reading exists only while capture runs (nil otherwise); the default is "no silence yet".
+  var exactZeroRunWhileCapturing = ExactZeroRun(sampleCount: 0, sinceTakeStart: false)
+  var exactZeroRun: ExactZeroRun? { isCapturing ? exactZeroRunWhileCapturing : nil }
   var audioLevel: Float { 0 }
   var capturedSamples: [Float] { accumulatedSamples }
   /// #1780: tests mutate this to prove the record-start markers carry the
@@ -164,37 +168,6 @@ final class FakeAudioCapture: AudioCaptureInterface {
   var zeroSignalDiscriminatorDevice: BoundInputDevice? {
     zeroSignalDiscriminatorDeviceReadCount += 1
     return stubbedZeroSignalDiscriminatorDevice
-  }
-
-  // #1578: the categorical replacements for the old boolean saw-ineligible
-  // seam, which is deleted here rather than kept. The kernel no longer
-  // reads the legacy Boolean at all, so stubbing it here would model a path
-  // production does not take.
-
-  /// The reason the reactive producer froze for the current run, if any. Read by
-  /// the production snapshot closure when the run was classified reactively.
-  var stubbedZeroSignalRefusalReason: ZeroSignalEligibility?
-  /// Whether the current run was already classified by the reactive producer.
-  /// True must short-circuit BEFORE the frozen bind is consulted.
-  var stubbedZeroSignalRunWasClassifiedReactively = false
-  /// Contexts a rejected reactive forward left behind, handed over in order by
-  /// the atomic take.
-  var stubbedPendingZeroSignalRefusals: [ZeroSignalRefusalContext] = []
-  /// Counts atomic takes, so a test can prove a second drain happened AND was
-  /// empty rather than never happening at all.
-  private(set) var takePendingZeroSignalRefusalsCallCount = 0
-
-  var zeroSignalRefusalReason: ZeroSignalEligibility? { stubbedZeroSignalRefusalReason }
-
-  var zeroSignalRunWasClassifiedReactively: Bool { stubbedZeroSignalRunWasClassifiedReactively }
-
-  /// Mirrors `AudioCaptureManager`'s contract exactly: synchronous, order
-  /// preserving, and empty on every call after the first.
-  func takePendingZeroSignalRefusals() -> [ZeroSignalRefusalContext] {
-    takePendingZeroSignalRefusalsCallCount += 1
-    let pending = stubbedPendingZeroSignalRefusals
-    stubbedPendingZeroSignalRefusals.removeAll(keepingCapacity: true)
-    return pending
   }
 
   // MARK: AudioCaptureInterface — callbacks

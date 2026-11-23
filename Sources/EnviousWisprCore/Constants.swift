@@ -284,28 +284,14 @@ public enum AudioConstants {
   /// (#604), separate from the VAD's own segmentation padding (zero).
   public static let speechPaddingSamples: Int = 1600
 
-  /// Mid-take all-exact-zero ceiling for a BLUETOOTH capture (#1788), 3.0s.
-  ///
-  /// Distinct from `minimumTranscriptionSamples`, which stays 1.0s and continues to
-  /// govern BOTH every non-Bluetooth transport mid-take AND the stop-time classifier
-  /// on all transports. Bluetooth alone gets the longer bar because it alone
-  /// NEGOTIATES before audio flows: the A2DP->SCO/HFP handshake delivers exact zeros
-  /// for a measured 1-3s (#1441, 1,109 cold presses) before real samples arrive. No
-  /// wired or USB device does this, which is why the ceiling is transport-scoped
-  /// rather than raised for everyone.
-  ///
-  /// Evidence for 3.0s specifically: 9 instrumented cold-radio presses on AirPods Pro
-  /// measured 500/599/600/606/644/659/719/719/794ms (median 644, max 794) — every one
-  /// UNDER today's 1.0s cutoff, which is why the failure is an intermittent 14.55%
-  /// rather than constant: the cutoff sits on the upper shoulder of the distribution
-  /// and production aborts cluster at a median 974ms, just past where local sampling
-  /// stops. The upper tail comes from founder field observation ("sometimes two
-  /// seconds, never more"), so 3.0s carries ~50% headroom over the worst reported
-  /// case and ~3.8x the measured local max.
-  ///
-  /// Rollback is this one value: setting it to 16_000 restores byte-identical prior
-  /// behaviour on every transport without touching another line.
-  public static let bluetoothAllZeroMidTakeCeilingSamples: Int = 48_000
+  /// #4841: silent-mic notice thresholds, in live samples at `sampleRate` (16 kHz).
+  /// Founder decision 2026-11-22, matching the industry leader: a calm notice
+  /// after 5 s of exact zeros mid-take or 6 s when silent since the take started,
+  /// and a stronger notice at 15 s in either case. Exact zeros never end a take;
+  /// these only choose which notice the pill shows.
+  public static let silentMicCalmMidTakeSamples: Int = Int(5.0 * sampleRate)
+  public static let silentMicCalmSinceStartSamples: Int = Int(6.0 * sampleRate)
+  public static let silentMicStrongSamples: Int = Int(15.0 * sampleRate)
 
 }
 

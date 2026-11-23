@@ -1,0 +1,12 @@
+{
+  "language": "es",
+  "title": "Avisar si el micrófono no capta sonido",
+  "words": [
+    "aviso de micrófono sin sonido",
+    "alerta de micrófono en silencio"
+  ],
+  "phrases": [
+    "cómo activar el aviso si el micro no capta sonido al dictar",
+    "cómo quitar el aviso de micrófono en silencio"
+  ]
+}

@@ -100,6 +100,7 @@ enum SettingsMapID: String, CaseIterable, Hashable, Sendable {
   case micReadiness30s = "micReadiness.30s"
   case micReadiness60s = "micReadiness.60s"
   case micReadinessAlways = "micReadiness.always"
+  case silentMicWarning = "silentMicWarning"
   case bluetoothGuide = "bluetoothGuide"
   case bluetoothGuideLearnMore = "bluetoothGuide.learnMore"
   case livePreview = "livePreview"

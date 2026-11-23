@@ -98,6 +98,8 @@ struct OtherAudioTelemetryTests {
         == Set([
           "vad_stage_reached", "other_audio_mode", "other_audio_volume", "other_audio_mute",
           "other_audio_media", "other_audio_failure",
+          // #4841: always present on a summary.
+          "silent_mic_notice", "silent_mic_cleared",
         ]))
     #expect(row["other_audio_failure"] as? String == "record_failed")
     #expect(row["other_audio_media"] as? String == "nothing_paused")

@@ -88,17 +88,17 @@ public enum RawAudioDeadAirClassifier {
   /// recomputing them at the call site would be a second implementation of the
   /// thing being measured.
   ///
-  /// With exclusion off (`nil`, every caller but one), short-circuit ORDER and
+  /// With exclusion off (`nil`), short-circuit ORDER and
   /// RESULTS are identical to the pre-#1845 code —
   /// peak, then empty, then whole-buffer RMS, then the short-buffer reuse, then
   /// the tiled window loop. Nothing added here may change what the gate decides.
   ///
-  /// #4154 (D-Q): `excludingExactZeroRunsOfAtLeast` is `nil` for every caller
-  /// except the kernel's no-speech gate on a confirmed-bound USB take. With a
+  /// #4154 (D-Q), every route since #4841: the kernel's no-speech gate passes
+  /// `excludingExactZeroRunsOfAtLeast`; other callers leave it `nil`. With a
   /// value, the whole-buffer RMS COMPARISON uses a denominator that leaves out
   /// every run of exact 0.0 at least that long, so long digital silence cannot
   /// dilute quiet input that was audible on its own. Valid digital silence is
-  /// ambiguous, so this is a deliberate averaging change for that one caller,
+  /// ambiguous, so this is a deliberate averaging change for that caller,
   /// not a claim that the zeros were "no audio". The sum of squares, the peak,
   /// sample positions and the 40 ms window loop are untouched, and an all-run
   /// buffer gets a decision RMS of 0 (never NaN) so it stays dead air. A

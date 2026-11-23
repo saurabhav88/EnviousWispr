@@ -1,0 +1,11 @@
+{
+  "language": "ro",
+  "title": "avertizează când microfonul nu captează niciun sunet",
+  "words": [
+    "alertă microfon",
+    "avertizare lipsă sunet"
+  ],
+  "phrases": [
+    "cum pornesc alerta dacă microfonul nu prinde nimic când dictez?"
+  ]
+}

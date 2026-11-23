@@ -683,8 +683,9 @@ final class OverlayDirector {
         // re-read** (#2375 C3b). Reading it back off the render model is what
         // made this a second consumer of the geometry override, so a change to
         // that override silently moved a live pill's growth width.
-        guard let self, self.presentedID == presentation.id, design.canHoldWords
-        else { return }
+        // #4841: every design grows (a notice bubble or strip), not only the one
+        // that can hold words.
+        guard let self, self.presentedID == presentation.id else { return }
         self.host.resizeCurrentPresentation(to: CGSize(width: design.width, height: height))
       })
   }
@@ -1058,10 +1059,9 @@ final class OverlayDirector {
   }
 
   /// **Discharges the obligation `OverlayContent.recording` records**: the
-  /// non-preview recording pill is 185 points wide in a reserved 92-point
-  /// interaction frame, and the Live Preview variant is 400 wide and
-  /// content-sized from its first frame so it does not visibly snap once the
-  /// real height is measured.
+  /// recording pill takes its design's width and, since #4841, is content-sized
+  /// in every design (the Capsule and Level Rail grow for their notice bubble;
+  /// the 92-point reserved frame is gone).
   ///
   /// The DIRECTOR decides it and the reducer cannot, because whether preview is
   /// on arrives as a PROVIDER rather than as an event — putting it in the reducer
@@ -1904,12 +1904,85 @@ extension OverlayDirector: OverlayPresenting {
     return true
   }
 
+  /// #4841: the live recording pill's identity, or nil when no recording holds
+  /// the slot. The silent-mic tracker binds its posts to this value.
+  var currentRecordingPresentationID: PresentationID? {
+    guard let current = reducer.state.current, case .recording = current.content else {
+      return nil
+    }
+    return current.id
+  }
+
+  /// #4841: the kind of notice the live recording pill shows now, if any.
+  var currentInPanelNoticeKind: RecordingNoticeKind? {
+    guard case .recording(_, _, let notice?, _)? = reducer.state.current?.content else {
+      return nil
+    }
+    return notice.reason.kind
+  }
+
+  /// #4841: show a notice only on the recording presentation `presentation`
+  /// names. Returns that id only when the host DREW it on that pill; nil when no
+  /// recording holds the slot, a newer recording replaced it (so a late poll
+  /// cannot reach a new take), the pill has not been drawn yet, or the host
+  /// refused the update (which rolls the pill back). The caller records a
+  /// warning as shown only on a non-nil answer.
+  @discardableResult
+  func showInPanelNotice(
+    _ reason: RecordingNoticeReason, dismissAfter: Double?, on presentation: PresentationID
+  ) -> PresentationID? {
+    guard currentRecordingPresentationID == presentation else { return nil }
+    let drawn = applyNoticeUpdate(
+      .inPanelNotice(reason, dismissAfter: dismissAfter), on: presentation,
+      landed: { $0.currentInPanelNoticeKind == reason.kind })
+    return drawn ? presentation : nil
+  }
+
+  /// #4841: clear a notice of `kind`, only on the recording presentation
+  /// `presentation` names. Returns true only when a notice of that kind was
+  /// showing there and the host drew the pill without it; a stale presentation,
+  /// no notice, another kind's notice (which keeps its dwell), an undrawn pill or
+  /// a refused update returns false.
+  @discardableResult
+  func clearInPanelNotice(_ kind: RecordingNoticeKind, on presentation: PresentationID) -> Bool {
+    guard currentRecordingPresentationID == presentation, currentInPanelNoticeKind == kind
+    else { return false }
+    return applyNoticeUpdate(
+      .clearInPanelNotice(kind), on: presentation,
+      landed: { $0.currentInPanelNoticeKind != kind })
+  }
+
+  /// #4841: run one notice event through the same render-acceptance relay
+  /// `present` uses, and answer whether it reached the screen on `presentation`.
+  /// A same-id morph renders synchronously once the pill has been drawn, so the
+  /// relay answers in this call. A pill still waiting for its first render
+  /// defers the answer, which counts as not drawn yet (the next poll retries).
+  /// An event that changed nothing renders nothing; it counts as drawn only when
+  /// the drawn pill already shows the wanted state.
+  private func applyNoticeUpdate(
+    _ event: OverlayEvent, on presentation: PresentationID,
+    landed: (OverlayDirector) -> Bool
+  ) -> Bool {
+    var outcome: Bool?
+    let relay = PresentationRelay { outcome = $0 }
+    handle(event, binding: .none, relay: relay)
+    if let outcome {
+      return outcome && currentRecordingPresentationID == presentation && landed(self)
+    }
+    relay.disarm()
+    if relay.isDeferred || pendingFirstAcceptance?.id == presentation { return false }
+    return presentedID == presentation && currentRecordingPresentationID == presentation
+      && landed(self)
+  }
+
   func update(_ update: PillUpdate) {
     switch update {
     case .recordingLock(let isLocked):
       handle(.lockStateChanged(isLocked), binding: .none)
     case .inPanelNotice(let reason, let dismissAfter):
       handle(.inPanelNotice(reason, dismissAfter: dismissAfter), binding: .none)
+    case .clearInPanelNotice(let kind):
+      handle(.clearInPanelNotice(kind), binding: .none)
     case .parakeetUpgradeProgress(let fraction):
       handle(.parakeetUpgradeProgress(fraction: fraction), binding: .none)
     }

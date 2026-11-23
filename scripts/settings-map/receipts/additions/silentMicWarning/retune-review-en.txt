@@ -1,0 +1,3 @@
+Replaced “stop” with “turn off” to distinguish disabling the warning from stopping the recording.
+
+{"words": ["silence warning", "silent input alert"], "phrases": ["warn me if nothing comes through while I dictate", "turn off the silence warning on the recording pill"]}

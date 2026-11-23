@@ -49,6 +49,12 @@ struct TakeStageSummary: Equatable {
   var polishSetupProblem: String?
   /// #3988: the outside stop this take was the recovery take for, and what its polish did.
   var outsideStopRecovery: OutsideStopRecoveryTerminalFacts?
+  /// #4841: the highest silent-mic notice level the pill accepted for this take
+  /// (`calm` or `strong`), or nil when none showed.
+  var silentMicNotice: String?
+  /// #4841: true once a displayed silent-mic notice was cleared because sound
+  /// returned. Never set by a stop, cancel, competing notice or stale clear.
+  var silentMicCleared: Bool?
 
   /// The terminal-row projection. Keys are prefixed `vad_` beside the #2184 conditioning
   /// fields that already live on the same row; `vad_stage_reached` is always present when
@@ -69,6 +75,10 @@ struct TakeStageSummary: Equatable {
     if let outsideStopRecovery {
       out.merge(outsideStopRecovery.terminalProperties) { current, _ in current }
     }
+    // #4841: present whenever a summary exists, so `none` reads as "the take ran and
+    // no notice showed", distinct from a take with no summary at all.
+    out["silent_mic_notice"] = silentMicNotice ?? "none"
+    out["silent_mic_cleared"] = silentMicCleared ?? false
     return out
   }
 }

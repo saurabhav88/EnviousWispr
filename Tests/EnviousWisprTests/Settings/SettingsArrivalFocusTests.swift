@@ -339,7 +339,7 @@ struct SettingsArrivalFocusTests {
     ),
     ("snippets", [.snippetKeyword, .snippetsAdd, .snippetsSearch], [.snippets]),
     ("keybinds", [.recordKeybind, .recordingMode, .escapeRecovery], [.sectionKeybindsRecording]),
-    ("dictation.microphone", [.inputDevice, .micReadiness, .bluetoothGuideLearnMore], [.sectionMicrophone, .bluetoothGuide]),
+    ("dictation.microphone", [.inputDevice, .micReadiness, .silentMicWarning, .bluetoothGuideLearnMore], [.sectionMicrophone, .bluetoothGuide]),
     (
       "dictation.engine.switchesOn",
       // #4216: the Start word field moved into the Spoken punctuation window.

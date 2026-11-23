@@ -1,0 +1,16 @@
+{
+ "id": "silentMicWarning",
+ "blocks": [
+  {
+   "language": "en",
+   "words": [
+    "silent mic warning",
+    "dead microphone alert"
+   ],
+   "phrases": [
+    "warn me if my mic goes silent while dictating",
+    "stop the silent microphone warning on the recording pill"
+   ]
+  }
+ ]
+}

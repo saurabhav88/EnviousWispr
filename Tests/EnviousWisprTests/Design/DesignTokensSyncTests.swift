@@ -321,6 +321,7 @@ struct DesignTokensSyncTests {
     "Font.firstRunButton": .firstRunButton,
     "Font.firstRunLabel": .firstRunLabel, "Font.firstRunCaption": .firstRunCaption,
     "Font.firstRunEyebrow": .firstRunEyebrow,
+    "Font.pillNotice": .pillNotice,
   ]
 
   static let compiledLayout: [String: CGFloat] = [
@@ -336,6 +337,13 @@ struct DesignTokensSyncTests {
     "SettingsLayout.minimumHitTarget": SettingsLayout.minimumHitTarget,
     "SettingsPR1Layout.rowPaddingV": SettingsPR1Layout.rowPaddingV,
     "SettingsPR1Layout.headingGap": SettingsPR1Layout.headingGap,
+    "PillNoticeLayout.gap": PillNoticeLayout.gap,
+    "PillNoticeLayout.paddingV": PillNoticeLayout.paddingV,
+    "PillNoticeLayout.paddingH": PillNoticeLayout.paddingH,
+    "PillNoticeLayout.iconGap": PillNoticeLayout.iconGap,
+    "PillNoticeLayout.railMaxWidth": PillNoticeLayout.railMaxWidth,
+    "PillNoticeLayout.radius": PillNoticeLayout.radius,
+    "PillNoticeLayout.strongEdge": PillNoticeLayout.strongEdge,
     "DesignRadius.xs": DesignRadius.xs, "DesignRadius.sm": DesignRadius.sm,
     "DesignRadius.md": DesignRadius.md, "DesignRadius.lg": DesignRadius.lg,
     "DesignRadius.xl": DesignRadius.xl, "DesignRadius.xxl": DesignRadius.xxl,

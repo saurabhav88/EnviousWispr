@@ -1,0 +1,4 @@
+„Tonwarnung“ → „Stillewarnung“, weil „Tonwarnung“ auch als akustisches Warnsignal verstanden werden kann.
+„Hinweis bei fehlendem Ton“ → „Stillehinweis“, weil der kürzere Suchbegriff zur Wortliste passt und den Hinweis auf Stille eindeutig benennt.
+
+{"words": ["Stillewarnung", "Stillehinweis"], "phrases": ["warne mich, wenn beim Diktieren kein Ton ankommt", "schalte den Hinweis bei fehlendem Ton auf der Aufnahmeanzeige aus"]}

@@ -139,6 +139,9 @@
   --ew-font-first-run-eyebrow-size: 11px;
   --ew-font-first-run-eyebrow-weight: 600;
   --ew-font-first-run-eyebrow-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Helvetica Neue", sans-serif;
+  --ew-font-pill-notice-size: 11px;
+  --ew-font-pill-notice-weight: 600;
+  --ew-font-pill-notice-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Helvetica Neue", sans-serif;
   --ew-settings-layout-section-radius: 14px;
   --ew-settings-layout-row-padding-h: 14px;
   --ew-settings-layout-row-padding-v: 12px;
@@ -151,6 +154,13 @@
   --ew-settings-layout-minimum-hit-target: 20px;
   --ew-settings-pr1-layout-row-padding-v: 10px;
   --ew-settings-pr1-layout-heading-gap: 8px;
+  --ew-pill-notice-layout-gap: 4px;
+  --ew-pill-notice-layout-padding-v: 8px;
+  --ew-pill-notice-layout-padding-h: 12px;
+  --ew-pill-notice-layout-icon-gap: 6px;
+  --ew-pill-notice-layout-rail-max-width: 210px;
+  --ew-pill-notice-layout-radius: 13px;
+  --ew-pill-notice-layout-strong-edge: 1px;
   --ew-design-radius-xs: 4px;
   --ew-design-radius-sm: 6px;
   --ew-design-radius-md: 8px;
