@@ -117,9 +117,11 @@ struct CapsuleBackgroundFreezeTests {
   /// describes it. Tighter, and checked rather than transcribed.
   nonisolated static let literalOwners:
     [(what: String, declaration: String, expected: Int, path: String, literal: String)] = [
+      // #4841: the same fill, solid for the notice bubble (approved mockup) and 0.82 everywhere
+      // else, so the expression carries the corner style.
       (
         "capsule fill", "OverlayCapsuleBackground", 1, capsuleSourcePaths[0],
-        "Color(red: 0.078, green: 0.078, blue: 0.11).opacity(0.82)"
+        "Color(red: 0.078, green: 0.078, blue: 0.11).opacity(cornerStyle == .bubble ? 1 : 0.82)"
       ),
       (
         "capsule fill", "DistressCapsuleBackground", 1, capsuleSourcePaths[0],

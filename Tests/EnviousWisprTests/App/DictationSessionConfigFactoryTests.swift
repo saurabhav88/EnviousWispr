@@ -4,7 +4,7 @@ import EnviousWisprAudio
 import EnviousWisprCore
 import EnviousWisprLLM
 import EnviousWisprPipeline
-import EnviousWisprServices
+@testable import EnviousWisprServices
 import EnviousWisprStorage
 import Foundation
 import Testing
@@ -86,7 +86,12 @@ struct DictationSessionConfigFactoryTests {
   @Test("#4841: the silent-mic warning switch is frozen at recording start by the production factory")
   func silentMicWarningsFrozenAtRecordingStart() async throws {
     let harness = try Harness.make(backend: .parakeet)
-    #expect(harness.settings.silentMicWarnings == true, "precondition: ships on")
+    // The harness store outlives this test, and this test turns the switch off below; it sets its
+    // own starting value and puts it back, so neither run order nor a rerun decides the outcome.
+    #expect(SettingsDefaultValues.silentMicWarnings == true, "the switch ships on (founder decision)")
+    let original = harness.settings.silentMicWarnings
+    harness.settings.silentMicWarnings = true
+    defer { harness.settings.silentMicWarnings = original }
 
     let captured = DictationSessionConfigFactory.make(
       asrManager: harness.asrManager,
