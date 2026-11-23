@@ -271,8 +271,8 @@
  "retiredIDs": [],
  "resource": {
   "path": "Sources/EnviousWisprAppKit/Resources/SettingsSearchVocabulary.json",
-  "sha256": "77e7d3272fba639d1dd73807953d4b91c9a9273a4b5d8832ef9d6f49b5018995",
-  "bytes": 1896818
+  "sha256": "ef94b263053f5ad43f745c47cf89489d4fe8b5994a52092ae0c2e8056d1347e2",
+  "bytes": 1897145
  },
  "sources": [
   {
@@ -291,7 +291,7 @@
   {
    "name": "reviewed-edits.json",
    "path": "scripts/settings-map/receipts/reviewed-edits.json",
-   "sha256": "4c9eb9cbab073b570549a0d646b9d6b23aaf537a00a18c9cd27369a4138ffa19"
+   "sha256": "9d6a5874823c37f6d5b0859c2223c31d6c7b999ddfeaedf5ce3a1eb228276085"
   }
  ],
  "excludedIDs": [
@@ -5433,7 +5433,7 @@
   },
   {
    "language": "de",
-   "contentSHA256": "8451b67dd275a380a846998e182407abf887b984f40732d52de9b2cdc4fea5cf",
+   "contentSHA256": "214c7ed84ec4ad965ae3db975ec31d534e855578da1e0f6d4a39a9f9dab0a628",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -6888,6 +6888,21 @@
       "sha256": "f168e2f15b1336cdf5d90095462093ba6f2bf6d039d1dcea9cac83e9836d3d27"
      },
      "disposition": "adopted as recorded in reviewed-edits.json"
+    },
+    {
+     "kind": "size-search-edit",
+     "scope": [
+      "aiPolishProvider.egOne"
+     ],
+     "date": "2026-11-22",
+     "method": "#4501: Codex, one fresh isolated session for this language (accuracy against the EG-1 size cards and their reviewed translations, naturalness, word collisions)",
+     "prompt": "edits/4501-eg1-sizes/review-prompt-de.md",
+     "promptSHA256": "713768788d1b28cc00a93fbb1843f90b7677d2f46fc86e4f4252375589a3c47b",
+     "output": {
+      "path": "edits/4501-eg1-sizes/review-de.txt",
+      "sha256": "58eb8df5494241103ae9383e56400c328c1f1f5eec3f7886664bfa242c27c367"
+     },
+     "disposition": "the reviewer's FINAL LIST adopted as recorded in reviewed-edits.json (existing words and phrases kept; size words and model-name phrases added); no council run, the wording follows the cards' own reviewed translations"
     }
    ],
    "phraseExemptions": []
@@ -8120,7 +8135,7 @@
   },
   {
    "language": "en",
-   "contentSHA256": "267a56b034c00cb5c47e7a9c20efeadf073c1acc9aa18bdf41936f659bc72bf1",
+   "contentSHA256": "3f6d662a9e40ee01b35f620e5877c1a1bed07ab211031c5d9821c3c6450fe424",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -9312,13 +9327,28 @@
       "sha256": "f168e2f15b1336cdf5d90095462093ba6f2bf6d039d1dcea9cac83e9836d3d27"
      },
      "disposition": "adopted as recorded in reviewed-edits.json"
+    },
+    {
+     "kind": "size-search-edit",
+     "scope": [
+      "aiPolishProvider.egOne"
+     ],
+     "date": "2026-11-22",
+     "method": "#4501: Codex, one fresh isolated session for this language (accuracy against the EG-1 size cards and their reviewed translations, naturalness, word collisions)",
+     "prompt": "edits/4501-eg1-sizes/review-prompt-en.md",
+     "promptSHA256": "78f579e730d002ee941ed52df981e9b2f1cd693c331c7d2454a94dd28c4c1952",
+     "output": {
+      "path": "edits/4501-eg1-sizes/review-en.txt",
+      "sha256": "cfc8172d27e1fbedf213926173eea4c41170ce3c6bb0e7d714309641ca864fe0"
+     },
+     "disposition": "the reviewer's FINAL LIST adopted as recorded in reviewed-edits.json (existing words and phrases kept; size words and model-name phrases added); no council run, the wording follows the cards' own reviewed translations"
     }
    ],
    "phraseExemptions": []
   },
   {
    "language": "es",
-   "contentSHA256": "3931c78926d3b6203a0aa91088225e742230f07dd3f514ace0bae245e1bd0c9b",
+   "contentSHA256": "6e544227047929f2f34ee786a9d66cf7b7eaca4412b6646c08b882311f59f6c0",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -10548,6 +10578,21 @@
       "sha256": "0900dae9c957222ce6de8ebe4ba7c120052ab040eaddc58c38051965b822589b"
      },
      "disposition": "adopted as recorded in reviewed-edits.json"
+    },
+    {
+     "kind": "size-search-edit",
+     "scope": [
+      "aiPolishProvider.egOne"
+     ],
+     "date": "2026-11-22",
+     "method": "#4501: Codex, one fresh isolated session for this language (accuracy against the EG-1 size cards and their reviewed translations, naturalness, word collisions)",
+     "prompt": "edits/4501-eg1-sizes/review-prompt-es.md",
+     "promptSHA256": "bc00b3d39e67cdb114581e7dbad12f0dc79b9662a0bebde78c10f058f36940e1",
+     "output": {
+      "path": "edits/4501-eg1-sizes/review-es.txt",
+      "sha256": "789db319ddde8199dee10cbb4688572a3f6348d0397f011288866fe634a7de1a"
+     },
+     "disposition": "the reviewer's FINAL LIST adopted as recorded in reviewed-edits.json (existing words and phrases kept; size words and model-name phrases added); no council run, the wording follows the cards' own reviewed translations"
     }
    ],
    "phraseExemptions": []
@@ -12988,7 +13033,7 @@
   },
   {
    "language": "fr",
-   "contentSHA256": "eef673c5745b0361fc0cfdc0730ade042f52196afe40715500dfbea3e5651d01",
+   "contentSHA256": "e2968a0dc7e0a46c6e0cdc14606bcf463d3299d26fffcd833c80da9eb922c4cb",
    "reviews": [
     {
      "kind": "phase0-content",
@@ -14209,6 +14254,21 @@
       "sha256": "f168e2f15b1336cdf5d90095462093ba6f2bf6d039d1dcea9cac83e9836d3d27"
      },
      "disposition": "adopted as recorded in reviewed-edits.json"
+    },
+    {
+     "kind": "size-search-edit",
+     "scope": [
+      "aiPolishProvider.egOne"
+     ],
+     "date": "2026-11-22",
+     "method": "#4501: Codex, one fresh isolated session for this language (accuracy against the EG-1 size cards and their reviewed translations, naturalness, word collisions)",
+     "prompt": "edits/4501-eg1-sizes/review-prompt-fr.md",
+     "promptSHA256": "c7ff093c9035fc3aa6e875bb8c86e6a633690dd9f1370b8723f775413f72997d",
+     "output": {
+      "path": "edits/4501-eg1-sizes/review-fr.txt",
+      "sha256": "25c8af6f045d1ae80ad49b153a2076eba2848cb873f97c63af3e90ecf3a21d19"
+     },
+     "disposition": "the reviewer's FINAL LIST adopted as recorded in reviewed-edits.json (existing words and phrases kept; size words and model-name phrases added); no council run, the wording follows the cards' own reviewed translations"
     }
    ],
    "phraseExemptions": []

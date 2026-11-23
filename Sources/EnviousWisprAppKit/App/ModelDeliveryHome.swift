@@ -368,6 +368,13 @@ final class ModelDeliveryHome {
   /// Set by the bootstrapper to the Parakeet driver's guarded warm-up.
   var warmParakeetAfterExplicitRetry: (@MainActor () async -> Void)?
 
+  /// #4837: the load that follows an admitted Parakeet download (Settings' Set up model and
+  /// Resume, Setup, the dev door), so the engine is not left waiting for the next hotkey press or
+  /// relaunch. Set by the bootstrapper to the Parakeet driver's guarded warm-up, which also
+  /// holds the Parakeet-selected-and-active and Setup-finished conditions. Single-flight: a
+  /// caller that warms itself (Setup) overlaps harmlessly.
+  var warmParakeetAfterAdmission: (@MainActor () async -> Void)?
+
   /// Settings' Try again: grant the bounded cycle, then load now, so the row
   /// does not clear into a model that waits for the next dictation to load.
   /// Returns the warm-up it started, nil when nothing started.
@@ -2164,8 +2171,14 @@ final class ModelDeliveryHome {
         guard let outcome else { return .refused }
         return .attempted(outcome)
       }
-      if case .completed(let answer) = claim { return answer }
-      return .refused
+      guard case .completed(let answer) = claim else { return .refused }
+      // #4837: after the claim ends (the warm-up takes its own), an admitted download loads
+      // the engine now, on its own task so the download's answer (Setup, Settings' busy flag,
+      // the dev door) never waits for the load. A failed, cancelled or refused one loads nothing.
+      if case .attempted(.admitted) = answer, let warm = self.warmParakeetAfterAdmission {
+        Task { await warm() }
+      }
+      return answer
     }
   }
 }

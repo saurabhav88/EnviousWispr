@@ -8,7 +8,7 @@
     "mapSHA256" : "78a18c41df65c26ed3b3c1f8d219269d225d89b384af535f7d407c704b7945a1",
     "uiCatalogSHA256" : "ab60b53160ea6fe03331e086dadc63fb58ac7111110e5aa480a31d87d5b9ba35",
     "vocabularyCanonicalization" : "length-prefixed-v1",
-    "vocabularySHA256" : "77e7d3272fba639d1dd73807953d4b91c9a9273a4b5d8832ef9d6f49b5018995"
+    "vocabularySHA256" : "ef94b263053f5ad43f745c47cf89489d4fe8b5994a52092ae0c2e8056d1347e2"
   },
   "interfaceLanguages" : [
     "en",
@@ -107512,10 +107512,13 @@
         "de" : {
           "phrases" : [
             "verbessere meine Diktate mit dem eigenen Modell der App",
-            "wähle EG-1 für die Diktatkorrektur auf diesem Mac"
+            "wähle EG-1 für die Diktatkorrektur auf diesem Mac",
+            "EG-1 Micro, am kleinsten und schnellsten",
+            "EG-1 Mini, schneller Allrounder"
           ],
           "words" : [
-
+            "Modellgröße",
+            "EG-1-Größe"
           ]
         },
         "el" : {
@@ -107531,19 +107534,26 @@
         "en" : {
           "phrases" : [
             "use the app's own model to clean up my dictation",
-            "choose EG-1 for dictation cleanup on this Mac"
+            "choose EG-1 for dictation cleanup on this Mac",
+            "EG-1 Micro",
+            "EG-1 Mini"
           ],
           "words" : [
-
+            "model size",
+            "EG-1 size"
           ]
         },
         "es" : {
           "phrases" : [
-            "usar EG-1 para corregir mi dictado en el Mac"
+            "usar EG-1 para corregir mi dictado en el Mac",
+            "cambiar a EG-1 Micro",
+            "cambiar a EG-1 Mini"
           ],
           "words" : [
             "EG-1 dictado",
-            "corrector propio"
+            "corrector propio",
+            "tamaño del modelo",
+            "tamaños de EG-1"
           ]
         },
         "et" : {
@@ -107568,11 +107578,15 @@
         },
         "fr" : {
           "phrases" : [
-            "utiliser EG-1 sur mon Mac pour corriger mes dictées"
+            "utiliser EG-1 sur mon Mac pour corriger mes dictées",
+            "choisir EG-1 Micro",
+            "choisir EG-1 Mini"
           ],
           "words" : [
             "EG-1 dictée",
-            "correcteur EnviousWispr"
+            "correcteur EnviousWispr",
+            "taille du modèle",
+            "taille du modèle EG-1"
           ]
         },
         "hi" : {
