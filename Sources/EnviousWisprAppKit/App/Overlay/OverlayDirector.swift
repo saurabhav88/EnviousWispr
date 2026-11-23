@@ -1679,6 +1679,13 @@ extension OverlayDirector: OverlayPresenting {
         .parakeetUpgrade(model),
         binding: .install(deliver: { _ in }, onExpire: nil, isStillWanted: isStillWanted),
         relay: relay)
+    case .polishDownloadComplete(let model, let isStillWanted):
+      // #4845 LIFE-5: the upgrade pill's shape: reducer admission, no buttons, the binding
+      // carries the pre-render question.
+      handle(
+        .polishDownloadComplete(model),
+        binding: .install(deliver: { _ in }, onExpire: nil, isStillWanted: isStillWanted),
+        relay: relay)
 
     case .accessibilityNotice:
       presentAccessibilityNotice(relay: relay)

@@ -19,7 +19,7 @@ struct OnboardingFlowTests {
     .turnPolishOn, .continueWithoutPolish, .reviewPermissions,
     .changeSpeech, .changePolish, .reviewCloudKey, .returnToGettingReady, .inspectDownloads,
     .readinessChanged(OnboardingReadiness()), .readinessChanged(granted()),
-    .practiceSucceeded, .skipPractice, .filmFinished, .skipFilm,
+    .practiceSucceeded, .skipPractice, .filmFinished, .skipFilm, .skipAheadAccepted,
   ]
 
   private static func granted() -> OnboardingReadiness {
@@ -346,5 +346,92 @@ struct OnboardingFlowTests {
         #expect(t.outcome == .noOp && t.state.step == step, "\(step)")
       }
     }
+  }
+
+  // MARK: - #4845 Skip ahead
+
+  /// Getting ready with speech and both grants ready and the polish download still running.
+  private static func waitingOnPolish(_ polish: String) -> OnboardingFlowState {
+    var s = Self.at(.gettingReady)
+    s.choices.speech = .parakeet
+    s.choices.polish = polish
+    s.readiness = Self.ready(speech: .parakeet, polish: nil)
+    return s
+  }
+
+  @Test("only the EG-1 sizes and S1-mini count as AI polish that downloads")
+  func runtimeDownloadedPolishPicks() {
+    // When this fails, Skip ahead is offered for a pick that has no download, or refused for one.
+    for id in ["eg1.full", "eg1.mini", "eg1.micro", "s1mini"] {
+      #expect(OnboardingChoices.isRuntimeDownloadedPolish(id), "\(id)")
+    }
+    for id in ["appleIntelligence", "cloud", "off", "ollama", "eg1.huge", ""] {
+      #expect(!OnboardingChoices.isRuntimeDownloadedPolish(id), "\(id)")
+    }
+  }
+
+  @Test("Skip ahead opens Practice while the polish model downloads, and a take there counts")
+  func skipAheadOpensPractice() {
+    // When this fails, a person on slow internet who presses Skip ahead stays stuck waiting.
+    let t = OnboardingFlow.reduce(Self.waitingOnPolish("eg1.mini"), .skipAheadAccepted)
+    #expect(t.outcome == .moved && t.state.step == .practice)
+    #expect(t.state.deferredPolish == "eg1.mini")
+    #expect(t.effects == [.persistCheckpoint])  // starts no download of its own
+    let take = OnboardingFlow.reduce(t.state, .practiceSucceeded)
+    #expect(take.state.step == .film && take.state.practiceOutcome == .succeeded)
+    #expect(OnboardingFlow.reduce(Self.waitingOnPolish("s1mini"), .skipAheadAccepted).state.step
+      == .practice)
+  }
+
+  @Test("Skip ahead still needs the speech model ready and both grants, and a downloaded polish pick")
+  func skipAheadNeedsSpeechAndAnEligiblePick() {
+    // When this fails, Practice opens with a dictation key that cannot work yet.
+    var noSpeech = Self.waitingOnPolish("eg1.mini")
+    noSpeech.readiness.engineWarm = false
+    #expect(OnboardingFlow.reduce(noSpeech, .skipAheadAccepted).outcome
+      == .refused("speech or permissions are not ready"))
+    var noGrant = Self.waitingOnPolish("eg1.mini")
+    noGrant.readiness.accessibilityGranted = false
+    #expect(OnboardingFlow.reduce(noGrant, .skipAheadAccepted).outcome
+      == .refused("speech or permissions are not ready"))
+    for polish in ["appleIntelligence", OnboardingChoices.polishCloud, OnboardingChoices.polishOff] {
+      let t = OnboardingFlow.reduce(Self.waitingOnPolish(polish), .skipAheadAccepted)
+      #expect(t.outcome == .refused("Skip ahead needs an AI polish model that downloads"), "\(polish)")
+    }
+    var elsewhere = Self.waitingOnPolish("eg1.mini")
+    elsewhere.step = .key
+    #expect(OnboardingFlow.reduce(elsewhere, .skipAheadAccepted).outcome == .noOp)
+  }
+
+  @Test("Next and readiness alone never skip ahead")
+  func nothingButSkipAheadDefers() {
+    // When this fails, Practice opens without polish although the person never chose to skip.
+    let s = Self.waitingOnPolish("eg1.mini")
+    #expect(OnboardingFlow.reduce(s, .next).outcome == .refused("not ready for practice"))
+    let fact = OnboardingFlow.reduce(s, .readinessChanged(Self.ready(speech: .parakeet, polish: nil)))
+    #expect(fact.state.step == .gettingReady && fact.state.deferredPolish == nil)
+  }
+
+  @Test("a Skip ahead lasts through Back for the same pick and ends when the polish pick changes")
+  func skipAheadFollowsThePick() {
+    // When this fails, Practice skips a model the person picked after skipping ahead.
+    let practice = OnboardingFlow.reduce(Self.waitingOnPolish("eg1.mini"), .skipAheadAccepted).state
+    let key = OnboardingFlow.reduce(practice, .back).state
+    #expect(key.step == .key && key.deferredPolish == "eg1.mini")
+    #expect(OnboardingFlow.reduce(key, .next).state.step == .practice)
+
+    var picks = practice
+    picks.step = .polishPick
+    #expect(OnboardingFlow.reduce(picks, .choosePolish("eg1.mini")).state.deferredPolish == "eg1.mini")
+    #expect(OnboardingFlow.reduce(picks, .choosePolish("eg1.full")).state.deferredPolish == nil)
+    #expect(OnboardingFlow.reduce(picks, .skipPolish).state.deferredPolish == nil)
+    var seeAll = practice
+    seeAll.step = .polishSeeAll
+    #expect(
+      OnboardingFlow.reduce(seeAll, .chooseCloud(.openAI, model: "gpt-4o-mini")).state.deferredPolish
+        == nil)
+    var waiting = practice
+    waiting.step = .gettingReady
+    #expect(OnboardingFlow.reduce(waiting, .continueWithoutPolish).state.deferredPolish == nil)
   }
 }

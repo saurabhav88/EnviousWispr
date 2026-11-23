@@ -32,6 +32,7 @@
     case languageChip
     case bluetoothAwareness
     case parakeetUpgrade
+    case polishDownloadComplete
     case polishSetupCard
     case escapeRecovery
     case correctionLearned
@@ -89,6 +90,7 @@
       case .languageChip: return .languageChip
       case .bluetoothAwareness: return .bluetoothAwareness
       case .parakeetUpgrade: return .parakeetUpgrade
+      case .polishDownloadComplete: return .polishDownloadComplete
       case .polishSetupCard: return .polishSetupCard
       case .escapeRecovery: return .escapeRecovery
       case .correctionLearned: return .correctionLearned
@@ -116,7 +118,8 @@
           ))
       case .processing, .clipboardFallback, .warning, .error, .advisory, .interruption,
         .cachingModel, .engineReady, .recoverySucceeded, .importStatus, .recoveryNotice,
-        .languageChip, .bluetoothAwareness, .parakeetUpgrade, .polishSetupCard,
+        .languageChip, .bluetoothAwareness, .parakeetUpgrade, .polishDownloadComplete,
+        .polishSetupCard,
         .escapeRecovery, .correctionLearned, .correctionLearnedSaveError,
         .retainedClipboardFallback:
         return .playable
@@ -476,6 +479,14 @@
             .parakeetUpgrade(ParakeetUpgradePillModel(phase: phase), isStillWanted: { true })
           })
       }
+      rows.append(
+        row(
+          "polishDownloadComplete", .polishDownloadComplete, "Notices",
+          "AI polish download complete"
+        ) { _ in
+          .polishDownloadComplete(
+            PolishDownloadPillModel(modelName: "EG-1 Mini"), isStillWanted: { true })
+        })
 
       // Warnings.
       for (index, reason) in warningSamples.enumerated() {

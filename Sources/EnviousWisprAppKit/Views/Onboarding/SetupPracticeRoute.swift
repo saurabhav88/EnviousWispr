@@ -51,23 +51,34 @@ struct SetupPracticeAttempt {
     expectedEditor = nil
   }
 
-  mutating func observe(_ take: SetupPracticeTake, focusedEditor: String?) {
+  /// Returns true exactly when this observation is a take verified in the expected editor (the
+  /// delivery receipt Skip ahead's summary times). `skippedAhead`: this Practice was opened with
+  /// Skip ahead for the current pick (a flow fact that holds for all of Practice, never a timing
+  /// read). After Skip ahead a take that missed polish only because the model was not ready yet
+  /// (or the take was too short to polish) is the promised basic-cleanup success, decided from
+  /// the take's own polish result, so the moment polish became ready cannot change it. Any other
+  /// miss (a failure, a crash mid-request) keeps today's "AI polish didn't run" copy.
+  @discardableResult
+  mutating func observe(
+    _ take: SetupPracticeTake, focusedEditor: String?, skippedAhead: Bool = false
+  ) -> Bool {
     if take.phase.isActive {
       if activeID != take.id {
         activeID = take.id
         expectedEditor = focusedEditor
       }
-      return
+      return false
     }
-    guard let terminal = take.terminal, activeID == take.id else { return }
+    guard let terminal = take.terminal, activeID == take.id else { return false }
     let editor = expectedEditor
     detachEditor()
     switch terminal {
-    case .delivered(let verifiedEditor, let copied, let polished):
+    case .delivered(let verifiedEditor, let copied, let polished, let waitedForModel):
       if let editor, verifiedEditor == editor {
         success = .completed(polished: polished)
-        state = .worked
+        state = skippedAhead && !polished && waitedForModel ? .workedBasicCleanup : .worked
         result = .completed(polished: polished)
+        return true
       } else {
         state = .missedBox(copiedToClipboard: copied)
         result = .missedBox
@@ -81,6 +92,7 @@ struct SetupPracticeAttempt {
     case .cancelled:
       break
     }
+    return false
   }
 }
 
@@ -105,7 +117,7 @@ struct SetupPracticeRoute: View {
     SetupPracticeScreen(
       state: state, text: $progress.text,
       hasSucceeded: attempt.success != nil, key: key,
-      polish: polishIsOn ? .live : .off,
+      polish: practicePolish,
       settings: sources.settings, microphone: sources.devices.microphoneFacts,
       microphoneChoices: sources.devices.choices,
       onSucceeded: { finish(.practiceSucceeded) },
@@ -126,7 +138,9 @@ struct SetupPracticeRoute: View {
     }
     .onChange(of: take) { _, next in
       guard isCurrent else { return }
-      progress.attempt.observe(next, focusedEditor: editorOwnsFocus ? editorID : nil)
+      let delivered = progress.attempt.observe(
+        next, focusedEditor: editorOwnsFocus ? editorID : nil, skippedAhead: skippedAhead)
+      if delivered { model.sources.practiceDelivered?() }
     }
   }
 
@@ -136,12 +150,32 @@ struct SetupPracticeRoute: View {
     (model.state.choices.polish ?? OnboardingChoices.polishOff) != OnboardingChoices.polishOff
   }
 
+  /// #4845: the deferred pick's note stage now; nil when polish was not skipped ahead or is ready.
+  private var deferredStage: SetupPracticePolish.DeferredStage? {
+    guard let polish = model.state.choices.polish, model.state.deferredPolish == polish,
+      let p = model.sources.downloads?()
+    else { return nil }
+    return SetupPracticePolish.deferredStage(p)
+  }
+
+  /// This Practice was opened with Skip ahead for the current pick (holds for all of Practice).
+  private var skippedAhead: Bool {
+    guard let polish = model.state.choices.polish else { return false }
+    return model.state.deferredPolish == polish
+  }
+
+  private var practicePolish: SetupPracticePolish {
+    if let stage = deferredStage { return .deferred(stage) }
+    return polishIsOn ? .live : .off
+  }
+
   /// #4590: a take that landed while polish is on but did not get polished reads
   /// `workedWithoutPolish`; `latest` is the most recent take's result (a later polished take
   /// returns `worked`). With polish off, an unpolished take is the expected `worked`.
   static func shown(_ attempt: SetupPracticeState, latest: SetupPracticeResult, polishOn: Bool)
     -> SetupPracticeState
   {
+    // A take that started on basic cleanup after Skip ahead is already `.workedBasicCleanup`.
     if attempt == .worked, polishOn, latest == .completed(polished: false) {
       return .workedWithoutPolish
     }

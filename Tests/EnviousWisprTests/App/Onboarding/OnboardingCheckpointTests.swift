@@ -195,4 +195,64 @@ struct OnboardingCheckpointTests {
     #expect(suite.object(forKey: "ew.onboarding.checkpoint.v1") == nil)
     #expect(SettingsManager.unifiedDefaultsKeys.contains("ew.onboarding.checkpoint.v1"))
   }
+
+  // MARK: - #4845 Skip ahead
+
+  @Test("a saved Skip ahead resumes for the same pick and Practice still waits for speech")
+  func skipAheadResumes() throws {
+    // When this fails, a person who quit during practice must wait for the polish download again,
+    // or practice opens before the speech engine works.
+    var practice = OnboardingFlowState()
+    practice.step = .practice
+    practice.choices.speech = .parakeet
+    practice.choices.polish = "eg1.mini"
+    practice.deferredPolish = "eg1.mini"
+    guard case .resume(let restored, _) = Self.resolve(.needsPermissions, try Self.data(practice))
+    else {
+      Issue.record("expected a resume")
+      return
+    }
+    #expect(restored.step == .practice && restored.deferredPolish == "eg1.mini")
+    #expect(restored.readiness == OnboardingReadiness())
+    #expect(OnboardingFlow.reduce(restored, .practiceSucceeded).outcome
+      == .refused("not ready for practice"))
+    var speechReady = OnboardingReadiness()
+    speechReady.microphoneGranted = true
+    speechReady.accessibilityGranted = true
+    speechReady.speech = .parakeet
+    speechReady.speechInstalled = true
+    speechReady.engineWarm = true
+    let measured = OnboardingFlow.reduce(restored, .readinessChanged(speechReady)).state
+    #expect(OnboardingFlow.reduce(measured, .practiceSucceeded).state.step == .film)
+  }
+
+  @Test("a checkpoint written before Skip ahead existed reads as no Skip ahead")
+  func legacyCheckpointHasNoSkipAhead() {
+    // When this fails, an update makes Setup unreadable or opens Practice without polish.
+    let legacy = Data(
+      #"{"choices":{"polish":"eg1.mini","speech":"parakeet"},"savedAt":200,"startedAt":100,"step":"practice","version":1}"#
+        .utf8)
+    guard case .resume(let restored, _) = Self.resolve(.needsPermissions, legacy) else {
+      Issue.record("expected a resume")
+      return
+    }
+    #expect(restored.step == .practice && restored.deferredPolish == nil)
+  }
+
+  @Test("a saved Skip ahead for another or a non-downloading pick grants nothing")
+  func mismatchedSkipAheadIsDropped() {
+    // When this fails, a hand-edited or stale checkpoint skips a model the person did not skip.
+    for (deferred, polish) in [("eg1.full", "eg1.mini"), ("appleIntelligence", "appleIntelligence")] {
+      let bytes = Data(
+        """
+        {"choices":{"polish":"\(polish)","speech":"parakeet"},"deferredPolish":"\(deferred)",\
+        "savedAt":200,"startedAt":100,"step":"practice","version":1}
+        """.utf8)
+      guard case .resume(let restored, _) = Self.resolve(.needsPermissions, bytes) else {
+        Issue.record("expected a resume for \(deferred)")
+        continue
+      }
+      #expect(restored.deferredPolish == nil, "\(deferred) / \(polish)")
+    }
+  }
 }

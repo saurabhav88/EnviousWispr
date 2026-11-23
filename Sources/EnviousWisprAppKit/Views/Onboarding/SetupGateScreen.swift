@@ -15,6 +15,8 @@ struct SetupGateScreen: View {
   @Environment(\.overlayReduceMotionOverride) private var reduceMotionOverride
   private var reduceMotion: Bool { reduceMotionOverride ?? systemReduceMotion }
   @State private var burst = 0
+  /// #4845: the offer visit and pick last announced to VoiceOver (one announcement per appearance).
+  @State private var announcedOffer: SetupSkipAheadOffer?
 
   private var step: OnboardingStep { screen == .downloads ? .downloads : .gettingReady }
 
@@ -23,6 +25,29 @@ struct SetupGateScreen: View {
     let names = self.names
     let cards = SetupGate.cards(p, screen: screen, names: names)
     let problem = SetupGate.problem(p, screen: screen)
+    let offer = self.offer
+    // #4845: the Skip ahead card can make Getting ready taller than the window; like Practice,
+    // the screen scrolls only when it does not fit, and otherwise fills the height.
+    GeometryReader { proxy in
+      ScrollView {
+        content(p, cards: cards, problem: problem, names: names, offer: offer)
+          .frame(maxWidth: .infinity, minHeight: proxy.size.height)
+      }
+      .scrollBounceBehavior(.basedOnSize)
+    }
+    .onAppear {
+      if !reduceMotion { burst += 1 }  // mockup: a happy bounce when the screen arrives
+      model.screenMounted(step, epoch: epoch)
+      announce(offer)
+    }
+    .onChange(of: offer) { _, next in announce(next) }
+  }
+
+  @ViewBuilder
+  private func content(
+    _ p: OnboardingDownloadsPresentation, cards: [SetupGate.Card], problem: SetupGate.Problem?,
+    names: SetupGate.Names, offer: SetupSkipAheadOffer
+  ) -> some View {
     VStack(spacing: 0) {
       RainbowLipsView(
         animationState: problem == nil ? .pulse : .idle, size: SetupMetrics.screenLips,
@@ -36,7 +61,7 @@ struct SetupGateScreen: View {
         .multilineTextAlignment(.center)
         .fixedSize(horizontal: false, vertical: true)
         .accessibilityAddTraits(.isHeader)
-      Text(verbatim: SetupGate.subtitle(p, screen: screen))
+      Text(verbatim: SetupGate.subtitle(p, screen: screen, secondsLeft: offer.secondsLeft))
         .font(.firstRunBody)
         .foregroundStyle(Color.obTextSecondary)
         .multilineTextAlignment(.center)
@@ -48,6 +73,9 @@ struct SetupGateScreen: View {
           cardView(card)
             .modifier(SetupRise(delay: 0.05 + Double(index) * 0.08, reduceMotion: reduceMotion))
         }
+        // #4845: right under the model cards, so the offer's buttons are in view without
+        // scrolling; the permission rows and shared controls follow.
+        skipAheadOffer(offer)
         if screen == .gettingReady {
           ForEach(SetupGate.permissionRows(p)) { row in permissionRow(row) }
         }
@@ -57,10 +85,91 @@ struct SetupGateScreen: View {
       footer(p)
     }
     .padding(.top, DesignSpacing.xs)
-    .onAppear {
-      if !reduceMotion { burst += 1 }  // mockup: a happy bounce when the screen arrives
-      model.screenMounted(step, epoch: epoch)
+  }
+
+  // MARK: Skip ahead (#4845 D-B, D-C)
+
+  private var offer: SetupSkipAheadOffer {
+    guard screen == .gettingReady, let source = model.sources.skipAhead else { return .hidden }
+    return source.offer()
+  }
+
+  /// The card, or the one line after Keep waiting. Both act for the visit and the pick this view
+  /// showed; the runtime and coordinator refuse a press that no longer matches.
+  @ViewBuilder
+  private func skipAheadOffer(_ offer: SetupSkipAheadOffer) -> some View {
+    if let pick = offer.pick, let source = model.sources.skipAhead {
+      switch offer.form {
+      case .hidden:
+        EmptyView()
+      case .card:
+        VStack(alignment: .leading, spacing: DesignSpacing.md) {
+          HStack(alignment: .firstTextBaseline, spacing: DesignSpacing.md) {
+            Image(systemName: "clock")
+              .foregroundStyle(Color.obAccent)
+              .accessibilityHidden(true)
+            Text(verbatim: SetupGate.offerTitle)
+              .font(.firstRunLabel)
+              .fixedSize(horizontal: false, vertical: true)
+          }
+          Text(verbatim: SetupGate.offerBody)
+            .font(.firstRunCaption)
+            .foregroundStyle(Color.obTextSecondary)
+            .fixedSize(horizontal: false, vertical: true)
+          HStack(spacing: DesignSpacing.md) {
+            // VoiceOver: a full-sentence label each, so a button says what it does on its own.
+            Button(SetupGate.skipAhead) { source.skip(offer.visit, pick) }
+              .buttonStyle(SetupSmallButtonStyle())
+              .accessibilityLabel(Text(verbatim: SetupGate.skipAheadLabel))
+            Button(SetupGate.keepWaiting) { source.keepWaiting(offer.visit, pick) }
+              .buttonStyle(SetupSmallButtonStyle(quiet: true))
+              .accessibilityLabel(Text(verbatim: SetupGate.keepWaitingLabel))
+          }
+        }
+        .padding(DesignSpacing.xxl)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(
+          RoundedRectangle(cornerRadius: DesignRadius.xxl, style: .continuous)
+            .fill(Color.firstRunAccentSoft)
+        )
+        .overlay(
+          RoundedRectangle(cornerRadius: DesignRadius.xxl, style: .continuous)
+            .strokeBorder(Color.obAccent, lineWidth: 1.5)
+            .allowsHitTesting(false)
+        )
+        .accessibilityElement(children: .contain)
+        .modifier(SetupRise(delay: 0, reduceMotion: reduceMotion))
+      case .line:
+        Button { source.skip(offer.visit, pick) } label: {
+          Text(SetupGate.ratherNotWait)
+            .font(.firstRunCaption)
+            .foregroundStyle(Color.obTextSecondary)
+            .frame(minHeight: SetupMetrics.linksHeight)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(Text(verbatim: SetupGate.ratherNotWaitLabel))
+        .accessibilityHint(Text(verbatim: SetupGate.offerBody))
+      }
     }
+  }
+
+  /// VoiceOver hears each appearance of the offer once (the header has no live region): the card,
+  /// or the one line when it is what returns after eligibility was lost and regained. Keep waiting
+  /// turning the card into the line is the person's own action and is not announced.
+  private func announce(_ offer: SetupSkipAheadOffer) {
+    guard offer.form != .hidden, offer.pick != nil else {
+      announcedOffer = nil
+      return
+    }
+    if let announced = announcedOffer, announced.visit == offer.visit, announced.pick == offer.pick {
+      return
+    }
+    announcedOffer = offer
+    let message =
+      offer.form == .card
+      ? SetupGate.offerTitle + " " + SetupGate.offerBody : SetupGate.ratherNotWaitLabel
+    AccessibilityNotification.Announcement(message).post()
   }
 
   // MARK: Names and sizes from the owners
@@ -265,6 +374,8 @@ struct SetupGateScreen: View {
 
 /// The card's small button (mockup `[data-ui="btn-sm"]`): 32 high, 10 corners, accent.
 struct SetupSmallButtonStyle: ButtonStyle {
+  /// #4845: the secondary variant (mockup `[data-quiet="1"]`): no fill, an outline.
+  var quiet = false
   @Environment(\.isEnabled) private var isEnabled
   @State private var hovering = false
   @Environment(\.accessibilityReduceMotion) private var systemReduceMotion
@@ -273,18 +384,30 @@ struct SetupSmallButtonStyle: ButtonStyle {
   func makeBody(configuration: Configuration) -> some View {
     configuration.label
       .font(.firstRunLabel)
-      .foregroundStyle(Color.firstRunOnAccent)
+      .foregroundStyle(quiet ? Color.obTextSecondary : Color.firstRunOnAccent)
       .padding(.horizontal, DesignSpacing.xl)
       .frame(height: SetupMetrics.linksHeight)
       .background(
         RoundedRectangle(cornerRadius: DesignRadius.lg, style: .continuous)
-          .fill(hovering || configuration.isPressed ? Color.firstRunSmallButtonHover : Color.obAccent)
+          .fill(fill(pressed: hovering || configuration.isPressed))
       )
+      .overlay {
+        if quiet {
+          RoundedRectangle(cornerRadius: DesignRadius.lg, style: .continuous)
+            .strokeBorder(Color.firstRunTextTertiary, lineWidth: 1)
+            .allowsHitTesting(false)
+        }
+      }
       .opacity(isEnabled ? 1 : 0.55)
       .contentShape(RoundedRectangle(cornerRadius: DesignRadius.lg, style: .continuous))
       .onHover { hovering = $0 }
       .animation(
         (reduceMotionOverride ?? systemReduceMotion) ? nil : SettingsHover.animation,
         value: hovering)
+  }
+
+  private func fill(pressed: Bool) -> Color {
+    if quiet { return pressed ? Color.obSurface : .clear }
+    return pressed ? Color.firstRunSmallButtonHover : Color.obAccent
   }
 }

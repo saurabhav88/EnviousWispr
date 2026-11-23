@@ -182,6 +182,13 @@ struct OverlayRootView: View {
         icon: Self.parakeetUpgradeIcon(for: model.phase),
         progress: Self.parakeetUpgradeProgress(for: model.phase))
 
+    case .polishDownloadComplete(let model):
+      // #4845 LIFE-5: the Parakeet ready pill's look (founder decision 10).
+      ColdStartNoticeView(
+        title: DictationNarrator.polishDownloadCompleteTitle,
+        subtitle: DictationNarrator.polishDownloadCompleteSubtitle(modelName: model.modelName),
+        icon: .ready, progress: nil)
+
     case .polishSetupCard(let model):
       PolishSetupCardView(
         model: model,

@@ -95,6 +95,8 @@ struct OnboardingDownloadOwners {
   var cancelPolish: (LocalPolishModelID) -> Void
   /// Loads an already-installed model, only while it is still the current pick.
   var activatePolish: (LocalPolishModelID) -> Void
+  /// #4845: false only for an update that stopped with nothing to resume.
+  var polishResumable: (LocalPolishModelID) -> Bool = { _ in true }
   /// Whether this engine's owner answers a request only once the attempt ended (`.ended`).
   var speechReportsEnd: (ASRBackendType) -> Bool = { _ in false }
 }
@@ -106,7 +108,7 @@ struct OnboardingDownloads {
 
   /// The local model a polish pick downloads, or nil for Apple Intelligence, a cloud key and
   /// polish off. Pick identifiers have one owner, `SetupRules.registeredPolish`.
-  static func localModel(forPolish id: String) -> LocalPolishModelID? {
+  nonisolated static func localModel(forPolish id: String) -> LocalPolishModelID? {
     guard let model = SetupRules.registeredPolish[id] else { return nil }
     switch model.provider {
     case .egOne, .s1Mini: return model
@@ -174,6 +176,14 @@ struct OnboardingDownloads {
 
   // MARK: Polish
 
+  /// #4845: saves the polish pick as the selection without starting anything (Skip ahead: the
+  /// pick the person kept is the one Settings and the menu bar describe, whatever happens to its
+  /// download). Nothing for a pick that downloads nothing.
+  func selectPolish(_ id: String) {
+    guard let model = Self.localModel(forPolish: id) else { return }
+    owners.writePolishSelection(model)
+  }
+
   /// Writes the provider and EG-1 size FIRST, because a runtime activates after download only
   /// when it is the current provider at completion (plan M22). An installed model is loaded
   /// instead of downloaded again. Apple Intelligence, cloud and off start nothing.
@@ -208,6 +218,11 @@ struct OnboardingDownloads {
   func retryPolish(_ id: String) -> OnboardingStart<String> { startPolish(id) }
 
   /// Nil for a pick with no local download.
+  /// #4845: false only for a local pick whose paused update has nothing to resume.
+  func polishResumable(_ id: String) -> Bool {
+    Self.localModel(forPolish: id).map(owners.polishResumable) ?? true
+  }
+
   func polishPhase(_ id: String) -> OnboardingDownloadPhase? {
     Self.localModel(forPolish: id).map(owners.polishPhase)
   }
@@ -321,6 +336,11 @@ extension OnboardingDownloadOwners {
         // older pick is never loaded over the current one.
         guard settings.polishModelID(for: settings.llmProvider) == model else { return }
         localPolish.runtime(for: model)?.activateAndProbe()
+      },
+      polishResumable: { model in
+        guard case .updatePaused(resumable: false, _)? = localPolish.runtime(for: model)?.installState
+        else { return true }
+        return false
       },
       // Parakeet's request answers with the attempt's `DeliveryOutcome`; Whisper's only accepts.
       speechReportsEnd: { $0 == .parakeet })

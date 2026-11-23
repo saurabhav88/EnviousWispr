@@ -452,6 +452,8 @@ enum OverlayContent: Equatable, Sendable {
   case polishSetupCard(PolishSetupCardModel)
   /// #3546 A3: the Parakeet Ultra upgrade's pills (downloading, installing, ready).
   case parakeetUpgrade(ParakeetUpgradePillModel)
+  /// #4845 LIFE-5: the AI polish download completion pill.
+  case polishDownloadComplete(PolishDownloadPillModel)
   case escapeRecovery(transcriptID: UUID)
   /// #996 auto-learn: the Undo pill. The model carries the pill UUID and its
   /// phase (learned with the Undo button, or a typed result line); the reducer
@@ -484,6 +486,8 @@ enum OverlayContent: Equatable, Sendable {
     // #3546 A3: a Cancel can stop the download, or the switch can settle, before the first
     // render; the upgrade pill would then announce something no longer true.
     if case .parakeetUpgrade = self { return true }
+    // #4845: the model can stop being the one dictation uses before the first render.
+    if case .polishDownloadComplete = self { return true }
     return false
   }
 }
@@ -564,6 +568,12 @@ struct PillDefinition: Equatable, Sendable {
     self.requestedWidth = requestedWidth
     self.reservesFixedHeight = reservesFixedHeight
   }
+}
+
+/// #4845 LIFE-5: what the AI polish download completion pill shows (founder-approved, 2026-11-22):
+/// the model's display name for "<name> is on for your next dictation."
+struct PolishDownloadPillModel: Equatable, Sendable {
+  let modelName: String
 }
 
 /// #3546 A3: what one Parakeet Ultra upgrade pill shows (founder-approved mocks, 2026-10-12).
