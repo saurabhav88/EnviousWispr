@@ -82,10 +82,7 @@ struct MeetingSummaryView: View {
         // #4724: the dictation wait is said only when the summary really waits its turn for a
         // model on this Mac; a hosted model preparing reads as writing.
         case .waiting where summaries?.waitsForLocalTurn(meetingID) == true:
-          busy(
-            String(
-              localized: "Waiting for your dictation and other meeting work to finish.",
-              comment: "History, a meeting: the summary waits before a model on this Mac is used."))
+          busy(MeetingAfterPresentation.summaryWaitsForTurnLine)
         case .waiting, .writing:
           busy(
             String(

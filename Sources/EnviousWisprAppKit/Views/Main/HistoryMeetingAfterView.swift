@@ -676,6 +676,8 @@ struct HistoryMeetingAfterView: View {
         // #4724: on the AI summary tab the summary's own line shows the progress.
         writingSummary: !previewing && notesPane.leftPane != .summary
           && (meetings.summaries?.isWriting(meetingID) ?? false),
+        // #4726: a summary queued for a model on this Mac says it waits, not that it writes.
+        summaryWaitsForTurn: meetings.summaries?.waitsForLocalTurn(meetingID) ?? false,
         hasSummary: meetings.documents.summary(meetingID) != nil)
       let writingProvider = meetings.summaries?.writingProvider(for: meetingID)
       let statusLine: String? =
@@ -690,7 +692,7 @@ struct HistoryMeetingAfterView: View {
       if let line = statusLine, state != .summaryReady {
         HStack(spacing: DesignSpacing.sm) {
           switch state {
-          case .writingSummary, .waiting:
+          case .writingSummary, .summaryWaitsForTurn, .waiting:
             ProgressView().controlSize(.small)
           case .summaryReady:
             Image(systemName: "checkmark.circle").foregroundStyle(.stSuccess)
@@ -935,9 +937,7 @@ struct HistoryMeetingAfterView: View {
           let waiting = summaries.waitsForLocalTurn(meetingID)
           InsetNotice(
             verbatim: waiting
-              ? String(
-                localized: "Waiting for your dictation and other meeting work to finish.",
-                comment: "History, a meeting: the summary waits before a model on this Mac is used.")
+              ? P.summaryWaitsForTurnLine
               : first
               ? String(
                 localized: "It shows here when it's ready.",
@@ -1247,7 +1247,10 @@ extension HistoryMeetingAfterView {
                 localized: "Your own notes for this meeting",
                 comment: "History meeting: hover hint on the Your notes tab.")
             case .summary:
-              summaryBusy
+              // #4726: a summary that waits its turn is not being written yet.
+              summaryBusy && meetings.summaries?.waitsForLocalTurn(meetingID) == true
+                ? P.summaryWaitsForTurnLine
+                : summaryBusy
                 ? String(
                   localized: "AI summary, writing a new version",
                   comment:
