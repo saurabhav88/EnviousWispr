@@ -24,6 +24,10 @@ Two pure decision functions for the TIK Sentry-triage routine, sharing the
     routine's duplicate-check outcome as a REQUIRED input and can refuse (an open issue
     already tracks the fingerprint) or report that it could not decide (check absent or
     errored) -- neither of which is the fail-open `create` default. See its docstring.
+  - `decide_freeze()` (#4908, `--freeze`) -- the FREEZE severity gate. Given the latest
+    events of a new fingerprint, proves "every event is a production AppHang with no
+    in-app frame" (-> `route-freeze`, severity never above P3, comment on #4604) or
+    returns `score-as-today`; any doubt scores as today.
 
 DESIGN INVARIANTS (council 2026-06-21, 2 rounds; Codex grounded review 3 rounds;
 family semantics revised #1431, 2026-07-15):
@@ -659,14 +663,172 @@ def _out_create(verdict, reason, dev_count=0, event_count=0):
     }
 
 
+# ---- freeze (AppHang) severity gate (issue #4908) --------------------------
+#
+# Path A scored severity from Sentry `userCount` alone, so a freeze report with no
+# EnviousWispr code in it (#4892: 31 users) became a P0 and a new issue although the
+# freeze volume is already owned by #4604. `decide_freeze` answers one question over
+# the latest events of a NEW fingerprint: is EVERY event a production AppHang whose
+# stack has no in-app frame other than the app entry point? Yes -> `route-freeze`
+# (severity never above P3; the routine comments on #4604 instead of filing). Any
+# doubt -> `score-as-today`: a crash, a hang with an app frame, a dev build, an
+# unreadable or partial event, a failed page all keep today's scoring, so a real
+# crash can never hide behind this rule. Plan: docs/feature-requests/issue-4908-*.md.
+
+FREEZE_VERDICT_FAMILY = {
+    "freeze-no-app-frame": "route-freeze",
+    "score-as-today": "score",
+}
+
+_ENTRY_BASENAME = "EnviousWisprApp.swift"
+_ENTRY_FUNCTIONS = {"main", "EnviousWisprApp.$main"}
+
+
+def _tag(event: dict, key: str):
+    """Value of a Sentry `tags[]` entry (a list of {key,value}); None when absent."""
+    tags = event.get("tags")
+    if not isinstance(tags, list):
+        return None
+    for t in tags:
+        if isinstance(t, dict) and t.get("key") == key:
+            return t.get("value")
+    return None
+
+
+def _is_entry_frame(frame: dict) -> bool:
+    """The app entry point (`main` / `EnviousWisprApp.$main` in EnviousWisprApp.swift).
+
+    Every main-thread hang and the SwiftUI app launch show these two frames, so they
+    say nothing about which app code was running."""
+    for key in ("filename", "absPath"):
+        v = frame.get(key)
+        if isinstance(v, str) and v.rsplit("/", 1)[-1] == _ENTRY_BASENAME:
+            return frame.get("function") in _ENTRY_FUNCTIONS
+    return False
+
+
+def _has_app_evidence(frame: dict) -> bool:
+    if _is_entry_frame(frame):
+        return False
+    if frame.get("inApp") is True:
+        return True
+    for key in ("filename", "absPath"):
+        v = frame.get(key)
+        if isinstance(v, str) and "Sources/" in v:
+            return True
+    return False
+
+
+def _freeze_event_reason(event, issue_level) -> str | None:
+    """None when this ONE event qualifies as a production AppHang with no app frame;
+    otherwise a short reason it does not (the whole set then scores as today)."""
+    if not isinstance(event, dict):
+        return "event is not an object"
+    # production only: positive tags, with is_development() as a backstop
+    release = _tag(event, "release")
+    if not (isinstance(release, str) and release.strip()):
+        return "release tag missing or not a string"
+    if _tag(event, "environment") != "production":
+        return "environment tag is not production"
+    if _tag(event, "app.build_type") != "release":
+        return "app.build_type tag is not release"
+    if is_development({"release": release, "environment": "production",
+                       "build_type": "release"}):
+        return "development release string"
+    # fatal anywhere means crash territory
+    for lvl in (event.get("level"), _tag(event, "level"), issue_level):
+        if isinstance(lvl, str) and lvl.strip().lower() == "fatal":
+            return "fatal level"
+    entries = event.get("entries")
+    if not isinstance(entries, list):
+        return "no entries"
+    exc = [e for e in entries if isinstance(e, dict) and e.get("type") == "exception"]
+    if len(exc) != 1:
+        return "not exactly one exception entry"
+    data = exc[0].get("data")
+    values = data.get("values") if isinstance(data, dict) else None
+    if not isinstance(values, list) or not values:
+        return "no exception values"
+    for v in values:
+        if not isinstance(v, dict):
+            return "exception value is not an object"
+        mech = v.get("mechanism")
+        if not isinstance(mech, dict) or mech.get("type") != "AppHang":
+            return "not an AppHang"
+        meta = mech.get("meta")
+        if meta is not None:
+            # crash metadata is judged by KEY PRESENCE; an unreadable `meta` cannot
+            # prove the absence of a signal or Mach exception
+            if not isinstance(meta, dict):
+                return "mechanism meta is not an object"
+            if "signal" in meta or "mach_exception" in meta:
+                return "crash metadata present"
+        st = v.get("stacktrace")
+        frames = st.get("frames") if isinstance(st, dict) else None
+        if not isinstance(frames, list) or not frames:
+            return "no frames"
+        if st.get("framesOmitted"):
+            # Sentry trimmed frames: the visible stack cannot prove "no app code"
+            return "frames omitted (incomplete stack)"
+        for f in frames:
+            if not isinstance(f, dict) or not isinstance(f.get("inApp"), bool):
+                return "frame shape unknown"
+            if _has_app_evidence(f):
+                return "in-app frame present"
+    return None
+
+
+def decide_freeze(data: dict) -> dict:
+    """Freeze severity gate (#4908). Input (JSON): {events: [<full Sentry event>...],
+    events_truncated, events_unreadable, issue_level}. Output: {verdict, family,
+    severity_cap, reason, event_count}. A truncated set does NOT block the cap (the
+    latest-100 sample is the decision set; the routine states `latest N of M`); every
+    other doubt does."""
+    if not isinstance(data, dict):
+        return _out_freeze("score-as-today", "input is not an object")
+    if _as_bool(data.get("events_unreadable", False)):
+        return _out_freeze("score-as-today", "events unreadable (a page failed)")
+    events = data.get("events")
+    if not isinstance(events, list) or not events:
+        return _out_freeze("score-as-today", "no events to classify")
+    issue_level = data.get("issue_level")
+    for i, e in enumerate(events):
+        why = _freeze_event_reason(e, issue_level)
+        if why is not None:
+            return _out_freeze("score-as-today", f"event {i}: {why}", len(events))
+    return _out_freeze("freeze-no-app-frame",
+                       "every event is a production AppHang with no in-app frame "
+                       "beyond the app entry point", len(events))
+
+
+def _out_freeze(verdict, reason, event_count=0):
+    return {
+        "verdict": verdict,
+        "family": FREEZE_VERDICT_FAMILY[verdict],
+        "severity_cap": "P3" if verdict == "freeze-no-app-frame" else None,
+        "reason": reason,
+        "event_count": event_count,
+    }
+
+
 def main(argv=None) -> int:
     argv = sys.argv[1:] if argv is None else argv
     create_mode = "--create" in argv  # default (no flag) stays the reopen gate -> decide()
+    freeze_mode = "--freeze" in argv  # #4908 freeze severity gate -> decide_freeze()
     try:
         raw = sys.stdin.read()
         data = json.loads(raw)
-        result = decide_create(data) if create_mode else decide(data)
+        if freeze_mode:
+            result = decide_freeze(data)
+        else:
+            result = decide_create(data) if create_mode else decide(data)
     except Exception as exc:  # noqa: BLE001 -- fail CLOSED-to-VISIBLE on helper error
+        if freeze_mode:
+            # a helper error can only ever mean "score as today" (never a cap)
+            print(json.dumps(_out_freeze(
+                "score-as-today",
+                f"helper-error: {type(exc).__name__}: {exc}")))
+            return 0
         # Helper-error shape differs per gate: reopen-gate -> ambiguous (family
         # manual-review: visible flag, closed issue stays closed, #1431); create ->
         # undecidable (#2194: an input the gate cannot read cannot have read the

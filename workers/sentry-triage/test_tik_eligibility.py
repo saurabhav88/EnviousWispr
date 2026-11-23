@@ -20,7 +20,8 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from tik_eligibility import (  # noqa: E402
-    decide, decide_create, normalize_version, is_development, main,
+    decide, decide_create, decide_freeze, FREEZE_VERDICT_FAMILY,
+    normalize_version, is_development, main,
 )
 
 CLOSED = "2026-06-17T06:00:00Z"
@@ -732,6 +733,263 @@ def test_dup_check_cli_open_found_refuses():
     out = json.loads(proc.stdout)
     assert out["verdict"] == "refuse-duplicate"
     assert out["family"] == "refuse"
+
+
+# ---- decide_freeze: AppHang with no in-app frame (issue #4908) ----------------
+#
+# Fixtures are reduced from real stored Sentry events (frame lists cut to the decisive
+# frames): ENVIOUSWISPR-93 (#4892, entry frames only), ENVIOUSWISPR-A6 (real app
+# frames with NO filename), ENVIOUSWISPR-9F (dev build, unsymbolicated app frames),
+# ENVIOUSWISPR-7F (fatal crash showing the same two entry frames).
+
+def _sys(function):
+    return {"package": "/System/Library/Frameworks/AppKit.framework/AppKit",
+            "function": function, "inApp": False}
+
+
+ENTRY_MAIN = {"filename": "EnviousWisprApp.swift",
+              "absPath": "/Users/runner/work/EnviousWispr/EnviousWispr/Sources/EnviousWispr/EnviousWisprApp.swift",
+              "function": "main", "inApp": True}
+ENTRY_DOLLAR_MAIN = {**ENTRY_MAIN, "function": "EnviousWisprApp.$main"}
+A6_APP_FRAME = {"filename": None, "absPath": None, "function": "SettingsSearchIndex.match",
+                "package": "/Applications/EnviousWispr.app/Contents/MacOS/EnviousWispr",
+                "inApp": True}
+UNSYMBOLICATED_APP_FRAME = {"filename": None, "absPath": None, "function": None,
+                            "package": "/Applications/EnviousWispr.app/Contents/MacOS/EnviousWispr",
+                            "inApp": True}
+FREEZE_FRAMES = [_sys("start"), ENTRY_MAIN, ENTRY_DOLLAR_MAIN, _sys("App.main"),
+                 _sys("mach_msg2_trap")]
+
+
+def fev(frames=None, *, mech=None, release="com.enviouswispr.app@2.6.1",
+        env="production", build="release", level_tag="error", level=None,
+        values=None, tags=None):
+    """A production AppHang event shaped like Sentry's full event JSON (#4892)."""
+    mech = mech if mech is not None else {"type": "AppHang"}
+    if values is None:
+        values = [{"type": "App Hanging", "mechanism": mech,
+                   "stacktrace": {"frames": FREEZE_FRAMES if frames is None else frames}}]
+    if tags is None:
+        tags = [{"key": "release", "value": release}, {"key": "environment", "value": env},
+                {"key": "app.build_type", "value": build}, {"key": "level", "value": level_tag}]
+    e = {"entries": [{"type": "exception", "data": {"values": values}}], "tags": tags,
+         "release": {"version": release}}
+    if level is not None:
+        e["level"] = level
+    return e
+
+
+def df(events, **kw):
+    return decide_freeze({"events": events, "events_truncated": False,
+                          "events_unreadable": False, "issue_level": "error", **kw})
+
+
+def test_freeze_all_entry_frames_only_is_routed_p3():
+    out = df([fev() for _ in range(100)])
+    assert out["verdict"] == "freeze-no-app-frame"
+    assert out["family"] == "route-freeze"
+    assert out["severity_cap"] == "P3"
+    assert out["event_count"] == 100
+
+
+def test_freeze_truncated_sample_still_routes():
+    # decision: the latest-100 sample decides; "more events exist" does not block
+    assert df([fev()], events_truncated=True)["family"] == "route-freeze"
+
+
+def test_freeze_named_app_frame_without_filename_scores_as_today():
+    # pins inApp-over-filename: ENVIOUSWISPR-A6's real app frames carry no filename
+    out = df([fev(FREEZE_FRAMES + [A6_APP_FRAME])])
+    assert out["family"] == "score" and out["severity_cap"] is None
+
+
+def test_freeze_one_app_frame_event_among_100_scores_as_today():
+    # qualified run, then one real in-app hang in the sample on the next run -> score
+    events = [fev() for _ in range(99)] + [fev(FREEZE_FRAMES + [A6_APP_FRAME])]
+    assert df(events[:99])["family"] == "route-freeze"
+    assert df(events)["family"] == "score"
+    # the existing create gate then decides whether a ticket is filed (not a comment)
+    gate = decide_create({"events": [{"release": "com.enviouswispr.app@2.6.1",
+                                       "environment": "production",
+                                       "build_type": "release", "level": "error",
+                                       "user_id": "u1"}],
+                          "duplicate_check": "none_found", "events_truncated": False})
+    assert gate["family"] == "create"
+
+
+def test_freeze_unsymbolicated_app_frames_in_production_score_as_today():
+    # the 9F frames (inApp, no function), with production/release tags substituted
+    out = df([fev(FREEZE_FRAMES + [UNSYMBOLICATED_APP_FRAME])])
+    assert out["family"] == "score"
+
+
+def test_freeze_9f_dev_build_fixture_scores_as_today():
+    out = df([fev(FREEZE_FRAMES + [UNSYMBOLICATED_APP_FRAME], env="development",
+                  build="debug", release="com.enviouswispr.app@2.6.1-3-gabc123-dev")])
+    assert out["family"] == "score"
+
+
+def test_freeze_dev_only_and_mixed_sets_score_as_today():
+    dev = fev(env="development", build="debug")
+    assert df([dev])["family"] == "score"
+    assert df([fev(), dev])["family"] == "score"
+
+
+def test_freeze_unrecognised_environment_with_ordinary_release_scores_as_today():
+    # is_development() alone says "not dev" here; the positive production test must refuse
+    out = df([fev(env="staging", build="beta")])
+    assert out["family"] == "score"
+    assert df([fev(env="production", build="")])["family"] == "score"
+    assert df([fev(tags=[{"key": "release", "value": "com.enviouswispr.app@2.6.1"}])])["family"] == "score"
+
+
+def test_freeze_object_shaped_or_missing_release_scores_as_today():
+    tags = [{"key": "release", "value": {"version": "2.6.1"}},
+            {"key": "environment", "value": "production"},
+            {"key": "app.build_type", "value": "release"}]
+    assert df([fev(tags=tags)])["family"] == "score"
+
+
+def test_freeze_entry_frames_only_but_fatal_crash_scores_as_today():
+    # ENVIOUSWISPR-7F: fatal nsexception crash with the same two entry frames
+    crash = fev(mech={"type": "nsexception", "handled": False,
+                      "meta": {"signal": {"name": "SIGABRT"}}}, level_tag="fatal")
+    assert df([crash])["family"] == "score"
+
+
+def test_freeze_mach_crash_scores_as_today():
+    crash = fev([{"function": "closure in WordCheckRuntime.releaseForTermination",
+                  "inApp": True}], mech={"type": "mach", "meta": {"mach_exception": {}}})
+    assert df([crash])["family"] == "score"
+
+
+def test_freeze_apphang_typed_value_with_crash_metadata_scores_as_today():
+    assert df([fev(mech={"type": "AppHang", "meta": {"signal": {"name": "SIGSEGV"}}})])["family"] == "score"
+
+
+def test_freeze_malformed_or_empty_crash_metadata_scores_as_today():
+    assert df([fev(mech={"type": "AppHang", "meta": {"mach_exception": {}}})])["family"] == "score"
+    assert df([fev(mech={"type": "AppHang", "meta": {"signal": None}})])["family"] == "score"
+    assert df([fev(mech={"type": "AppHang", "meta": "x"})])["family"] == "score"
+    assert df([fev(mech={"type": "AppHang", "meta": {}})])["family"] == "route-freeze"
+    assert df([fev(mech={"type": "AppHang", "meta": None})])["family"] == "route-freeze"
+
+
+def test_freeze_non_apphang_event_in_set_scores_as_today():
+    assert df([fev(), fev(mech={"type": "nsexception"})])["family"] == "score"
+
+
+def test_freeze_fatal_level_anywhere_scores_as_today():
+    assert df([fev()], issue_level="fatal")["family"] == "score"
+    assert df([fev(level="fatal")])["family"] == "score"
+    assert df([fev(level_tag="fatal")])["family"] == "score"
+
+
+def test_freeze_entry_exemption_is_exact():
+    other_fn = {**ENTRY_MAIN, "function": "EnviousWisprApp.body.getter"}
+    other_file = {"filename": "Other.swift", "absPath": "/x/Sources/EnviousWispr/Other.swift",
+                  "function": "main", "inApp": True}
+    assert df([fev(FREEZE_FRAMES + [other_fn])])["family"] == "score"
+    assert df([fev(FREEZE_FRAMES + [other_file])])["family"] == "score"
+
+
+def test_freeze_sources_path_with_inapp_false_scores_as_today():
+    f = {"filename": "Thing.swift", "absPath": "/x/Sources/EnviousWisprPipeline/Thing.swift",
+         "function": "Thing.run", "inApp": False}
+    assert df([fev(FREEZE_FRAMES + [f])])["family"] == "score"
+
+
+def test_freeze_handled_error_without_exception_entry_scores_as_today():
+    # #4532 / ENVIOUSWISPR-7D shape: a handled message event, out of scope
+    e = {"entries": [{"type": "message", "data": {}}], "tags": fev()["tags"]}
+    assert df([e])["family"] == "score"
+
+
+def test_freeze_unreadable_or_malformed_input_scores_as_today():
+    good = fev()
+    bad_inputs = [
+        None, {}, "x", [], {"events": []}, {"events": None}, {"events": [None]},
+        {"events": [{}]}, {"events": [{"entries": "x"}]},
+        {"events": [good], "events_unreadable": True},
+        {"events": [good], "events_unreadable": "true"},
+    ]
+    for data in bad_inputs:
+        out = decide_freeze(data)
+        assert out["family"] == "score" and out["severity_cap"] is None, data
+    # shapes inside one event
+    assert df([fev(values=[])])["family"] == "score"
+    assert df([fev(frames=[])])["family"] == "score"
+    assert df([fev([{"function": "x"}])])["family"] == "score"            # no inApp
+    assert df([fev([{"function": "x", "inApp": "no"}])])["family"] == "score"  # non-bool
+    two = good["entries"] + good["entries"]
+    assert df([{**good, "entries": two}])["family"] == "score"            # two exceptions
+    assert df([{**good, "entries": [{"type": "exception", "data": {"values": ["x"]}}]}])["family"] == "score"
+
+
+def test_freeze_omitted_frames_score_as_today():
+    # Sentry trimmed part of the stack: absence of app frames is not proven
+    e = fev()
+    e["entries"][0]["data"]["values"][0]["stacktrace"]["framesOmitted"] = [3, 9]
+    assert df([e])["family"] == "score"
+    e["entries"][0]["data"]["values"][0]["stacktrace"]["framesOmitted"] = None  # real 93 shape
+    assert df([e])["family"] == "route-freeze"
+
+
+def test_freeze_prompt_requires_duplicate_check_none_found_and_cheap_first_look():
+    prompt = (Path(__file__).resolve().parent / "routine-prompt-tik-sentry.md").read_text()
+    assert "`duplicate_check` is `none_found`" in prompt   # routing only after a clean Step 2
+    assert "Run the helper on the latest event alone first" in prompt  # no 10-page fetch for crashes
+
+
+def test_freeze_one_value_with_app_frame_among_two_scores_as_today():
+    ok = {"type": "App Hanging", "mechanism": {"type": "AppHang"},
+          "stacktrace": {"frames": FREEZE_FRAMES}}
+    bad = {"type": "App Hanging", "mechanism": {"type": "AppHang"},
+           "stacktrace": {"frames": FREEZE_FRAMES + [A6_APP_FRAME]}}
+    assert df([fev(values=[ok, bad])])["family"] == "score"
+
+
+def test_freeze_output_family_is_always_score_or_route_freeze():
+    assert set(FREEZE_VERDICT_FAMILY.values()) == {"score", "route-freeze"}
+    for data in (None, {}, {"events": [fev()]}, {"events": [fev(), None]}):
+        assert decide_freeze(data)["family"] in {"score", "route-freeze"}
+
+
+def _cli_freeze(payload: str):
+    proc = subprocess.run(
+        [sys.executable, str(Path(__file__).resolve().parent / "tik_eligibility.py"), "--freeze"],
+        input=payload, capture_output=True, text=True)
+    assert proc.returncode == 0
+    return json.loads(proc.stdout)
+
+
+def test_freeze_cli_caught_error_is_exit_zero_score_helper_error():
+    for payload in ("not json", "", "{"):
+        out = _cli_freeze(payload)
+        assert out["family"] == "score"
+        assert out["severity_cap"] is None
+        assert out["reason"].startswith("helper-error")
+
+
+def test_freeze_cli_routes_a_qualifying_set():
+    out = _cli_freeze(json.dumps({"events": [fev()], "issue_level": "error",
+                                  "events_truncated": False, "events_unreadable": False}))
+    assert out["family"] == "route-freeze" and out["severity_cap"] == "P3"
+
+
+def test_freeze_prompt_treats_an_invalid_family_as_score():
+    # the invalid-family recovery is routine prose; bind the prompt to it so the
+    # sentence cannot be dropped without this test failing
+    prompt = (Path(__file__).resolve().parent / "routine-prompt-tik-sentry.md").read_text()
+    assert "whose `family` is not `score` or `route-freeze`" in prompt
+    assert "freeze check failed for {shortId}" in prompt
+    assert "decide this BEFORE reading #4604" in prompt   # unknown duplicate check never reads #4604
+    assert "all pages up to 10 (1000 comments" in prompt   # newest comments must be seen
+    assert "--freeze" in prompt
+    # large input goes through files and stdin, never a command-line argument
+    assert "NEVER put event JSON in a command line" in prompt
+    assert "--freeze < /tmp/tik-freeze-input.json" in prompt
+    assert "echo '{\"events\":[...],\"events_truncated\"" not in prompt.split("**1.5.")[1].split("**3.")[0]
 
 
 # ---- self-runner (no pytest dependency in the routine sandbox) --------------
