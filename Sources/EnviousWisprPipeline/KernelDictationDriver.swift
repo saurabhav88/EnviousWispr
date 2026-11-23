@@ -1124,13 +1124,11 @@ public final class KernelDictationDriver: HeartPathTelemetryTarget {
     case .completed:
       guard kernel.deliveredTranscript != nil else { return .failed }
       let polish = outcome.polishTakeOutcome.flatMap { $0.takeID == lastTakeID ? $0 : nil }
-      let waitedForModel =
-        polish?.result == .bypassed
-        || polish?.evidence == .localEngineNotReady || polish?.evidence == .localEngineDownloadPending
       return .delivered(
         verifiedEditor: outcome.practiceVerifiedEditor,
         copied: outcome.practiceCopiedToClipboard,
-        polished: polish?.result == .polished, waitedForModel: waitedForModel)
+        polished: polish?.result == .polished,
+        waitedForModel: PracticeTakeEvidence.waitedForModel(polish))
     case .discarded, .noSpeech, .asrEmptyDespiteAudio, .noTransport: return .noSpeech
     case .cancelled: return .cancelled
     case .failed, .audioInterrupted, .asrInterrupted: return .failed
