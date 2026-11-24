@@ -61,6 +61,7 @@ MEMBERS=(
   "release-notes-self-test|python3|build-check"
   "appcast-shellcheck|shellcheck|build-check"
   "appcast-self-test|bash git jq sha256sum|build-check"
+  "settings-map-catalog|python3|build-check"
   "l10n-build-with-receipt-self-test|bash python3 git xcodebuild|other-job"
   "third-party-notices|bash python3 perl|other-job"
   "worker-tests|node|other-job"
@@ -349,6 +350,11 @@ member_appcast_self_test() {
   bash scripts/ci/appcast-delivery.sh --self-test
 }
 
+member_settings_map_catalog() {
+  python3 scripts/settings-map/publish-catalog.py --self-test
+  python3 scripts/settings-map/publish-catalog.py --check-mapping
+}
+
 # CI home: build-and-test, step "Verify third-party notices are in sync", which
 # runs it before any macOS work. Here so the Mac runs it before a push. The
 # causal comment below is that step's, verbatim.
@@ -546,7 +552,7 @@ run_all() {
 
 # The member list, frozen independently of MEMBERS. Adding or removing a member
 # is a deliberate edit to both.
-EXPECTED_MEMBERS="ci-self-tests dependency-direction lane-verdict-self-test dev-app-lock-self-test seed-cleanup-contracts download-link-lint runtime-uat-self-tests judge-contracts eval-harness-self-tests language-data-generator l10n-receipt-self-test ci-action-pins ci-script-refs ci-yaml release-notes-self-test appcast-shellcheck appcast-self-test l10n-build-with-receipt-self-test third-party-notices worker-tests"
+EXPECTED_MEMBERS="ci-self-tests dependency-direction lane-verdict-self-test dev-app-lock-self-test seed-cleanup-contracts download-link-lint runtime-uat-self-tests judge-contracts eval-harness-self-tests language-data-generator l10n-receipt-self-test ci-action-pins ci-script-refs ci-yaml release-notes-self-test appcast-shellcheck appcast-self-test settings-map-catalog l10n-build-with-receipt-self-test third-party-notices worker-tests"
 
 member_names() { local r; for r in "$@"; do printf '%s ' "${r%%|*}"; done; }
 
@@ -591,8 +597,8 @@ self_test() {
   for name in $EXPECTED_MEMBERS; do
     check "member function exists for $name" "$(declare -F "member_${name//-/_}" > /dev/null && echo yes || echo no)" "yes"
   done
-  check "default selection has exactly twenty members" "$(selected_members 0 | wc -l | tr -d ' ')" "20"
-  check "--ci leaves out exactly the other-job members" "$(selected_members 1 | cut -d'|' -f1 | grep -c -e l10n-build-with-receipt-self-test -e third-party-notices -e worker-tests)|$(selected_members 1 | wc -l | tr -d ' ')" "0|17"
+  check "default selection has exactly twenty-one members" "$(selected_members 0 | wc -l | tr -d ' ')" "21"
+  check "--ci leaves out exactly the other-job members" "$(selected_members 1 | cut -d'|' -f1 | grep -c -e l10n-build-with-receipt-self-test -e third-party-notices -e worker-tests)|$(selected_members 1 | wc -l | tr -d ' ')" "0|18"
 
   # Exercise the real entrypoint and member body against a distinct tree. A
   # checkout-absolute fixture or helper path could still pass its own suite;
