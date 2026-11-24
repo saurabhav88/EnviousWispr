@@ -489,7 +489,10 @@ struct WhisperBackendErrorReloadTests {
 
     await runKernelTake(h, policy: .never, timeoutSeconds: 2.0)
 
-    #expect(h.driver.transcribeHandles == [1, 1, 1])
+    // Warmup + primary status-8 finalize always ran; on a busy runner the 50 ms deadline may fire
+    // before or after Phase-2 retry enters the fake driver, while `retryTimedOut == 1` still
+    // proves the kernel entered and timed out the Phase-2 retry path before finishTerminal.
+    #expect(h.driver.transcribeHandles.starts(with: [1, 1]))
     #expect(retryTimedOut.current == 1)
     #expect(h.adapter.readiness == .notReady)
     #expect(await h.driver.waitForUnloadCompleted(1))

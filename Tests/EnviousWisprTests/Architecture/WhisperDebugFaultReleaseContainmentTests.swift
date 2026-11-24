@@ -71,38 +71,16 @@ import Testing
       let targets = Self.scanTargets(in: bundle)
       #expect(!targets.isEmpty)
 
+      let forbiddenData = Self.forbidden.map { (needle: $0, bytes: Data($0.utf8)) }
       for fileURL in targets {
-        let data = try Data(contentsOf: fileURL)
-        for needle in Self.forbidden {
+        let data = try Data(contentsOf: fileURL, options: .mappedIfSafe)
+        for item in forbiddenData {
           #expect(
-            !data.contains(Array(needle.utf8)),
-            "\(fileURL.path) contains \"\(needle)\" — DEBUG fault seam leaked into Release")
+            data.range(of: item.bytes) == nil,
+            "\(fileURL.path) contains \"\(item.needle)\" — DEBUG fault seam leaked into Release")
         }
       }
     }
   #endif
 }
 #endif
-
-extension Data {
-  fileprivate func contains(_ pattern: [UInt8]) -> Bool {
-    guard !pattern.isEmpty, count >= pattern.count else { return false }
-    return withUnsafeBytes { raw -> Bool in
-      guard let base = raw.bindMemory(to: UInt8.self).baseAddress else { return false }
-      let limit = count - pattern.count
-      var index = 0
-      while index <= limit {
-        if base[index] == pattern[0] {
-          var matched = true
-          for offset in 1..<pattern.count where base[index + offset] != pattern[offset] {
-            matched = false
-            break
-          }
-          if matched { return true }
-        }
-        index += 1
-      }
-      return false
-    }
-  }
-}
