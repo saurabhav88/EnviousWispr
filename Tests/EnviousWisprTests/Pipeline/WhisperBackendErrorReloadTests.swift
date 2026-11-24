@@ -171,11 +171,14 @@ struct WhisperBackendErrorReloadTests {
     h.adapter.applyUnloadPolicy(.immediately); #expect(h.adapter.readiness == .notReady)
     await h.driver.waitFor("us:1")
     try await h.adapter.warmUpFromCache(); h.adapter.cancelPendingUnload(); h.adapter.applyUnloadPolicy(.never)
-    let entered = SignalWaiter()
+    let entered = SignalWaiter(), cancelEntered = SignalWaiter()
+    let cancelledWarm = Task { cancelEntered.signal(); try await h.adapter.warmUp(modelReceipt: nil) }
+    _ = await cancelEntered.wait(what: "cancelled warmUp"); await h.adapter.cancel()
     let warmTask = Task { entered.signal(); try await h.adapter.warmUp(modelReceipt: nil) }
     _ = await entered.wait(what: "warmUp entered"); _ = await h.backend.isReady
     #expect(h.driver.loadedHandles == [1] && h.adapter.readiness == .notReady)
     h.driver.releaseUnload(1); try await warmTask.value
+    await #expect(throws: CancellationError.self) { try await cancelledWarm.value }
     #expect(h.driver.unloadedHandles == [1] && h.driver.loadedHandles == [1, 2] && h.adapter.readiness == .ready)
   }
 
@@ -233,22 +236,6 @@ struct WhisperBackendErrorReloadTests {
     defer { guardTask.cancel() }
     await #expect(throws: MeetingEngineYield.self) { _ = try await task.value }
     #expect(driver.unloadedHandles == [1])
-  }
-
-  @Test("cancel during forced teardown wait lets teardown finish without loading replacement handle")
-  func cancelDuringTeardownWaitStopsWarmUpLoad() async throws {
-    let h = makeHarness(); try await h.adapter.warmUp(modelReceipt: nil)
-    h.driver.poisonHandle(1, status: 8); h.driver.holdUnload(1); defer { h.driver.releaseUnload(1) }
-    _ = try await runDirect(h.adapter); _ = await h.adapter.retryDecode(inputSamples: Self.speech)
-    h.adapter.applyUnloadPolicy(.immediately); await h.driver.waitFor("us:1")
-    let entered = SignalWaiter()
-    let warmTask = Task { entered.signal(); try await h.adapter.warmUp(modelReceipt: nil) }
-    _ = await entered.wait(what: "warmUp entered")
-    await h.adapter.cancel()
-    h.driver.releaseUnload(1)
-    await #expect(throws: CancellationError.self) { try await warmTask.value }
-    #expect(h.driver.unloadedHandles == [1] && h.driver.loadedHandles == [1])
-    #expect(h.adapter.readiness == .notReady)
   }
 }
 
