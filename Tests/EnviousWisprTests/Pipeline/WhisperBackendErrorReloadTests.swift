@@ -171,11 +171,14 @@ struct WhisperBackendErrorReloadTests {
     h.adapter.applyUnloadPolicy(.immediately); #expect(h.adapter.readiness == .notReady)
     await h.driver.waitFor("us:1")
     try await h.adapter.warmUpFromCache(); h.adapter.cancelPendingUnload(); h.adapter.applyUnloadPolicy(.never)
-    let entered = SignalWaiter()
+    let entered = SignalWaiter(), cancelEntered = SignalWaiter()
+    let cancelledWarm = Task { cancelEntered.signal(); try await h.adapter.warmUp(modelReceipt: nil) }
+    _ = await cancelEntered.wait(what: "cancelled warmUp"); await h.adapter.cancel()
     let warmTask = Task { entered.signal(); try await h.adapter.warmUp(modelReceipt: nil) }
     _ = await entered.wait(what: "warmUp entered"); _ = await h.backend.isReady
     #expect(h.driver.loadedHandles == [1] && h.adapter.readiness == .notReady)
     h.driver.releaseUnload(1); try await warmTask.value
+    await #expect(throws: CancellationError.self) { try await cancelledWarm.value }
     #expect(h.driver.unloadedHandles == [1] && h.driver.loadedHandles == [1, 2] && h.adapter.readiness == .ready)
   }
 
@@ -217,8 +220,10 @@ struct WhisperBackendErrorReloadTests {
     #expect(adapter.modelUnloadTaskForUnitTests == nil && adapter.shouldForceUnloadAfterFailure)
     await #expect(throws: ASRLoadSupersededError.self) { try await adapter.warmUp(modelReceipt: nil) }
     #expect(await backend.isReady == true && driver.loadedHandles == [1])
+    await adapter.cancel()
+    #expect(adapter.shouldForceUnloadAfterFailure && adapter.readiness == .notReady)
     allowed = true; try await adapter.warmUp(modelReceipt: nil)
-    #expect(driver.unloadedHandles == [1] && driver.loadedHandles == [1, 2] && adapter.readiness == .ready)
+    #expect(driver.unloadedHandles == [1] && driver.loadedHandles == [1, 2] && adapter.readiness == .ready && !adapter.shouldForceUnloadAfterFailure)
   }
 
   @Test("transcribeForMeeting aborted by backend.unload() yields MeetingEngineYield")
