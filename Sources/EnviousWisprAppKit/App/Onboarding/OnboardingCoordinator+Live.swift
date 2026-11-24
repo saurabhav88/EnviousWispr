@@ -105,13 +105,16 @@ extension OnboardingCoordinator.Dependencies {
         assert(bytes != nil, "no manifest size for \(model)")
         return bytes
       },
-      freeDiskBytes: {
+      freeDiskBytes: { nil },
+      availableDiskBytes: { neededBytes, minGeneration in
         #if DEBUG
           // Fault `disk-short`: one free byte, so the real preflight blocks (no file written).
           if OnboardingDebugFaults.active.contains(.diskShort) { return 1 }
         #endif
-        return MacProfileReader.live.freeDiskBytes()
+        return MacProfileReader.availableStartupDiskBytes(
+          neededBytes: neededBytes, minGeneration: minGeneration)
       },
+      refreshDiskSpace: { MacProfileReader.refreshStartupDiskSpace() },
       acquireSleepAssertion: { sleepAssertion.acquire() },
       releaseSleepAssertion: { sleepAssertion.release() },
       now: { Date() },

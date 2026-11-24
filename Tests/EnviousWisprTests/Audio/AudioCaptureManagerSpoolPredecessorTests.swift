@@ -3,6 +3,7 @@ import EnviousWisprCore
 import EnviousWisprStorage
 import Foundation
 import Testing
+import os
 
 @testable import EnviousWisprAudio
 import EnviousWisprAppKitTestSupport
@@ -262,47 +263,91 @@ import EnviousWisprAppKitTestSupport
     // spool, which is the documented design, and the predecessor must still be
     // closed on that path because retirement runs before the preflight.
 
-    @Test("arming below the low-disk watermark creates no writer and no feed, and still retires")
-    func lowDiskPreflightArmsNothingAndStillRetires() async throws {
+    private static func awaitPublish(
+      on cache: VolumeSpaceCache,
+      label: String,
+      timeout: Duration = .seconds(5),
+      trigger: () throws -> Void
+    ) async rethrows {
+      let state = OSAllocatedUnfairLock<(done: Bool, timedOut: Bool, waiter: CheckedContinuation<Void, Never>?)>(
+        initialState: (false, false, nil))
+      cache.installPublishHookForTesting { _, _ in
+        let cont = state.withLock { s -> CheckedContinuation<Void, Never>? in
+          s.done = true
+          let c = s.waiter
+          s.waiter = nil
+          return c
+        }
+        cont?.resume()
+      }
+      defer { cache.installPublishHookForTesting(nil) }
+      try trigger()
+      let net = Task {
+        try? await Task.sleep(for: timeout)
+        let cont = state.withLock { s -> CheckedContinuation<Void, Never>? in
+          guard !s.done else { return nil }
+          s.timedOut = true
+          let c = s.waiter
+          s.waiter = nil
+          return c
+        }
+        if let cont {
+          Issue.record("VolumeSpaceCache publish timed out: \(label)")
+          cont.resume()
+        }
+      }
+      await withCheckedContinuation { (c: CheckedContinuation<Void, Never>) in
+        enum Disposition { case done, timedOut, parked }
+        let disposition = state.withLock { s -> Disposition in
+          if s.timedOut { return .timedOut }
+          if s.done { return .done }
+          s.waiter = c
+          return .parked
+        }
+        switch disposition {
+        case .done: c.resume()
+        case .timedOut:
+          Issue.record("VolumeSpaceCache publish timed out: \(label)")
+          c.resume()
+        case .parked: break
+        }
+      }
+      net.cancel()
+    }
+
+    @Test("start below plain watermark arms anyway, retires predecessor, and requests refresh (#4893)")
+    func lowPlainPreflightStillArmsAndRetiresPredecessor() async throws {
       let dir = try Self.makeTempDir()
       defer { try? FileManager.default.removeItem(at: dir) }
       let manager = AudioCaptureManager()
       manager.isCapturing = true
 
-      // One answer per PATH, installed once: the "before" spool has room, the
-      // "starved" spool does not. Path-keyed rather than flipped between arms so
-      // the first take's feed loop can never see the second take's answer, and
-      // every query is recorded so the assertions below can prove the preflight
-      // was consulted for the starved take rather than merely never reached.
-      let starvedFile = "starved.\(RecoveryConstants.fileExtension)"
-      var queried: [String] = []
-      manager.installDiskSpaceCheckForTesting { path in
-        queried.append(path)
-        return path.hasSuffix(starvedFile) == false
-      }
+      let plainBytes = OSAllocatedUnfairLock(initialState: Int64(RecoveryConstants.lowDiskWatermarkBytes + 1))
+      let importantCalls = OSAllocatedUnfairLock(initialState: 0)
+      let cache = VolumeSpaceCache(
+        readPlain: { _ in plainBytes.withLock { $0 } },
+        readImportant: { _ in
+          importantCalls.withLock { $0 += 1 }
+          return 100
+        })
+      manager.installVolumeSpaceCacheForTesting(cache)
 
       manager.armRecoverySpoolingForTesting(
         payload: try Self.payload(sessionID: "before", dir: dir))
-      let liveWriter = try #require(manager.debugRecoverySpoolWriter, "precondition: a live spool")
+      let liveWriter = try #require(manager.debugRecoverySpoolWriter)
+      #expect(importantCalls.withLock { $0 } == 0, "healthy plain skips importantUsage")
 
-      manager.armRecoverySpoolingForTesting(
-        payload: try Self.payload(sessionID: "starved", dir: dir))
-      // Synchronous facts first, before any suspension: the arm returned with
-      // nothing created, and it asked about the starved path to get there.
-      #expect(manager.debugRecoverySpoolWriter == nil, "no writer is created below the watermark")
-      #expect(manager.debugHasLiveRecoveryFeedTask == false, "and no feed task is started")
-      #expect(
-        queried.last?.hasSuffix(starvedFile) == true,
-        "the preflight was consulted for the starved spool, and answered false")
+      plainBytes.withLock { $0 = 100 }
+      let lowPayload = try Self.payload(sessionID: "low-plain", dir: dir)
+      try await Self.awaitPublish(on: cache, label: "low-plain refresh") {
+        manager.armRecoverySpoolingForTesting(payload: lowPayload)
+        #expect(manager.debugRecoverySpoolWriter != nil, "start below plain watermark must still arm")
+        #expect(manager.debugHasLiveRecoveryFeedTask, "feed loop stays live without blocking start")
+      }
+      #expect(importantCalls.withLock { $0 } == 1, "low plain requested background refresh")
 
       await Self.drain(liveWriter)
-      #expect(
-        try Self.terminationReason(of: "before", in: dir) == .interrupted,
-        "the predecessor is retired before the preflight, so it is still closed")
-      #expect(
-        FileManager.default.fileExists(atPath: dir.appendingPathComponent(starvedFile).path)
-          == false,
-        "nothing was written for the starved take")
+      #expect(try Self.terminationReason(of: "before", in: dir) == .interrupted)
     }
 
     // MARK: - 6. #1807 (§C) — `onRecoveryWriterQuiescent` ack firing
@@ -370,21 +415,155 @@ import EnviousWisprAppKitTestSupport
       #expect(acked == ["disabled-take"])
     }
 
-    @Test("a low-disk refusal fires the no-writer ack, using the decoded directive's own id")
-    func lowDiskRefusalFiresNoWriterAck() async throws {
+    @Test("3 s check stops on current-recording short importantUsage and acks once (#4893)")
+    func feedCheckStopsOnShortImportantAndAcksOnce() async throws {
       let dir = try Self.makeTempDir()
       defer { try? FileManager.default.removeItem(at: dir) }
       let manager = AudioCaptureManager()
-      manager.installDiskSpaceCheckForTesting { _ in false }
+      manager.isCapturing = true
+      let cache = VolumeSpaceCache(readPlain: { _ in 100 }, readImportant: { _ in 100 })
+      manager.installVolumeSpaceCacheForTesting(cache)
+
+      let ackState = OSAllocatedUnfairLock<(ids: [String], waiter: CheckedContinuation<Void, Never>?)>(
+        initialState: ([], nil))
+      manager.onRecoveryWriterQuiescent = { id in
+        let cont = ackState.withLock { s -> CheckedContinuation<Void, Never>? in
+          s.ids.append(id)
+          let c = s.waiter
+          s.waiter = nil
+          return c
+        }
+        cont?.resume()
+      }
+
+      let spoolPath = dir.appendingPathComponent("starved-take.\(RecoveryConstants.fileExtension)").path
+      let payload = try Self.payload(sessionID: "starved-take", dir: dir)
+      await Self.awaitPublish(on: cache, label: "starved-take initial refresh") {
+        manager.armRecoverySpoolingForTesting(recoverySessionID: "starved-take", payload: payload)
+      }
+
+      let ackTimeout = Task {
+        try? await Task.sleep(for: .seconds(5))
+        let cont = ackState.withLock { s -> CheckedContinuation<Void, Never>? in
+          guard s.ids.isEmpty else { return nil }
+          let c = s.waiter
+          s.waiter = nil
+          return c
+        }
+        if let cont {
+          Issue.record("Timed out waiting for onRecoveryWriterQuiescent")
+          cont.resume()
+        }
+      }
+      await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
+        let already = ackState.withLock { s -> Bool in
+          if !s.ids.isEmpty { return true }
+          s.waiter = continuation
+          return false
+        }
+        if already {
+          continuation.resume()
+        } else {
+          manager.stepRecoveryFeedFlushForTesting(spoolPath: spoolPath)
+        }
+      }
+      ackTimeout.cancel()
+      let acked = ackState.withLock { $0.ids }
+
+      #expect(acked == ["starved-take"])
+      #expect(manager.debugRecoverySpoolWriter == nil)
+      #expect(!manager.debugHasLiveRecoveryFeedTask)
+      #expect(try Self.terminationReason(of: "starved-take", in: dir) == .lowDiskWatermark)
+    }
+
+    @Test("3 s check continues when importantUsage is unknown and ignores prior recording (#4893)")
+    func feedCheckIgnoresPriorRecordingAndContinuesWhenUnknown() async throws {
+      let dir = try Self.makeTempDir()
+      defer { try? FileManager.default.removeItem(at: dir) }
+      let manager = AudioCaptureManager()
+      manager.isCapturing = true
+      let gate = DispatchSemaphore(value: 0)
+      defer { gate.signal() }
+      let (secondEnteredStream, secondEnteredCont) = AsyncStream.makeStream(of: Void.self)
+      var secondEnteredIter = secondEnteredStream.makeAsyncIterator()
+      let reads = OSAllocatedUnfairLock(initialState: 0)
+
+      let cache = VolumeSpaceCache(
+        readPlain: { _ in 100 },
+        readImportant: { _ in
+          let n = reads.withLock { s in s += 1; return s }
+          if n == 1 { return 100 }
+          if n == 2 {
+            secondEnteredCont.yield()
+            gate.wait()
+          }
+          return 100
+        })
+      manager.installVolumeSpaceCacheForTesting(cache)
+
+      // Earlier recording completes a short refresh; second recording's refresh stays hung ("unknown").
+      let firstPayload = try Self.payload(sessionID: "first-take", dir: dir)
+      await Self.awaitPublish(on: cache, label: "first-take short refresh") {
+        manager.armRecoverySpoolingForTesting(payload: firstPayload)
+      }
+
+      let secondPath = dir.appendingPathComponent("second-take.\(RecoveryConstants.fileExtension)").path
       var acked: [String] = []
       manager.onRecoveryWriterQuiescent = { acked.append($0) }
-
+      let firstWriter = manager.debugRecoverySpoolWriter
       manager.armRecoverySpoolingForTesting(
-        recoverySessionID: "starved-take",
-        payload: try Self.payload(sessionID: "starved-take", dir: dir))
+        recoverySessionID: "second-take",
+        payload: try Self.payload(sessionID: "second-take", dir: dir))
+      await Self.drain(firstWriter)
+      let enterGuard = Task {
+        try? await Task.sleep(for: .seconds(5))
+        secondEnteredCont.finish()
+      }
+      let secondEntered = await secondEnteredIter.next() != nil
+      enterGuard.cancel()
+      #expect(secondEntered, "second recording refresh never entered")
 
-      #expect(manager.debugRecoverySpoolWriter == nil)
-      #expect(acked == ["starved-take"])
+      manager.stepRecoveryFeedFlushForTesting(spoolPath: secondPath)
+      #expect(manager.debugRecoverySpoolWriter != nil, "prior recording short answer must be ignored")
+      #expect(!acked.contains("second-take"), "unknown importantUsage keeps spooling")
+    }
+
+    @Test("fresh passing plain check clears recording generation floor (#4893)")
+    func passingPlainCheckClearsRecordingFloor() async throws {
+      let dir = try Self.makeTempDir()
+      defer { try? FileManager.default.removeItem(at: dir) }
+      let manager = AudioCaptureManager()
+      // Keep the background 3 s poll task from racing ahead of the test's explicit flush steps.
+      manager.isCapturing = false
+      let plainVal = OSAllocatedUnfairLock(initialState: Int64(100))
+      let gate = DispatchSemaphore(value: 0)
+      defer { gate.signal() }
+      let reads = OSAllocatedUnfairLock(initialState: 0)
+      let cache = VolumeSpaceCache(
+        readPlain: { _ in plainVal.withLock { $0 } },
+        readImportant: { _ in
+          let n = reads.withLock { s in s += 1; return s }
+          if n == 1 { return 100 }
+          if n == 2 { gate.wait() }
+          return RecoveryConstants.lowDiskWatermarkBytes + 1_000
+        })
+      manager.installVolumeSpaceCacheForTesting(cache)
+
+      let spoolPath = dir.appendingPathComponent("recovering-take.\(RecoveryConstants.fileExtension)").path
+      let payload = try Self.payload(sessionID: "recovering-take", dir: dir)
+      await Self.awaitPublish(on: cache, label: "recovering-take initial refresh") {
+        manager.armRecoverySpoolingForTesting(recoverySessionID: "recovering-take", payload: payload)
+      }
+
+      // Space recovers: plain >= watermark clears recoveryMinDiskGeneration.
+      plainVal.withLock { $0 = RecoveryConstants.lowDiskWatermarkBytes + 1 }
+      manager.stepRecoveryFeedFlushForTesting(spoolPath: spoolPath)
+      #expect(manager.debugRecoverySpoolWriter != nil)
+
+      // Plain dips again: must request a fresh generation instead of tripping on old gen-1 100.
+      plainVal.withLock { $0 = 100 }
+      manager.stepRecoveryFeedFlushForTesting(spoolPath: spoolPath)
+      #expect(manager.debugRecoverySpoolWriter != nil)
     }
 
     @Test(

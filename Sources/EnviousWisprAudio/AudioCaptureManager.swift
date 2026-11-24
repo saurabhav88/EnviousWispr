@@ -443,6 +443,8 @@ public final class AudioCaptureManager: AudioCaptureInterface {
   /// Single-finalize guard across the clean-stop vs low-disk race (the writer
   /// is also idempotent; this avoids even queuing the second call).
   private var recoveryFinalized: Bool = false
+  private var volumeSpaceCache = VolumeSpaceCache.shared
+  private var recoveryMinDiskGeneration: UInt64?
 
   public init() {}
 
@@ -1048,6 +1050,13 @@ public final class AudioCaptureManager: AudioCaptureInterface {
     /// so one seam governs both.
     func installDiskSpaceCheckForTesting(_ check: ((String) -> Bool)?) {
       debugDiskSpaceOverride = check
+    }
+    func installVolumeSpaceCacheForTesting(_ cache: VolumeSpaceCache) {
+      volumeSpaceCache = cache
+    }
+    func stepRecoveryFeedFlushForTesting(spoolPath: String) {
+      guard let writer = recoverySpoolWriter else { return }
+      flushRecoveryFeedAndCheckDisk(writer: writer, spoolPath: spoolPath)
     }
 
     /// Test oracle (#1579): whether a live feed task is currently retained. A
@@ -1722,6 +1731,7 @@ public final class AudioCaptureManager: AudioCaptureInterface {
 
     recoveryFinalized = false
     recoveryFedSampleCount = 0
+    recoveryMinDiskGeneration = nil
     recoverySpoolWriter = nil
     recoverySpoolWriterSessionID = nil
     // #1807: `recoverySessionID` must NEVER gate whether decoding/writer
@@ -1744,20 +1754,16 @@ public final class AudioCaptureManager: AudioCaptureInterface {
       }
       return
     }
-    // Low-disk preflight: don't start a spool when free space is already below
-    // the watermark the heart path needs (History save / ASR temp / model cache).
-    guard hasSufficientDiskSpace(forSpoolAt: directive.spoolPath) else {
-      // #1807: refused before a writer existed — same no-writer ack as above.
-      // Use the DECODED directive's own id here, not the separately-supplied
-      // parameter: decode already succeeded, so it is always available and
-      // guaranteed to be this take's real id.
-      onRecoveryWriterQuiescent?(directive.recoverySessionID)
-      return
+    // #4893: never stall or refuse capture start on CacheDelete. Check cheap plain bytes first;
+    // when low/unknown, request background importantUsage refresh and still arm spooling immediately.
+    let spoolDir = (directive.spoolPath as NSString).deletingLastPathComponent
+    if (volumeSpaceCache.plainBytes(at: spoolDir) ?? -1) < RecoveryConstants.lowDiskWatermarkBytes {
+      recoveryMinDiskGeneration = volumeSpaceCache.requestRefresh(at: spoolDir)
     }
 
     let writer = RecoverySpoolWriter(
       recoverySessionID: directive.recoverySessionID,
-      spoolURL: URL(fileURLWithPath: directive.spoolPath),
+      spoolURL: URL(filePath: directive.spoolPath, directoryHint: .notDirectory),
       cipher: RecoverySpoolCipher(directive: directive),
       settings: directive.settingsSnapshot)
     writer.start()
@@ -1791,13 +1797,8 @@ public final class AudioCaptureManager: AudioCaptureInterface {
 
         pollCount += 1
         if pollCount % flushEvery == 0 {
-          writer.flush()
-          // Low-disk watermark re-check: stop spooling with an honest terminal
-          // marker before recovery can starve the disk the heart path needs.
-          if !self.hasSufficientDiskSpace(forSpoolAt: spoolPath) {
-            self.finalizeRecovery(.lowDiskWatermark)
-            return
-          }
+          self.flushRecoveryFeedAndCheckDisk(writer: writer, spoolPath: spoolPath)
+          if self.recoveryFinalized { return }
         }
 
         try? await Task.sleep(for: .seconds(RecoveryConstants.chunkIntervalSeconds))
@@ -1805,11 +1806,17 @@ public final class AudioCaptureManager: AudioCaptureInterface {
     }
   }
 
+  private func flushRecoveryFeedAndCheckDisk(writer: RecoverySpoolWriter, spoolPath: String) {
+    writer.flush()
+    if !hasSufficientDiskSpace(forSpoolAt: spoolPath) { finalizeRecovery(.lowDiskWatermark) }
+  }
+
   /// Clean stop: feed the final tail beyond what the poll loop wrote, then
   /// finalize with the clean marker. Runs once (guarded).
   private func stopRecoverySpooling(tail: [Float]) {
     guard !recoveryFinalized, let writer = recoverySpoolWriter else { return }
     recoveryFinalized = true
+    recoveryMinDiskGeneration = nil
     recoveryFeedTask?.cancel()
     recoveryFeedTask = nil
     if tail.count > recoveryFedSampleCount {
@@ -1824,6 +1831,7 @@ public final class AudioCaptureManager: AudioCaptureInterface {
   private func finalizeRecovery(_ reason: RecoverySpoolTerminationReason) {
     guard !recoveryFinalized, let writer = recoverySpoolWriter else { return }
     recoveryFinalized = true
+    recoveryMinDiskGeneration = nil
     recoveryFeedTask?.cancel()
     recoveryFeedTask = nil
     finalizeWriterAndAck(writer, reason: reason)
@@ -1850,24 +1858,26 @@ public final class AudioCaptureManager: AudioCaptureInterface {
     writer.finalize(reason: reason, notifying: { ack(sessionID) })
   }
 
-  /// True when the spool volume has at least the low-disk watermark free. Reads
-  /// the spool's parent directory (the file may not exist yet). Fail-open: an
-  /// unreadable value arms recovery anyway — the writer's backpressure cap is
-  /// the backstop.
+  /// True unless fresh plain fails and this recording's cached importantUsage reads below watermark.
   private func hasSufficientDiskSpace(forSpoolAt path: String) -> Bool {
     #if DEBUG
       if let debugDiskSpaceOverride { return debugDiskSpaceOverride(path) }
     #endif
-    return Self.volumeHasSufficientSpace(forSpoolAt: path)
-  }
-
-  private static func volumeHasSufficientSpace(forSpoolAt path: String) -> Bool {
-    let dir = URL(fileURLWithPath: path).deletingLastPathComponent()
-    guard
-      let values = try? dir.resourceValues(
-        forKeys: [.volumeAvailableCapacityForImportantUsageKey]),
-      let available = values.volumeAvailableCapacityForImportantUsage
-    else { return true }
-    return available >= RecoveryConstants.lowDiskWatermarkBytes
+    let dir = (path as NSString).deletingLastPathComponent
+    if (volumeSpaceCache.plainBytes(at: dir) ?? -1) >= RecoveryConstants.lowDiskWatermarkBytes {
+      recoveryMinDiskGeneration = nil
+      return true
+    }
+    guard let minGen = recoveryMinDiskGeneration else {
+      recoveryMinDiskGeneration = volumeSpaceCache.requestRefresh(at: dir)
+      return true
+    }
+    guard let cached = volumeSpaceCache.importantBytes(at: dir, minGeneration: minGen) else {
+      _ = volumeSpaceCache.requestRefresh(at: dir)
+      return true
+    }
+    if cached < RecoveryConstants.lowDiskWatermarkBytes { return false }
+    _ = volumeSpaceCache.requestRefresh(at: dir)
+    return true
   }
 }
