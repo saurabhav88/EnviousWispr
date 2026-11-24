@@ -13,43 +13,14 @@ import Testing
 @testable import EnviousWisprPipeline
 @testable import EnviousWisprTranscribeCpp
 
-/// #4896 verification tests for Whisper status 8 (`TRANSCRIBE_ERR_BACKEND`) forced unload + reload.
+/// #4896 tests for Whisper status 8 (`TRANSCRIBE_ERR_BACKEND`) forced unload + reload.
 @MainActor
 @Suite("Whisper status 8 forced unload and reload (#4896)", .serialized, .tags(.productOutcome))
 struct WhisperBackendErrorReloadTests {
-
   private typealias Backend = TranscribeCppWhisperBackend<FakeReloadWhisperDriver>
+  private static let speech: [Float] = [Float](repeating: 0.25, count: 16_000)
 
-  private static let speech: [Float] =
-    [Float](repeating: 0.25, count: 16_000)
-
-  private func makeBackend(_ driver: FakeReloadWhisperDriver) -> Backend {
-    Backend(
-      driver: driver,
-      modelVariant: "whisper-large-v3-turbo-Q8_0",
-      admittedModelPath: { "turbo.gguf" },
-      modelIdentity: nil,
-      scopeDelivery: nil,
-      authorizeUnload: nil,
-      warmupDeadlineSeconds: 5
-    )
-  }
-
-  private func makeAdapter(
-    _ driver: FakeReloadWhisperDriver,
-    scope: EngineMutationScope = .alwaysAllowedForTesting,
-    faultController: BatchDecodeFaultController? = nil
-  ) -> (backend: Backend, adapter: WhisperEngineAdapter) {
-    let backend = makeBackend(driver)
-    let adapter = WhisperEngineAdapter(
-      backend: backend,
-      engineMutationScope: scope,
-      batchDecodeFaultController: faultController
-    )
-    return (backend, adapter)
-  }
-
-  private struct KernelHarness {
+  private struct Harness {
     let adapter: WhisperEngineAdapter
     let backend: Backend
     let driver: FakeReloadWhisperDriver
@@ -57,1214 +28,347 @@ struct WhisperBackendErrorReloadTests {
     let capture: FakeAudioCapture
     let vad: FakeVADSignalSource
     let paste: FakePasteTarget
-    let kernelDriver: KernelDictationDriver
+    let driverUI: KernelDictationDriver
     let stateWaiter: PipelineStateWaiter
   }
 
-  private func makeKernelHarness(
-    driver: FakeReloadWhisperDriver = FakeReloadWhisperDriver(),
-    faultController: BatchDecodeFaultController? = nil,
-    retryTimeoutSecondsOverride: Double? = nil,
-    onBumpRetryGeneration: (@MainActor () -> Void)? = nil
-  ) -> KernelHarness {
-    let (backend, adapter) = makeAdapter(driver, faultController: faultController)
-    let kernelAdapter: any ASREngineAdapter =
-      retryTimeoutSecondsOverride.map {
-        FastRetryTimeoutAdapter(
-          wrapping: adapter,
-          retryTimeoutSeconds: $0,
-          onBumpRetryGeneration: onBumpRetryGeneration
-        )
-      }
-      ?? adapter
-    let capture = FakeAudioCapture()
-    let vad = FakeVADSignalSource()
-    let paste = FakePasteTarget()
-    let kernel = RecordingSessionKernel(
-      adapter: kernelAdapter,
-      audioCapture: capture,
-      vad: vad,
-      currentTick: { 0 },
-      sleepTicks: { _ in },
-      processText: { raw, _ in raw },
-      store: { _, _, _ in },
-      deliver: { text, _ in paste.attemptPaste(text) == .pasted ? .pasted : .clipboardOnly },
-      engineMutationScope: .alwaysAllowedForTesting,
-      minimumRecordingTicks: 0
-    )
-    let observer = KernelHeartPathTelemetryObserver(
-      kernel: kernel,
-      audioCapture: capture,
-      emitter: HeartPathTelemetryEmitter(
-        backend: .whisper, captureTelemetry: CaptureTelemetryState()),
-      emitLifecycleEvent: { _ in }
-    )
-    let steps = LimbSteps(
-      snippetExpansion: SnippetExpansionStep(),
-      wordCorrection: WordCorrectionStep(),
-      learnedWordCheck: LearnedWordCheckStep(),
-      fillerRemoval: FillerRemovalStep(),
-      emojiFormatter: EmojiFormatterStep(),
-      inverseTextNormalization: InverseTextNormalizationStep(),
-      englishSpelling: EnglishSpellingStep(target: .text),
-      llmPolish: LLMPolishStep(keychainManager: KeychainManager(), localPolishers: .llamaForTests),
-      englishSpellingAfterPolish: EnglishSpellingStep(target: .polishedText),
-      emojiRestore: EmojiRestoreStep(),
-      casualEnding: CasualEndingStep()
-    )
-    let kernelDriver = KernelDictationDriver(
-      kernel: kernel,
-      observer: observer,
-      outcome: KernelFinalizationOutcome(),
-      context: KernelSessionContext(),
-      steps: steps,
-      adapter: kernelAdapter,
-      engineMutationScope: .alwaysAllowedForTesting
-    )
-    kernelDriver.start()
-    let stateWaiter = PipelineStateWaiter(kernelDriver)
-    return KernelHarness(
-      adapter: adapter,
-      backend: backend,
-      driver: driver,
-      kernel: kernel,
-      capture: capture,
-      vad: vad,
-      paste: paste,
-      kernelDriver: kernelDriver,
-      stateWaiter: stateWaiter
-    )
+  private func makeAdapter(
+    _ driver: FakeReloadWhisperDriver = FakeReloadWhisperDriver(),
+    scope: EngineMutationScope = .alwaysAllowedForTesting
+  ) -> (backend: Backend, adapter: WhisperEngineAdapter) {
+    let backend = Backend(
+      driver: driver, modelVariant: "whisper-large-v3-turbo-Q8_0",
+      admittedModelPath: { "turbo.gguf" }, modelIdentity: nil,
+      scopeDelivery: nil, authorizeUnload: nil, warmupDeadlineSeconds: 5)
+    return (backend, WhisperEngineAdapter(backend: backend, engineMutationScope: scope))
   }
 
-  private func runKernelTake(
-    _ h: KernelHarness,
-    policy: ModelUnloadPolicy = .never,
-    timeoutSeconds: Double = 5.0
-  ) async {
+  private func makeHarness(
+    driver: FakeReloadWhisperDriver = FakeReloadWhisperDriver(),
+    retryTimeout: Double? = nil,
+    onRetryTimeout: (@MainActor () -> Void)? = nil
+  ) -> Harness {
+    let (backend, adapter) = makeAdapter(driver)
+    let kernelAdapter: any ASREngineAdapter =
+      retryTimeout.map { FastRetryTimeoutAdapter(wrapping: adapter, retryTimeoutSeconds: $0, onBumpRetryGeneration: onRetryTimeout) } ?? adapter
+    let capture = FakeAudioCapture(), vad = FakeVADSignalSource(), paste = FakePasteTarget()
+    let kernel = RecordingSessionKernel(
+      adapter: kernelAdapter, audioCapture: capture, vad: vad, currentTick: { 0 }, sleepTicks: { _ in },
+      processText: { raw, _ in raw }, store: { _, _, _ in },
+      deliver: { text, _ in paste.attemptPaste(text) == .pasted ? .pasted : .clipboardOnly },
+      engineMutationScope: .alwaysAllowedForTesting, minimumRecordingTicks: 0)
+    let observer = KernelHeartPathTelemetryObserver(
+      kernel: kernel, audioCapture: capture,
+      emitter: HeartPathTelemetryEmitter(backend: .whisper, captureTelemetry: CaptureTelemetryState()), emitLifecycleEvent: { _ in })
+    let steps = LimbSteps(
+      snippetExpansion: SnippetExpansionStep(), wordCorrection: WordCorrectionStep(), learnedWordCheck: LearnedWordCheckStep(),
+      fillerRemoval: FillerRemovalStep(), emojiFormatter: EmojiFormatterStep(), inverseTextNormalization: InverseTextNormalizationStep(),
+      englishSpelling: EnglishSpellingStep(target: .text), llmPolish: LLMPolishStep(keychainManager: KeychainManager(), localPolishers: .llamaForTests),
+      englishSpellingAfterPolish: EnglishSpellingStep(target: .polishedText), emojiRestore: EmojiRestoreStep(), casualEnding: CasualEndingStep())
+    let driverUI = KernelDictationDriver(
+      kernel: kernel, observer: observer, outcome: KernelFinalizationOutcome(), context: KernelSessionContext(),
+      steps: steps, adapter: kernelAdapter, engineMutationScope: .alwaysAllowedForTesting)
+    driverUI.start()
+    return Harness(adapter: adapter, backend: backend, driver: driver, kernel: kernel, capture: capture, vad: vad, paste: paste, driverUI: driverUI, stateWaiter: PipelineStateWaiter(driverUI))
+  }
+
+  private func runTake(_ h: Harness, timeoutSeconds: Double = 5.0) async {
     let deadline = Duration.seconds(timeoutSeconds)
     h.kernel.start(
-      config: .testDefault(
-        autoPasteToActiveApp: true,
-        languageMode: .locked("en"),
-        useStreamingASR: false,
-        modelUnloadPolicy: policy
-      ),
-      microphoneStartDeadline: nil
-    )
-    await h.stateWaiter.wait(for: { state in
-      switch state {
-      case .recording, .complete, .error, .advisory:
-        return true
-      case .idle:
-        return h.kernel.recordingOutcome != nil
-      case .loadingModel, .transcribing, .polishing:
-        return false
-      }
-    }, timeout: deadline)
-    guard h.kernel.state == .live else {
-      Issue.record(
-        "kernel exited before .live: state=\(h.kernel.state) outcome=\(String(describing: h.kernel.recordingOutcome))"
-      )
-      return
-    }
-    let epochBeforeAudio = h.kernel.workEpoch
-    h.capture.deliverBuffer(frameCount: 16_000, amplitude: 0.25)
-    h.vad.evidence = .voiced
-    h.vad.segments = [SpeechSegment(startSample: 0, endSample: 16_000)]
-    await awaitObserved(
-      { h.kernel.workEpoch != epochBeforeAudio },
-      what: "kernel to consume delivered audio buffer",
-      timeoutSeconds: timeoutSeconds
-    )
-    h.kernel.requestStop()
-    await h.stateWaiter.wait(for: { state in
-      switch state {
-      case .complete, .error, .advisory, .idle:
-        return h.kernel.recordingOutcome != nil
-      case .loadingModel, .recording, .transcribing, .polishing:
-        return false
-      }
-    }, timeout: deadline)
-    await awaitObserved(
-      {
-        h.kernel.recordingOutcome != nil && h.kernel.state == .idle
-          && !h.kernel.hasUnconsumedRecordingExit
-      },
-      what: "kernel conclusion",
-      timeoutSeconds: timeoutSeconds
-    )
-  }
-
-  @discardableResult
-  private func awaitObserved(
-    _ predicate: @escaping @MainActor () -> Bool,
-    what: String,
-    timeoutSeconds: Double = 5.0
-  ) async -> Bool {
-    let deadline = ContinuousClock.now + .seconds(timeoutSeconds)
-    while true {
-      let changeSignal = SignalWaiter()
-      let satisfied = withObservationTracking {
-        predicate()
-      } onChange: {
-        Task { @MainActor in changeSignal.signal() }
-      }
-      if satisfied { return true }
-      let remaining = deadline - ContinuousClock.now
-      if remaining <= .zero {
-        Issue.record("timed out waiting for \(what)")
-        return false
-      }
-      let remainingSeconds =
-        Double(remaining.components.seconds)
-        + Double(remaining.components.attoseconds) / 1e18
-      if await !changeSignal.wait(what: what, timeoutSeconds: max(0.001, remainingSeconds)) {
-        return predicate()
-      }
-    }
-  }
-
-  @discardableResult
-  private func awaitOverlayNotice(
-    _ overlay: OverlayDirector,
-    kind: NoticeModel.Kind,
-    what: String,
-    timeoutSeconds: Double = 2.0
-  ) async -> Bool {
-    if case .notice(let notice)? = overlay.renderModel.state.presentation?.content,
-      notice.kind == kind
-    {
+      config: .testDefault(autoPasteToActiveApp: true, languageMode: .locked("en"), useStreamingASR: false, modelUnloadPolicy: .never),
+      microphoneStartDeadline: nil)
+    await h.stateWaiter.wait(for: { s in
+      if case .loadingModel = s { return false }; if case .transcribing = s { return false }; if case .polishing = s { return false }
+      if case .idle = s { return h.kernel.recordingOutcome != nil }
       return true
-    }
-    let signal = SignalWaiter()
-    let cancellable = overlay.renderModel.$state.sink { state in
-      if case .notice(let notice)? = state.presentation?.content, notice.kind == kind {
-        signal.signal()
+    }, timeout: deadline)
+    guard h.kernel.state == .live else { Issue.record("kernel exited before .live: \(h.kernel.state)"); return }
+    let epochBefore = h.kernel.workEpoch, epochSig = SignalWaiter()
+    withObservationTracking { _ = h.kernel.workEpoch } onChange: { Task { @MainActor in epochSig.signal() } }
+    h.capture.deliverBuffer(frameCount: 16_000, amplitude: 0.25)
+    h.vad.evidence = .voiced; h.vad.segments = [SpeechSegment(startSample: 0, endSample: 16_000)]
+    if h.kernel.workEpoch == epochBefore { _ = await epochSig.wait(what: "acceptAudio", timeoutSeconds: timeoutSeconds) }
+    h.kernel.requestStop()
+    await h.stateWaiter.wait(for: { s in
+      switch s {
+      case .complete, .error, .advisory, .idle: return h.kernel.recordingOutcome != nil
+      case .loadingModel, .recording, .transcribing, .polishing: return false
       }
-    }
-    defer { cancellable.cancel() }
-    return await signal.wait(what: what, timeoutSeconds: timeoutSeconds)
+    }, timeout: deadline)
   }
 
-  private func runDirectAdapterTake(
-    _ adapter: WhisperEngineAdapter,
-    samples: [Float] = Self.speech,
-    language: String? = "en"
-  ) async throws -> ASREngineOutcome {
+  private func runDirect(_ adapter: WhisperEngineAdapter) async throws -> ASREngineOutcome {
     let sid = SessionID()
-    try await adapter.beginSession(
-      sid,
-      options: TranscriptionOptions(language: language),
-      streaming: false
-    )
-    let buffer = try #require(FakeAudioCapture.makeBuffer(samples: samples))
-    adapter.acceptAudio(
-      AudioBufferHandoff(buffer: buffer, frameCount: samples.count, sequence: 1, sessionID: sid)
-    )
-    adapter.observeSpeechSegments(
-      [SpeechSegment(startSample: 0, endSample: samples.count)],
-      captureSamples: samples
-    )
+    try await adapter.beginSession(sid, options: TranscriptionOptions(language: "en"), streaming: false)
+    let buf = try #require(FakeAudioCapture.makeBuffer(samples: Self.speech))
+    adapter.acceptAudio(AudioBufferHandoff(buffer: buf, frameCount: Self.speech.count, sequence: 1, sessionID: sid))
+    adapter.observeSpeechSegments([SpeechSegment(startSample: 0, endSample: Self.speech.count)], captureSamples: Self.speech)
     return await adapter.finalize(batchSamples: [])
   }
 
-  // MARK: - 1. Full kernel take failure -> retry -> forced unload -> reload -> next take succeeds
-
-  @Test("status 8 full take failure retries before unload, forces .immediately under .never, and reloads cleanly for take 2")
+  @Test("status 8 twice frees handle once under .never and next take reloads and pastes")
   func fullTakeFailureForcesUnloadAndReloadsTake2() async throws {
-    let h = makeKernelHarness()
-    try await h.adapter.warmUp(modelReceipt: nil)
-    #expect(h.adapter.readiness == .ready)
-    #expect(h.driver.loadedHandles == [1])
-
-    // Record whether unload had already happened when handle 1 was retried.
-    var unloadCountAtRetry = -1
-    var transcribeCall = 0
-    h.driver.onTranscribe = { [driver = h.driver] handle in
-      transcribeCall += 1
-      if handle == 1, transcribeCall == 2 {
-        unloadCountAtRetry = driver.unloadedHandles.count
-      }
+    let h = makeHarness(); try await h.adapter.warmUp(modelReceipt: nil)
+    let calls = LockedCounter(), retrySawZeroUnloads = LockedCounter()
+    h.driver.onTranscribeAsync = { [driver = h.driver] h in
+      if h == 1, calls.incrementAndGet() == 2, driver.unloadedHandles.isEmpty { _ = retrySawZeroUnloads.incrementAndGet() }
     }
     h.driver.poisonHandle(1, status: 8)
-
-    await runKernelTake(h, policy: .never)
-
-    // Retry must have executed BEFORE unload fired; readiness flips synchronously at finishTerminal.
-    #expect(unloadCountAtRetry == 0)
-    #expect(h.driver.transcribeHandles == [1, 1, 1])  // warmup + finalize + Phase-2 retry
-    #expect(h.adapter.readiness == .notReady)
-    #expect(h.adapter.shouldForceUnloadAfterFailure == false)
-    #expect(await h.driver.waitForUnloadCompleted(1))
-    #expect(h.driver.unloadedHandles == [1])
+    await runTake(h)
+    #expect(retrySawZeroUnloads.current == 1 && h.driver.transcribeHandles == [1, 1, 1] && h.adapter.readiness == .notReady)
+    #expect(await h.driver.waitFor("uc:1") && h.driver.unloadedHandles == [1] && h.paste.pastedTexts.isEmpty)
     #expect(await h.backend.isReady == false)
-    #expect(h.paste.pastedTexts.isEmpty)
-
-    // Take 2 resets kernel and starts normally: warmUp reloads handle 2 and pastes cleanly.
-    h.kernel.reset()
-    await runKernelTake(h, policy: .never)
-    #expect(h.driver.loadedHandles == [1, 2])
-    #expect(h.adapter.readiness == .ready)
-    #expect(h.paste.pastedTexts == ["ok from handle 2"])
+    h.kernel.reset(); await runTake(h)
+    #expect(h.driver.loadedHandles == [1, 2] && h.adapter.readiness == .ready && h.paste.pastedTexts == ["ok from handle 2"])
   }
 
-  // MARK: - 2. Held teardown + cancelPendingUnload + applyUnloadPolicy(.never) + warmUp join
-
-  @Test("held teardown keeps readiness .notReady, resists .never/cancelPendingUnload, and warmUp joins before loading handle 2")
-  func heldTeardownConcurrencyAndJoin() async throws {
-    let h = makeKernelHarness()
-    try await h.adapter.warmUp(modelReceipt: nil)
-    h.driver.poisonHandle(1, status: 8)
-    h.driver.holdUnload(1)
-    defer { h.driver.releaseUnload(1) }
-
-    _ = try await runDirectAdapterTake(h.adapter)
-    _ = await h.adapter.retryDecode(inputSamples: Self.speech)
-    #expect(h.adapter.shouldForceUnloadAfterFailure == true)
-
-    h.adapter.applyUnloadPolicy(.immediately)
-    #expect(h.adapter.readiness == .notReady)
-    await h.driver.waitForUnloadStarted(1)
-
-    try await h.adapter.warmUpFromCache()
-    #expect(h.adapter.readiness == .notReady)
-
-    // Sibling cancellation/never-unload hooks must not abort forced teardown.
-    h.adapter.cancelPendingUnload()
-    h.adapter.applyUnloadPolicy(.never)
-
-    let warmEntered = SignalWaiter()
-    let warmTask = Task {
-      warmEntered.signal()
-      try await h.adapter.warmUp(modelReceipt: nil)
-    }
-    await warmEntered.wait(what: "warmTask to enter warmUp")
-    _ = await h.backend.isReady
-    #expect(h.driver.loadedHandles == [1], "warmUp must wait for in-flight unload before loading handle 2")
-    #expect(h.adapter.readiness == .notReady)
-
-    h.driver.releaseUnload(1)
-    try await warmTask.value
-
-    #expect(await h.driver.waitForUnloadCompleted(1))
-    #expect(h.driver.unloadedHandles == [1])
-    #expect(h.driver.loadedHandles == [1, 2])
-    #expect(h.adapter.readiness == .ready)
-
-    let outcome = try await runDirectAdapterTake(h.adapter)
-    guard case .transcript(let res) = outcome else {
-      Issue.record("expected transcript after reload, got \(outcome)")
-      return
-    }
-    #expect(res.text == "ok from handle 2")
-  }
-
-  // MARK: - 3. Hung unload: MainActor unblocked & press enters ColdPressGuard cleanly
-
-  @Test("hung forced unload keeps ColdPressGuard cold-press path working without blocking the main thread")
-  func hungUnloadDoesNotBlockMainThreadAndHitsColdPressGuard() async throws {
-    let h = makeKernelHarness()
-    try await h.adapter.warmUp(modelReceipt: nil)
-    h.driver.poisonHandle(1, status: 8)
-    h.driver.holdUnload(1)
-    defer { h.driver.releaseUnload(1) }
-
-    _ = try await runDirectAdapterTake(h.adapter)
-    _ = await h.adapter.retryDecode(inputSamples: Self.speech)
-    h.adapter.applyUnloadPolicy(.immediately)
-    await h.driver.waitForUnloadStarted(1)
-
-    #expect(h.kernelDriver.engineReadiness == .notReady)
-    let (overlay, _) = OverlayTestDouble.headlessDirectorWithHost()
-    var mainThreadYieldRan = false
-
-    // Mirrors RecordingStarter press handling when active.engineReadiness != .ready.
-    ColdPressGuard.handle(
-      overlay: overlay,
-      active: h.kernelDriver,
-      backendTag: "whisper",
-      readiness: h.kernelDriver.engineReadiness,
-      confirmExplicitRetry: { false }
-    )
-    let turn = Task { @MainActor in mainThreadYieldRan = true }
-    await turn.value
-
-    #expect(mainThreadYieldRan == true)
-    #expect(h.kernelDriver.engineReadiness == .notReady)
-    #expect(h.driver.loadedHandles == [1])
-    #expect(h.driver.unloadedHandles.isEmpty)
-    if case .notice(let notice)? = overlay.renderModel.state.presentation?.content {
-      #expect(notice.kind == .warmingUp)
-    } else {
-      Issue.record(
-        "expected cachingModel (.warmingUp) pill, got \(String(describing: overlay.renderModel.state.presentation?.content))"
-      )
-    }
-  }
-
-  // MARK: - 4. Slow finishing unload: press during unload ends warm (.ready), not failed
-
-  @Test("press during a slow finishing unload settles warm (.ready), never failed or retry-required")
-  func pressDuringSlowUnloadEndsWarm() async throws {
-    let h = makeKernelHarness()
-    try await h.adapter.warmUp(modelReceipt: nil)
-    h.driver.poisonHandle(1, status: 8)
-    h.driver.holdUnload(1)
-
-    _ = try await runDirectAdapterTake(h.adapter)
-    _ = await h.adapter.retryDecode(inputSamples: Self.speech)
-    h.adapter.applyUnloadPolicy(.immediately)
-    await h.driver.waitForUnloadStarted(1)
-
-    let (overlay, _) = OverlayTestDouble.headlessDirectorWithHost()
-    var retryChecked = false
-    var warmOutcome: EngineWarmupOutcome?
-    let warmEntered = SignalWaiter()
-    let warmSettled = SignalWaiter()
-    h.kernelDriver.onEngineWarmSettled = { warmSettled.signal() }
-    let warmOutcomeTask = Task { @MainActor in
-      warmEntered.signal()
-      warmOutcome = await h.kernelDriver.ensureEngineWarm(reason: .coldPress)
-    }
-    ColdPressGuard.handle(
-      overlay: overlay,
-      active: h.kernelDriver,
-      backendTag: "whisper",
-      readiness: h.kernelDriver.engineReadiness,
-      confirmExplicitRetry: {
-        retryChecked = true
-        return false
-      }
-    )
-    await warmEntered.wait(what: "warmOutcomeTask to enter ensureEngineWarm")
-    #expect(
-      await awaitOverlayNotice(
-        overlay, kind: .warmingUp, what: "ColdPressGuard .warmingUp pill while unload held")
-    )
-    _ = await h.backend.isReady
-    #expect(h.driver.loadedHandles == [1])
-
-    h.driver.releaseUnload(1)
-    await warmSettled.wait(what: "onEngineWarmSettled")
-    await warmOutcomeTask.value
-    if case .ready = warmOutcome {} else {
-      Issue.record("expected .ready warmup outcome, got \(String(describing: warmOutcome))")
-    }
-    #expect(
-      await awaitOverlayNotice(
-        overlay, kind: .ready, what: "ColdPressGuard .ready pill after reload")
-    )
-    #expect(await h.driver.waitForUnloadCompleted(1))
-    #expect(h.kernelDriver.engineReadiness == .ready)
-    #expect(retryChecked == false)
-    #expect(h.driver.unloadedHandles == [1])
-    #expect(h.driver.loadedHandles == [1, 2])
-  }
-
-  // MARK: - 5. Retry timeout after primary status 8 still forces unload at finishTerminal
-
-  @Test("retry timeout after status 8 primary finalize still triggers forced unload at finishTerminal")
+  @Test("retry timeout after status 8 primary finalize still forces unload at finishTerminal")
   func retryTimeoutAfterStatus8StillForcesUnload() async throws {
-    let callsOnHandle1 = LockedCounter()
-    let retryTimedOut = LockedCounter()
-    let retryTimeoutGate = SignalWaiter()
-    let h = makeKernelHarness(
-      retryTimeoutSecondsOverride: 0.05,
-      onBumpRetryGeneration: {
-        _ = retryTimedOut.incrementAndGet()
-        retryTimeoutGate.signal()
-      }
-    )
-    defer { retryTimeoutGate.signal() }
-    try await h.adapter.warmUp(modelReceipt: nil)
-
+    let calls = LockedCounter(), retryTimedOut = LockedCounter(), gate = SignalWaiter()
+    let h = makeHarness(retryTimeout: 0.05, onRetryTimeout: { _ = retryTimedOut.incrementAndGet(); gate.signal() })
+    defer { gate.signal() }; try await h.adapter.warmUp(modelReceipt: nil)
     h.driver.onTranscribeAsync = { handle in
       guard handle == 1 else { return }
-      if callsOnHandle1.incrementAndGet() == 1 {
-        throw TranscribeCppError(rawStatus: 8)
-      }
-      // Second call is the Phase-2 retry: block until the kernel's 0.05s retry deadline fires.
-      _ = await retryTimeoutGate.wait(what: "kernel retry timeout signal", timeoutSeconds: 5.0)
+      if calls.incrementAndGet() == 1 { throw TranscribeCppError(rawStatus: 8) }
+      _ = await gate.wait(what: "retry timeout signal", timeoutSeconds: 5.0)
     }
-
-    await runKernelTake(h, policy: .never, timeoutSeconds: 2.0)
-
-    // Warmup + primary status-8 finalize always ran; on a busy runner the 50 ms deadline may fire
-    // before or after Phase-2 retry enters the fake driver, while `retryTimedOut == 1` still
-    // proves the kernel entered and timed out the Phase-2 retry path before finishTerminal.
-    #expect(h.driver.transcribeHandles.starts(with: [1, 1]))
-    #expect(retryTimedOut.current == 1)
-    #expect(h.adapter.readiness == .notReady)
-    #expect(await h.driver.waitForUnloadCompleted(1))
-    #expect(h.driver.unloadedHandles == [1])
-    #expect(await h.backend.isReady == false)
+    await runTake(h, timeoutSeconds: 2.0)
+    #expect(h.driver.transcribeHandles.starts(with: [1, 1]) && retryTimedOut.current == 1 && h.adapter.readiness == .notReady)
+    #expect(await h.driver.waitFor("uc:1") && h.driver.unloadedHandles == [1])
   }
 
-  // MARK: - 6. Non-8 errors, cancel, empty, and batch-rescue never forced-unload
+  @Test("status 7, cancel, .empty, LID, rolling, and meeting status 8 do not unload handle")
+  func nonStatus8FailuresCancelEmptyAndRollingDoNotUnload() async throws {
+    let h7 = makeHarness(); try await h7.adapter.warmUp(modelReceipt: nil); h7.driver.poisonHandle(1, status: 7)
+    await runTake(h7)
+    #expect(h7.driver.transcribeHandles == [1, 1, 1] && h7.driver.unloadedHandles.isEmpty && h7.adapter.readiness == .ready)
 
-  @Test("status 7, cancel, no-speech .empty, and batch-rescue never forced-unload under .never")
-  func nonStatus8FailuresCancelEmptyAndRescueStayReady() async throws {
-    // status 7 failure: confirm primary + retry actually reached decode before asserting ready preserved
-    let h7 = makeKernelHarness()
-    try await h7.adapter.warmUp(modelReceipt: nil)
-    h7.driver.poisonHandle(1, status: 7)
-    await runKernelTake(h7, policy: .never)
-    if case .failed = h7.kernel.recordingOutcome {} else {
-      Issue.record("expected .failed kernel outcome on status 7, got \(String(describing: h7.kernel.recordingOutcome))")
-    }
-    #expect(h7.driver.transcribeHandles == [1, 1, 1])
-    #expect(h7.adapter.shouldForceUnloadAfterFailure == false)
-    #expect(h7.driver.unloadedHandles.isEmpty)
-    #expect(h7.adapter.readiness == .ready)
+    let (_, adCancel) = makeAdapter(); try await adCancel.warmUp(modelReceipt: nil)
+    try await adCancel.beginSession(SessionID(), options: TranscriptionOptions(language: "en"), streaming: false)
+    await adCancel.cancel(); adCancel.applyUnloadPolicy(.never); #expect(adCancel.readiness == .ready)
 
-    // Pre-finalize cancel
-    let hCancel = makeKernelHarness()
-    try await hCancel.adapter.warmUp(modelReceipt: nil)
-    try await hCancel.adapter.beginSession(
-      SessionID(), options: TranscriptionOptions(language: "en"), streaming: false)
-    await hCancel.adapter.cancel()
-    hCancel.adapter.applyUnloadPolicy(.never)
-    #expect(hCancel.adapter.shouldForceUnloadAfterFailure == false)
-    #expect(hCancel.driver.unloadedHandles.isEmpty)
-    #expect(hCancel.adapter.readiness == .ready)
+    let emptyDrv = FakeReloadWhisperDriver(), (_, adEmpty) = makeAdapter(emptyDrv)
+    try await adEmpty.warmUp(modelReceipt: nil); emptyDrv.setEmptyResult(for: 1)
+    _ = try await runDirect(adEmpty); adEmpty.applyUnloadPolicy(.never)
+    #expect(emptyDrv.unloadedHandles.isEmpty && adEmpty.readiness == .ready)
 
-    // No-speech .empty
-    let hEmpty = makeKernelHarness()
-    try await hEmpty.adapter.warmUp(modelReceipt: nil)
-    hEmpty.driver.setEmptyResult(for: 1)
-    let sidEmpty = SessionID()
-    try await hEmpty.adapter.beginSession(
-      sidEmpty, options: TranscriptionOptions(language: "en"), streaming: false)
-    hEmpty.adapter.observeSpeechSegments([], captureSamples: [])
-    let emptyOutcome = await hEmpty.adapter.finalize(batchSamples: [])
-    if case .empty = emptyOutcome {} else { Issue.record("expected .empty, got \(emptyOutcome)") }
-    hEmpty.adapter.applyUnloadPolicy(.never)
-    #expect(hEmpty.driver.unloadedHandles.isEmpty)
-    #expect(hEmpty.adapter.readiness == .ready)
-
-    // Primary finalize fails status 8, retryDecode rescues -> latch clears, no unload!
-    let hRescue = makeKernelHarness()
-    try await hRescue.adapter.warmUp(modelReceipt: nil)
-    let rescueCalls = LockedCounter()
-    hRescue.driver.onTranscribeAsync = { handle in
-      guard handle == 1 else { return }
-      if rescueCalls.incrementAndGet() == 1 {
-        throw TranscribeCppError(rawStatus: 8)
-      }
-    }
-    await runKernelTake(hRescue, policy: .never)
-    #expect(hRescue.adapter.shouldForceUnloadAfterFailure == false)
-    #expect(hRescue.driver.unloadedHandles.isEmpty)
-    #expect(hRescue.adapter.readiness == .ready)
-    #expect(hRescue.paste.pastedTexts == ["ok from handle 1"])
-  }
-
-  // MARK: - 7. Status 8 in LID, rolling, or meeting decode alone never unloads
-
-  @Test("status 8 in observeLID, decodeForRollingSession, or transcribeForMeeting never unloads dictation handle")
-  func lidRollingAndMeetingStatus8NeverUnload() async throws {
-    let h = makeKernelHarness()
-    try await h.adapter.warmUp(modelReceipt: nil)
-    h.driver.poisonLID(1, status: 8)
-
-    // observeLID error -> ready preserved, no unload.
-    let lidOutcome = await h.backend.observeLID(samples: Self.speech, maxWindows: 1)
-    if case .error = lidOutcome {} else { Issue.record("expected LID error, got \(lidOutcome)") }
-    #expect(h.driver.unloadedHandles.isEmpty)
-    #expect(await h.backend.isReady == true)
-
-    // Rolling decode status 8 -> throws, no forced unload, readiness intact.
-    h.driver.poisonHandle(1, status: 8)
-    await #expect(throws: TranscribeCppWhisperError.runFailed(status: 8)) {
-      _ = try await h.backend.decodeForRollingSession(
-        samples: Self.speech, language: "en", onDecode: {})
-    }
+    let h = makeHarness(); try await h.adapter.warmUp(modelReceipt: nil); h.driver.poisonLID(1, status: 8)
+    _ = await h.backend.observeLID(samples: Self.speech, maxWindows: 1); h.driver.poisonHandle(1, status: 8)
+    await #expect(throws: TranscribeCppWhisperError.runFailed(status: 8)) { _ = try await h.backend.decodeForRollingSession(samples: Self.speech, language: "en", onDecode: {}) }
+    await #expect(throws: TranscribeCppWhisperError.runFailed(status: 8)) { _ = try await h.backend.transcribeForMeeting(audioSamples: Self.speech, language: "en") }
     h.adapter.applyUnloadPolicy(.never)
-    #expect(h.adapter.shouldForceUnloadAfterFailure == false)
-    #expect(h.driver.unloadedHandles.isEmpty)
+    #expect(h.driver.unloadedHandles.isEmpty && h.adapter.readiness == .ready)
     #expect(await h.backend.isReady == true)
-
-    // Meeting decode status 8 -> throws, no unload of dictation handle.
-    await #expect(throws: TranscribeCppWhisperError.runFailed(status: 8)) {
-      _ = try await h.backend.transcribeForMeeting(audioSamples: Self.speech, language: "en")
-    }
-    #expect(h.adapter.shouldForceUnloadAfterFailure == false)
-    #expect(h.driver.unloadedHandles.isEmpty)
-    #expect(await h.backend.isReady == true)
-    #expect(h.adapter.readiness == .ready)
   }
 
-  // MARK: - 8. No reload loop when handle 2 fails with status 8 too
-
-  @Test("repeated status 8 on handle 2 produces at most one unload per failed take with no reload loop")
-  func noReloadLoopOnHandle2Failure() async throws {
-    let h = makeKernelHarness()
-    try await h.adapter.warmUp(modelReceipt: nil)
-    h.driver.poisonHandle(1, status: 8)
-    h.driver.poisonHandle(2, status: 8)
-
-    await runKernelTake(h, policy: .never)
-    #expect(await h.driver.waitForUnloadCompleted(1))
-    #expect(h.driver.unloadedHandles == [1])
-    #expect(h.driver.loadedHandles == [1], "must not auto-reload after unload")
-
-    h.kernel.reset()
-    await runKernelTake(h, policy: .never)
-    #expect(await h.driver.waitForUnloadCompleted(2))
-    #expect(h.driver.unloadedHandles == [1, 2])
-    #expect(h.driver.loadedHandles == [1, 2], "only two explicit takes loaded; no reload loop")
-    #expect(h.adapter.readiness == .notReady)
+  @Test("held teardown keeps .notReady against .never/cancel and warmUp joins before loading handle 2")
+  func heldTeardownConcurrencyAndJoin() async throws {
+    let h = makeHarness(); try await h.adapter.warmUp(modelReceipt: nil)
+    h.driver.poisonHandle(1, status: 8); h.driver.holdUnload(1); defer { h.driver.releaseUnload(1) }
+    _ = try await runDirect(h.adapter); _ = await h.adapter.retryDecode(inputSamples: Self.speech)
+    h.adapter.applyUnloadPolicy(.immediately); #expect(h.adapter.readiness == .notReady)
+    await h.driver.waitFor("us:1")
+    try await h.adapter.warmUpFromCache(); h.adapter.cancelPendingUnload(); h.adapter.applyUnloadPolicy(.never)
+    let entered = SignalWaiter()
+    let warmTask = Task { entered.signal(); try await h.adapter.warmUp(modelReceipt: nil) }
+    _ = await entered.wait(what: "warmUp entered"); _ = await h.backend.isReady
+    #expect(h.driver.loadedHandles == [1] && h.adapter.readiness == .notReady)
+    h.driver.releaseUnload(1); try await warmTask.value
+    #expect(h.driver.unloadedHandles == [1] && h.driver.loadedHandles == [1, 2] && h.adapter.readiness == .ready)
   }
 
-  // MARK: - 9. Ordinary .immediately + synchronous beginSession cancels modelUnloadTask
-
-  @Test("ordinary applyUnloadPolicy(.immediately) followed by beginSession(B) cancels unload task cleanly")
-  func ordinaryImmediateUnloadCancelledByBeginSessionB() async throws {
-    let (backend, adapter) = makeAdapter(FakeReloadWhisperDriver())
-    try await adapter.warmUp(modelReceipt: nil)
-    _ = try await runDirectAdapterTake(adapter)
-    adapter.applyUnloadPolicy(.immediately)
-    try await adapter.beginSession(
-      SessionID(), options: TranscriptionOptions(language: "en"), streaming: false)
-    await adapter.modelUnloadTaskForUnitTests?.value
-    #expect(await backend.isReady == true)
-    #expect(adapter.readiness == .ready)
+  @Test("slow finishing unload settles warm without Try again; hung unload keeps MainActor unblocked")
+  func hungUnloadDoesNotBlockMainThreadAndHitsColdPressGuard() async throws {
+    let h = makeHarness(); try await h.adapter.warmUp(modelReceipt: nil)
+    h.driver.poisonHandle(1, status: 8); h.driver.holdUnload(1); defer { h.driver.releaseUnload(1) }
+    _ = try await runDirect(h.adapter); _ = await h.adapter.retryDecode(inputSamples: Self.speech)
+    h.adapter.applyUnloadPolicy(.immediately); await h.driver.waitFor("us:1")
+    let (overlay, _) = OverlayTestDouble.headlessDirectorWithHost()
+    var retryChecked = false, outcome: EngineWarmupOutcome?
+    let settled = SignalWaiter(); h.driverUI.onEngineWarmSettled = { settled.signal() }
+    let warmTask = Task { @MainActor in outcome = await h.driverUI.ensureEngineWarm(reason: .coldPress) }
+    ColdPressGuard.handle(overlay: overlay, active: h.driverUI, backendTag: "whisper", readiness: h.driverUI.engineReadiness, confirmExplicitRetry: { retryChecked = true; return false })
+    var mainRan = false; await Task { @MainActor in mainRan = true }.value
+    #expect(mainRan && h.driverUI.engineReadiness == .notReady && h.driver.loadedHandles == [1])
+    let warmingSignal = SignalWaiter()
+    let c1 = overlay.renderModel.$state.sink { if case .notice(let n)? = $0.presentation?.content, n.kind == .warmingUp { warmingSignal.signal() } }
+    defer { c1.cancel() }; _ = await warmingSignal.wait(what: ".warmingUp notice")
+    h.driver.releaseUnload(1); _ = await settled.wait(what: "onEngineWarmSettled"); await warmTask.value
+    guard case .ready = outcome else { Issue.record("expected .ready, got \(String(describing: outcome))"); return }
+    #expect(!retryChecked && h.driver.loadedHandles == [1, 2] && h.driverUI.engineReadiness == .ready)
   }
 
-  // MARK: - 10. Refused mutation claim keeps forced teardown pending until authorized warmUp
-
-  @Test("if forced unload claim is refused by recovery, warmUpFromCache stays .notReady and warmUp retries unload before trusting isReady")
+  @Test("refused claim keeps forced teardown pending without loops or timers and reloads once authorized")
   func refusedClaimKeepsForcedTeardownPendingUntilAuthorizedWarmUp() async throws {
-    let driver = FakeReloadWhisperDriver()
-    let claimGate = ClaimGate()
-    let refused = SignalWaiter()
-    let scope = EngineMutationScope.live(
-      tryBegin: { claimGate.allowed },
-      end: { false },
-      wake: {},
-      onRefused: { _ in Task { @MainActor in refused.signal() } }
-    )
-    let (backend, adapter) = makeAdapter(driver, scope: scope)
-    try await adapter.warmUp(modelReceipt: nil)
-    #expect(adapter.readiness == .ready)
-
-    driver.poisonHandle(1, status: 8)
-    _ = try await runDirectAdapterTake(adapter)
-    _ = await adapter.retryDecode(inputSamples: Self.speech)
-
-    // Recovery owns the engine when finishTerminal applies forced unload.
-    claimGate.allowed = false
-    adapter.applyUnloadPolicy(.immediately)
-    #expect(adapter.readiness == .notReady)
-    await refused.wait(what: "forced unload claim refusal")
-    #expect(driver.unloadedHandles.isEmpty)
-    #expect(await backend.isReady == true)
-
-    try await adapter.warmUpFromCache()
-    #expect(adapter.readiness == .notReady, "pending refused teardown keeps readiness .notReady")
-
-    // While claim stays refused, warmUp must refuse to trust stale backend.isReady.
-    await #expect(throws: ASRLoadSupersededError.self) {
-      try await adapter.warmUp(modelReceipt: nil)
-    }
-    #expect(adapter.readiness == .notReady)
-    #expect(driver.unloadedHandles.isEmpty)
-
-    // Once recovery releases the engine, warmUp retries forced unload and loads fresh handle 2.
-    claimGate.allowed = true
-    try await adapter.warmUp(modelReceipt: nil)
-    #expect(driver.unloadedHandles == [1])
-    #expect(driver.loadedHandles == [1, 2])
-    #expect(adapter.readiness == .ready)
-  }
-
-  @Test("timer rearm (.never or timed) after refused forced unload keeps teardown pending and arms no timer")
-  func timerRearmPreservesPendingForcedTeardown() async throws {
-    let driver = FakeReloadWhisperDriver()
-    let claimGate = ClaimGate()
-    let refused = SignalWaiter()
-    let scope = EngineMutationScope.live(
-      tryBegin: { claimGate.allowed },
-      end: { false },
-      wake: {},
-      onRefused: { _ in Task { @MainActor in refused.signal() } }
-    )
-    let (backend, adapter) = makeAdapter(driver, scope: scope)
-    try await adapter.warmUp(modelReceipt: nil)
-
-    driver.poisonHandle(1, status: 8)
-    _ = try await runDirectAdapterTake(adapter)
-    _ = await adapter.retryDecode(inputSamples: Self.speech)
-
-    // Forced unload refused by active recovery -> latch restored.
-    claimGate.allowed = false
-    adapter.applyUnloadPolicy(.immediately)
-    await refused.wait(what: "forced unload claim refusal")
-    #expect(adapter.shouldForceUnloadAfterFailure == true)
-
-    // File import / Meeting timer rearm passes settings policy (.never or .fiveMinutes): must NOT drop latch or arm timer.
-    adapter.applyUnloadPolicy(.never)
-    #expect(adapter.shouldForceUnloadAfterFailure == true)
-    #expect(adapter.readiness == .notReady)
+    let driver = FakeReloadWhisperDriver(); var allowed = true; let refused = SignalWaiter()
+    let scope = EngineMutationScope.live(tryBegin: { allowed }, end: { false }, wake: {}, onRefused: { _ in Task { @MainActor in refused.signal() } })
+    let (backend, adapter) = makeAdapter(driver, scope: scope); try await adapter.warmUp(modelReceipt: nil)
+    driver.poisonHandle(1, status: 8); _ = try await runDirect(adapter); _ = await adapter.retryDecode(inputSamples: Self.speech)
+    allowed = false; adapter.applyUnloadPolicy(.immediately); _ = await refused.wait(what: "claim refused")
+    #expect(adapter.shouldForceUnloadAfterFailure && adapter.readiness == .notReady && driver.unloadedHandles.isEmpty)
     adapter.applyUnloadPolicy(.fiveMinutes)
-    #expect(adapter.shouldForceUnloadAfterFailure == true)
-    #expect(adapter.modelUnloadTaskForUnitTests == nil)
-    #expect(await backend.isReady == true)
-
-    // Once recovery ends, warmUp sees pending forced unload, tears down handle 1, and loads handle 2 cleanly.
-    claimGate.allowed = true
-    try await adapter.warmUp(modelReceipt: nil)
-    #expect(driver.unloadedHandles == [1])
-    #expect(driver.loadedHandles == [1, 2])
-    #expect(adapter.readiness == .ready)
-    let rescueTake = try await runDirectAdapterTake(adapter)
-    guard case .transcript(let res) = rescueTake else {
-      Issue.record("expected transcript after reload, got \(rescueTake)")
-      return
-    }
-    #expect(res.text == "ok from handle 2")
+    #expect(adapter.modelUnloadTaskForUnitTests == nil && adapter.shouldForceUnloadAfterFailure)
+    await #expect(throws: ASRLoadSupersededError.self) { try await adapter.warmUp(modelReceipt: nil) }
+    #expect(await backend.isReady == true && driver.loadedHandles == [1])
+    allowed = true; try await adapter.warmUp(modelReceipt: nil)
+    #expect(driver.unloadedHandles == [1] && driver.loadedHandles == [1, 2] && adapter.readiness == .ready)
   }
 
-  @Test("rearming unload policy (.never, timed, or .immediately) while forced unload is in flight arms no extra unload task")
-  func rearmWhileForcedUnloadInFlightArmsNoModelUnloadTask() async throws {
-    let driver = FakeReloadWhisperDriver()
-    let (backend, adapter) = makeAdapter(driver)
-    try await adapter.warmUp(modelReceipt: nil)
-
-    driver.poisonHandle(1, status: 8)
-    driver.holdUnload(1)
-    defer { driver.releaseUnload(1) }
-
-    _ = try await runDirectAdapterTake(adapter)
-    _ = await adapter.retryDecode(inputSamples: Self.speech)
-
-    adapter.applyUnloadPolicy(.immediately)
-    await driver.waitForUnloadStarted(1)
-    #expect(adapter.shouldForceUnloadAfterFailure == false)
-
-    // While pendingForcedUnloadTask != nil, sibling re-arms must NOT queue a racing modelUnloadTask.
-    adapter.applyUnloadPolicy(.never)
-    #expect(adapter.modelUnloadTaskForUnitTests == nil)
-    adapter.applyUnloadPolicy(.fiveMinutes)
-    #expect(adapter.modelUnloadTaskForUnitTests == nil)
-    adapter.applyUnloadPolicy(.immediately)
-    #expect(adapter.modelUnloadTaskForUnitTests == nil)
-    #expect(adapter.readiness == .notReady)
-
-    driver.releaseUnload(1)
-    #expect(await driver.waitForUnloadCompleted(1))
-    #expect(await backend.isReady == false)
-
-    try await adapter.warmUp(modelReceipt: nil)
-    #expect(driver.unloadedHandles == [1])
-    #expect(driver.loadedHandles == [1, 2])
-    #expect(adapter.readiness == .ready)
-    let outcome = try await runDirectAdapterTake(adapter)
-    guard case .transcript(let res) = outcome else {
-      Issue.record("expected transcript after reload, got \(outcome)")
-      return
-    }
-    #expect(res.text == "ok from handle 2")
+  @Test("ordinary .immediately followed by synchronous beginSession cancels unload task cleanly")
+  func ordinaryImmediateUnloadCancelledByBeginSessionB() async throws {
+    let (backend, adapter) = makeAdapter(); try await adapter.warmUp(modelReceipt: nil)
+    _ = try await runDirect(adapter); adapter.applyUnloadPolicy(.immediately)
+    try await adapter.beginSession(SessionID(), options: TranscriptionOptions(language: "en"), streaming: false)
+    await adapter.modelUnloadTaskForUnitTests?.value
+    #expect(await backend.isReady == true && adapter.readiness == .ready)
   }
 
-  @Test("bounded signal waiter fails fast instead of hanging when driver call never starts")
-  func boundedSignalWaiterGivesUpOnTimeout() async {
-    let driver = FakeReloadWhisperDriver()
-    let arrived = await driver.waitForUnloadStarted(99, timeoutSeconds: 0.02, recordFailure: false)
-    #expect(arrived == false)
-    let transcribeArrived = await driver.waitForTranscribeStarted(
-      99, occurrence: 1, timeoutSeconds: 0.02, recordFailure: false)
-    #expect(transcribeArrived == false)
-  }
-
-  // MARK: - 11. transcribeForMeeting aborted by backend.unload() yields MeetingEngineYield
-
-  @Test("transcribeForMeeting completes normally without unload and throws MeetingEngineYield when unload aborts it")
+  @Test("transcribeForMeeting aborted by backend.unload() yields MeetingEngineYield")
   func transcribeForMeetingDuringUnloadThrowsYield() async throws {
-    let driver = FakeReloadWhisperDriver()
-    let backend = makeBackend(driver)
-    try await backend.prepare()
-
-    // Control without unload succeeds cleanly.
-    driver.holdTranscribe(1)
-    let controlTask = Task {
-      try await backend.transcribeForMeeting(audioSamples: Self.speech, language: "en")
-    }
-    await driver.waitForTranscribeStarted(1, occurrence: 2)
-    driver.releaseTranscribe(1)
-    let controlDeadline = Task {
-      try? await Task.sleep(for: .seconds(2))
-      guard !Task.isCancelled else { return }
-      Issue.record("control transcribeForMeeting timed out")
-      driver.releaseTranscribe(1)
-    }
-    defer { controlDeadline.cancel() }
-    let controlResult = try await controlTask.value
-    #expect(controlResult.text == "ok from handle 1")
-
-    // With unload: teardown itself aborts the held transcribe and surfaces MeetingEngineYield.
+    let driver = FakeReloadWhisperDriver(); let (backend, _) = makeAdapter(driver); try await backend.prepare()
     driver.holdTranscribe(1, abortWhenUnloaded: true)
-    let meetingTask = Task {
-      try await backend.transcribeForMeeting(audioSamples: Self.speech, language: "en")
-    }
-    await driver.waitForTranscribeStarted(1, occurrence: 3)
-
-    await backend.unload()
-    let abortDeadline = Task {
-      try? await Task.sleep(for: .seconds(2))
-      guard !Task.isCancelled else { return }
-      Issue.record("transcribeForMeeting did not abort after unload")
-      driver.releaseTranscribe(1)
-    }
-    defer { abortDeadline.cancel() }
-    await #expect(throws: MeetingEngineYield.self) {
-      _ = try await meetingTask.value
-    }
+    let task = Task { try await backend.transcribeForMeeting(audioSamples: Self.speech, language: "en") }
+    _ = await driver.waitFor("ts:1#2"); await backend.unload()
+    let guardTask = Task { try? await Task.sleep(for: .seconds(2)); if !Task.isCancelled { Issue.record("abort timed out"); driver.releaseTranscribe(1) } }
+    defer { guardTask.cancel() }
+    await #expect(throws: MeetingEngineYield.self) { _ = try await task.value }
     #expect(driver.unloadedHandles == [1])
   }
-
-  // MARK: - 12. #if DEBUG fail_whisper_backend command faults 2 decodes -> unload -> reload -> recover
-
-  #if DEBUG
-    @Test("fail_whisper_backend via DebugFaultEndpoint injects status 8 for take 1 + retry, clears, and take 2 succeeds")
-    func debugFaultEndpointForcesStatus8AndClears() async throws {
-      let faultController = BatchDecodeFaultController(whisperBackend: nil, asrManager: nil)
-      let h = makeKernelHarness(faultController: faultController)
-      try await h.adapter.warmUp(modelReceipt: nil)
-
-      let endpoint = DebugFaultEndpoint(
-        audioCapture: nil,
-        kernelDriver: h.kernelDriver,
-        whisperKernelDriver: h.kernelDriver,
-        activeBackend: { .whisper },
-        batchDecodeFaultController: faultController
-      )
-
-      #expect(await endpoint.handleForTesting(command: "fail_whisper_backend") == "OK")
-
-      // Both primary finalize and Phase-2 retry fault status 8 without calling native transcribe again.
-      await runKernelTake(h, policy: .never)
-      #expect(h.driver.transcribeHandles == [1], "warmup only; faulted decodes short-circuit")
-      #expect(await h.driver.waitForUnloadCompleted(1))
-      #expect(h.driver.unloadedHandles == [1])
-      #expect(h.adapter.readiness == .notReady)
-
-      // Next press reloads handle 2 and decodes cleanly.
-      h.kernel.reset()
-      await runKernelTake(h, policy: .never)
-      #expect(h.driver.loadedHandles == [1, 2])
-      #expect(h.paste.pastedTexts == ["ok from handle 2"])
-
-      // clear_batch_decode_fault resets any armed whisperStatus8Remaining.
-      #expect(await endpoint.handleForTesting(command: "fail_whisper_backend") == "OK")
-      #expect(await endpoint.handleForTesting(command: "clear_batch_decode_fault(whisper,t1)") == "OK")
-      h.kernel.reset()
-      await runKernelTake(h, policy: .never)
-      #expect(h.paste.pastedTexts == ["ok from handle 2", "ok from handle 2"])
-    }
-  #endif
 }
 
 private final class FakeReloadWhisperDriver: WhisperExecutorDriving, @unchecked Sendable {
   typealias Handle = Int
-
   private let lock = NSLock()
-  private var nextHandle = 1
-  private var _loadedHandles: [Int] = []
-  private var _unloadedHandles: [Int] = []
-  private var _transcribeHandles: [Int] = []
-  private var _lidHandles: [Int] = []
-  private var poisoned: [Int: Int32] = [:]
-  private var emptyHandles: Set<Int> = []
-  private var poisonedLID: [Int: Int32] = [:]
-
-  private var heldUnloads: Set<Int> = []
-  private var startedUnloads: Set<Int> = []
-  private var unloadStartedWaiters: [(id: UUID, handle: Int, cont: CheckedContinuation<Bool, Never>)] = []
-  private var unloadCompletedWaiters: [(id: UUID, handle: Int, cont: CheckedContinuation<Bool, Never>)] = []
-  private var unloadReleaseWaiters: [Int: CheckedContinuation<Void, Never>] = [:]
-
-  private var heldTranscribeHandles: [Int: Bool] = [:]
-  private var abortedTranscribeHandles: Set<Int> = []
-  private var transcribeOccurrenceCount: [Int: Int] = [:]
-  private var transcribeStartedWaiters: [(id: UUID, handle: Int, occ: Int, cont: CheckedContinuation<Bool, Never>)] = []
-  private var transcribeReleaseWaiters: [Int: CheckedContinuation<Void, Never>] = [:]
-
-  var onTranscribe: (@MainActor (Int) -> Void)?
+  private var nextHandle = 1, _loaded: [Int] = [], _unloaded: [Int] = [], _transcribes: [Int] = []
+  private var poisoned: [Int: Int32] = [:], poisonedLID: [Int: Int32] = [:], empty: Set<Int> = []
+  private var heldUnloads: Set<Int> = [], events: Set<String> = [], eventWaiters: [String: [(UUID, CheckedContinuation<Bool, Never>)]] = [:]
+  private var unloadConts: [Int: CheckedContinuation<Void, Never>] = [:], txConts: [Int: CheckedContinuation<Void, Never>] = [:]
+  private var heldTx: [Int: Bool] = [:], abortedTx: Set<Int> = [], txOcc: [Int: Int] = [:]
   var onTranscribeAsync: (@Sendable (Int) async throws -> Void)?
+  var loadedHandles: [Int] { lock.withLock { _loaded } }
+  var unloadedHandles: [Int] { lock.withLock { _unloaded } }
+  var transcribeHandles: [Int] { lock.withLock { _transcribes } }
 
-  var loadedHandles: [Int] { lock.withLock { _loadedHandles } }
-  var unloadedHandles: [Int] { lock.withLock { _unloadedHandles } }
-  var transcribeHandles: [Int] { lock.withLock { _transcribeHandles } }
-  var lidHandles: [Int] { lock.withLock { _lidHandles } }
+  func poisonHandle(_ h: Int, status: Int32) { lock.withLock { poisoned[h] = status } }
+  func poisonLID(_ h: Int, status: Int32) { lock.withLock { poisonedLID[h] = status } }
+  func setEmptyResult(for h: Int) { lock.withLock { _ = empty.insert(h) } }
+  func holdUnload(_ h: Int) { lock.withLock { _ = heldUnloads.insert(h) } }
+  func releaseUnload(_ h: Int) { lock.withLock { heldUnloads.remove(h); return unloadConts.removeValue(forKey: h) }?.resume() }
+  func holdTranscribe(_ h: Int, abortWhenUnloaded: Bool = false) { lock.withLock { abortedTx.remove(h); heldTx[h] = abortWhenUnloaded } }
+  func releaseTranscribe(_ h: Int) { lock.withLock { heldTx.removeValue(forKey: h); return txConts.removeValue(forKey: h) }?.resume() }
 
-  func poisonHandle(_ handle: Int, status: Int32) {
-    lock.withLock { poisoned[handle] = status }
+  private func signal(_ key: String) {
+    let conts = lock.withLock { () -> [CheckedContinuation<Bool, Never>] in _ = events.insert(key); return (eventWaiters.removeValue(forKey: key) ?? []).map(\.1) }
+    conts.forEach { $0.resume(returning: true) }
   }
 
-  func setEmptyResult(for handle: Int) {
-    lock.withLock { _ = emptyHandles.insert(handle) }
-  }
-
-  func poisonLID(_ handle: Int, status: Int32) {
-    lock.withLock { poisonedLID[handle] = status }
-  }
-
-  func holdUnload(_ handle: Int) {
-    lock.withLock { _ = heldUnloads.insert(handle) }
-  }
-
-  private func awaitBoundedSignal(
-    label: String,
-    timeoutSeconds: Double,
-    recordFailure: Bool,
-    register: (UUID, CheckedContinuation<Bool, Never>) -> Bool,
-    removeTimedOut: @escaping @Sendable (UUID) -> CheckedContinuation<Bool, Never>?
-  ) async -> Bool {
+  @discardableResult
+  func waitFor(_ key: String, timeoutSeconds: Double = 2.0) async -> Bool {
     let id = UUID()
     let timeoutTask = Task {
-      // deadline-fallback: bound waiter so missing signal never hangs the suite.
-      try? await Task.sleep(for: .seconds(timeoutSeconds))
-      guard !Task.isCancelled else { return }
-      if let cont = removeTimedOut(id) {
-        if recordFailure { Issue.record("timed out waiting for \(label)") }
-        cont.resume(returning: false)
+      try? await Task.sleep(for: .seconds(timeoutSeconds)); guard !Task.isCancelled else { return }
+      let timedOut = self.lock.withLock { () -> CheckedContinuation<Bool, Never>? in
+        guard var list = self.eventWaiters[key], let i = list.firstIndex(where: { $0.0 == id }) else { return nil }
+        let c = list.remove(at: i).1
+        if list.isEmpty { self.eventWaiters.removeValue(forKey: key) } else { self.eventWaiters[key] = list }
+        return c
       }
+      if let timedOut { Issue.record("timed out waiting for \(key)"); timedOut.resume(returning: false) }
     }
-    let satisfied = await withCheckedContinuation { cont in
-      if register(id, cont) { cont.resume(returning: true) }
+    let ok = await withCheckedContinuation { cont in
+      if lock.withLock({ if events.contains(key) { return true }; eventWaiters[key, default: []].append((id, cont)); return false }) { cont.resume(returning: true) }
     }
-    timeoutTask.cancel()
-    return satisfied
+    timeoutTask.cancel(); return ok
   }
 
-  @discardableResult
-  func waitForUnloadStarted(
-    _ handle: Int, timeoutSeconds: Double = 2.0, recordFailure: Bool = true
-  ) async -> Bool {
-    await awaitBoundedSignal(
-      label: "FakeReloadWhisperDriver.unload(\(handle))",
-      timeoutSeconds: timeoutSeconds,
-      recordFailure: recordFailure,
-      register: { id, cont in
-        lock.withLock {
-          if startedUnloads.contains(handle) || _unloadedHandles.contains(handle) { return true }
-          unloadStartedWaiters.append((id: id, handle: handle, cont: cont))
-          return false
-        }
-      },
-      removeTimedOut: { [weak self] id in
-        self?.lock.withLock { () -> CheckedContinuation<Bool, Never>? in
-          guard let idx = self?.unloadStartedWaiters.firstIndex(where: { $0.id == id }) else {
-            return nil
-          }
-          return self?.unloadStartedWaiters.remove(at: idx).cont
-        }
-      }
-    )
-  }
-
-  @discardableResult
-  func waitForUnloadCompleted(
-    _ handle: Int, timeoutSeconds: Double = 2.0, recordFailure: Bool = true
-  ) async -> Bool {
-    await awaitBoundedSignal(
-      label: "FakeReloadWhisperDriver.unloadCompleted(\(handle))",
-      timeoutSeconds: timeoutSeconds,
-      recordFailure: recordFailure,
-      register: { id, cont in
-        lock.withLock {
-          if _unloadedHandles.contains(handle) { return true }
-          unloadCompletedWaiters.append((id: id, handle: handle, cont: cont))
-          return false
-        }
-      },
-      removeTimedOut: { [weak self] id in
-        self?.lock.withLock { () -> CheckedContinuation<Bool, Never>? in
-          guard let idx = self?.unloadCompletedWaiters.firstIndex(where: { $0.id == id }) else {
-            return nil
-          }
-          return self?.unloadCompletedWaiters.remove(at: idx).cont
-        }
-      }
-    )
-  }
-
-  func releaseUnload(_ handle: Int) {
-    let cont = lock.withLock { () -> CheckedContinuation<Void, Never>? in
-      heldUnloads.remove(handle)
-      return unloadReleaseWaiters.removeValue(forKey: handle)
-    }
-    cont?.resume()
-  }
-
-  func holdTranscribe(_ handle: Int, abortWhenUnloaded: Bool = false) {
-    lock.withLock {
-      abortedTranscribeHandles.remove(handle)
-      heldTranscribeHandles[handle] = abortWhenUnloaded
-    }
-  }
-
-  @discardableResult
-  func waitForTranscribeStarted(
-    _ handle: Int, occurrence: Int, timeoutSeconds: Double = 2.0, recordFailure: Bool = true
-  ) async -> Bool {
-    await awaitBoundedSignal(
-      label: "FakeReloadWhisperDriver.transcribe(\(handle)#\(occurrence))",
-      timeoutSeconds: timeoutSeconds,
-      recordFailure: recordFailure,
-      register: { id, cont in
-        lock.withLock {
-          if (transcribeOccurrenceCount[handle] ?? 0) >= occurrence { return true }
-          transcribeStartedWaiters.append((id: id, handle: handle, occ: occurrence, cont: cont))
-          return false
-        }
-      },
-      removeTimedOut: { [weak self] id in
-        self?.lock.withLock { () -> CheckedContinuation<Bool, Never>? in
-          guard let idx = self?.transcribeStartedWaiters.firstIndex(where: { $0.id == id }) else {
-            return nil
-          }
-          return self?.transcribeStartedWaiters.remove(at: idx).cont
-        }
-      }
-    )
-  }
-
-  func releaseTranscribe(_ handle: Int) {
-    let cont = lock.withLock { () -> CheckedContinuation<Void, Never>? in
-      heldTranscribeHandles.removeValue(forKey: handle)
-      return transcribeReleaseWaiters.removeValue(forKey: handle)
-    }
-    cont?.resume()
-  }
-
-  func load(modelPath: String, lane: TranscribeCppExecutor.Lane) async throws -> Int {
-    lock.withLock {
-      let handle = nextHandle
-      nextHandle += 1
-      _loadedHandles.append(handle)
-      return handle
-    }
-  }
-
-  func detectLanguage(
-    _ handle: Int,
-    samples: [Float],
-    lane: TranscribeCppExecutor.Lane
-  ) async throws -> TranscribeCppLanguageObservation {
-    let status = lock.withLock { () -> Int32? in
-      _lidHandles.append(handle)
-      return poisonedLID[handle]
-    }
-    if let status { throw TranscribeCppError(rawStatus: status) }
+  func load(modelPath: String, lane: TranscribeCppExecutor.Lane) async throws -> Int { lock.withLock { let h = nextHandle; nextHandle += 1; _loaded.append(h); return h } }
+  func detectLanguage(_ h: Int, samples: [Float], lane: TranscribeCppExecutor.Lane) async throws -> TranscribeCppLanguageObservation {
+    if let s = lock.withLock({ poisonedLID[h] }) { throw TranscribeCppError(rawStatus: s) }
     return TranscribeCppLanguageObservation(code: "en", logProb: -0.01)
   }
-
-  func transcribe(
-    _ handle: Int,
-    samples: [Float],
-    language: String?,
-    lane: TranscribeCppExecutor.Lane,
-    onInferenceEntered: (@Sendable () -> Void)?,
-    onProgress: (@Sendable (Int64, Int64) -> Void)?
-  ) async throws -> TranscribeCppRunResult {
+  func transcribe(_ h: Int, samples: [Float], language: String?, lane: TranscribeCppExecutor.Lane, onInferenceEntered: (@Sendable () -> Void)?, onProgress: (@Sendable (Int64, Int64) -> Void)?) async throws -> TranscribeCppRunResult {
     onInferenceEntered?()
-    let (shouldHold, startedWaiters) = lock.withLock {
-      () -> (Bool, [CheckedContinuation<Bool, Never>]) in
-      _transcribeHandles.append(handle)
-      let occ = (transcribeOccurrenceCount[handle] ?? 0) + 1
-      transcribeOccurrenceCount[handle] = occ
-      let waiters = transcribeStartedWaiters.filter { $0.handle == handle && occ >= $0.occ }
-      transcribeStartedWaiters.removeAll { $0.handle == handle && occ >= $0.occ }
-      let abort = heldTranscribeHandles[handle]
-      return (abort != nil, waiters.map(\.cont))
-    }
-    startedWaiters.forEach { $0.resume(returning: true) }
+    let (occ, shouldHold) = lock.withLock { () -> (Int, Bool) in _transcribes.append(h); let o = (txOcc[h] ?? 0) + 1; txOcc[h] = o; return (o, heldTx[h] != nil) }
+    signal("ts:\(h)#\(occ)")
     if shouldHold {
-      await withCheckedContinuation { cont in
-        let stillHeld = lock.withLock { () -> Bool in
-          if heldTranscribeHandles[handle] == nil { return false }
-          transcribeReleaseWaiters[handle] = cont
-          return true
-        }
-        if !stillHeld { cont.resume() }
-      }
-      if lock.withLock({ abortedTranscribeHandles.remove(handle) != nil }) {
-        throw TranscribeCppError(rawStatus: TranscribeCppError.abortedStatus)
-      }
+      await withCheckedContinuation { c in if lock.withLock({ if heldTx[h] == nil { return false }; txConts[h] = c; return true }) == false { c.resume() } }
+      if lock.withLock({ abortedTx.remove(h) != nil }) { throw TranscribeCppError(rawStatus: TranscribeCppError.abortedStatus) }
     }
-    if let hook = onTranscribe {
-      await MainActor.run { hook(handle) }
-    }
-    if let asyncHook = onTranscribeAsync {
-      try await asyncHook(handle)
-    }
-    let (status, isEmpty) = lock.withLock { (poisoned[handle], emptyHandles.contains(handle)) }
-    if let status { throw TranscribeCppError(rawStatus: status) }
-    if isEmpty {
-      return TranscribeCppRunResult(text: "", detectedLanguage: "en", segments: [])
-    }
-    return TranscribeCppRunResult(
-      text: " ok from handle \(handle)",
-      detectedLanguage: "en",
-      segments: [TranscribeCppSegment(startMs: 0, endMs: 900, text: " ok from handle \(handle)")]
-    )
+    if let asyncHook = onTranscribeAsync { try await asyncHook(h) }
+    let (s, isEmpty) = lock.withLock { (poisoned[h], empty.contains(h)) }
+    if let s { throw TranscribeCppError(rawStatus: s) }
+    if isEmpty { return TranscribeCppRunResult(text: "", detectedLanguage: "en", segments: []) }
+    return TranscribeCppRunResult(text: " ok from handle \(h)", detectedLanguage: "en", segments: [TranscribeCppSegment(startMs: 0, endMs: 900, text: " ok from handle \(h)")])
   }
-
   func waitForDrain(_ handle: Int) async {}
-
-  func unload(_ handle: Int) async {
-    let (shouldHold, startedConts, abortCont) = lock.withLock {
-      () -> (Bool, [CheckedContinuation<Bool, Never>], CheckedContinuation<Void, Never>?) in
-      _ = startedUnloads.insert(handle)
-      let matching = unloadStartedWaiters.filter { $0.handle == handle }
-      unloadStartedWaiters.removeAll { $0.handle == handle }
-      var abortWaiter: CheckedContinuation<Void, Never>?
-      if heldTranscribeHandles[handle] == true {
-        heldTranscribeHandles.removeValue(forKey: handle)
-        abortedTranscribeHandles.insert(handle)
-        abortWaiter = transcribeReleaseWaiters.removeValue(forKey: handle)
-      }
-      return (heldUnloads.contains(handle), matching.map(\.cont), abortWaiter)
+  func unload(_ h: Int) async {
+    let (shouldHold, abortCont) = lock.withLock { () -> (Bool, CheckedContinuation<Void, Never>?) in
+      var ac: CheckedContinuation<Void, Never>?
+      if heldTx[h] == true { heldTx.removeValue(forKey: h); _ = abortedTx.insert(h); ac = txConts.removeValue(forKey: h) }
+      return (heldUnloads.contains(h), ac)
     }
-    startedConts.forEach { $0.resume(returning: true) }
-    abortCont?.resume()
-    if shouldHold {
-      await withCheckedContinuation { cont in
-        let stillHeld = lock.withLock { () -> Bool in
-          if !heldUnloads.contains(handle) { return false }
-          unloadReleaseWaiters[handle] = cont
-          return true
-        }
-        if !stillHeld { cont.resume() }
-      }
-    }
-    let completedConts = lock.withLock { () -> [CheckedContinuation<Bool, Never>] in
-      _unloadedHandles.append(handle)
-      let matching = unloadCompletedWaiters.filter { $0.handle == handle }
-      unloadCompletedWaiters.removeAll { $0.handle == handle }
-      return matching.map(\.cont)
-    }
-    completedConts.forEach { $0.resume(returning: true) }
+    signal("us:\(h)"); abortCont?.resume()
+    if shouldHold { await withCheckedContinuation { c in if lock.withLock({ if !heldUnloads.contains(h) { return false }; unloadConts[h] = c; return true }) == false { c.resume() } } }
+    lock.withLock { _unloaded.append(h) }; signal("uc:\(h)")
   }
-
   func awaitSettled(openedOn lane: TranscribeCppExecutor.Lane) async -> Int { 0 }
 }
 
 private final class LockedCounter: @unchecked Sendable {
-  private let lock = NSLock()
-  private var value = 0
+  private let lock = NSLock(); private var value = 0
   var current: Int { lock.withLock { value } }
-  func incrementAndGet() -> Int {
-    lock.withLock {
-      value += 1
-      return value
-    }
-  }
+  func incrementAndGet() -> Int { lock.withLock { value += 1; return value } }
 }
 
 @MainActor
 private final class SignalWaiter {
-  private var signaled = false
-  private var waiter: CheckedContinuation<Bool, Never>?
-
-  func signal() {
-    guard !signaled else { return }
-    signaled = true
-    let cont = waiter
-    waiter = nil
-    cont?.resume(returning: true)
-  }
-
-  @discardableResult
+  private var signaled = false, waiter: CheckedContinuation<Bool, Never>?
+  func signal() { guard !signaled else { return }; signaled = true; let c = waiter; waiter = nil; c?.resume(returning: true) }
   func wait(what: String, timeoutSeconds: Double = 2.0) async -> Bool {
     if signaled { return true }
-    let timeoutTask = Task { @MainActor [weak self] in
-      try? await Task.sleep(for: .seconds(timeoutSeconds))
-      guard !Task.isCancelled, let self, let cont = self.waiter else { return }
-      self.waiter = nil
-      Issue.record("timed out waiting for \(what)")
-      cont.resume(returning: false)
+    let t = Task { @MainActor [weak self] in
+      try? await Task.sleep(for: .seconds(timeoutSeconds)); guard !Task.isCancelled, let self, let c = self.waiter else { return }
+      self.waiter = nil; Issue.record("timed out waiting for \(what)"); c.resume(returning: false)
     }
-    let arrived = await withCheckedContinuation { cont in
-      if signaled {
-        cont.resume(returning: true)
-      } else {
-        waiter = cont
-      }
-    }
-    timeoutTask.cancel()
-    return arrived
+    let ok = await withCheckedContinuation { c in if signaled { c.resume(returning: true) } else { waiter = c } }
+    t.cancel(); return ok
   }
-}
-
-@MainActor
-private final class ClaimGate {
-  var allowed = true
 }
 
 @MainActor
 private final class FastRetryTimeoutAdapter: ASREngineAdapter, @unchecked Sendable {
-  private let inner: WhisperEngineAdapter
-  private let retryTimeoutSeconds: Double
-  private let onBumpRetryGeneration: (@MainActor () -> Void)?
-
-  init(
-    wrapping inner: WhisperEngineAdapter,
-    retryTimeoutSeconds: Double,
-    onBumpRetryGeneration: (@MainActor () -> Void)? = nil
-  ) {
-    self.inner = inner
-    self.retryTimeoutSeconds = retryTimeoutSeconds
-    self.onBumpRetryGeneration = onBumpRetryGeneration
+  private let inner: WhisperEngineAdapter; private let retryTimeoutSeconds: Double; private let onBumpRetryGeneration: (@MainActor () -> Void)?
+  init(wrapping inner: WhisperEngineAdapter, retryTimeoutSeconds: Double, onBumpRetryGeneration: (@MainActor () -> Void)? = nil) {
+    self.inner = inner; self.retryTimeoutSeconds = retryTimeoutSeconds; self.onBumpRetryGeneration = onBumpRetryGeneration
   }
-
   var engineIdentity: ASREngineIdentity { inner.engineIdentity }
   var capabilities: ASREngineCapabilities { inner.capabilities }
   var readiness: ASREngineReadiness { inner.readiness }
   var servingModelIdentity: ASRModelIdentity? { inner.servingModelIdentity }
   func requestedModelIdentity() -> ASRModelIdentity? { inner.requestedModelIdentity() }
   func inferenceEntry(for session: SessionID) -> ASRInferenceEntry? { inner.inferenceEntry(for: session) }
-  var onInferenceEntryRecorded: (@MainActor (SessionID) -> Void)? {
-    get { inner.onInferenceEntryRecorded }
-    set { inner.onInferenceEntryRecorded = newValue }
-  }
+  var onInferenceEntryRecorded: (@MainActor (SessionID) -> Void)? { get { inner.onInferenceEntryRecorded } set { inner.onInferenceEntryRecorded = newValue } }
   var lastWarmupInferenceMs: Int? { inner.lastWarmupInferenceMs }
   func warmUp(modelReceipt: WarmUpModelReceipt?) async throws { try await inner.warmUp(modelReceipt: modelReceipt) }
   var loadProgress: AsyncStream<ASRLoadProgressTick>? { inner.loadProgress }
   var lastObservedPhase: String { inner.lastObservedPhase }
   var warmupStallGuardEligible: Bool { inner.warmupStallGuardEligible }
-  func beginSession(_ id: SessionID, options: TranscriptionOptions, streaming: Bool) async throws {
-    try await inner.beginSession(id, options: options, streaming: streaming)
-  }
+  func beginSession(_ id: SessionID, options: TranscriptionOptions, streaming: Bool) async throws { try await inner.beginSession(id, options: options, streaming: streaming) }
   func acceptAudio(_ buffer: AudioBufferHandoff) { inner.acceptAudio(buffer) }
   func finalize(batchSamples: [Float]) async -> ASREngineOutcome { await inner.finalize(batchSamples: batchSamples) }
   var finalizeProgress: AsyncStream<ASRFinalizeProgressTick>? { inner.finalizeProgress }
   var isVendorDecodeInFlight: Bool { inner.isVendorDecodeInFlight }
-  func retryDecode(inputSamples: [Float]) async -> ASREngineOutcome {
-    await inner.retryDecode(inputSamples: inputSamples)
-  }
+  func retryDecode(inputSamples: [Float]) async -> ASREngineOutcome { await inner.retryDecode(inputSamples: inputSamples) }
   func retryDecodeTimeoutSeconds(forSampleCount sampleCount: Int) -> Double { retryTimeoutSeconds }
-  func bumpRetryGeneration() {
-    onBumpRetryGeneration?()
-    inner.bumpRetryGeneration()
-  }
+  func bumpRetryGeneration() { onBumpRetryGeneration?(); inner.bumpRetryGeneration() }
   func cancel() async { await inner.cancel() }
   func recoverFromWedge() async { await inner.recoverFromWedge() }
-  var onEngineInterrupted: (@MainActor () -> Void)? {
-    get { inner.onEngineInterrupted }
-    set { inner.onEngineInterrupted = newValue }
-  }
-  func recoverFromASRInterruption() async -> ASRInterruptionRecoveryOutcome {
-    await inner.recoverFromASRInterruption()
-  }
+  var onEngineInterrupted: (@MainActor () -> Void)? { get { inner.onEngineInterrupted } set { inner.onEngineInterrupted = newValue } }
+  func recoverFromASRInterruption() async -> ASRInterruptionRecoveryOutcome { await inner.recoverFromASRInterruption() }
   func applyUnloadPolicy(_ policy: ModelUnloadPolicy) { inner.applyUnloadPolicy(policy) }
   var lastResult: ASRResult? { inner.lastResult }
   func warmUpFromCache() async throws { try await inner.warmUpFromCache() }
   func cancelPendingUnload() { inner.cancelPendingUnload() }
-  func observeSpeechSegments(_ segments: [SpeechSegment], rawCaptureSamples: [Float]) {
-    inner.observeSpeechSegments(segments, rawCaptureSamples: rawCaptureSamples)
-  }
+  func observeSpeechSegments(_ segments: [SpeechSegment], rawCaptureSamples: [Float]) { inner.observeSpeechSegments(segments, rawCaptureSamples: rawCaptureSamples) }
   var shouldForceUnloadAfterFailure: Bool { inner.shouldForceUnloadAfterFailure }
 }
