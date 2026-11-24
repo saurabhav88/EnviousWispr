@@ -329,12 +329,12 @@ struct ZoomLayoutSnapshotTests {
   /// `+` for a real mark. The times of the observations that became talking ones.
   private func votes(
     _ script: [(Int, String)], until end: Int, times: [Int]? = nil, bring: [Int: String] = [:],
-    breakAt: Int? = nil, runs: Int = 1_000
+    breakAt: Int? = nil, runs: Int = 1_000, lag: Int = 500, count: Int? = nil
   ) -> [Int] {
     var limits = CallEvidenceLimits.current
     limits.runs = runs
     var all = CallSpeakerAccumulator(
-      surface: .zoomApp, rules: nil, lag: CallSpeakerLag(milliseconds: 500), limits: limits)
+      surface: .zoomApp, rules: nil, lag: CallSpeakerLag(milliseconds: lag), limits: limits)
     for ms in times ?? Array(stride(from: 0, through: end, by: 500)) {
       if ms == breakAt { all.noteInterruption() }
       let last = script.last { $0.0 <= ms }!.1
@@ -347,7 +347,13 @@ struct ZoomLayoutSnapshotTests {
         ]
       let root = CallAXNode(
         role: "AXWindow", identifier: "zm.meeting.window.main",
-        children: labels.map { CallAXNode(role: "AXTabGroup", description: $0) })
+        children: labels.map { CallAXNode(role: "AXTabGroup", description: $0) }
+          + (count.map {
+            [
+              CallAXNode(
+                role: "AXButton", description: "Open participants panel, closed, \($0) participants")
+            ]
+          } ?? []))
       let windows = [CallAXWindow(title: "Zoom Meeting", root: root)]
       var reading = ZoomAppSpeakerReader.read(windows: windows, accountTitles: ["Host(h@e.com)"])
       reading.follow = ZoomAppSpeakerReader.follow(
@@ -371,6 +377,10 @@ struct ZoomLayoutSnapshotTests {
     let two = [(0, "Alex"), (2_000, "Dana"), (10_000, "Alex")]
     #expect(votes(two, until: 18_000, runs: 4) == [6_000], "one vote fills the cap")
     #expect(votes([(0, "Dana")], until: 12_000) == [], "standing still")
+    #expect(votes([(0, "Alex"), (2_000, "Dana")], until: 12_000, count: 3) == [6_000])
+    #expect(votes([(0, "Alex"), (2_000, "Dana")], until: 12_000, count: 4) == [], "one hidden")
+    #expect(votes([(0, "Alex"), (2_000, "Dana")], until: 12_000, lag: -500) == [5_000])
+    #expect(votes([(0, "Alex"), (2_000, "Dana")], until: 6_000, lag: -500) == [])
     // Turns with the talker muting in between: one vote each, none for the user's own turn.
     let turns = [(0, "Alex"), (2_000, "Dana"), (8_000, "-Dana"), (9_000, "Alex"), (16_000, "Host")]
     #expect(votes(turns + [(22_000, "Dana")], until: 30_000) == [6_000, 13_000, 26_000])
