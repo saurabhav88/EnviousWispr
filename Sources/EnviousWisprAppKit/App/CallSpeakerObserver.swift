@@ -336,7 +336,9 @@ final class CallSpeakerObserver {
           completeness: copy.completeness,
           scope: CallSpeakerSurfaceReader.scope(
             surface: binding.surface, capture: copy, family: binding.source.family,
-            zoomLabels: zoomLabels)),
+            zoomLabels: zoomLabels),
+          shownPeople: binding.surface == .zoomApp
+            ? ZoomAppSpeakerReader.shownPeople(windows: copy.windows, labels: zoomLabels) : nil),
         mute: binding.mute
           ? CallSelfMuteReader.read(surface: binding.surface, capture: copy, rules: muteRules)
           : nil,

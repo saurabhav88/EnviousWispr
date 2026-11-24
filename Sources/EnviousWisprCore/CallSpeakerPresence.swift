@@ -161,6 +161,9 @@ public struct CallCaptureHealth: Sendable, Equatable, Codable {
   /// Copies that asked the Teams app to open its web pages, and those that then showed one (#4436).
   public var webContentAsks: Int? = 0
   public var webContentOpens: Int? = 0
+  /// Zoom app copies that showed more than two people, or a third name in this segment (#4935).
+  /// Nil on health written before it existed: unknown.
+  public var thirdPersonSightings: Int? = 0
 
   public init() {}
 

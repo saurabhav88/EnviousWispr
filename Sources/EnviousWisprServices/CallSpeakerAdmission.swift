@@ -1,5 +1,11 @@
 import Foundation
 
+/// The people a whole Zoom app copy showed (`ZoomAppSpeakerReader.shownPeople`).
+package struct ZoomShownPeople: Sendable, Equatable {
+  package let names: Set<String>
+  package let aboveTwo: Bool
+}
+
 /// What the observer established about one capture of a call app (#4013 r5 item 1). A reader
 /// never infers these from the tree it was given: a non-empty tree is not proof that the copy
 /// was complete, nor that it belongs to the one call being recorded.
@@ -29,10 +35,13 @@ package struct CallCaptureContext: Sendable, Equatable {
 
   package let completeness: Completeness
   package let scope: Scope
+  /// Who the whole copy showed, even one that failed later (#4935); `nil` off the Zoom app.
+  package let shownPeople: ZoomShownPeople?
 
-  package init(completeness: Completeness, scope: Scope) {
+  package init(completeness: Completeness, scope: Scope, shownPeople: ZoomShownPeople? = nil) {
     self.completeness = completeness
     self.scope = scope
+    self.shownPeople = shownPeople
   }
 }
 

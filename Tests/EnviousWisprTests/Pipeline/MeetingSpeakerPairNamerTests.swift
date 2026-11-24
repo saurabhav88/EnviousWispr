@@ -47,15 +47,16 @@ struct MeetingSpeakerPairNamerTests {
 
   private static func segment(
     pairs: [CallPairStretch]?, roster: [String] = [user, alex], selfNames: [String] = [],
-    samples: [(Int, [String])] = []
+    samples: [(Int, [String])] = [], surface: CallSpeakerSurface = .zoomApp,
+    health: CallCaptureHealth? = nil
   ) -> CallSpeakerSegment {
     CallSpeakerSegment(
-      startMs: 0, endMs: 600_000, endReason: .recordingEnded, surface: .zoomApp, source: .app,
+      startMs: 0, endMs: 600_000, endReason: .recordingEnded, surface: surface, source: .app,
       status: .observed, lag: CallSpeakerLag(milliseconds: 0),
       roster: CallSpeakerRoster(names: roster, selfNames: selfNames),
       rosterFromParticipantList: true,
       observations: samples.map { CallSpeakerObservation(observationMs: $0.0, speaking: $0.1) },
-      pairs: pairs)
+      health: health, pairs: pairs)
   }
 
   private func propose(_ turns: [Turn], _ segments: [CallSpeakerSegment]) -> MeetingNamingResult {
@@ -75,6 +76,46 @@ struct MeetingSpeakerPairNamerTests {
     #expect(result.proposals == [Self.a: Self.alex])
     #expect(result.outcome == .named)
     #expect(result.pairProposals == 1)
+  }
+
+  /// #4935: a company call showed "two people" 28 times, 98 s together, almost never 15 s.
+  @Test("short moments that showed two people add up, in a call that never showed a third")
+  func shortMomentsAddUp() {
+    let pieces = (0..<28).map { Self.stretch($0 * 20_000, $0 * 20_000 + 3_500) }
+    let voice = [Self.turn(Self.a, 0, 560_000)]
+    func names(
+      _ pieces: [CallPairStretch], _ turns: [Turn], roster: [String] = [],
+      surface: CallSpeakerSurface = .zoomApp, third: Int? = 0
+    ) -> [String: String] {
+      var health = CallCaptureHealth()
+      health.thirdPersonSightings = third
+      return propose(
+        turns,
+        [
+          Self.segment(
+            pairs: pieces, roster: [Self.user, Self.alex] + roster, surface: surface,
+            health: health)
+        ]
+      ).proposals
+    }
+    let between = Self.turn(Self.b, 4_000, 19_000)
+    #expect(names(pieces, voice + [between]) == [Self.a: Self.alex])
+    #expect(names(Array(pieces.prefix(4)), voice).isEmpty, "14 s together")
+    let sparse = [0, 30_000].map { Self.stretch($0, $0 + 20_000) }
+    let words = [0, 30_000].map { Self.turn(Self.a, $0, $0 + 2_000) }
+    #expect(names(sparse, words) == [Self.a: Self.alex], "too little speech in each alone")
+    let pair = [Self.turn(Self.a, 570_000, 571_500), Self.turn(Self.b, 571_500, 573_000)]
+    let long = Self.stretch(570_000, 590_000)
+    #expect(names(Array(pieces.prefix(4)) + [long], voice + pair).isEmpty, "not saved")
+    let shared = pieces.enumerated().map {
+      Self.turn($0.offset < 4 ? Self.b : Self.a, $0.element.firstMs, $0.element.lastMs)
+    }
+    #expect(names(pieces, shared).isEmpty, "another voice is 14% of the speech in them")
+    #expect(names(pieces, voice, third: 1).isEmpty)
+    #expect(names(pieces, voice, third: nil).isEmpty)
+    #expect(names(pieces, voice, roster: [Self.priya]).isEmpty)
+    #expect(names(pieces, voice, surface: .teamsApp).isEmpty)
+    #expect(names([long], [Self.turn(Self.a, 570_000, 590_000)], third: 1) == [Self.a: Self.alex])
   }
 
   @Test("without the app marking the user, neither of the two names is given")

@@ -175,6 +175,9 @@ struct ZoomLayoutSnapshotTests {
     ShareLayout(
       file: "p2-guest-share", people: ["Alex Rivera"], talking: [], countHidden: false,
       hiddenCountPair: false),
+    ShareLayout(  // minimized with its video hidden, nobody sharing (#4935)
+      file: "725-collapsed", people: ["Dana Fox"], talking: ["Dana Fox"], countHidden: false,
+      hiddenCountPair: false),
   ]
 
   private func shareCapture(_ file: String, account: [String]?) throws -> CallAXCapture {
@@ -235,6 +238,71 @@ struct ZoomLayoutSnapshotTests {
       #expect(reading.talkerSource != .label)
       #expect(reading.talkerSource != .loneTile)
     }
+  }
+
+  // MARK: - Zoom 7.2.5 (#4935)
+
+  @Test(
+    "an open participants list whose rows refuse their label is still read, row by row",
+    arguments: [("725-panel-open", 2), ("725-hidden-list", 3)])
+  func openListReads(file: String, rows: Int) throws {
+    let copy = try shareCapture(file, account: nil)
+    #expect(copy.completeness == .complete)
+    #expect(copy.toleratedFailures == rows)
+    let reading = ZoomAppSpeakerReader.read(windows: copy.windows)
+    #expect(reading.participantListComplete)
+    #expect(reading.participantCount == rows)
+    #expect(reading.boundSelfMarks == ["Host Person"])
+    func drawnHalf(_ node: CallAXNode) -> CallAXNode {
+      CallAXNode(
+        role: node.role, title: node.title, description: node.description, value: node.value,
+        identifier: node.identifier,
+        children: node.children.filter { $0.role != "AXStaticText" || $0.label != "Alex Rivera" }
+          .map(drawnHalf))
+    }
+    let half = copy.windows.map { CallAXWindow(title: $0.title, root: drawnHalf($0.root)) }
+    #expect(ZoomAppSpeakerReader.read(windows: half).participantListComplete == false)
+  }
+
+  @Test("a third person shown anywhere is kept, in a copy nothing else uses too")
+  func thirdPersonIsKept() throws {
+    func window(_ labels: [String], _ role: String = "AXTabGroup") -> CallAXWindow {
+      let nodes = labels.map { CallAXNode(role: role, description: $0) }
+      return CallAXWindow(title: "", root: CallAXNode(role: "AXWindow", children: nodes))
+    }
+    func sightings(_ copies: [CallAXWindow]...) -> Int? {
+      var all = CallSpeakerAccumulator(surface: .zoomApp, rules: nil, lag: nil)
+      for (index, windows) in copies.enumerated() {
+        let people = ZoomAppSpeakerReader.shownPeople(windows: windows)
+        all.add(
+          nil,
+          context: CallCaptureContext(
+            completeness: .unreadable, scope: .unresolved, shownPeople: people),
+          observationMs: index * 500)
+      }
+      return all.health.thirdPersonSightings
+    }
+    let (host, alex) = (
+      "Host, Computer audio muted, Video off", "Alex, Computer audio muted, Video off"
+    )
+    let pair = [window([host, alex])]
+    #expect(sightings(pair, pair) == 0)
+    let joining = [window([host, "Alex, No audio connected, Video off"])]
+    #expect(sightings(joining + [window(["Talking: Alex"], "AXStaticText")]) == 0, "named too")
+    #expect(sightings(pair, [window(["Dana, Computer audio muted"])]) == 1)
+    #expect(sightings(pair, [window(["Talking: Dana"], "AXStaticText")]) == 1)
+    #expect(sightings(pair + [window([host, alex, alex])]) == 1, "one name on two thumbnails")
+    #expect(sightings([window([host, alex, "Dana, No audio connected, Video off"])]) == 1)
+    let row = CallAXNode(role: "AXCell", identifier: ZoomAppSpeakerReader.joinedRowIdentifier)
+    let list = CallAXNode(
+      role: "AXOutline", description: "Participants list", children: [row, row, row])
+    #expect(sightings([CallAXWindow(title: "", root: list)]) == 1, "a third row still joining")
+    let waiting = "Open participants panel, closed, 3 participants, 1 person is waiting"
+    #expect(sightings(pair + [window([waiting], "AXButton")]) == 1)
+    let twice = ZoomAppSpeakerReader.ShareContext(
+      hostShare: false, guestShare: false, countShown: true, listedTwice: ["Dana Fox"])
+    let label = try shareCapture("725-collapsed", account: nil).windows
+    #expect(ZoomAppSpeakerReader.read(windows: label, share: twice).sharedNames == ["Dana Fox"])
   }
 
   // MARK: - Other Zoom languages (#4350)

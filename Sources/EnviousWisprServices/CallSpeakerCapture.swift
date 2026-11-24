@@ -165,7 +165,12 @@ package enum CallAXCapturePolicy: Sendable, Equatable {
     attribute: CallAXAttribute, role: String, insideEvidence: Bool, isWindow: Bool,
     protectedRoles: Set<String>
   ) -> Bool {
-    self == .zoomApp && !isWindow && !insideEvidence
+    // Zoom 7.2.5 refuses the description of every participants-list row (#4935); no reader uses
+    // a cell's own label, only its identifier and children.
+    if self == .zoomApp, role == "AXCell", attribute == .description, insideEvidence, !isWindow {
+      return !protectedRoles.contains(role)
+    }
+    return self == .zoomApp && !isWindow && !insideEvidence
       && Self.zoomToleratedAttributes.contains(attribute)
       && !Self.zoomProtectedRoles.contains(role) && !protectedRoles.contains(role)
   }

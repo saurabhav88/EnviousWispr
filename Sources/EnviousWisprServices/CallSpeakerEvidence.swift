@@ -193,6 +193,13 @@ package enum CallSpeakerSurfaceReader {
     if let meeting = meetings.first, zoomTileCount(meeting, labels: labels) > 0 {
       return [meeting]
     }
+    if meetings.isEmpty, !share.isSharing,
+      !windows.contains(where: { showsAnyTile($0, labels: labels) })
+    {
+      // The minimized window with its video hidden (#4935): `Talking: <Name>` and no tile.
+      let labelled = windows.filter { ZoomAppSpeakerReader.isTalkingOnly($0, labels: labels) }
+      return labelled.count == 1 ? labelled : nil
+    }
     let others = windows.filter { !isZoomMeeting($0) }.map {
       ($0, zoomTileCount($0, labels: labels))
     }
@@ -323,6 +330,8 @@ package struct CallSpeakerAccumulator: Sendable, Equatable {
   /// The cap that stopped collection, if one did.
   package private(set) var capacityReached: CallEvidenceCapacity?
   private var names = Names()
+  /// Names the segment's copies showed anywhere in Zoom (#4935); never saved.
+  private var shownNames: Set<String> = []
   /// Whether any capture was complete and about one call.
   private var usable = false
   private let limits: CallEvidenceLimits
@@ -394,6 +403,13 @@ package struct CallSpeakerAccumulator: Sendable, Equatable {
     _ reading: CallSpeakerReading?, context: CallCaptureContext, observationMs: Int
   ) {
     health.captureAttempts += 1
+    // First, so that a copy nothing else uses still counts (#4935).
+    if let people = context.shownPeople {
+      if shownNames.count < 3 { shownNames.formUnion(people.names) }
+      if people.aboveTwo || shownNames.count > 2 {
+        health.thirdPersonSightings = (health.thirdPersonSightings ?? 0) + 1
+      }
+    }
     switch context.completeness {
     case .complete: health.completeCaptures += 1
     case .truncated: health.truncatedCaptures += 1
