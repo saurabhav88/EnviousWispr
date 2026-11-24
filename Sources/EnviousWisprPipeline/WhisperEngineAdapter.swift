@@ -149,6 +149,7 @@ final class WhisperEngineAdapter: ASREngineAdapter, @unchecked Sendable {
   private var modelUnloadTask: Task<Void, Never>?
   private var pendingBackendFailureUnload = false
   private var pendingForcedUnloadTask: Task<Void, Never>?
+  private var warmUpCancelEpoch = 0
 
   // MARK: Audio + speech segments
 
@@ -402,12 +403,14 @@ final class WhisperEngineAdapter: ASREngineAdapter, @unchecked Sendable {
   /// no progress signal, so the kernel runs signal-free warm-up — no wedge
   /// detection, no wall-clock timeout (per the protocol's MUST NOT clause).
   func warmUp(modelReceipt: WarmUpModelReceipt?) async throws {
+    let cancelEpoch = warmUpCancelEpoch
     await pendingForcedUnloadTask?.value
     if pendingBackendFailureUnload {
       applyUnloadPolicy(.immediately)
       await pendingForcedUnloadTask?.value
     }
     try Task.checkCancellation()
+    guard cancelEpoch == warmUpCancelEpoch else { throw CancellationError() }
     guard !pendingBackendFailureUnload else { throw ASRLoadSupersededError() }
     await checkModelIdentity()
     if await backend.isReady {
@@ -416,6 +419,7 @@ final class WhisperEngineAdapter: ASREngineAdapter, @unchecked Sendable {
       modelReceipt?.attribution = warmUpAttribution(loaded: true)
       return
     }
+    guard cancelEpoch == warmUpCancelEpoch else { throw CancellationError() }
     cachedReadiness = .warming
     let captured = backend
     let task = Task<Void, Error> { try await captured.prepare() }
@@ -1071,7 +1075,7 @@ final class WhisperEngineAdapter: ASREngineAdapter, @unchecked Sendable {
     retryGeneration &+= 1  // #1707 Phase 2: invalidate any pending retry.
     lastResult = nil
     lastLanguageDetection = nil
-    pendingBackendFailureUnload = false
+    warmUpCancelEpoch &+= 1
     // Drop feed-task handles — a `finalize()` after `cancel()` short-circuits to
     // `.cancelled` and never drains; the tasks themselves see `isTerminal` / the
     // session mismatch and skip (mirrors `ParakeetEngineAdapter.discardSession`).
@@ -1086,7 +1090,7 @@ final class WhisperEngineAdapter: ASREngineAdapter, @unchecked Sendable {
       streamingActive = false
       await live.cancel()
     }
-    cachedReadiness = (await backend.isReady && pendingForcedUnloadTask == nil) ? .ready : .notReady
+    cachedReadiness = (await backend.isReady && pendingForcedUnloadTask == nil && !pendingBackendFailureUnload) ? .ready : .notReady
   }
 
   /// #959 fail-open ceiling for the wedge-recovery unload. NOT a measured perf
@@ -1117,6 +1121,7 @@ final class WhisperEngineAdapter: ASREngineAdapter, @unchecked Sendable {
   /// no kernel wedge detector currently fires for it (whisperkit-research.md).
   func recoverFromWedge() async {
     await cancel()
+    warmUpCancelEpoch &+= 1
     let captured = backend
     _ = await withDeadline(seconds: wedgeRecoveryUnloadDeadlineSec) {
       await captured.unload()
@@ -1143,6 +1148,7 @@ final class WhisperEngineAdapter: ASREngineAdapter, @unchecked Sendable {
     await cancel()
     cancelPendingModelWork()
     await backend.unload()
+    pendingBackendFailureUnload = false
     cachedReadiness = .notReady
   }
 
@@ -1153,6 +1159,7 @@ final class WhisperEngineAdapter: ASREngineAdapter, @unchecked Sendable {
     await cancel()
     cancelPendingModelWork()
     let receipt = await backend.park()
+    pendingBackendFailureUnload = false
     cachedReadiness = .notReady
     return receipt
   }
@@ -1190,7 +1197,6 @@ final class WhisperEngineAdapter: ASREngineAdapter, @unchecked Sendable {
     } else if pendingBackendFailureUnload || pendingForcedUnloadTask != nil {
       return
     }
-    pendingBackendFailureUnload = false
     let armedSession = sessionID
     let effectivePolicy: ModelUnloadPolicy = wasForced ? .immediately : policy
     switch effectivePolicy {
@@ -1224,7 +1230,7 @@ final class WhisperEngineAdapter: ASREngineAdapter, @unchecked Sendable {
         // manual "release even when cancelled, never gate it behind
         // !Task.isCancelled" fix (Codex code-diff round 1 P2) is now
         // structurally guaranteed rather than hand-maintained.
-        let claimOutcome = await engineMutationScope.withClaim(site: "whisperKitIdleUnload") {
+        _ = await engineMutationScope.withClaim(site: "whisperKitIdleUnload") {
           [weak self] in
           // GitHub cloud review, PR #1732 round 10: reaching this closure
           // required an actor hop onto MainActor to acquire the claim — a
@@ -1234,10 +1240,10 @@ final class WhisperEngineAdapter: ASREngineAdapter, @unchecked Sendable {
           // Re-check here, on entry, before ever calling `backend.unload()`.
           guard !Task.isCancelled else { return }
           await backend.unload()
+          if wasForced { self?.pendingBackendFailureUnload = false }
           guard !Task.isCancelled else { return }
           self?.cachedReadiness = .notReady
         }
-        if case .refused = claimOutcome, wasForced { self?.pendingBackendFailureUnload = true }
       }
       if wasForced {
         pendingForcedUnloadTask = unloadTask

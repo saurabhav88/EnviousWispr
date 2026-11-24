@@ -232,6 +232,39 @@ struct WhisperBackendErrorReloadTests {
     await #expect(throws: MeetingEngineYield.self) { _ = try await task.value }
     #expect(driver.unloadedHandles == [1])
   }
+
+  @Test("cancel after refused claim keeps forced teardown pending until authorized warmUp")
+  func cancelAfterRefusedClaimKeepsForcedUnloadPending() async throws {
+    let driver = FakeReloadWhisperDriver(); var allowed = true; let refused = SignalWaiter()
+    let scope = EngineMutationScope.live(
+      tryBegin: { allowed }, end: { false }, wake: {},
+      onRefused: { _ in Task { @MainActor in refused.signal() } })
+    let (_, adapter) = makeAdapter(driver, scope: scope); try await adapter.warmUp(modelReceipt: nil)
+    driver.poisonHandle(1, status: 8); _ = try await runDirect(adapter)
+    _ = await adapter.retryDecode(inputSamples: Self.speech)
+    allowed = false; adapter.applyUnloadPolicy(.immediately); _ = await refused.wait(what: "claim refused")
+    await adapter.cancel()
+    #expect(adapter.shouldForceUnloadAfterFailure && adapter.readiness == .notReady)
+    allowed = true; try await adapter.warmUp(modelReceipt: nil)
+    #expect(driver.unloadedHandles == [1] && driver.loadedHandles == [1, 2])
+    #expect(adapter.readiness == .ready && !adapter.shouldForceUnloadAfterFailure)
+  }
+
+  @Test("cancel during forced teardown wait lets teardown finish without loading replacement handle")
+  func cancelDuringTeardownWaitStopsWarmUpLoad() async throws {
+    let h = makeHarness(); try await h.adapter.warmUp(modelReceipt: nil)
+    h.driver.poisonHandle(1, status: 8); h.driver.holdUnload(1); defer { h.driver.releaseUnload(1) }
+    _ = try await runDirect(h.adapter); _ = await h.adapter.retryDecode(inputSamples: Self.speech)
+    h.adapter.applyUnloadPolicy(.immediately); await h.driver.waitFor("us:1")
+    let entered = SignalWaiter()
+    let warmTask = Task { entered.signal(); try await h.adapter.warmUp(modelReceipt: nil) }
+    _ = await entered.wait(what: "warmUp entered")
+    await h.adapter.cancel()
+    h.driver.releaseUnload(1)
+    await #expect(throws: CancellationError.self) { try await warmTask.value }
+    #expect(h.driver.unloadedHandles == [1] && h.driver.loadedHandles == [1])
+    #expect(h.adapter.readiness == .notReady)
+  }
 }
 
 private final class FakeReloadWhisperDriver: WhisperExecutorDriving, @unchecked Sendable {
