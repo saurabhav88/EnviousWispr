@@ -217,8 +217,10 @@ struct WhisperBackendErrorReloadTests {
     #expect(adapter.modelUnloadTaskForUnitTests == nil && adapter.shouldForceUnloadAfterFailure)
     await #expect(throws: ASRLoadSupersededError.self) { try await adapter.warmUp(modelReceipt: nil) }
     #expect(await backend.isReady == true && driver.loadedHandles == [1])
+    await adapter.cancel()
+    #expect(adapter.shouldForceUnloadAfterFailure && adapter.readiness == .notReady)
     allowed = true; try await adapter.warmUp(modelReceipt: nil)
-    #expect(driver.unloadedHandles == [1] && driver.loadedHandles == [1, 2] && adapter.readiness == .ready)
+    #expect(driver.unloadedHandles == [1] && driver.loadedHandles == [1, 2] && adapter.readiness == .ready && !adapter.shouldForceUnloadAfterFailure)
   }
 
   @Test("transcribeForMeeting aborted by backend.unload() yields MeetingEngineYield")
@@ -231,23 +233,6 @@ struct WhisperBackendErrorReloadTests {
     defer { guardTask.cancel() }
     await #expect(throws: MeetingEngineYield.self) { _ = try await task.value }
     #expect(driver.unloadedHandles == [1])
-  }
-
-  @Test("cancel after refused claim keeps forced teardown pending until authorized warmUp")
-  func cancelAfterRefusedClaimKeepsForcedUnloadPending() async throws {
-    let driver = FakeReloadWhisperDriver(); var allowed = true; let refused = SignalWaiter()
-    let scope = EngineMutationScope.live(
-      tryBegin: { allowed }, end: { false }, wake: {},
-      onRefused: { _ in Task { @MainActor in refused.signal() } })
-    let (_, adapter) = makeAdapter(driver, scope: scope); try await adapter.warmUp(modelReceipt: nil)
-    driver.poisonHandle(1, status: 8); _ = try await runDirect(adapter)
-    _ = await adapter.retryDecode(inputSamples: Self.speech)
-    allowed = false; adapter.applyUnloadPolicy(.immediately); _ = await refused.wait(what: "claim refused")
-    await adapter.cancel()
-    #expect(adapter.shouldForceUnloadAfterFailure && adapter.readiness == .notReady)
-    allowed = true; try await adapter.warmUp(modelReceipt: nil)
-    #expect(driver.unloadedHandles == [1] && driver.loadedHandles == [1, 2])
-    #expect(adapter.readiness == .ready && !adapter.shouldForceUnloadAfterFailure)
   }
 
   @Test("cancel during forced teardown wait lets teardown finish without loading replacement handle")
