@@ -107,6 +107,39 @@ package enum AccessibilityWake {
       roleError: roleError, roleReadExhausted: false, manual: manual, manualEnabled: enabled)
   }
 
+  /// Another app's `AXEnhancedUserInterface` (#4436). `read` is nil when it could not be read;
+  /// `write` says a message was sent: Teams acts on a write it answers with -25208.
+  package struct ScreenReaderFlag {
+    package var read: () -> Bool?
+    package var write: (Bool) -> Bool
+  }
+
+  static func screenReaderFlag(
+    of app: AXUIElement, isTarget: @escaping () -> Bool
+  ) -> ScreenReaderFlag {
+    let attribute = "AXEnhancedUserInterface" as CFString
+    return ScreenReaderFlag {
+      var value: CFTypeRef?
+      guard AXUIElementSetMessagingTimeout(app, 0.1) == .success,
+        AXUIElementCopyAttributeValue(app, attribute, &value) == .success
+      else { return nil }
+      return value as? Bool
+    } write: { on in
+      guard isTarget(), AXUIElementSetMessagingTimeout(app, on ? 0.1 : 1) == .success
+      else { return false }
+      _ = AXUIElementSetAttributeValue(app, attribute, on as CFBoolean)
+      return true
+    }
+  }
+
+  /// Runs `body` with the flag on, then tries once to turn it off: left on, it breaks window
+  /// managers. Nil when it is on already, unreadable or could not be sent.
+  package static func withScreenReaderFlag<T>(_ flag: ScreenReaderFlag, _ body: () -> T) -> T? {
+    guard flag.read() == false, flag.write(true) else { return nil }
+    defer { _ = flag.write(false) }
+    return body()
+  }
+
   private static func readRole(of application: AXUIElement) -> AXError {
     var roleRef: CFTypeRef?
     return AXUIElementCopyAttributeValue(application, kAXRoleAttribute as CFString, &roleRef)

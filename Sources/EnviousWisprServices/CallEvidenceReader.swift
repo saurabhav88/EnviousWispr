@@ -445,6 +445,10 @@ public enum CallEvidenceReader {
     }
   }
 
+  static func teamsRun(pid: Int32) -> AppRun? {
+    liveAppRun(pid).flatMap { matches($0.bundleIdentifier, rule: .callApp(.teams)) ? $0 : nil }
+  }
+
   private static func liveAppRun(_ pid: Int32) -> AppRun? {
     guard let app = NSRunningApplication(processIdentifier: pid),
       app.activationPolicy == .regular, let bundle = app.bundleIdentifier

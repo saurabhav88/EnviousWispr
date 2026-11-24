@@ -3,6 +3,7 @@ import ApplicationServices
 import Darwin
 import EnviousWisprCore
 import Foundation
+import os
 
 /// The Accessibility attributes a speaker capture copies (#4013 chunk 13A). Exactly what the
 /// native, rules and self-mute (#4248) readers consume (`CallAXNode`), plus a window's title and
@@ -222,6 +223,12 @@ package struct CallAXCapture: Sendable, Equatable {
   /// not wholly readable or out of time. Never pressed.
   package let accountTitles: [String]?
   package let cost: CallAXCopyCost
+  /// Nil unless this copy was taken to open the Teams app's web pages (#4436).
+  package var webContentOpened: Bool?
+
+  var holdsWebPage: Bool {
+    windows.contains { $0.root.allNodes.contains { $0.role == "AXWebArea" } }
+  }
 
   package init(
     windows: [CallAXWindow], documents: [CallAXDocument],
@@ -246,7 +253,60 @@ package struct CallAXCapture: Sendable, Equatable {
   }
 }
 
+/// When a Teams app showing no web page may be asked again (#4436): 1, 2, 4 ... 64 s after the
+/// last sent ask, at once when its window count changes, at most 40 times per run.
+struct WebContentAsks {
+  private struct Last {
+    var windows = 0
+    var streak = 0
+    var total = 0
+    var next: ContinuousClock.Instant
+  }
+  private var runs: [CallEvidenceReader.AppRun: Last] = [:]
+
+  func isDue(_ run: CallEvidenceReader.AppRun, windows: Int, now: ContinuousClock.Instant) -> Bool {
+    guard let last = runs[run] else { return true }
+    return last.total < 40 && (last.windows != windows || now >= last.next)
+  }
+
+  mutating func spend(_ run: CallEvidenceReader.AppRun, windows: Int, now: ContinuousClock.Instant) {
+    var last = runs[run] ?? Last(next: now)
+    last.streak = last.windows == windows ? min(last.streak + 1, 7) : 1
+    last.next = now.advanced(by: .seconds(1 << (last.streak - 1)))
+    last.windows = windows
+    last.total += 1
+    runs[run] = last
+  }
+}
+
 package enum CallSpeakerCapture {
+  private static let webContentAsks = OSAllocatedUnfairLock(initialState: WebContentAsks())
+
+  /// `first`, or a later copy when `first` is whole, shows no web page and an ask is due: Teams
+  /// opened its pages to a read made 12 to 17 ms after the flag went on (2026-11-24), later than
+  /// one fast copy, and kept them open. So copies repeat inside the one hold, while `wait` says.
+  static func openingWebContent(
+    _ first: CallAXCapture, run: () -> CallEvidenceReader.AppRun?,
+    asks: OSAllocatedUnfairLock<WebContentAsks>, now: ContinuousClock.Instant,
+    flag: (CallEvidenceReader.AppRun) -> AccessibilityWake.ScreenReaderFlag,
+    wait: (ContinuousClock.Instant) -> Bool, again: () -> CallAXCapture
+  ) -> CallAXCapture {
+    let windows = first.windows.count
+    guard first.completeness == .complete, windows > 0, !first.holdsWebPage, let run = run(),
+      asks.withLock({ $0.isDue(run, windows: windows, now: now) })
+    else { return first }
+    let started = ContinuousClock.now
+    let second = AccessibilityWake.withScreenReaderFlag(flag(run)) {
+      asks.withLock { $0.spend(run, windows: windows, now: now) }
+      var copy = again()
+      while copy.completeness == .complete, !copy.holdsWebPage, wait(started) { copy = again() }
+      return copy
+    }
+    guard var second else { return first }
+    second.webContentOpened = second.holdsWebPage
+    return second
+  }
+
   /// Copies `windows` of one app within `bounds`. `keepPage` says, from a page's address,
   /// whether a web area is the meeting; any other page is cut at its own node, so no other
   /// page's content is copied. A required read that fails (a role, children, the window list)
@@ -637,17 +697,29 @@ package enum CallSpeakerCapture {
   /// itself cannot be read; an app with no windows gives an empty, complete copy.
   package static func live(
     pid: pid_t, bounds: CallAXBounds, policy: CallAXCapturePolicy = .standard,
-    protectedRoles: Set<String> = [], keepPage: @escaping (String) -> Bool
+    protectedRoles: Set<String> = [], opensWebContent: Bool, keepPage: @escaping (String) -> Bool
   ) -> CallAXCapture {
     let app = AXUIElementCreateApplication(pid)
     // Reading the role first wakes a Chromium browser's tree (#3802), as call detection does.
     _ = liveRead(app, .role)
     switch liveRead(app, .windows) {
     case .elements(let windows):
-      return capture(
+      let first = capture(
         windows: windows, access: liveAccess, bounds: bounds, policy: policy,
         protectedRoles: protectedRoles, keepPage: keepPage, app: app,
         hostTime: { mach_absolute_time() })
+      guard opensWebContent else { return first }
+      let teams = { CallEvidenceReader.teamsRun(pid: pid) }
+      return openingWebContent(first, run: teams, asks: webContentAsks, now: .now) { run in
+        AccessibilityWake.screenReaderFlag(of: app) { teams() == run }
+      } wait: { started in
+        Thread.sleep(forTimeInterval: 0.01)
+        return ContinuousClock.now - started < .milliseconds(400)
+      } again: {
+        live(
+          pid: pid, bounds: bounds, policy: policy, protectedRoles: protectedRoles,
+          opensWebContent: false, keepPage: keepPage)
+      }
     case .missing:
       let now = mach_absolute_time()
       return CallAXCapture(
