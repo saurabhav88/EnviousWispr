@@ -139,7 +139,7 @@ public enum DictationActivationSkip: String, Sendable, Equatable {
 
 /// #4845 LIFE-5: "the model you downloaded is ready for dictation", earned only by a download that
 /// completed in this process followed by a passed probe on the current dictation selection's live
-/// server. In memory only (PR 2 makes it durable). The presenter rechecks `isCurrent` before
+/// server. In memory only. The presenter rechecks `isCurrent` before
 /// showing it and spends it with `acknowledgeDownloadNotice(_:)` after the overlay presented it.
 public struct PolishDownloadNotice: Sendable, Equatable {
   public let id: UUID

@@ -91,7 +91,9 @@ enum AppRelauncher {
   /// Whether quitting now would lose work in flight that SwiftUI can observe: a dictation
   /// (recording to polishing), a file transcription (reading the chosen file, transcribing or
   /// polishing, or the engine still held after Stop), or a speaker-analysis retry that has not
-  /// written its result yet. Model downloads resume on their own after a relaunch. The clipboard
+  /// written its result yet. Model downloads do not block relaunch. A normal quit preserves
+  /// app-managed partial downloads. If a local AI polish download is still paused after
+  /// relaunch, the user can press Resume (#4845). The clipboard
   /// restore just after a dictation is not observable, so `relaunchWhenSafe` waits it out at the
   /// click instead of it disabling the button (which could then stay disabled). The ONE owner
   /// for every relaunch the user asks for from Settings.
