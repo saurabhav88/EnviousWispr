@@ -96,22 +96,40 @@ def declaration_lines(map_source, id_source, parents, choices):
     return found
 
 
+def read_mapping_input(path, key):
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+        if not isinstance(data, dict) or key not in data:
+            raise ValueError(f"missing {key!r}")
+        return data
+    except (OSError, ValueError) as error:
+        raise PublishError(f"{path}: {error}")
+
+
+def check_mapping(export, mapping):
+    node_ids, surfaces, new = {n["id"] for n in export["nodes"]}, mapping["surfaces"], mapping.get("newSurfaces", {})
+    mapped = [i for ids in surfaces.values() for i in ids]
+    issues = [f"{k} {v}" for k, v in (
+        ("empty", sorted(s for s, ids in surfaces.items() if not ids)),
+        ("duplicate", sorted({i for i in mapped if mapped.count(i) > 1})),
+        ("unmapped", sorted(node_ids - set(mapped))), ("unknown", sorted(set(mapped) - node_ids)),
+        ("unused newSurfaces", sorted(s for s in new if s not in surfaces)),
+        ("unknown kind", sorted(f"{s}:{new[s].get('kind')}" for s in new if new[s].get("kind") not in KINDS)),
+    ) if v]
+    if issues:
+        raise PublishError(f"{MAPPING}: {'; '.join(issues)}. Map each id once, add unmapped ids, "
+                           "and keep surfaces/newSurfaces valid (see scripts/settings-map/README.md).")
+    return surfaces
+
+
 def plan(export, mapping, connection, declarations, revision, export_hash, date):
     """The migration's statements and the populations it owns."""
-    node_ids = [n["id"] for n in export["nodes"]]
     labels = {}
     for n in export["nodes"]:
         title = n["title"]
         labels[n["id"]] = title.get("en") or title.get("text") or "{" + title.get("resolver", "?") + "}"
-    surfaces = mapping["surfaces"]
     new = mapping.get("newSurfaces", {})
-    mapped = [i for ids in surfaces.values() for i in ids]
-    if sorted(mapped) != sorted(set(mapped)):
-        raise PublishError("a map id is mapped to two surfaces")
-    if set(mapped) != set(node_ids):
-        missing = sorted(set(node_ids) - set(mapped))
-        unknown = sorted(set(mapped) - set(node_ids))
-        raise PublishError(f"mapping out of step with the export: unmapped {missing[:5]}, unknown {unknown[:5]}")
+    surfaces = check_mapping(export, mapping)
 
     existing = {row[0]: row for row in connection.execute(
         "SELECT surface_slug, platform_key, parent_surface_slug, surface_kind, user_label, position, "
@@ -122,8 +140,6 @@ def plan(export, mapping, connection, declarations, revision, export_hash, date)
     for slug in surfaces:
         if slug in new:
             spec = new[slug]
-            if spec["kind"] not in KINDS:
-                raise PublishError(f"{slug}: unknown kind {spec['kind']}")
             parent = spec["parent"]
             if parent not in existing and parent not in new:
                 raise PublishError(f"{slug}: parent {parent} does not exist")
@@ -140,9 +156,6 @@ def plan(export, mapping, connection, declarations, revision, export_hash, date)
             raise PublishError(f"{slug} is not an existing surface and not declared new")
         elif existing[slug][1] != "macos":
             raise PublishError(f"{slug} is not a macOS surface")
-    for slug in new:
-        if slug not in surfaces:
-            raise PublishError(f"{slug} is declared new but no map id uses it")
 
     statements = []
     owned_keys = []
@@ -500,6 +513,24 @@ def self_test():
             except PublishError:
                 check(name, True)
         connection.close()
+        ep, mp = pathlib.Path(folder) / "e.json", pathlib.Path(folder) / "m.json"
+        ep.write_text(json.dumps(export))
+        mp.write_text(json.dumps(mapping))
+        check("check_mapping clean", check_mapping(read_mapping_input(ep, "nodes"), read_mapping_input(mp, "surfaces")) == mapping["surfaces"])
+        for name, fn, tok in (
+            ("check_mapping unmapped", lambda: check_mapping(export, {"surfaces": {"mac-page": ["page"], "mac-ctl": ["item"]}}), "item.a"),
+            ("check_mapping unknown", lambda: check_mapping(export, {"surfaces": {**mapping["surfaces"], "x": ["gone"]}}), "gone"),
+            ("check_mapping duplicate", lambda: check_mapping(export, {"surfaces": {**mapping["surfaces"], "x": ["page"]}}), "page"),
+            ("check_mapping empty", lambda: check_mapping(export, {"surfaces": {**mapping["surfaces"], "empty-surf": []}}), "empty-surf"),
+            ("check_mapping unused newSurfaces", lambda: check_mapping(export, {**mapping, "newSurfaces": {**mapping["newSurfaces"], "mac-unused": {"kind": "control"}}}), "mac-unused"),
+            ("check_mapping unknown kind", lambda: check_mapping(export, {**mapping, "newSurfaces": {"mac-new": {"kind": "bogus", "parent": "mac-page", "label": "X"}}}), "bogus"),
+            ("check_mapping missing file", lambda: read_mapping_input(pathlib.Path(folder) / "missing.json", "nodes"), "missing.json"),
+        ):
+            try:
+                fn()
+                check(name, False)
+            except PublishError as err:
+                check(name, tok in str(err))
     print(f"self-test: {passed} passed, {failed} failed")
     sys.exit(1 if failed or not passed else 0)
 
@@ -507,6 +538,12 @@ def self_test():
 def main():
     if sys.argv[1:] == ["--self-test"]:
         self_test()
+    if sys.argv[1:] == ["--check-mapping"]:
+        try:
+            check_mapping(read_mapping_input(REPO / EXPORT, "nodes"), read_mapping_input(REPO / MAPPING, "surfaces"))
+            return
+        except PublishError as error:
+            sys.exit(f"publish-catalog: {error}")
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("--catalog", required=True)
     parser.add_argument("--revision", required=True)
