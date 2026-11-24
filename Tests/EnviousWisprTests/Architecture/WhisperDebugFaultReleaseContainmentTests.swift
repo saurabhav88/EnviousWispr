@@ -6,8 +6,11 @@ import Testing
 
 /// #4896 release containment check: the DEBUG-only `fail_whisper_backend` fault-injection command
 /// and its Whisper status-8 helper symbols must never exist in a Release `.app` bundle.
-@Suite("Whisper debug fault release containment (#4896)", .tags(.productOutcome))
-struct WhisperDebugFaultReleaseContainmentTests {
+/// Package-only SwiftPM Release runs (`SWIFT_PACKAGE`) build no `.app` bundle, so only Xcode Release
+/// app builds compile the unconditional `.app` artifact scan.
+#if DEBUG || !SWIFT_PACKAGE
+  @Suite("Whisper debug fault release containment (#4896)", .tags(.productOutcome))
+  struct WhisperDebugFaultReleaseContainmentTests {
 
   private final class BundleAnchor {}
 
@@ -79,6 +82,7 @@ struct WhisperDebugFaultReleaseContainmentTests {
     }
   #endif
 }
+#endif
 
 extension Data {
   fileprivate func contains(_ pattern: [UInt8]) -> Bool {

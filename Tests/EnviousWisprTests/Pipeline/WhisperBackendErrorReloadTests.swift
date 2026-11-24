@@ -64,11 +64,18 @@ struct WhisperBackendErrorReloadTests {
   private func makeKernelHarness(
     driver: FakeReloadWhisperDriver = FakeReloadWhisperDriver(),
     faultController: BatchDecodeFaultController? = nil,
-    retryTimeoutSecondsOverride: Double? = nil
+    retryTimeoutSecondsOverride: Double? = nil,
+    onBumpRetryGeneration: (@MainActor () -> Void)? = nil
   ) -> KernelHarness {
     let (backend, adapter) = makeAdapter(driver, faultController: faultController)
     let kernelAdapter: any ASREngineAdapter =
-      retryTimeoutSecondsOverride.map { FastRetryTimeoutAdapter(wrapping: adapter, retryTimeoutSeconds: $0) }
+      retryTimeoutSecondsOverride.map {
+        FastRetryTimeoutAdapter(
+          wrapping: adapter,
+          retryTimeoutSeconds: $0,
+          onBumpRetryGeneration: onBumpRetryGeneration
+        )
+      }
       ?? adapter
     let capture = FakeAudioCapture()
     let vad = FakeVADSignalSource()
@@ -458,21 +465,32 @@ struct WhisperBackendErrorReloadTests {
 
   @Test("retry timeout after status 8 primary finalize still triggers forced unload at finishTerminal")
   func retryTimeoutAfterStatus8StillForcesUnload() async throws {
-    let h = makeKernelHarness(retryTimeoutSecondsOverride: 0.05)
+    let callsOnHandle1 = LockedCounter()
+    let retryTimedOut = LockedCounter()
+    let retryTimeoutGate = SignalWaiter()
+    let h = makeKernelHarness(
+      retryTimeoutSecondsOverride: 0.05,
+      onBumpRetryGeneration: {
+        _ = retryTimedOut.incrementAndGet()
+        retryTimeoutGate.signal()
+      }
+    )
+    defer { retryTimeoutGate.signal() }
     try await h.adapter.warmUp(modelReceipt: nil)
 
-    let callsOnHandle1 = LockedCounter()
     h.driver.onTranscribeAsync = { handle in
       guard handle == 1 else { return }
       if callsOnHandle1.incrementAndGet() == 1 {
         throw TranscribeCppError(rawStatus: 8)
       }
-      // Second call is the Phase-2 retry: hang cooperatively until the 0.05s retry deadline cancels it.
-      try await Task.sleep(for: .seconds(30))
+      // Second call is the Phase-2 retry: block until the kernel's 0.05s retry deadline fires.
+      _ = await retryTimeoutGate.wait(what: "kernel retry timeout signal", timeoutSeconds: 5.0)
     }
 
     await runKernelTake(h, policy: .never, timeoutSeconds: 2.0)
 
+    #expect(h.driver.transcribeHandles == [1, 1, 1])
+    #expect(retryTimedOut.current == 1)
     #expect(h.adapter.readiness == .notReady)
     #expect(await h.driver.waitForUnloadCompleted(1))
     #expect(h.driver.unloadedHandles == [1])
@@ -1134,6 +1152,7 @@ private final class FakeReloadWhisperDriver: WhisperExecutorDriving, @unchecked 
 private final class LockedCounter: @unchecked Sendable {
   private let lock = NSLock()
   private var value = 0
+  var current: Int { lock.withLock { value } }
   func incrementAndGet() -> Int {
     lock.withLock {
       value += 1
@@ -1186,10 +1205,16 @@ private final class ClaimGate {
 private final class FastRetryTimeoutAdapter: ASREngineAdapter, @unchecked Sendable {
   private let inner: WhisperEngineAdapter
   private let retryTimeoutSeconds: Double
+  private let onBumpRetryGeneration: (@MainActor () -> Void)?
 
-  init(wrapping inner: WhisperEngineAdapter, retryTimeoutSeconds: Double) {
+  init(
+    wrapping inner: WhisperEngineAdapter,
+    retryTimeoutSeconds: Double,
+    onBumpRetryGeneration: (@MainActor () -> Void)? = nil
+  ) {
     self.inner = inner
     self.retryTimeoutSeconds = retryTimeoutSeconds
+    self.onBumpRetryGeneration = onBumpRetryGeneration
   }
 
   var engineIdentity: ASREngineIdentity { inner.engineIdentity }
@@ -1218,7 +1243,10 @@ private final class FastRetryTimeoutAdapter: ASREngineAdapter, @unchecked Sendab
     await inner.retryDecode(inputSamples: inputSamples)
   }
   func retryDecodeTimeoutSeconds(forSampleCount sampleCount: Int) -> Double { retryTimeoutSeconds }
-  func bumpRetryGeneration() { inner.bumpRetryGeneration() }
+  func bumpRetryGeneration() {
+    onBumpRetryGeneration?()
+    inner.bumpRetryGeneration()
+  }
   func cancel() async { await inner.cancel() }
   func recoverFromWedge() async { await inner.recoverFromWedge() }
   var onEngineInterrupted: (@MainActor () -> Void)? {
