@@ -414,7 +414,7 @@ struct LivePreviewCoordinatorTests {
       #expect(event.stringProps["engine"] == "universal")
       #expect(event.stringProps["outcome"] == "blocked")
       #expect(
-        event.stringProps.count == 2,
+        event.stringProps.count == 2 && event.intProps.isEmpty && event.boolProps.isEmpty,
         "the event grew a property: \(event.stringProps.keys.sorted())")
     }
 
@@ -440,6 +440,7 @@ struct LivePreviewCoordinatorTests {
           vocabulary: LivePreviewVocabulary, onText: @escaping @Sendable (String) -> Void
         ) async throws -> any LivePreviewEngineSession {
           struct Idle: LivePreviewEngineSession {
+            let ranUnclaimed = true
             func feed(_ samples: [Float]) async {}
             func end() async {}
           }
@@ -462,6 +463,7 @@ struct LivePreviewCoordinatorTests {
       coordinator.setRecording(true)
       let event = try await waiter.waitForEvent(named: "live_preview.outcome")
       #expect(event.stringProps["outcome"] == "started")
+      #expect(event.boolProps == ["unclaimed": true])
       // The candidate key here deliberately CARRIES a digest. The event must not.
       #expect(
         event.stringProps["engine"] == "universal",
@@ -483,8 +485,8 @@ struct LivePreviewCoordinatorTests {
     ///
     /// Mutation control: remove the `isCurrent` guard around the `started` report
     /// and this fails on a non-zero count.
-    @Test("a preview abandoned while opening reports nothing")
-    func staleOpenReportsNothing() async throws {
+    @Test("a preview abandoned while starting reports nothing", arguments: [false, true])
+    func staleOpenReportsNothing(inPrepare: Bool) async throws {
       let waiter = TelemetryEventWaiter()
       TelemetryService.shared.testEventHook = { @Sendable event in
         MainActor.assumeIsolated { waiter.record(event) }
@@ -527,12 +529,15 @@ struct LivePreviewCoordinatorTests {
           throw displayOnlyTranscriptOpen(Self.self)
         }
         let gate: Gate
-        init(gate: Gate) { self.gate = gate }
-        func prepare() async throws {}
+        let inPrepare: Bool
+        init(gate: Gate, inPrepare: Bool) { (self.gate, self.inPrepare) = (gate, inPrepare) }
+        func prepare() async throws {
+          if inPrepare { await gate.wait(); throw CancellationError() }
+        }
         func openSession(
           vocabulary: LivePreviewVocabulary, onText: @escaping @Sendable (String) -> Void
         ) async throws -> any LivePreviewEngineSession {
-          await gate.wait()
+          if !inPrepare { await gate.wait() }
           struct Idle: LivePreviewEngineSession {
             func feed(_ samples: [Float]) async {}
             func end() async {}
@@ -550,7 +555,7 @@ struct LivePreviewCoordinatorTests {
           .ready(
             LivePreviewEngineCandidate(telemetryEngine: .universal,
               key: LivePreviewEngineKey(engine: "whisper_preview#abc123", commitment: ""),
-              makeEngine: { SlowOpenEngine(gate: opening) }))
+              makeEngine: { SlowOpenEngine(gate: opening, inPrepare: inPrepare) }))
         }
       )
 
@@ -558,10 +563,13 @@ struct LivePreviewCoordinatorTests {
       for _ in 0..<2000 where !opening.hasEntered { await Task.yield() }
       #expect(opening.hasEntered, "control: the open must be in flight")
 
-      // The recording ends while the open is still suspended.
-      coordinator.setRecording(false)
+      // The preview ends for a model removal while the engine is still suspended; the drain
+      // returns once the session and the preparation have handled it.
+      let end = Task { await coordinator.releaseAndDrainForRemoval() }
+      for _ in 0..<2000 where coordinator.display != .off { await Task.yield() }
+      #expect(coordinator.display == .off, "control: the preview must be over")
       opening.open()
-      for _ in 0..<500 { await Task.yield() }
+      await end.value
 
       let outcomes = waiter.events.filter { $0.name == "live_preview.outcome" }
       #expect(
@@ -578,18 +586,17 @@ struct LivePreviewCoordinatorTests {
       }
       defer { TelemetryService.shared.testEventHook = nil }
 
-      struct Boom: Error {}
       final class FailingEngine: LivePreviewEngine, @unchecked Sendable {
         func openTranscriptSession(
           vocabulary: LivePreviewVocabulary, onEvent: @escaping @Sendable (LiveWordsEvent) -> Void
         ) async throws -> any LiveTranscriptSession {
           throw displayOnlyTranscriptOpen(Self.self)
         }
-        func prepare() async throws { throw Boom() }
+        func prepare() async throws { throw NSError(domain: "SFSpeechErrorDomain", code: 15) }
         func openSession(
           vocabulary: LivePreviewVocabulary, onText: @escaping @Sendable (String) -> Void
         ) async throws -> any LivePreviewEngineSession {
-          throw Boom()
+          throw CancellationError()
         }
       }
       let coordinator = LivePreviewCoordinator(
@@ -608,6 +615,8 @@ struct LivePreviewCoordinatorTests {
       coordinator.setRecording(true)
       let event = try await waiter.waitForEvent(named: "live_preview.outcome")
       #expect(event.stringProps["outcome"] == "prepare_failed")
+      #expect(event.stringProps["error_domain"] == "speech")
+      #expect(event.intProps["error_code"] == 15)
       #expect(event.stringProps["engine"] == "universal")
       #expect(coordinator.display == .unavailable(LivePreviewCopy.notReady))
     }
@@ -623,7 +632,6 @@ struct LivePreviewCoordinatorTests {
       }
       defer { TelemetryService.shared.testEventHook = nil }
 
-      struct Boom: Error {}
       final class OpenFailsEngine: LivePreviewEngine, @unchecked Sendable {
         func openTranscriptSession(
           vocabulary: LivePreviewVocabulary, onEvent: @escaping @Sendable (LiveWordsEvent) -> Void
@@ -634,7 +642,7 @@ struct LivePreviewCoordinatorTests {
         func openSession(
           vocabulary: LivePreviewVocabulary, onText: @escaping @Sendable (String) -> Void
         ) async throws -> any LivePreviewEngineSession {
-          throw Boom()
+          throw NSError(domain: NSCocoaErrorDomain, code: 4099)
         }
       }
       let coordinator = LivePreviewCoordinator(
@@ -654,6 +662,8 @@ struct LivePreviewCoordinatorTests {
       let event = try await waiter.waitForEvent(named: "live_preview.outcome")
       #expect(event.stringProps["outcome"] == "open_failed")
       #expect(event.stringProps["engine"] == "universal")
+      #expect(event.stringProps["error_domain"] == "cocoa")
+      #expect(event.intProps["error_code"] == 4099)
     }
   #endif
 

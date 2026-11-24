@@ -22,14 +22,16 @@ struct ApplePackCatalogTests {
   /// The catalogue no longer carries its own reserve/release seams — #2145 found the recognizer's
   /// copy and this one making different decisions about a claim neither owned — so these tests now
   /// drive the SAME transaction production uses instead of a stand-in for it.
-  private func makeClaims(journal: Journal, reserved: [String] = []) -> LocaleClaims {
+  private func makeClaims(
+    journal: Journal, reserved: [String] = [], refuses: Bool = false
+  ) -> LocaleClaims {
     let box = ReservedBox(reserved)
     return LocaleClaims(
       inventory: LocaleInventory(
         reserved: { await box.locales() },
         reserve: { locale in
           await journal.note("reserve:\(locale.identifier(.bcp47))")
-          return await box.add(locale.identifier(.bcp47))
+          return refuses ? false : await box.add(locale.identifier(.bcp47))
         },
         release: { locale in
           await journal.note("release:\(locale.identifier(.bcp47))")
@@ -80,7 +82,7 @@ struct ApplePackCatalogTests {
       },
       install: { tag in
         await journal.note("install:\(tag)")
-        if installFails { throw LivePreviewError.localeUnavailable }
+        if installFails { throw LivePreviewError.notPrepared }
       }
     )
   }
@@ -324,6 +326,18 @@ struct ApplePackCatalogTests {
     #expect(
       calls.filter { $0 == "installed" }.count >= 1,
       "must re-read installed state after installing, got: \(calls)")
+  }
+
+  @Test("An install without a claim that leaves the pack missing fails (#4937)")
+  func unclaimedInstallNeedsThePack() async throws {
+    let journal = Journal()
+    let catalog = ApplePackCatalog(
+      dependencies: makeDeps(journal: journal), claims: makeClaims(journal: journal, refuses: true))
+    await #expect(throws: ApplePackCatalogError.notInstalled) {
+      try await catalog.install(tag: "fr-FR")
+    }
+    let acts = await journal.calls.filter { $0.hasPrefix("install:") || $0.hasPrefix("release:") }
+    #expect(acts == ["install:fr-FR"])
   }
 
   /// #4105: each catalogue kind lists and installs its own module's assets. Read-only against the

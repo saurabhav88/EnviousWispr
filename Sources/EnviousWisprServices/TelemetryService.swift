@@ -3196,7 +3196,7 @@ public final class TelemetryService {
   /// that any words reached the pill. A heard-nothing signal would be a different
   /// event with a different meaning.
   ///
-  /// **Exactly two properties, and the bound is deliberate.** Settings telemetry
+  /// **Two properties on every row, and the bound is deliberate.** Settings telemetry
   /// already reports whether the preview is switched ON; it cannot say which
   /// engine that adoption runs on, which is the question that decides whether
   /// shipping the optional Universal download was worth it. A refusal REASON was drafted as a
@@ -3207,14 +3207,40 @@ public final class TelemetryService {
   /// Never a language, a model path, preview text, or any dictated content —
   /// `sentry-operations.md` RULE: telemetry-privacy-boundary. The shape crosses
   /// the network; what was said never does.
-  public func livePreviewOutcome(engine: String, outcome: String) {
+  ///
+  /// #4937: a failed row adds a closed `error_domain` and a code; a started row says `unclaimed`
+  /// when it ran without Apple's locale claim.
+  public func livePreviewOutcome(
+    engine: String, outcome: String, error: (any Error)? = nil, unclaimed: Bool = false
+  ) {
     let event = "live_preview.outcome"
-    let properties = ["engine": engine, "outcome": outcome]
+    var properties: [String: Any] = ["engine": engine, "outcome": outcome]
+    if let error {
+      properties["error_domain"] = Self.livePreviewErrorDomain(error)
+      properties["error_code"] = (error as NSError).code
+    }
+    if unclaimed { properties["unclaimed"] = true }
     #if DEBUG
       testEventHook?(
-        CapturedTelemetryEvent(name: event, stringProps: properties, boolProps: [:]))
+        CapturedTelemetryEvent(
+          name: event, stringProps: properties.compactMapValues { $0 as? String },
+          intProps: properties.compactMapValues { $0 as? Int },
+          boolProps: properties.compactMapValues { $0 as? Bool }))
     #endif
     PostHogSDK.shared.capture(event, properties: properties)
+  }
+
+  /// `preview` is our own error types: Swift's bridged case number, payload cases first, then the
+  /// rest in source order, so read it against that app version.
+  private static func livePreviewErrorDomain(_ error: any Error) -> String {
+    if error is CancellationError { return "cancelled" }
+    switch (error as NSError).domain {
+    case "SFSpeechErrorDomain": return "speech"
+    case NSCocoaErrorDomain: return "cocoa"
+    case "kLSRErrorDomain": return "lsr"
+    case let domain where domain.hasPrefix("EnviousWispr"): return "preview"
+    default: return "other"
+    }
   }
 
   /// #3546 §3.7 T2: one Parakeet Ultra upgrade transition (closed `outcome` vocabulary:

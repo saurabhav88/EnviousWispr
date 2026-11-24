@@ -55,7 +55,7 @@ struct AppleLocaleClaimTests {
       "the inventory's own object wins over a rebuilt identifier, or the release silently no-ops")
   }
 
-  @Test("Reserve outcomes: proceed, recover once, then refuse")
+  @Test("Reserve outcomes: proceed, recover once, then carry on unclaimed")
   func outcomeTable() {
     #expect(
       AppleLocaleClaim.outcome(
@@ -69,8 +69,8 @@ struct AppleLocaleClaimTests {
         reserveReturned: false, heldAfter: false, recoveryAlreadyTried: false) == .recover)
     #expect(
       AppleLocaleClaim.outcome(
-        reserveReturned: false, heldAfter: false, recoveryAlreadyTried: true) == .refuse)
-    // A second success after recovery still proceeds rather than refusing.
+        reserveReturned: false, heldAfter: false, recoveryAlreadyTried: true) == .unclaimed)
+    // A second success after recovery still proceeds rather than going unclaimed.
     #expect(
       AppleLocaleClaim.outcome(
         reserveReturned: true, heldAfter: true, recoveryAlreadyTried: true) == .proceed)

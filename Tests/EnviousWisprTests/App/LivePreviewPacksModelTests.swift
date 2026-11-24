@@ -133,7 +133,7 @@ struct LivePreviewPacksModelTests {
         },
         install: { tag in
           await calls.noteInstall(tag)
-          throw LivePreviewError.localeUnavailable
+          throw LivePreviewError.notPrepared
         }
       ),
         claims: fakeClaims())
@@ -205,7 +205,7 @@ struct LivePreviewPacksModelTests {
         installedTags: { await script.isInstalled ? ["en-US", "it-IT"] : ["en-US"] },
         install: { _ in
           await script.markInstalled()
-          throw LivePreviewError.localeUnavailable
+          throw LivePreviewError.notPrepared
         }
       ),
         claims: fakeClaims())

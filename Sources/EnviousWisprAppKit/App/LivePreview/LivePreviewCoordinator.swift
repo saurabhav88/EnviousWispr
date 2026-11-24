@@ -214,7 +214,7 @@ final class LivePreviewCoordinator: CorrectorVocabularyConsumer {
   /// half-finished download or leave the next session waiting behind it. Held
   /// separately, it survives the recording that triggered it, is never cancelled,
   /// and is shared rather than duplicated.
-  private var preparationTask: Task<Bool, Never>?
+  private var preparationTask: Task<(any Error)?, Never>?
   /// Bumped whenever the preview language changes, so a preparation still running
   /// for the old language cannot publish itself as the current one.
   private var preparationGeneration: UInt64 = 0
@@ -545,11 +545,13 @@ final class LivePreviewCoordinator: CorrectorVocabularyConsumer {
     // #3919: Keep the compact waiting display while preview prepares.
     // Actual blocked or failed preparation still publishes its reason.
 
-    guard await ensurePrepared(candidate), let engine = preparedEngine else {
+    let failure = await ensurePrepared(candidate)
+    guard failure == nil, let engine = preparedEngine else {
       guard isCurrent(generation) else { return }
-      reportOutcome("prepare_failed", engine: candidate.telemetryEngine.rawValue)
+      let error = failure ?? CancellationError()
+      reportOutcome("prepare_failed", engine: candidate.telemetryEngine.rawValue, error: error)
       display = .unavailable(LivePreviewCopy.notReady)
-      await Self.log("not ready for \(candidate.key.engine)/\(candidate.key.commitment)")
+      await Self.log("not ready for \(candidate.key.engine)/\(candidate.key.commitment): \(error)")
       return
     }
 
@@ -614,7 +616,7 @@ final class LivePreviewCoordinator: CorrectorVocabularyConsumer {
       session = try await engine.openSession(vocabulary: vocabulary, onText: publish)
     } catch {
       guard isCurrent(generation) else { return }
-      reportOutcome("open_failed", engine: candidate.telemetryEngine.rawValue)
+      reportOutcome("open_failed", engine: candidate.telemetryEngine.rawValue, error: error)
       display = .unavailable(LivePreviewCopy.notReady)
       await Self.log("session refused to start: \(error)")
       return
@@ -654,7 +656,8 @@ final class LivePreviewCoordinator: CorrectorVocabularyConsumer {
     if isCurrent(generation) {
       // #4325: the candidate's engine, which is Apple when Apple stands in for a Universal
       // choice whose model is not downloaded yet; blocked outcomes above keep the route's id.
-      reportOutcome("started", engine: candidate.telemetryEngine.rawValue)
+      reportOutcome(
+        "started", engine: candidate.telemetryEngine.rawValue, unclaimed: session.ranUnclaimed)
     }
     await Self.log(
       "session started, engine=\(candidate.key.engine) on=\(candidate.key.commitment)")
@@ -892,8 +895,11 @@ final class LivePreviewCoordinator: CorrectorVocabularyConsumer {
   /// universal engine reported `whisper_preview#<digest>` and the field gained a
   /// new value on every model revision. A closed vocabulary is a dimension
   /// someone can group by; the key is not.
-  private func reportOutcome(_ outcome: String, engine: String) {
-    TelemetryService.shared.livePreviewOutcome(engine: engine, outcome: outcome)
+  private func reportOutcome(
+    _ outcome: String, engine: String, error: (any Error)? = nil, unclaimed: Bool = false
+  ) {
+    TelemetryService.shared.livePreviewOutcome(
+      engine: engine, outcome: outcome, error: error, unclaimed: unclaimed)
   }
 
   /// One log seam so every preview line carries the same category and the whole
@@ -959,9 +965,10 @@ final class LivePreviewCoordinator: CorrectorVocabularyConsumer {
     contextualPhrases = ApplePreviewHints.build(from: vocabulary.terms)
   }
 
-  private func ensurePrepared(_ candidate: LivePreviewEngineCandidate) async -> Bool {
+  /// Nil when ready, else why not; a superseded preparation is a `CancellationError` (#4937).
+  private func ensurePrepared(_ candidate: LivePreviewEngineCandidate) async -> (any Error)? {
     let key = candidate.key
-    if preparedEngine != nil, preparedKey == key { return true }
+    if preparedEngine != nil, preparedKey == key { return nil }
 
     // A change of engine OR language invalidates the in-flight preparation for the
     // old one. The generation bump is what actually invalidates it; clearing the
@@ -976,29 +983,29 @@ final class LivePreviewCoordinator: CorrectorVocabularyConsumer {
 
     let generation = preparationGeneration
     let make = candidate.makeEngine
-    let task = Task<Bool, Never> { [weak self] in
+    let task = Task<(any Error)?, Never> { [weak self] in
       let fresh = make()
       do {
         try await fresh.prepare()
       } catch {
-        return false
+        return error
       }
-      guard let self else { return false }
+      guard let self else { return CancellationError() }
       return await MainActor.run {
         // Publish only if the engine or language has not moved on while this ran.
-        guard self.preparationGeneration == generation else { return false }
+        guard self.preparationGeneration == generation else { return CancellationError() }
         self.preparedEngine = fresh
         self.preparedKey = key
-        return true
+        return nil
       }
     }
     preparationTask = task
     preparedKey = key
-    let ok = await task.value
+    let failure = await task.value
     // Let a later recording retry, but only if nothing newer has already claimed
     // the slot — clearing unconditionally would discard a live preparation.
-    if !ok, preparationGeneration == generation { preparationTask = nil }
-    return ok
+    if failure != nil, preparationGeneration == generation { preparationTask = nil }
+    return failure
   }
 
   /// Hand newly captured audio to the recognizer until the recording ends.

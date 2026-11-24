@@ -124,7 +124,7 @@ package actor ApplePackCatalog {
   /// differently, on a claim neither of them owned. One transaction, one owner.
   package func install(tag: String) async throws -> [LivePreviewPack] {
     let locale = Locale(identifier: tag)
-    try await claims.claim(locale, purpose: "download")
+    let claim = try await claims.claim(locale, purpose: "download")
     do {
       try await deps.install(tag)
     } catch {
@@ -132,7 +132,12 @@ package actor ApplePackCatalog {
       throw error
     }
     await claims.finish(locale)
-    return await snapshot()
+    let packs = await snapshot()
+    // #4937: with no claim Apple can return without fetching; say so instead of ending silently.
+    if claim == .unclaimed, !packs.contains(where: { $0.tag == tag && $0.isInstalled }) {
+      throw ApplePackCatalogError.notInstalled
+    }
+    return packs
   }
 
   static func nativeName(for tag: String) -> String {
@@ -191,4 +196,6 @@ package actor ApplePackCatalog {
 package enum ApplePackCatalogError: Error, Equatable {
   /// This Mac cannot run the requested module (`SpeechTranscriber.isAvailable` is false).
   case moduleUnavailable
+  /// An install that ran without a locale claim and left the pack missing (#4937).
+  case notInstalled
 }

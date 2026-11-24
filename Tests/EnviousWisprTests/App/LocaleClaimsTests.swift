@@ -47,6 +47,7 @@ struct LocaleClaimsTests {
     init(reserved: [String] = []) { self.reserved = reserved }
 
     func setMaximum(_ n: Int) { maximum = n }
+    func setReserved(_ tags: [String]) { reserved = tags }
     func setRefuseRelease(_ tags: Set<String>) { refuseRelease = tags }
     func setPhantom(_ tags: Set<String>, refusals: Int = Int.max) {
       phantom = tags
@@ -240,17 +241,27 @@ struct LocaleClaimsTests {
       """)
   }
 
-  @Test("A refusal that survives the retry throws rather than looping")
-  func persistentPhantomThrows() async throws {
+  @Test("A refusal that survives the retry carries on unclaimed, with no right to release (#4937)")
+  func persistentPhantomCarriesOnUnclaimed() async throws {
     let fake = FakeInventory()
     let subject = await claims(fake)
+    let english = Locale(identifier: "en-US")
+    try await subject.claim(english, purpose: "session")
+    // Apple's helper exits: the table reads empty and refuses for the rest of the process.
+    await fake.setReserved([])
     await fake.setPhantom(["en-US"])
 
-    await #expect(throws: LivePreviewError.self) {
-      try await subject.claim(Locale(identifier: "en-US"), purpose: "session")
-    }
-    #expect(await fake.reserveCalls.count == 2, "one attempt, one retry, then stop")
+    let result = try await subject.claim(english, purpose: "session")
+    #expect(result.rawValue == "unclaimed")
+    #expect(await fake.reserveCalls.count == 3, "one attempt and one retry, then stop")
+    #expect(await subject.ownsClaim("en-US") == false)
+    #expect(await subject.useCount("en-US") == 2)
+
+    await fake.setReserved(["en-US"])  // another app's claim
+    await subject.finish(english)
+    await subject.finish(english)
     #expect(await fake.releaseCalls.isEmpty)
+    #expect(await subject.useCount("en-US") == 0)
   }
 
   // MARK: - A refused release is not a freed slot

@@ -138,11 +138,18 @@ package protocol LivePreviewEngineSession: Sendable {
   /// found on #1988, three of them only by review.
   func end() async
 
+  /// #4937: the session runs without an Apple locale claim.
+  var ranUnclaimed: Bool { get }
+
   #if DEBUG
     /// #4254 UAT evidence: this session's meeting speech detection, read while it runs; nil
     /// when the session has none (Apple sessions, dictation preview) or it changed meanwhile.
     func detectionReport() async -> LiveDetectionReport?
   #endif
+}
+
+extension LivePreviewEngineSession {
+  package var ranUnclaimed: Bool { false }
 }
 
 #if DEBUG
