@@ -130,10 +130,11 @@ package enum ZoomAppSpeakerReader {
     // Bound self rows of the lists read here, in the list's own language (#4350): the static
     // text scan above knows only English `(me)`.
     let listMarks = boundSelfMarks(lists.map { $0.rows.entries })
-    // During a share, lists in windows the reading does not use still protect it (PR #4352
-    // cloud review): their `(me)` marks and their names shown twice.
+    // During a share or with a `Talking:`-only window (#4935), lists in windows the reading does not
+    // use still protect it (PR #4352 cloud review): their `(me)` marks and names shown twice.
+    let labelled = share.isSharing || windows.contains { isTalkingOnly($0, labels: labels) }
     let selfList = uniqueInOrder(
-      selfNames + listMarks + (share.isSharing ? share.selfMarks : []))
+      selfNames + listMarks + (labelled ? share.selfMarks : []))
     // Bound `(me)` rows from the whole capture (`share`) and from the lists read here, so a
     // direct read without a share context still carries them (#4356).
     let boundMarks = uniqueInOrder(share.selfMarks + listMarks)
@@ -148,7 +149,7 @@ package enum ZoomAppSpeakerReader {
     // Every list's own duplicates are two people, whether or not that list is complete.
     let listedTwice = lists.reduce(into: Set<String>()) { shared, list in
       shared.formUnion(repeatedNames(list.rows.entries.map(\.name)))
-    }.union(share.isSharing ? share.listedTwice : [])
+    }.union(labelled ? share.listedTwice : [])
     // Identity holds when the tiles are the people and no talking flag sits elsewhere.
     let identity = !thumbnails.isEmpty && !flaggedOutsidePeople
     // #4356: the name Zoom marked `(me)` in its list wins over the signed-in account name, which
@@ -162,7 +163,7 @@ package enum ZoomAppSpeakerReader {
       && share.tileCount == thumbnails.count + largeTiles.count
     // During a screen share Zoom may show the talker without a flag (#4013 share plan §3.1-3.2):
     // a `Talking:` label in the collapsed floating window, or one tile that follows the talker.
-    if share.isSharing, let signal = shareSignal(windows: windows, share: share, labels: labels) {
+    if labelled, let signal = shareSignal(windows: windows, share: share, labels: labels) {
       return shareReading(
         signal, selfList: selfList, boundMarks: boundMarks, account: account,
         complete: complete, count: count, listedTwice: listedTwice, countHidden: countHidden)
@@ -222,9 +223,9 @@ package enum ZoomAppSpeakerReader {
       }
     }
     if tiles.isEmpty {
-      let talking = windows.filter { isCompactWindow($0, labels: labels) }.flatMap {
-        talkingLabels($0, labels: labels)
-      }
+      let talking = windows.filter {
+        isCompactWindow($0, labels: labels) || isTalkingOnly($0, labels: labels)
+      }.flatMap { talkingLabels($0, labels: labels) }
       return talking.count == 1 ? .label(talking[0]) : nil
     }
     guard tiles.count == 1, let only = tiles.first, !only.tile.name.isEmpty, !only.tile.isJoining
@@ -572,6 +573,50 @@ package enum ZoomAppSpeakerReader {
     let buttons = window.root.allNodes.filter { $0.role == "AXButton" }.compactMap(\.label)
     return buttons.contains { labels.matches(.compactHide, $0) }
       && buttons.contains { labels.matches(.compactShowActive, $0) }
+  }
+
+  /// Zoom's minimized window with its video hidden (#4935, live on 7.1.9 and 7.2.5): untitled,
+  /// one button and one `Talking:` text, nothing else. Read by shape: the button's words in other
+  /// languages are not known.
+  static func isTalkingOnly(_ window: CallAXWindow, labels: ZoomLabels = .builtIn) -> Bool {
+    let parts = window.root.children
+    return window.root.identifier == nil && (window.title ?? "").isEmpty && parts.count == 2
+      && parts.allSatisfy(\.children.isEmpty) && parts.contains { $0.role == "AXButton" }
+      && talkingLabels(window, labels: labels).count == 1
+  }
+
+  /// Everyone the whole copy showed, before window choice (#4935): only ever a reason not to add
+  /// short two-person stretches together, never a vote or a roster.
+  package static func shownPeople(
+    windows: [CallAXWindow], labels: ZoomLabels = .builtIn
+  ) -> ZoomShownPeople {
+    var names = Set(windows.flatMap { talkingLabels($0, labels: labels) }).subtracting([""])
+    var tileNames: Set<String> = []  // a joining tile may be a person a list already names
+    var (unnamed, most) = (0, 0)
+    for nodes in windows.map(\.root.allNodes) {
+      let tiles = nodes.filter { $0.role == "AXTabGroup" }.compactMap {
+        $0.label.flatMap { parseTile($0, labels: labels) }
+      }
+      for tile in tiles where !tile.isJoining && !tile.name.isEmpty { tileNames.insert(tile.name) }
+      unnamed += tiles.filter { $0.isJoining || $0.name.isEmpty }.count
+      for list in nodes where !listLanguages(list, labels: labels).isEmpty {
+        let rows = list.allNodes.filter { $0.role == "AXCell" }
+        most = max(most, rows.filter { $0.identifier?.hasSuffix("_Group") != true }.count)
+      }
+      names.formUnion(listEntries(nodes, labels: labels).flatMap { $0.map(\.name) })
+      // The panel's button, waiting people included, and every `Participants (N)`.
+      let counts = nodes.compactMap { node -> Int? in
+        guard let label = node.label else { return nil }
+        if node.role == "AXStaticText" { return participantCount(label, labels: labels) }
+        guard node.role == "AXButton",
+          participantsPanelButtonPrefixes.contains(where: { label.hasPrefix($0) })
+        else { return nil }
+        return Int(label.drop { !$0.isNumber }.prefix { $0.isNumber })
+      }
+      most = max(most, tiles.filter(\.hasVideoState).count, counts.max() ?? 0)
+    }
+    names.formUnion(tileNames)
+    return ZoomShownPeople(names: names, aboveTwo: most > 2 || tileNames.count + unnamed > 2)
   }
 
   /// `Talking: Bea Chen` → `Bea Chen`; `Talking: ` → `""` (nobody talking); `Sprechen: Bea` →

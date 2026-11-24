@@ -131,10 +131,12 @@ struct CallCaptureToleranceTests {
       (30, "AXCell"), (32, "AXMenuButton"),
     ])
   func protectedRoles(id: Int, role: String) {
+    // A list row's own description is the one Zoom 7.2.5 refuses and no reader uses (#4935).
+    let label = role == "AXCell" ? "AXTitle" : "AXDescription"
     #expect(CallAXCapturePolicy.zoomProtectedRoles.contains(role))
     let tree = meetingTree()
     #expect(tree.roles[id] == role)
-    tree.failing.insert("\(id).AXDescription")
+    tree.failing.insert("\(id).\(label)")
     let copy = capture(tree)
     #expect(copy.completeness == .unreadable)
     #expect(copy.toleratedFailures == 0)

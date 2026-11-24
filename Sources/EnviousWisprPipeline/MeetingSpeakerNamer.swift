@@ -126,7 +126,8 @@ package enum MeetingSpeakerNamer {
   /// That reason still governs the duration: this minimum is never waived. Separately, a stretch
   /// may now be proven without a shown count when the user's own Zoom share hides every count
   /// (founder 2026-11-03, after Granola's `II()`, which accepts a headcount of two or unknown;
-  /// `CallSpeakerAccumulator.pairEvidence`); it still has to last this long.
+  /// `CallSpeakerAccumulator.pairEvidence`); it still has to last this long. Zoom app stretches
+  /// may add up to it and to the speech (`pieces`, #4935): only read time, never a gap.
   package static let minimumPairStretchMs = 15_000
   /// Minimum eligible speech from the dominant speaker inside one stretch.
   /// Engineering threshold, not a Granola constant.
@@ -246,16 +247,29 @@ package enum MeetingSpeakerNamer {
     // Windows that name one speaker, by speaker and name.
     var windows: [String: [String: [MeetingNamingInterval]]] = [:]
     for segment in segments {
+      var groups: [(remote: String, windows: [MeetingNamingInterval])] = []
+      var pieces: [String: [MeetingNamingInterval]] = [:]
       for stretch in segment.pairs ?? [] {
         guard let remote = remote(in: stretch, segmentSelf: segment.roster.selfNames),
           !shared.contains(remote),
-          stretch.lastMs - stretch.firstMs >= minimumPairStretchMs,
           let window = MeetingNamingInterval(startMs: stretch.firstMs, endMs: stretch.lastMs)
         else { continue }
+        // Decided alone with enough speech, so a second voice never drowns in the sum.
+        if length([window]) >= minimumPairStretchMs,
+          speech.values.reduce(0, { $0 + length(intersect($1, [window])) }) >= minimumPairSpeechMs
+        {
+          groups.append((remote, [window]))
+        } else if neverShowedAThirdPerson(segment, pair: stretch.names) {
+          pieces[remote, default: []].append(window)
+        }
+      }
+      groups += pieces.filter { length($0.value) >= minimumPairStretchMs }
+        .map { ($0.key, $0.value) }
+      for (remote, group) in groups {
         // Count every genuine voice, including vote-named voices, in the denominator.
         var heard: [(speaker: String, ms: Int)] = []
         for (speaker, intervals) in speech {
-          let ms = length(intersect(intervals, [window]))
+          let ms = length(intersect(intervals, normalized(group)))
           if ms > 0 { heard.append((speaker, ms)) }
         }
         // A top-duration tie cannot pass the share (each tied leader holds at most half), so
@@ -264,7 +278,7 @@ package enum MeetingSpeakerNamer {
           top.ms >= minimumPairSpeechMs,
           Double(top.ms) >= minimumPairVoiceShare * Double(heard.reduce(0) { $0 + $1.ms })
         else { continue }
-        windows[top.speaker, default: [:]][remote, default: []].append(window)
+        windows[top.speaker, default: [:]][remote, default: []] += group
       }
     }
 
@@ -295,6 +309,12 @@ package enum MeetingSpeakerNamer {
       if atTop.count == 1 { proposals[atTop[0].speaker] = name }
     }
     return proposals
+  }
+
+  /// Whether short stretches may add up (#4935): a Zoom app segment that showed only the pair.
+  static func neverShowedAThirdPerson(_ segment: CallSpeakerSegment, pair: [String]) -> Bool {
+    segment.surface == .zoomApp && segment.health?.thirdPersonSightings == 0
+      && Set(segment.roster.names + segment.roster.selfNames).isSubset(of: pair)
   }
 
   /// The other person in a two-person stretch, or `nil` when the evidence does not identify
