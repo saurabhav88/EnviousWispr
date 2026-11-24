@@ -9,6 +9,8 @@ import Testing
 @Suite("Whisper debug fault release containment (#4896)", .tags(.productOutcome))
 struct WhisperDebugFaultReleaseContainmentTests {
 
+  private final class BundleAnchor {}
+
   static let forbidden: [String] = [
     "fail_whisper_backend",
     "failWhisperBackendStatus8",
@@ -16,24 +18,16 @@ struct WhisperDebugFaultReleaseContainmentTests {
     "whisperStatus8Remaining",
   ]
 
-  static func releaseAppBundle() -> URL? {
-    let root = URL(fileURLWithPath: #filePath)
-      .deletingLastPathComponent()  // Architecture
-      .deletingLastPathComponent()  // EnviousWisprTests
-      .deletingLastPathComponent()  // Tests
-      .deletingLastPathComponent()  // checkout
-    let candidates = [
-      ".derivedData/Test/Build/Products/Release/EnviousWispr.app",
-      ".derivedData/Build/Products/Release/EnviousWispr.app",
-      "build/Release/EnviousWispr.app",
-    ]
-    for relative in candidates {
-      let url = root.appendingPathComponent(relative)
-      if FileManager.default.fileExists(atPath: url.appendingPathComponent("Contents/MacOS/EnviousWispr").path) {
-        return url
-      }
+  /// Current build's `EnviousWispr.app` next to the running test bundle (honors custom
+  /// `DERIVED_DATA_PATH` and never falls back to stale directories).
+  static func currentBuildAppBundle() -> URL? {
+    if Bundle.main.bundleURL.pathExtension == "app" {
+      return Bundle.main.bundleURL
     }
-    return nil
+    let productsDir = Bundle(for: BundleAnchor.self).bundleURL.deletingLastPathComponent()
+    let candidate = productsDir.appendingPathComponent("EnviousWispr.app")
+    let executable = candidate.appendingPathComponent("Contents/MacOS/EnviousWispr")
+    return FileManager.default.fileExists(atPath: executable.path) ? candidate : nil
   }
 
   private static func scanTargets(in appBundle: URL) -> [URL] {
@@ -54,25 +48,27 @@ struct WhisperDebugFaultReleaseContainmentTests {
     return targets
   }
 
-  @Test(
-    "the DEBUG-only fail_whisper_backend strings are absent from Release main executable and Frameworks",
-    .enabled(if: releaseAppBundle() != nil))
-  func releaseArtifactCarriesNoWhisperFaultSeam() throws {
-    let bundle = try #require(
-      Self.releaseAppBundle(),
-      "gate said a Release .app exists and it vanished before the scan ran")
-    let targets = Self.scanTargets(in: bundle)
-    #expect(!targets.isEmpty)
+  #if !DEBUG
+    @Test(
+      "the DEBUG-only fail_whisper_backend strings are absent from the current Release app executable and Frameworks"
+    )
+    func releaseArtifactCarriesNoWhisperFaultSeam() throws {
+      let bundle = try #require(
+        Self.currentBuildAppBundle(),
+        "Release EnviousWispr.app not found beside the current test bundle")
+      let targets = Self.scanTargets(in: bundle)
+      #expect(!targets.isEmpty)
 
-    for fileURL in targets {
-      let data = try Data(contentsOf: fileURL)
-      for needle in Self.forbidden {
-        #expect(
-          !data.contains(Array(needle.utf8)),
-          "\(fileURL.path) contains \"\(needle)\" — DEBUG fault seam leaked into Release")
+      for fileURL in targets {
+        let data = try Data(contentsOf: fileURL)
+        for needle in Self.forbidden {
+          #expect(
+            !data.contains(Array(needle.utf8)),
+            "\(fileURL.path) contains \"\(needle)\" — DEBUG fault seam leaked into Release")
+        }
       }
     }
-  }
+  #endif
 
   @Test("Release build excludes Whisper status-8 fault controller symbols")
   func releaseCompilesWithoutDebugFaultSymbols() {

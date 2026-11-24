@@ -402,8 +402,13 @@ final class WhisperEngineAdapter: ASREngineAdapter, @unchecked Sendable {
   /// no progress signal, so the kernel runs signal-free warm-up — no wedge
   /// detection, no wall-clock timeout (per the protocol's MUST NOT clause).
   func warmUp(modelReceipt: WarmUpModelReceipt?) async throws {
-    if let task = pendingForcedUnloadTask { await task.value }
+    await pendingForcedUnloadTask?.value
+    if pendingBackendFailureUnload {
+      applyUnloadPolicy(.immediately)
+      await pendingForcedUnloadTask?.value
+    }
     try Task.checkCancellation()
+    guard !pendingBackendFailureUnload else { throw ASRLoadSupersededError() }
     await checkModelIdentity()
     if await backend.isReady {
       cachedReadiness = .ready
@@ -466,7 +471,7 @@ final class WhisperEngineAdapter: ASREngineAdapter, @unchecked Sendable {
   /// reported as `.notReady`.
   func warmUpFromCache() async throws {
     await checkModelIdentity()
-    let ready = await backend.isReady && pendingForcedUnloadTask == nil
+    let ready = await backend.isReady && pendingForcedUnloadTask == nil && !pendingBackendFailureUnload
     cachedReadiness = ready ? .ready : .notReady
     cachedWarmupInferenceMs = ready ? await backend.lastWarmupInferenceMs : nil
   }
@@ -1217,7 +1222,8 @@ final class WhisperEngineAdapter: ASREngineAdapter, @unchecked Sendable {
         // manual "release even when cancelled, never gate it behind
         // !Task.isCancelled" fix (Codex code-diff round 1 P2) is now
         // structurally guaranteed rather than hand-maintained.
-        _ = await engineMutationScope.withClaim(site: "whisperKitIdleUnload") { [weak self] in
+        let claimOutcome = await engineMutationScope.withClaim(site: "whisperKitIdleUnload") {
+          [weak self] in
           // GitHub cloud review, PR #1732 round 10: reaching this closure
           // required an actor hop onto MainActor to acquire the claim — a
           // `beginSession(B)` landing in exactly that window would cancel
@@ -1229,6 +1235,7 @@ final class WhisperEngineAdapter: ASREngineAdapter, @unchecked Sendable {
           guard !Task.isCancelled else { return }
           self?.cachedReadiness = .notReady
         }
+        if case .refused = claimOutcome, wasForced { self?.pendingBackendFailureUnload = true }
       }
       if wasForced {
         pendingForcedUnloadTask = unloadTask
