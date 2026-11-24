@@ -101,6 +101,8 @@ final class OnboardingCoordinator {
     /// Manifest `totalBytes` for a model; nil when unknown (delivery's own checks still run).
     var downloadBytes: (OnboardingModel) -> Int64?
     var freeDiskBytes: () -> Int64?
+    var availableDiskBytes: ((_ neededBytes: Int64, _ minGeneration: UInt64) -> Int64?)? = nil
+    var refreshDiskSpace: () -> UInt64 = { 0 }
     var acquireSleepAssertion: () -> Void
     var releaseSleepAssertion: () -> Void
     var now: () -> Date
@@ -175,6 +177,7 @@ final class OnboardingCoordinator {
   @ObservationIgnored private var readinessTask: Task<Void, Never>?
   /// Test fixtures opt in to retaining tasks for `settle()`. Production never accumulates them.
   @ObservationIgnored private var startedTasks: [Task<Void, Never>]?
+  @ObservationIgnored private var minDiskGeneration: UInt64 = 0
   /// Fires after every published change, so the screens and tests read the new state.
   @ObservationIgnored var onChange: (() -> Void)?
   /// Telemetry's observation hook (F2b); `OnboardingTelemetryObserver.attach` sets it.
@@ -208,7 +211,10 @@ final class OnboardingCoordinator {
   /// completion is finished here without showing Setup or repeating practice.
   @discardableResult
   func begin() -> Bool {
-    if isActive { return true }  // Refocus or reopen: same flow, no restart.
+    if isActive {
+      minDiskGeneration = deps.refreshDiskSpace()
+      return true
+    }  // Refocus or reopen: same flow, no restart.
     switch OnboardingRestore.resolve(
       legacyState: deps.legacyState(), checkpointData: deps.checkpointData(),
       recommend: deps.recommended,
@@ -244,6 +250,7 @@ final class OnboardingCoordinator {
       startedAt = restoredStart ?? deps.now()
       resumedFromCheckpoint = true
     }
+    minDiskGeneration = deps.refreshDiskSpace()
     isActive = true
     onChange?()
     return true
@@ -535,6 +542,7 @@ final class OnboardingCoordinator {
   /// Retry after a block: clears it and starts the current picks again.
   func retryDownloads() {
     guard isActive else { return }
+    minDiskGeneration = deps.refreshDiskSpace()
     let previous = block
     holdBlockObservation = true
     block = nil
@@ -577,6 +585,7 @@ final class OnboardingCoordinator {
     gettingReadyEnteredAt = nil
     startedAt = deps.now()
     resumedFromCheckpoint = false
+    minDiskGeneration = deps.refreshDiskSpace()
     isActive = true
     onObservation?(.reset)
     onChange?()
@@ -782,6 +791,20 @@ final class OnboardingCoordinator {
     if state.step == .gettingReady, before.step != .gettingReady, gettingReadyEnteredAt == nil {
       gettingReadyEnteredAt = deps.uptime()
     }
+    let picksChanged = before.choices != state.choices
+    let resubmittingDownload = deferred.contains {
+      if case .startSpeechDownload = $0 { return true }
+      if case .startPolishDownload = $0 { return true }
+      return false
+    }
+    if picksChanged || resubmittingDownload {
+      if case .insufficientDisk = block {
+        minDiskGeneration = deps.refreshDiskSpace()
+        if !picksChanged { self.block = preflightBlock() }
+      } else if picksChanged {
+        _ = deps.refreshDiskSpace()
+      }
+    }
     updateDownloadBlock(after: before.choices, effects: &deferred)
     if let language = state.choices.languageMode, language != before.choices.languageMode {
       // Before any speech work that depends on it.
@@ -867,7 +890,6 @@ final class OnboardingCoordinator {
   /// The selected pair still to download, × 1.2, against free space (plan M8). Installed
   /// models add nothing; unknown sizes or free space skip the check (delivery checks again).
   private func preflightBlock() -> OnboardingDownloadBlock? {
-    guard let free = deps.freeDiskBytes() else { return nil }
     var needed: Int64 = 0
     // Only a model KNOWN to be missing counts; `unknown` is never missing (P1).
     let missing: (OnboardingDownloadPhase?) -> Bool = { $0 != .installed && $0 != .unknown }
@@ -881,6 +903,9 @@ final class OnboardingCoordinator {
       needed += deps.downloadBytes(.polish(model)) ?? 0
     }
     let withMargin = needed + needed / 5
+    guard withMargin > 0 else { return nil }
+    guard let free = deps.availableDiskBytes?(withMargin, minDiskGeneration) ?? deps.freeDiskBytes()
+    else { return nil }
     return free < withMargin ? .insufficientDisk(neededBytes: withMargin, freeBytes: free) : nil
   }
 

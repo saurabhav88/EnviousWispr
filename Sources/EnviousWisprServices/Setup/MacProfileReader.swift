@@ -37,7 +37,7 @@ public struct MacProfileReader: Sendable {
       physicalMemoryBytes: { ProcessInfo.processInfo.physicalMemory },
       macOSMajor: { ProcessInfo.processInfo.operatingSystemVersion.majorVersion },
       chipName: { chipBrandString() },
-      freeDiskBytes: { startupVolumeFreeBytes() },
+      freeDiskBytes: { VolumeSpaceCache.shared.plainBytes(at: NSHomeDirectory()) },
       systemLanguages: { MacProfile.systemLanguages })
   }
 
@@ -67,9 +67,14 @@ public struct MacProfileReader: Sendable {
     return value.isEmpty ? nil : value
   }
 
-  private static func startupVolumeFreeBytes() -> Int64? {
-    let home = URL(fileURLWithPath: NSHomeDirectory())
-    let values = try? home.resourceValues(forKeys: [.volumeAvailableCapacityForImportantUsageKey])
-    return values?.volumeAvailableCapacityForImportantUsage
+  public static func refreshStartupDiskSpace(in cache: VolumeSpaceCache = .shared) -> UInt64 {
+    cache.requestRefresh(at: NSHomeDirectory())
+  }
+
+  public static func availableStartupDiskBytes(
+    neededBytes: Int64, minGeneration: UInt64 = 0, in cache: VolumeSpaceCache = .shared
+  ) -> Int64? {
+    cache.availableBytes(
+      at: NSHomeDirectory(), neededBytes: neededBytes, minGeneration: minGeneration)
   }
 }

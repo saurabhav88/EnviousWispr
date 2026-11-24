@@ -2,6 +2,7 @@ import EnviousWisprCore
 import EnviousWisprPipeline
 import Foundation
 import Testing
+import os
 
 @testable import EnviousWisprAppKit
 @testable import EnviousWisprServices
@@ -103,9 +104,9 @@ struct OnboardingCoordinatorTests {
     /// Runs when the speech owner receives a request (an owner moving its phase).
     var onRequest: ((ASRBackendType) -> Void)?
 
-    func coordinator() -> OnboardingCoordinator {
+    func coordinator(diskCache: VolumeSpaceCache? = nil) -> OnboardingCoordinator {
       let owners = downloadOwners()
-      return makeCoordinator(owners: owners)
+      return makeCoordinator(owners: owners, diskCache: diskCache)
     }
 
     /// The world's download owners, exactly as `coordinator()` hands them to Setup.
@@ -162,7 +163,9 @@ struct OnboardingCoordinatorTests {
         speechReportsEnd: { self.reportsEnd.contains($0) })
     }
 
-    func makeCoordinator(owners: OnboardingDownloadOwners) -> OnboardingCoordinator {
+    func makeCoordinator(owners: OnboardingDownloadOwners, diskCache: VolumeSpaceCache? = nil)
+      -> OnboardingCoordinator
+    {
       let sources = OnboardingReadinessSources(
         speechAdmitted: { engine in
           if engine == .parakeet, self.upgradeServed {
@@ -207,7 +210,14 @@ struct OnboardingCoordinatorTests {
             return self.advice(language) ?? self.recommended
           },
           downloadsInParallel: { self.parallel },
-          downloadBytes: { self.bytes[$0] }, freeDiskBytes: { self.free },
+          downloadBytes: { self.bytes[$0] }, freeDiskBytes: diskCache == nil ? { self.free } : { nil },
+          availableDiskBytes: diskCache.map { cache in
+            { needed, minGen in
+              cache.availableBytes(at: "/setup-home", neededBytes: needed, minGeneration: minGen)
+            }
+          },
+          refreshDiskSpace: diskCache.map { cache in { cache.requestRefresh(at: "/setup-home") } }
+            ?? { 0 },
           acquireSleepAssertion: { self.log.append("awake") },
           releaseSleepAssertion: { self.log.append("sleepOK") },
           now: { self.clock },
@@ -934,4 +944,254 @@ struct OnboardingCoordinatorTests {
     c.noteSkipAheadKeptWaiting(polish: "eg1.mini", secondsLeft: 300, waitedSeconds: 61)
     #expect(rows == [.offered, .keptWaiting])
   }
+
+  // MARK: - #4893 Cached off-main Setup disk preflight
+
+  #if DEBUG
+    private static func awaitDiskPublish(
+      on cache: VolumeSpaceCache,
+      label: String,
+      timeout: Duration = .seconds(5),
+      trigger: () -> Void
+    ) async {
+      let state = OSAllocatedUnfairLock<(done: Bool, timedOut: Bool, waiter: CheckedContinuation<Void, Never>?)>(
+        initialState: (false, false, nil))
+      cache.installPublishHookForTesting { _, _ in
+        let cont = state.withLock { s -> CheckedContinuation<Void, Never>? in
+          s.done = true
+          let c = s.waiter
+          s.waiter = nil
+          return c
+        }
+        cont?.resume()
+      }
+      defer { cache.installPublishHookForTesting(nil) }
+      trigger()
+      let net = Task {
+        try? await Task.sleep(for: timeout)
+        let cont = state.withLock { s -> CheckedContinuation<Void, Never>? in
+          guard !s.done else { return nil }
+          s.timedOut = true
+          let c = s.waiter
+          s.waiter = nil
+          return c
+        }
+        if let cont {
+          Issue.record("VolumeSpaceCache publish timed out: \(label)")
+          cont.resume()
+        }
+      }
+      await withCheckedContinuation { (c: CheckedContinuation<Void, Never>) in
+        enum Disposition { case done, timedOut, parked }
+        let disposition = state.withLock { s -> Disposition in
+          if s.timedOut { return .timedOut }
+          if s.done { return .done }
+          s.waiter = c
+          return .parked
+        }
+        switch disposition {
+        case .done: c.resume()
+        case .timedOut:
+          Issue.record("VolumeSpaceCache publish timed out: \(label)")
+          c.resume()
+        case .parked: break
+        }
+      }
+      net.cancel()
+    }
+
+    @Test("Setup allows when plain covers need even with stale low importantUsage, or prewarmed importantUsage covers (#4893)")
+    func cachedDiskPreflightEnough() async {
+      let important = OSAllocatedUnfairLock(initialState: Int64(100))
+      let plain = OSAllocatedUnfairLock(initialState: Int64(2_000))
+      let cache = VolumeSpaceCache(
+        readPlain: { _ in plain.withLock { $0 } },
+        readImportant: { _ in important.withLock { $0 } })
+
+      let w1 = World()
+      w1.bytes = [.speech(.whisper): 900]
+      let c1 = w1.coordinator(diskCache: cache)
+      await Self.awaitDiskPublish(on: cache, label: "c1 begin") { c1.begin() }
+      c1.send(.next)
+      c1.send(.next)
+      c1.send(.chooseSpeech(.whisper))
+      await c1.settle()
+      #expect(c1.block == nil && w1.log.contains("request(whisper)"))
+
+      plain.withLock { $0 = 50 }
+      important.withLock { $0 = 5_000 }
+      let w2 = World()
+      w2.bytes = [.speech(.whisper): 900]
+      let c2 = w2.coordinator(diskCache: cache)
+      await Self.awaitDiskPublish(on: cache, label: "c2 begin") { c2.begin() }
+      c2.send(.next)
+      c2.send(.next)
+      c2.send(.chooseSpeech(.whisper))
+      await c2.settle()
+      #expect(c2.block == nil && w2.log.contains("request(whisper)"))
+    }
+
+    @Test("Setup blocks on prewarmed short importantUsage and rechecks inside startSpeech Task (#4893)")
+    func cachedDiskPreflightShort() async {
+      let gate = DispatchSemaphore(value: 0)
+      defer { gate.signal() }
+      let cache = VolumeSpaceCache(
+        readPlain: { _ in 50 },
+        readImportant: { _ in
+          gate.wait()
+          return 100
+        })
+
+      let world = World()
+      world.bytes = [.speech(.whisper): 900]
+      world.upgradeServed = true
+      let installGate = Gate()
+      world.admissionGate = installGate
+      let c = world.coordinator(diskCache: cache)
+      c.begin()
+      c.send(.next)
+      c.send(.next)
+      c.send(.chooseSpeech(.whisper))
+      await installGate.untilEntered()
+
+      // Background refresh publishes while resolveSpeechInstalled awaits; post-await recheck blocks.
+      await Self.awaitDiskPublish(on: cache, label: "short preflight publish") { gate.signal() }
+      installGate.open()
+      await c.settle()
+
+      #expect(c.block == .insufficientDisk(neededBytes: 1080, freeBytes: 100))
+      #expect(!world.log.contains("request(whisper)"))
+    }
+  #endif
+
+  @Test("Setup treats hung importantUsage as unknown (allowed) without blocking main (#4893)")
+  func cachedDiskPreflightUnknownWhenHung() async {
+    let (enteredStream, enteredCont) = AsyncStream.makeStream(of: Void.self)
+    var enteredIter = enteredStream.makeAsyncIterator()
+    let release = DispatchSemaphore(value: 0)
+    defer { release.signal() }
+    let calls = OSAllocatedUnfairLock(initialState: 0)
+    let cache = VolumeSpaceCache(
+      readPlain: { _ in 50 },
+      readImportant: { _ in
+        let n = calls.withLock { s in s += 1; return s }
+        if n == 1 {
+          enteredCont.yield()
+          release.wait()
+        }
+        return 100
+      })
+
+    let world = World()
+    world.bytes = [.speech(.whisper): 900]
+    let c = world.coordinator(diskCache: cache)
+    c.begin()
+    let enterGuard = Task {
+      try? await Task.sleep(for: .seconds(5))
+      enteredCont.finish()
+    }
+    let enteredOk = await enteredIter.next() != nil
+    enterGuard.cancel()
+    #expect(enteredOk, "Setup refresh never entered readImportant")
+    c.send(.next)
+    c.send(.next)
+    c.send(.chooseSpeech(.whisper))
+    await c.settle()
+
+    #expect(c.block == nil && world.log.contains("request(whisper)"))
+    #expect(calls.withLock { $0 } == 1)
+  }
+
+  #if DEBUG
+    @Test("Setup stale-then-freed recovers on fresh plain, pick change, Retry from refusal, and active reopen (#4893)")
+    func cachedDiskPreflightStaleThenFreed() async {
+      // 1. Fresh plain wins even with stale short importantUsage on Retry.
+      let plain1 = OSAllocatedUnfairLock(initialState: Int64(50))
+      let cache1 = VolumeSpaceCache(readPlain: { _ in plain1.withLock { $0 } }, readImportant: { _ in 100 })
+      let w1 = World()
+      w1.bytes = [.speech(.whisper): 900]
+      let c1 = w1.coordinator(diskCache: cache1)
+      await Self.awaitDiskPublish(on: cache1, label: "c1 stale publish") { c1.begin() }
+      c1.send(.next)
+      c1.send(.next)
+      c1.send(.chooseSpeech(.whisper))
+      #expect(c1.block == .insufficientDisk(neededBytes: 1080, freeBytes: 100))
+      plain1.withLock { $0 = 2_000 }
+      c1.retryDownloads()
+      await c1.settle()
+      #expect(c1.block == nil && w1.log.contains("request(whisper)"))
+
+      // 2. Plain stays low, purgeable space freed -> pick change under .insufficientDisk clears stale block.
+      let imp2 = OSAllocatedUnfairLock(initialState: Int64(100))
+      let cache2 = VolumeSpaceCache(readPlain: { _ in 50 }, readImportant: { _ in imp2.withLock { $0 } })
+      let w2 = World()
+      w2.bytes = [.speech(.whisper): 900, .polish(.egOne(.mini)): 200]
+      let c2 = w2.coordinator(diskCache: cache2)
+      await Self.awaitDiskPublish(on: cache2, label: "c2 stale publish") { c2.begin() }
+      c2.send(.next)
+      c2.send(.next)
+      c2.send(.chooseSpeech(.whisper))
+      #expect(c2.block == .insufficientDisk(neededBytes: 1080, freeBytes: 100))
+      imp2.withLock { $0 = 5_000 }
+      c2.send(.next)
+      c2.send(.choosePolish("eg1.mini"))
+      await c2.settle()
+      #expect(c2.block == nil && w2.log.contains("request(whisper)"))
+
+      // 3. Retry after .speechRefused advances minDiskGeneration even if cache previously held stale 100.
+      let plain3 = OSAllocatedUnfairLock(initialState: Int64(50))
+      let imp3 = OSAllocatedUnfairLock(initialState: Int64(100))
+      let cache3 = VolumeSpaceCache(
+        readPlain: { _ in plain3.withLock { $0 } }, readImportant: { _ in imp3.withLock { $0 } })
+      let w3 = World()
+      w3.bytes = [.speech(.whisper): 900]
+      w3.refusedEngines = [.whisper]
+      let c3 = w3.coordinator(diskCache: cache3)
+      await Self.awaitDiskPublish(on: cache3, label: "c3 stale publish") { c3.begin() }
+      plain3.withLock { $0 = 2_000 }
+      c3.send(.next)
+      c3.send(.next)
+      c3.send(.chooseSpeech(.whisper))
+      await c3.settle()
+      #expect(c3.block == .speechRefused(.whisper))
+      plain3.withLock { $0 = 50 }
+      imp3.withLock { $0 = 5_000 }
+      w3.refusedEngines = []
+      c3.retryDownloads()
+      await c3.settle()
+      #expect(c3.block == nil && w3.log.contains("request(whisper)"))
+
+      // 4. Active reopen (begin() when isActive) advances minDiskGeneration past stale low reading.
+      let imp4 = OSAllocatedUnfairLock(initialState: Int64(100))
+      let cache4 = VolumeSpaceCache(readPlain: { _ in 50 }, readImportant: { _ in imp4.withLock { $0 } })
+      let w4 = World()
+      w4.bytes = [.speech(.whisper): 900]
+      let c4 = w4.coordinator(diskCache: cache4)
+      await Self.awaitDiskPublish(on: cache4, label: "c4 stale publish") { c4.begin() }
+      c4.send(.next)
+      c4.send(.next)
+      imp4.withLock { $0 = 5_000 }
+      c4.begin()
+      c4.send(.chooseSpeech(.whisper))
+      await c4.settle()
+      #expect(c4.block == nil && w4.log.contains("request(whisper)"))
+
+      // 5. Resubmitting the same model after freeing space clears stale .insufficientDisk block.
+      let imp5 = OSAllocatedUnfairLock(initialState: Int64(100))
+      let cache5 = VolumeSpaceCache(readPlain: { _ in 50 }, readImportant: { _ in imp5.withLock { $0 } })
+      let w5 = World()
+      w5.bytes = [.speech(.whisper): 900]
+      let c5 = w5.coordinator(diskCache: cache5)
+      await Self.awaitDiskPublish(on: cache5, label: "c5 stale publish") { c5.begin() }
+      c5.send(.next)
+      c5.send(.next)
+      c5.send(.chooseSpeech(.whisper))
+      #expect(c5.block == .insufficientDisk(neededBytes: 1080, freeBytes: 100))
+      imp5.withLock { $0 = 5_000 }
+      c5.send(.back)
+      c5.send(.chooseSpeech(.whisper))
+      await c5.settle()
+      #expect(c5.block == nil && w5.log.contains("request(whisper)"))
+    }
+  #endif
 }
