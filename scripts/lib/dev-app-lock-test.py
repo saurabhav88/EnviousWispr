@@ -310,8 +310,12 @@ def main():
         hs = Session(tmp, held_tool, ["claim --label held"])
         hs.wait_done()
         before = card(lock3)
+        founder_ps = os.path.join(tmp, "founder-ps")
+        with open(founder_ps, "w") as f:
+            f.write('#!/bin/sh\necho "1 Thu Jan  1 00:00:00 1970 S /bin/zsh"\n')
+        os.chmod(founder_ps, 0o755)
         founder_tool = make_copy(tmp, "founder.py",
-                                 base_rewrites(lock3, agents='("no-such-agent",)'))
+                                 base_rewrites(lock3, ps=repr(founder_ps)))
         rc, out = run_tool(founder_tool, "claim")
         check("a founder run is never blocked", rc == 0, out)
         check("a founder run names the holder", "heads-up" in out, out)
