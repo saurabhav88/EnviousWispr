@@ -501,8 +501,9 @@ package struct CallSpeakerAccumulator: Sendable, Equatable {
     }
   }
 
-  /// One vote for a move of Zoom's tile (#4935): the reading 1 s after it, if the tile then holds
-  /// the 2.5 s in which Zoom (0.1 to 1.6 s, 28 live moves) would move to anyone else speaking.
+  /// One vote for a move of Zoom's tile (#4935): the reading 4 s after it, if the tile still holds
+  /// 0.5 s later. Zoom keeps a moved tile about 2.75 s whoever talks (42 live moves), then moves
+  /// within 0.4 s, so nobody else was speaking at the vote, 0.5 s before that reading.
   private mutating func countMove(
     from before: Follow?, to seen: CallSpeakerReading.ZoomFollow?, at ms: Int
   ) {
@@ -514,12 +515,12 @@ package struct CallSpeakerAccumulator: Sendable, Equatable {
     if before.seen.name != seen.name { now.movedMs = ms }
     guard before.seen.name == seen.name, let moved = before.movedMs else { return }
     (now.stampIndex, now.stampMs) = (before.stampIndex, before.stampMs)
-    if now.stampMs == nil, ms - moved >= 1_000 {
+    if now.stampMs == nil, ms - moved >= 4_000 {
       (now.stampIndex, now.stampMs) = (observations.count - 1, ms)
     }
     if let stamp = now.stampMs {
-      guard stamp - moved <= 1_500 else { return }
-      if ms >= stamp - (lag?.milliseconds ?? 500) + 2_500 {
+      guard stamp - moved <= 4_500 else { return }
+      if ms >= stamp + 500 {
         return vote(for: seen.name, at: now.stampIndex)
       }
     }

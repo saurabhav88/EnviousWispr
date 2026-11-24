@@ -362,40 +362,47 @@ struct ZoomLayoutSnapshotTests {
     return talking.map(\.observationMs)
   }
 
-  @Test("one move of the tile is one vote, a second after it, once the tile has held")
+  @Test("one move of the tile is one vote, four seconds after it, once the tile has held")
   func moveVotes() {
-    #expect(votes([(0, "Alex"), (2_000, "Dana")], until: 12_000) == [3_000])
-    #expect(votes([(0, "Alex"), (2_000, "Dana")], until: 5_000) == [3_000], "2.5 s after 2.5 s")
-    #expect(votes([(0, "Alex"), (2_000, "Dana")], until: 4_500) == [])
+    #expect(votes([(0, "Alex"), (2_000, "Dana")], until: 12_000) == [6_000])
+    #expect(votes([(0, "Alex"), (2_000, "Dana")], until: 6_500) == [6_000], "0.5 s after the stamp")
+    #expect(votes([(0, "Alex"), (2_000, "Dana")], until: 6_000) == [])
     #expect(votes([(0, "Alex"), (2_000, "Dana")], until: 12_000, runs: 2) == [], "at the cap")
-    let two = [(0, "Alex"), (2_000, "Dana"), (8_000, "Alex")]
-    #expect(votes(two, until: 14_000, runs: 4) == [3_000], "one vote fills the cap")
+    let two = [(0, "Alex"), (2_000, "Dana"), (10_000, "Alex")]
+    #expect(votes(two, until: 18_000, runs: 4) == [6_000], "one vote fills the cap")
     #expect(votes([(0, "Dana")], until: 12_000) == [], "standing still")
     // Turns with the talker muting in between: one vote each, none for the user's own turn.
-    let turns = [(0, "Alex"), (2_000, "Dana"), (7_000, "-Dana"), (8_000, "Alex"), (14_000, "Host")]
-    #expect(votes(turns + [(20_000, "Dana")], until: 26_000) == [3_000, 9_000, 21_000])
-    // Moved back inside the response window: a brief reply, then the other person again.
-    #expect(votes([(0, "Alex"), (2_000, "Dana"), (3_500, "Alex")], until: 5_000) == [])
-    // Polls a little early make the stamp late; the window is measured from the stamp.
-    let late = [0, 500, 2_000, 2_490, 2_990, 3_490, 4_000, 4_500, 5_000, 5_500]
-    let reply = [(0, "Alex"), (600, "Dana"), (4_600, "Alex")]
-    #expect(votes(reply, until: 0, times: [0, 490] + late.dropFirst(2).map { $0 - 900 }) == [])
+    let turns = [(0, "Alex"), (2_000, "Dana"), (8_000, "-Dana"), (9_000, "Alex"), (16_000, "Host")]
+    #expect(votes(turns + [(22_000, "Dana")], until: 30_000) == [6_000, 13_000, 26_000])
+    // Another person's turn inside Zoom's hold, then the first again: the tile never moved, and no
+    // vote lies inside the hold. A tile that leaves and returns is a new move of its own.
+    #expect(votes([(0, "Alex"), (2_000, "Dana"), (4_750, "Alex")], until: 8_500) == [])
+    let back = [(0, "Alex"), (2_000, "Dana"), (4_000, "Alex"), (4_500, "Dana")]
+    #expect(votes(back, until: 8_500) == [], "left and returned inside 4 s")
+    #expect(votes(back, until: 9_500) == [8_500])
+    // A short reply before a long turn, with the tile moving as Zoom did in the call with a wrong
+    // vote: the long speaker's reading is far inside the long turn.
+    let reply = [(0, "Dana"), (19_600, "Alex"), (22_300, "Eve"), (32_600, "Alex")]
+    #expect(votes(reply, until: 31_000, bring: [0: "Eve"]) == [26_500])
   }
 
   @Test("a muted, new, marked or interrupted move is no vote")
   func movesThatDoNotVote() {
-    #expect(votes([(0, "Alex"), (2_000, "-Dana"), (2_500, "Dana")], until: 9_000) == [])
-    let muted = [(0, "Alex"), (2_000, "Dana"), (3_500, "-Dana"), (4_000, "Dana")]
-    #expect(votes(muted, until: 9_000) == [])
-    #expect(votes([(0, "Alex"), (2_000, "Dana")], until: 9_000, bring: [2_000: "Eve"]) == [])
-    #expect(votes([(0, "Alex"), (2_000, "Dana")], until: 9_000, bring: [4_000: "Eve"]) == [])
-    #expect(votes([(0, "+Alex"), (500, "Alex"), (2_000, "Dana")], until: 9_000) == [0])
-    #expect(votes([(0, "Alex"), (2_000, "Dana")], until: 9_000, breakAt: 3_500) == [])
-    let slow = [1_500, 2_000, 2_500, 3_490, 4_400] + Array(stride(from: 4_900, to: 9_000, by: 500))
-    #expect(votes([(0, "Alex"), (2_500, "Dana")], until: 0, times: slow) == [], "stamp too late")
-    // A capture gap of more than a second, at the move, before the stamp or in the hold.
-    for gap in [1_500, 2_500, 4_000] {
-      let times = stride(from: 0, through: 9_000, by: 500).filter { !(gap..<gap + 1_000 ~= $0) }
+    #expect(votes([(0, "Alex"), (2_000, "-Dana"), (2_500, "Dana")], until: 12_000) == [])
+    let muted = [(0, "Alex"), (2_000, "Dana"), (5_500, "-Dana"), (6_000, "Dana")]
+    #expect(votes(muted, until: 12_000) == [])
+    #expect(votes([(0, "Alex"), (2_000, "Dana")], until: 12_000, bring: [2_000: "Eve"]) == [])
+    #expect(votes([(0, "Alex"), (2_000, "Dana")], until: 12_000, bring: [6_000: "Eve"]) == [])
+    #expect(votes([(0, "+Alex"), (500, "Alex"), (2_000, "Dana")], until: 12_000) == [0])
+    #expect(votes([(0, "Alex"), (2_000, "Dana")], until: 12_000, breakAt: 5_500) == [])
+    // The first reading 4 s after the move comes 4.6 s after it, through gaps that are allowed.
+    let slow = [1_500, 2_000, 3_000, 4_000, 5_000, 5_900, 6_600, 7_100, 7_600, 8_100]
+    #expect(votes([(0, "Alex"), (2_000, "Dana")], until: 0, times: slow) == [], "stamp too late")
+    let ontime = slow.map { $0 == 6_600 ? 6_500 : $0 }
+    #expect(votes([(0, "Alex"), (2_000, "Dana")], until: 0, times: ontime) == [6_500])
+    // A capture gap of more than a second, at the move, before the stamp or between it and the check.
+    for gap in [1_500, 4_000, 6_000] {
+      let times = stride(from: 0, through: 12_000, by: 500).filter { !(gap..<gap + 1_000 ~= $0) }
       #expect(votes([(0, "Alex"), (2_000, "Dana")], until: 0, times: times) == [], "\(gap)")
     }
   }
