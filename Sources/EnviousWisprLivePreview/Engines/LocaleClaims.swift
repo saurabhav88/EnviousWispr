@@ -49,6 +49,8 @@ package enum ClaimResult: String, Sendable {
   case reserved
   /// Refused as already-claimed while the table showed nothing; a second attempt succeeded.
   case recovered
+  /// Refused twice with nothing shown (#4937): the caller works without a claim, never as ours.
+  case unclaimed
 }
 
 /// Owns Apple's locale claims: who holds one, which are OURS, and which may be taken away.
@@ -244,11 +246,14 @@ package actor LocaleClaims {
         // close-the-window-never-handle-it we do not open it.
         recoveryTried = true
         await log("claim reserve_refused_absent tag=\(tag) retrying_once")
-      case .refuse:
-        await log(
-          "claim refused tag=\(tag) reserved=\((await inventory.reserved()).map { $0.identifier(.bcp47) })"
-        )
-        throw LivePreviewError.localeUnavailable
+      case .unclaimed:
+        // #4937: on macOS 26 the table reads empty and refuses everything for the rest of this
+        // process once Apple's speech helper has exited. Recognition still works (measured on
+        // 26.6.2, installed en-US), so refusing cost users every preview until a restart. Drop any
+        // older ownership: a table we cannot see gives no right to release or evict this tag.
+        owned.remove(tag)
+        await log("claim refused_absent_twice tag=\(tag)")
+        return .unclaimed
       }
     }
   }

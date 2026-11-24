@@ -307,8 +307,10 @@ struct TelemetryEmitterRegistryTests {
   /// 12 per automatic run and 11 per replay, an estimated 20k rows per month at worst (497
   /// installs and 1,319 active installs over 30 days on 2026-11-23). Two closed vocabularies
   /// (`action`, `stop`), no content. Reader: founder first-release tour funnel.
+  /// #4937: `livePreviewOutcome` gained `error:` and `unclaimed:` (existing `live_preview.outcome`
+  /// site, same cadence): closed `error_domain`, Int `error_code`, Bool; registry row unchanged.
   static let sitesFingerprint =
-    "4a7e4f39157a1e88477367d2a9549b77adb06b61c66e289c81f4c6d7f87cfd9f"
+    "5468a6d01e65caa91f644b967489bc4a26ccafb1c31ae13b5d9a679db679b69e"
   /// #4721: `api_key.validation_completed` graded (per_launch, keep) when the launch key check
   /// added `source=launch`; ceiling 106 -> 105.
   static let ungradedFingerprint =

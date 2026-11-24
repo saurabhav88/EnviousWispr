@@ -45,20 +45,20 @@ package enum AppleLocaleClaim {
     case proceed
     /// Refused once while the follow-up authority still reports no claim. Retry `reserve` once, and
     /// never release: another process can claim the tag between our read and our release, and no
-    /// lock of ours spans that gap. Measured context: a LIVE holder's claim is always visible, so an
-    /// invisible refusing claim belongs to no running process — but "nobody holds it now" is not
+    /// lock of ours spans that gap. Measured context: a LIVE holder's claim is visible (unless our
+    /// own speech helper exited, #4937), so an invisible one belongs to no running process — but "nobody holds it now" is not
     /// "nobody will hold it a microsecond from now", which is why the retry acts and the release
     /// does not.
     case recover
-    /// Refused again after recovery. This one is real; let the caller tell the user.
-    case refuse
+    /// Refused again after recovery: carry on with no claim (#4937, `LocaleClaims.performClaim`).
+    case unclaimed
   }
 
   package static func outcome(
     reserveReturned: Bool, heldAfter: Bool, recoveryAlreadyTried: Bool
   ) -> ReserveOutcome {
     if reserveReturned || heldAfter { return .proceed }
-    return recoveryAlreadyTried ? .refuse : .recover
+    return recoveryAlreadyTried ? .unclaimed : .recover
   }
 
   /// Which claim may be evicted to make room, or nil to leave the table alone.

@@ -304,12 +304,13 @@ actor ApplePreviewRecognizer: LivePreviewEngine {
     // between being taken and being used. Released in `ApplePreviewSessionHandle.end()`, which the
     // coordinator always calls.
     let inputs = ApplePreviewHints.inputs(for: vocabulary)
-    try await LocaleClaims.shared.claim(locale, purpose: "session")
+    let claim = try await LocaleClaims.shared.claim(locale, purpose: "session")
     do {
       let session = try await startSession(
         lookups: inputs.lookups, contextualPhrases: inputs.phrases, onText: onText)
       return ApplePreviewSessionHandle(
-        recognizer: self, session: session, claimedLocale: locale)
+        recognizer: self, session: session, claimedLocale: locale,
+        ranUnclaimed: claim == .unclaimed)
     } catch {
       await LocaleClaims.shared.finish(locale)
       throw error
@@ -788,6 +789,7 @@ struct ApplePreviewSessionHandle: LivePreviewEngineSession {
   /// tag round-tripped through `Locale(identifier:)` straight to macOS is exactly the spelling
   /// mismatch that made every release in this app a no-op (#2145).
   let claimedLocale: Locale
+  let ranUnclaimed: Bool
 
   func feed(_ samples: [Float]) async {
     await recognizer.feed(samples, session: session)
@@ -1108,8 +1110,4 @@ enum LivePreviewError: Error {
   case notPrepared
   /// The session was replaced by a newer one before it finished opening.
   case superseded
-  /// The locale could not be claimed for this process, so nothing can transcribe
-  /// in it. Distinct from "Apple does not support this language" — this one is
-  /// worth retrying on the next recording.
-  case localeUnavailable
 }
