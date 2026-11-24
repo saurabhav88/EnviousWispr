@@ -1,4 +1,5 @@
 @preconcurrency import AVFoundation
+import Combine
 import EnviousWisprAppKitTestSupport
 import EnviousWisprCore
 import EnviousWisprLLM
@@ -57,6 +58,7 @@ struct WhisperBackendErrorReloadTests {
     let vad: FakeVADSignalSource
     let paste: FakePasteTarget
     let kernelDriver: KernelDictationDriver
+    let stateWaiter: PipelineStateWaiter
   }
 
   private func makeKernelHarness(
@@ -113,6 +115,7 @@ struct WhisperBackendErrorReloadTests {
       engineMutationScope: .alwaysAllowedForTesting
     )
     kernelDriver.start()
+    let stateWaiter = PipelineStateWaiter(kernelDriver)
     return KernelHarness(
       adapter: adapter,
       backend: backend,
@@ -121,15 +124,17 @@ struct WhisperBackendErrorReloadTests {
       capture: capture,
       vad: vad,
       paste: paste,
-      kernelDriver: kernelDriver
+      kernelDriver: kernelDriver,
+      stateWaiter: stateWaiter
     )
   }
 
   private func runKernelTake(
     _ h: KernelHarness,
     policy: ModelUnloadPolicy = .never,
-    timeoutSeconds: Double = 0
+    timeoutSeconds: Double = 5.0
   ) async {
+    let deadline = Duration.seconds(timeoutSeconds)
     h.kernel.start(
       config: .testDefault(
         autoPasteToActiveApp: true,
@@ -139,83 +144,99 @@ struct WhisperBackendErrorReloadTests {
       ),
       microphoneStartDeadline: nil
     )
-    await drainUntil(
-      { h.kernel.state == .live || h.kernel.recordingOutcome != nil },
-      what: "kernel to reach .live (state=\(h.kernel.state))"
-    )
+    await h.stateWaiter.wait(for: { state in
+      switch state {
+      case .recording, .complete, .error, .advisory:
+        return true
+      case .idle:
+        return h.kernel.recordingOutcome != nil
+      case .loadingModel, .transcribing, .polishing:
+        return false
+      }
+    }, timeout: deadline)
     guard h.kernel.state == .live else {
       Issue.record(
         "kernel exited before .live: state=\(h.kernel.state) outcome=\(String(describing: h.kernel.recordingOutcome))"
       )
       return
     }
+    let epochBeforeAudio = h.kernel.workEpoch
     h.capture.deliverBuffer(frameCount: 16_000, amplitude: 0.25)
     h.vad.evidence = .voiced
     h.vad.segments = [SpeechSegment(startSample: 0, endSample: 16_000)]
-    await drainReadyWork(h.kernel)
+    await awaitObserved(
+      { h.kernel.workEpoch != epochBeforeAudio },
+      what: "kernel to consume delivered audio buffer",
+      timeoutSeconds: timeoutSeconds
+    )
     h.kernel.requestStop()
-    if timeoutSeconds > 0 {
-      await waitForKernelConclusion(h.kernel, timeoutSeconds: timeoutSeconds)
-    } else {
-      await drainUntilConcluded(h.kernel)
-    }
-  }
-
-  private func drainUntil(_ signal: @MainActor () -> Bool, what: String) async {
-    for _ in 0..<5_000 {
-      if signal() { return }
-      await Task.yield()
-    }
-    Issue.record("timed out waiting for \(what)")
-  }
-
-  private func waitForKernelConclusion(_ kernel: RecordingSessionKernel, timeoutSeconds: Double) async {
-    let deadline = ContinuousClock.now + .seconds(timeoutSeconds)
-    while kernel.recordingOutcome == nil, ContinuousClock.now < deadline {
-      try? await Task.sleep(for: .milliseconds(50))
-    }
-    guard kernel.recordingOutcome != nil else {
-      Issue.record("kernel timed out after \(timeoutSeconds)s waiting for recordingOutcome (state=\(kernel.state))")
-      return
-    }
-    await drainReadyWork(kernel)
-  }
-
-  private func drainReadyWork(_ kernel: RecordingSessionKernel) async {
-    var last = kernel.workEpoch
-    var stable = 0
-    for _ in 0..<2_000 {
-      await Task.yield()
-      let now = kernel.workEpoch
-      if now == last {
-        stable += 1
-      } else {
-        stable = 0
-        last = now
+    await h.stateWaiter.wait(for: { state in
+      switch state {
+      case .complete, .error, .advisory, .idle:
+        return h.kernel.recordingOutcome != nil
+      case .loadingModel, .recording, .transcribing, .polishing:
+        return false
       }
-      if stable >= 64, !kernel.hasUnconsumedRecordingExit { return }
-    }
-    Issue.record("kernel did not settle in drainReadyWork (state=\(kernel.state))")
+    }, timeout: deadline)
+    await awaitObserved(
+      {
+        h.kernel.recordingOutcome != nil && h.kernel.state == .idle
+          && !h.kernel.hasUnconsumedRecordingExit
+      },
+      what: "kernel conclusion",
+      timeoutSeconds: timeoutSeconds
+    )
   }
 
-  private func drainUntilConcluded(_ kernel: RecordingSessionKernel) async {
-    for _ in 0..<5_000 {
-      if kernel.recordingOutcome != nil { break }
-      await Task.yield()
+  @discardableResult
+  private func awaitObserved(
+    _ predicate: @escaping @MainActor () -> Bool,
+    what: String,
+    timeoutSeconds: Double = 5.0
+  ) async -> Bool {
+    let deadline = ContinuousClock.now + .seconds(timeoutSeconds)
+    while true {
+      let changeSignal = SignalWaiter()
+      let satisfied = withObservationTracking {
+        predicate()
+      } onChange: {
+        Task { @MainActor in changeSignal.signal() }
+      }
+      if satisfied { return true }
+      let remaining = deadline - ContinuousClock.now
+      if remaining <= .zero {
+        Issue.record("timed out waiting for \(what)")
+        return false
+      }
+      let remainingSeconds =
+        Double(remaining.components.seconds)
+        + Double(remaining.components.attoseconds) / 1e18
+      if await !changeSignal.wait(what: what, timeoutSeconds: max(0.001, remainingSeconds)) {
+        return predicate()
+      }
     }
-    guard kernel.recordingOutcome != nil else {
-      Issue.record("kernel did not conclude in drainUntilConcluded (state=\(kernel.state))")
-      return
-    }
-    await drainReadyWork(kernel)
   }
 
-  private func awaitUntil(_ predicate: @MainActor () -> Bool) async -> Bool {
-    for _ in 0..<5_000 {
-      if predicate() { return true }
-      await Task.yield()
+  @discardableResult
+  private func awaitOverlayNotice(
+    _ overlay: OverlayDirector,
+    kind: NoticeModel.Kind,
+    what: String,
+    timeoutSeconds: Double = 2.0
+  ) async -> Bool {
+    if case .notice(let notice)? = overlay.renderModel.state.presentation?.content,
+      notice.kind == kind
+    {
+      return true
     }
-    return predicate()
+    let signal = SignalWaiter()
+    let cancellable = overlay.renderModel.$state.sink { state in
+      if case .notice(let notice)? = state.presentation?.content, notice.kind == kind {
+        signal.signal()
+      }
+    }
+    defer { cancellable.cancel() }
+    return await signal.wait(what: what, timeoutSeconds: timeoutSeconds)
   }
 
   private func runDirectAdapterTake(
@@ -267,7 +288,8 @@ struct WhisperBackendErrorReloadTests {
     #expect(h.driver.transcribeHandles == [1, 1, 1])  // warmup + finalize + Phase-2 retry
     #expect(h.adapter.readiness == .notReady)
     #expect(h.adapter.shouldForceUnloadAfterFailure == false)
-    #expect(await awaitUntil { h.driver.unloadedHandles == [1] })
+    #expect(await h.driver.waitForUnloadCompleted(1))
+    #expect(h.driver.unloadedHandles == [1])
     #expect(await h.backend.isReady == false)
     #expect(h.paste.pastedTexts.isEmpty)
 
@@ -304,14 +326,20 @@ struct WhisperBackendErrorReloadTests {
     h.adapter.cancelPendingUnload()
     h.adapter.applyUnloadPolicy(.never)
 
-    let warmTask = Task { try await h.adapter.warmUp(modelReceipt: nil) }
-    for _ in 0..<20 { await Task.yield() }
+    let warmEntered = SignalWaiter()
+    let warmTask = Task {
+      warmEntered.signal()
+      try await h.adapter.warmUp(modelReceipt: nil)
+    }
+    await warmEntered.wait(what: "warmTask to enter warmUp")
+    _ = await h.backend.isReady
     #expect(h.driver.loadedHandles == [1], "warmUp must wait for in-flight unload before loading handle 2")
     #expect(h.adapter.readiness == .notReady)
 
     h.driver.releaseUnload(1)
     try await warmTask.value
 
+    #expect(await h.driver.waitForUnloadCompleted(1))
     #expect(h.driver.unloadedHandles == [1])
     #expect(h.driver.loadedHandles == [1, 2])
     #expect(h.adapter.readiness == .ready)
@@ -384,7 +412,11 @@ struct WhisperBackendErrorReloadTests {
     let (overlay, _) = OverlayTestDouble.headlessDirectorWithHost()
     var retryChecked = false
     var warmOutcome: EngineWarmupOutcome?
+    let warmEntered = SignalWaiter()
+    let warmSettled = SignalWaiter()
+    h.kernelDriver.onEngineWarmSettled = { warmSettled.signal() }
     let warmOutcomeTask = Task { @MainActor in
+      warmEntered.signal()
       warmOutcome = await h.kernelDriver.ensureEngineWarm(reason: .coldPress)
     }
     ColdPressGuard.handle(
@@ -397,20 +429,25 @@ struct WhisperBackendErrorReloadTests {
         return false
       }
     )
-    for _ in 0..<20 { await Task.yield() }
+    await warmEntered.wait(what: "warmOutcomeTask to enter ensureEngineWarm")
+    #expect(
+      await awaitOverlayNotice(
+        overlay, kind: .warmingUp, what: "ColdPressGuard .warmingUp pill while unload held")
+    )
+    _ = await h.backend.isReady
     #expect(h.driver.loadedHandles == [1])
 
     h.driver.releaseUnload(1)
+    await warmSettled.wait(what: "onEngineWarmSettled")
     await warmOutcomeTask.value
     if case .ready = warmOutcome {} else {
       Issue.record("expected .ready warmup outcome, got \(String(describing: warmOutcome))")
     }
-    #expect(await awaitUntil {
-      if case .notice(let notice)? = overlay.renderModel.state.presentation?.content {
-        return notice.kind == .ready
-      }
-      return false
-    })
+    #expect(
+      await awaitOverlayNotice(
+        overlay, kind: .ready, what: "ColdPressGuard .ready pill after reload")
+    )
+    #expect(await h.driver.waitForUnloadCompleted(1))
     #expect(h.kernelDriver.engineReadiness == .ready)
     #expect(retryChecked == false)
     #expect(h.driver.unloadedHandles == [1])
@@ -437,7 +474,8 @@ struct WhisperBackendErrorReloadTests {
     await runKernelTake(h, policy: .never, timeoutSeconds: 2.0)
 
     #expect(h.adapter.readiness == .notReady)
-    #expect(await awaitUntil { h.driver.unloadedHandles == [1] })
+    #expect(await h.driver.waitForUnloadCompleted(1))
+    #expect(h.driver.unloadedHandles == [1])
     #expect(await h.backend.isReady == false)
   }
 
@@ -545,12 +583,14 @@ struct WhisperBackendErrorReloadTests {
     h.driver.poisonHandle(2, status: 8)
 
     await runKernelTake(h, policy: .never)
-    #expect(await awaitUntil { h.driver.unloadedHandles == [1] })
+    #expect(await h.driver.waitForUnloadCompleted(1))
+    #expect(h.driver.unloadedHandles == [1])
     #expect(h.driver.loadedHandles == [1], "must not auto-reload after unload")
 
     h.kernel.reset()
     await runKernelTake(h, policy: .never)
-    #expect(await awaitUntil { h.driver.unloadedHandles == [1, 2] })
+    #expect(await h.driver.waitForUnloadCompleted(2))
+    #expect(h.driver.unloadedHandles == [1, 2])
     #expect(h.driver.loadedHandles == [1, 2], "only two explicit takes loaded; no reload loop")
     #expect(h.adapter.readiness == .notReady)
   }
@@ -576,11 +616,12 @@ struct WhisperBackendErrorReloadTests {
   func refusedClaimKeepsForcedTeardownPendingUntilAuthorizedWarmUp() async throws {
     let driver = FakeReloadWhisperDriver()
     let claimGate = ClaimGate()
+    let refused = SignalWaiter()
     let scope = EngineMutationScope.live(
       tryBegin: { claimGate.allowed },
       end: { false },
       wake: {},
-      onRefused: { _ in }
+      onRefused: { _ in Task { @MainActor in refused.signal() } }
     )
     let (backend, adapter) = makeAdapter(driver, scope: scope)
     try await adapter.warmUp(modelReceipt: nil)
@@ -594,7 +635,7 @@ struct WhisperBackendErrorReloadTests {
     claimGate.allowed = false
     adapter.applyUnloadPolicy(.immediately)
     #expect(adapter.readiness == .notReady)
-    for _ in 0..<20 { await Task.yield() }
+    await refused.wait(what: "forced unload claim refusal")
     #expect(driver.unloadedHandles.isEmpty)
     #expect(await backend.isReady == true)
 
@@ -620,11 +661,12 @@ struct WhisperBackendErrorReloadTests {
   func timerRearmPreservesPendingForcedTeardown() async throws {
     let driver = FakeReloadWhisperDriver()
     let claimGate = ClaimGate()
+    let refused = SignalWaiter()
     let scope = EngineMutationScope.live(
       tryBegin: { claimGate.allowed },
       end: { false },
       wake: {},
-      onRefused: { _ in }
+      onRefused: { _ in Task { @MainActor in refused.signal() } }
     )
     let (backend, adapter) = makeAdapter(driver, scope: scope)
     try await adapter.warmUp(modelReceipt: nil)
@@ -636,7 +678,7 @@ struct WhisperBackendErrorReloadTests {
     // Forced unload refused by active recovery -> latch restored.
     claimGate.allowed = false
     adapter.applyUnloadPolicy(.immediately)
-    for _ in 0..<20 { await Task.yield() }
+    await refused.wait(what: "forced unload claim refusal")
     #expect(adapter.shouldForceUnloadAfterFailure == true)
 
     // File import / Meeting timer rearm passes settings policy (.never or .fiveMinutes): must NOT drop latch or arm timer.
@@ -657,6 +699,48 @@ struct WhisperBackendErrorReloadTests {
     let rescueTake = try await runDirectAdapterTake(adapter)
     guard case .transcript(let res) = rescueTake else {
       Issue.record("expected transcript after reload, got \(rescueTake)")
+      return
+    }
+    #expect(res.text == "ok from handle 2")
+  }
+
+  @Test("rearming unload policy (.never, timed, or .immediately) while forced unload is in flight arms no extra unload task")
+  func rearmWhileForcedUnloadInFlightArmsNoModelUnloadTask() async throws {
+    let driver = FakeReloadWhisperDriver()
+    let (backend, adapter) = makeAdapter(driver)
+    try await adapter.warmUp(modelReceipt: nil)
+
+    driver.poisonHandle(1, status: 8)
+    driver.holdUnload(1)
+    defer { driver.releaseUnload(1) }
+
+    _ = try await runDirectAdapterTake(adapter)
+    _ = await adapter.retryDecode(inputSamples: Self.speech)
+
+    adapter.applyUnloadPolicy(.immediately)
+    await driver.waitForUnloadStarted(1)
+    #expect(adapter.shouldForceUnloadAfterFailure == false)
+
+    // While pendingForcedUnloadTask != nil, sibling re-arms must NOT queue a racing modelUnloadTask.
+    adapter.applyUnloadPolicy(.never)
+    #expect(adapter.modelUnloadTaskForUnitTests == nil)
+    adapter.applyUnloadPolicy(.fiveMinutes)
+    #expect(adapter.modelUnloadTaskForUnitTests == nil)
+    adapter.applyUnloadPolicy(.immediately)
+    #expect(adapter.modelUnloadTaskForUnitTests == nil)
+    #expect(adapter.readiness == .notReady)
+
+    driver.releaseUnload(1)
+    #expect(await driver.waitForUnloadCompleted(1))
+    #expect(await backend.isReady == false)
+
+    try await adapter.warmUp(modelReceipt: nil)
+    #expect(driver.unloadedHandles == [1])
+    #expect(driver.loadedHandles == [1, 2])
+    #expect(adapter.readiness == .ready)
+    let outcome = try await runDirectAdapterTake(adapter)
+    guard case .transcript(let res) = outcome else {
+      Issue.record("expected transcript after reload, got \(outcome)")
       return
     }
     #expect(res.text == "ok from handle 2")
@@ -687,6 +771,13 @@ struct WhisperBackendErrorReloadTests {
     }
     await driver.waitForTranscribeStarted(1, occurrence: 2)
     driver.releaseTranscribe(1)
+    let controlDeadline = Task {
+      try? await Task.sleep(for: .seconds(2))
+      guard !Task.isCancelled else { return }
+      Issue.record("control transcribeForMeeting timed out")
+      driver.releaseTranscribe(1)
+    }
+    defer { controlDeadline.cancel() }
     let controlResult = try await controlTask.value
     #expect(controlResult.text == "ok from handle 1")
 
@@ -698,13 +789,20 @@ struct WhisperBackendErrorReloadTests {
     await driver.waitForTranscribeStarted(1, occurrence: 3)
 
     await backend.unload()
+    let abortDeadline = Task {
+      try? await Task.sleep(for: .seconds(2))
+      guard !Task.isCancelled else { return }
+      Issue.record("transcribeForMeeting did not abort after unload")
+      driver.releaseTranscribe(1)
+    }
+    defer { abortDeadline.cancel() }
     await #expect(throws: MeetingEngineYield.self) {
       _ = try await meetingTask.value
     }
     #expect(driver.unloadedHandles == [1])
   }
 
-  // MARK: - 11. #if DEBUG fail_whisper_backend command faults 2 decodes -> unload -> reload -> recover
+  // MARK: - 12. #if DEBUG fail_whisper_backend command faults 2 decodes -> unload -> reload -> recover
 
   #if DEBUG
     @Test("fail_whisper_backend via DebugFaultEndpoint injects status 8 for take 1 + retry, clears, and take 2 succeeds")
@@ -726,7 +824,8 @@ struct WhisperBackendErrorReloadTests {
       // Both primary finalize and Phase-2 retry fault status 8 without calling native transcribe again.
       await runKernelTake(h, policy: .never)
       #expect(h.driver.transcribeHandles == [1], "warmup only; faulted decodes short-circuit")
-      #expect(await awaitUntil { h.driver.unloadedHandles == [1] })
+      #expect(await h.driver.waitForUnloadCompleted(1))
+      #expect(h.driver.unloadedHandles == [1])
       #expect(h.adapter.readiness == .notReady)
 
       // Next press reloads handle 2 and decodes cleanly.
@@ -761,6 +860,7 @@ private final class FakeReloadWhisperDriver: WhisperExecutorDriving, @unchecked 
   private var heldUnloads: Set<Int> = []
   private var startedUnloads: Set<Int> = []
   private var unloadStartedWaiters: [(id: UUID, handle: Int, cont: CheckedContinuation<Bool, Never>)] = []
+  private var unloadCompletedWaiters: [(id: UUID, handle: Int, cont: CheckedContinuation<Bool, Never>)] = []
   private var unloadReleaseWaiters: [Int: CheckedContinuation<Void, Never>] = [:]
 
   private var heldTranscribeHandles: [Int: Bool] = [:]
@@ -838,6 +938,32 @@ private final class FakeReloadWhisperDriver: WhisperExecutorDriving, @unchecked 
             return nil
           }
           return self?.unloadStartedWaiters.remove(at: idx).cont
+        }
+      }
+    )
+  }
+
+  @discardableResult
+  func waitForUnloadCompleted(
+    _ handle: Int, timeoutSeconds: Double = 2.0, recordFailure: Bool = true
+  ) async -> Bool {
+    await awaitBoundedSignal(
+      label: "FakeReloadWhisperDriver.unloadCompleted(\(handle))",
+      timeoutSeconds: timeoutSeconds,
+      recordFailure: recordFailure,
+      register: { id, cont in
+        lock.withLock {
+          if _unloadedHandles.contains(handle) { return true }
+          unloadCompletedWaiters.append((id: id, handle: handle, cont: cont))
+          return false
+        }
+      },
+      removeTimedOut: { [weak self] id in
+        self?.lock.withLock { () -> CheckedContinuation<Bool, Never>? in
+          guard let idx = self?.unloadCompletedWaiters.firstIndex(where: { $0.id == id }) else {
+            return nil
+          }
+          return self?.unloadCompletedWaiters.remove(at: idx).cont
         }
       }
     )
@@ -923,18 +1049,17 @@ private final class FakeReloadWhisperDriver: WhisperExecutorDriving, @unchecked 
     onProgress: (@Sendable (Int64, Int64) -> Void)?
   ) async throws -> TranscribeCppRunResult {
     onInferenceEntered?()
-    let (occ, shouldHold, abortOnRelease, startedWaiters) = lock.withLock {
-      () -> (Int, Bool, Bool, [CheckedContinuation<Bool, Never>]) in
+    let (shouldHold, startedWaiters) = lock.withLock {
+      () -> (Bool, [CheckedContinuation<Bool, Never>]) in
       _transcribeHandles.append(handle)
       let occ = (transcribeOccurrenceCount[handle] ?? 0) + 1
       transcribeOccurrenceCount[handle] = occ
       let waiters = transcribeStartedWaiters.filter { $0.handle == handle && occ >= $0.occ }
       transcribeStartedWaiters.removeAll { $0.handle == handle && occ >= $0.occ }
       let abort = heldTranscribeHandles[handle]
-      return (occ, abort != nil, abort ?? false, waiters.map(\.cont))
+      return (abort != nil, waiters.map(\.cont))
     }
     startedWaiters.forEach { $0.resume(returning: true) }
-    _ = occ
     if shouldHold {
       await withCheckedContinuation { cont in
         let stillHeld = lock.withLock { () -> Bool in
@@ -994,7 +1119,13 @@ private final class FakeReloadWhisperDriver: WhisperExecutorDriving, @unchecked 
         if !stillHeld { cont.resume() }
       }
     }
-    lock.withLock { _unloadedHandles.append(handle) }
+    let completedConts = lock.withLock { () -> [CheckedContinuation<Bool, Never>] in
+      _unloadedHandles.append(handle)
+      let matching = unloadCompletedWaiters.filter { $0.handle == handle }
+      unloadCompletedWaiters.removeAll { $0.handle == handle }
+      return matching.map(\.cont)
+    }
+    completedConts.forEach { $0.resume(returning: true) }
   }
 
   func awaitSettled(openedOn lane: TranscribeCppExecutor.Lane) async -> Int { 0 }
@@ -1008,6 +1139,41 @@ private final class LockedCounter: @unchecked Sendable {
       value += 1
       return value
     }
+  }
+}
+
+@MainActor
+private final class SignalWaiter {
+  private var signaled = false
+  private var waiter: CheckedContinuation<Bool, Never>?
+
+  func signal() {
+    guard !signaled else { return }
+    signaled = true
+    let cont = waiter
+    waiter = nil
+    cont?.resume(returning: true)
+  }
+
+  @discardableResult
+  func wait(what: String, timeoutSeconds: Double = 2.0) async -> Bool {
+    if signaled { return true }
+    let timeoutTask = Task { @MainActor [weak self] in
+      try? await Task.sleep(for: .seconds(timeoutSeconds))
+      guard !Task.isCancelled, let self, let cont = self.waiter else { return }
+      self.waiter = nil
+      Issue.record("timed out waiting for \(what)")
+      cont.resume(returning: false)
+    }
+    let arrived = await withCheckedContinuation { cont in
+      if signaled {
+        cont.resume(returning: true)
+      } else {
+        waiter = cont
+      }
+    }
+    timeoutTask.cancel()
+    return arrived
   }
 }
 

@@ -1187,7 +1187,7 @@ final class WhisperEngineAdapter: ASREngineAdapter, @unchecked Sendable {
     if wasForced {
       cachedReadiness = .notReady
       guard pendingForcedUnloadTask == nil else { return }
-    } else if pendingBackendFailureUnload {
+    } else if pendingBackendFailureUnload || pendingForcedUnloadTask != nil {
       return
     }
     pendingBackendFailureUnload = false

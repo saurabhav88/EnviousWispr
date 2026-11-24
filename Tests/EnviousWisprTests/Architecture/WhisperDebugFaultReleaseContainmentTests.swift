@@ -48,7 +48,16 @@ struct WhisperDebugFaultReleaseContainmentTests {
     return targets
   }
 
-  #if !DEBUG
+  #if DEBUG
+    @Test("DEBUG build exercises the status-8 fault controller")
+    @MainActor
+    func debugBuildProvidesStatus8FaultController() {
+      let controller = BatchDecodeFaultController(whisperBackend: nil, asrManager: nil)
+      controller.failWhisperBackendStatus8(count: 1)
+      #expect(controller.shouldForceWhisperStatus8() == true)
+      #expect(controller.shouldForceWhisperStatus8() == false)
+    }
+  #else
     @Test(
       "the DEBUG-only fail_whisper_backend strings are absent from the current Release app executable and Frameworks"
     )
@@ -69,16 +78,6 @@ struct WhisperDebugFaultReleaseContainmentTests {
       }
     }
   #endif
-
-  @Test("Release build excludes Whisper status-8 fault controller symbols")
-  func releaseCompilesWithoutDebugFaultSymbols() {
-    #if DEBUG
-      _ = BatchDecodeFaultController.self
-    #else
-      // Compilation under Release confirms Sources/ ships zero non-#if DEBUG callers.
-      #expect(Bool(true))
-    #endif
-  }
 }
 
 extension Data {
