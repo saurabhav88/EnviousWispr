@@ -15,6 +15,10 @@ private struct BulkDeleteRequest: Identifiable {
 /// when frequency is 0 to avoid the "0 times" looks-like-a-bug case). Bible §10.2.
 /// Bulk select/delete (#1703): a "Mass edit" mode lets several of the user's own
 /// words be checked off and removed in one action.
+private enum CustomTermsToolbarMetrics {
+  static let searchMinWidth: CGFloat = 200
+}
+
 struct CustomTermsSection<Actions: View>: View {
   /// The page-level actions (Add word / Import / Export), rendered on the same
   /// line as the word count instead of in a band above this card. Passed in
@@ -46,6 +50,7 @@ struct CustomTermsSection<Actions: View>: View {
   @State private var editingWord: CustomWord?
   @State private var isSelecting = false
   @State private var pendingBulkDelete: BulkDeleteRequest?
+  @FocusState private var searchFocused: Bool
 
   private var allWords: [CustomWord] {
     customWordsCoordinator.customWords
@@ -120,54 +125,11 @@ struct CustomTermsSection<Actions: View>: View {
 
       // Search + selection controls
       BrandedRow(showDivider: true) {
-        HStack(spacing: 10) {
-          // A real input box. The field used to be bare text on the card, the
-          // same colour as everything around it, so nothing said where to type
-          // (founder, 2026-08-29: "making it unclear where people need to
-          // type"). `stInputBg` is the shared control fill (founder, 2026-10-03)
-          // and the accent hairline is the approved mockup's `.search-row` border.
-          HStack(spacing: 6) {
-            Image(systemName: "magnifyingglass")
-              .foregroundStyle(.stTextSecondary)
-              .font(.system(size: 12))
-              .accessibilityHidden(true)
-            TextField(String(localized: SettingsItemCopy.Dictionary.searchWords), text: Bindable(list).query)
-              .textFieldStyle(.plain)
-              // #4545: a placeholder alone gives the field no accessible name.
-              .accessibilityLabel(Text(SettingsItemCopy.Dictionary.searchWords))
-              .settingsArrivalFocusControl(textEntry: true)
-              .settingsMapRegistration(.yourWordsSearch)
-            if !list.query.isEmpty {
-              Button {
-                list.query = ""
-              } label: {
-                Image(systemName: "xmark.circle.fill")
-                  .foregroundStyle(.stTextSecondary)
-                  .font(.system(size: 12))
-                  .settingsHoverQuiet(inset: 3)
-              }
-              .buttonStyle(.plain)
-              .accessibilityLabel(Text(SettingsItemCopy.Dictionary.clearSearch))
-              .settingsArrivalFocusControl()
-              .settingsMapRegistration(.yourWordsClearSearch)
-            }
+        SearchActionToolbarLayout(minSearchWidth: CustomTermsToolbarMetrics.searchMinWidth) {
+          searchField
+          WrappingHStack(spacing: 8) {
+            selectionControls
           }
-          .padding(.horizontal, 10)
-          .padding(.vertical, 7)
-          .background(
-            RoundedRectangle(cornerRadius: 9, style: .continuous)
-              .fill(Color.stInputBg)
-          )
-          .overlay(
-            RoundedRectangle(cornerRadius: 9, style: .continuous)
-              .strokeBorder(Color.stAccent.opacity(0.28), lineWidth: 1)
-              // This decoration sits over the text field, and a Shape in an
-              // overlay can take the click. A decoration is never in the hit
-              // path.
-              .allowsHitTesting(false)
-          )
-
-          selectionControls
         }
       }
 
@@ -455,6 +417,43 @@ struct CustomTermsSection<Actions: View>: View {
   /// if there is anything selectable in the current filtered set), or
   /// "Select All"/"Deselect All" + "Cancel" while selecting.
   @ViewBuilder
+  private var searchField: some View {
+    HStack(spacing: 6) {
+      Image(systemName: "magnifyingglass")
+        .foregroundStyle(.stTextSecondary)
+        .font(.system(size: 12))
+        .accessibilityHidden(true)
+      TextField(
+        String(localized: SettingsItemCopy.Dictionary.searchWords),
+        text: Bindable(list).query)
+        .textFieldStyle(.plain)
+        // #4545: a placeholder alone gives the field no accessible name.
+        .accessibilityLabel(Text(SettingsItemCopy.Dictionary.searchWords))
+        .focused($searchFocused)
+        .settingsArrivalFocusControl(textEntry: true) {
+          searchFocused = true
+        }
+        .settingsMapRegistration(.yourWordsSearch)
+      if !list.query.isEmpty {
+        Button {
+          list.query = ""
+        } label: {
+          Image(systemName: "xmark.circle.fill")
+            .foregroundStyle(.stTextSecondary)
+            .font(.system(size: 12))
+            .settingsHoverQuiet(inset: 3)
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(Text(SettingsItemCopy.Dictionary.clearSearch))
+        .settingsArrivalFocusControl()
+        .settingsMapRegistration(.yourWordsClearSearch)
+      }
+    }
+    .frame(maxWidth: .infinity, alignment: .leading)
+    .settingsFieldChrome(focused: $searchFocused)
+  }
+
+  @ViewBuilder
   private var selectionControls: some View {
     if isSelecting {
       let allSelected =
@@ -466,6 +465,7 @@ struct CustomTermsSection<Actions: View>: View {
         EnviousButtonLabel(allSelected ? "Deselect All" : "Select All")
       }
       .settingsButton(isEnabled: !filteredSelectableIDs.isEmpty)
+      .fixedSize()
 
       Button {
         list.selectedIDs = []
@@ -474,6 +474,7 @@ struct CustomTermsSection<Actions: View>: View {
         EnviousButtonLabel("Cancel")
       }
       .settingsButton(isEnabled: true)
+      .fixedSize()
     } else if !filteredSelectableIDs.isEmpty {
       // "Mass edit", not "Select": founder, 2026-10-04, people did not read
       // "Select" as the way to act on many words at once.
@@ -483,6 +484,7 @@ struct CustomTermsSection<Actions: View>: View {
         EnviousButtonLabel(SettingsItemCopy.Dictionary.massEdit)
       }
       .settingsButton(isEnabled: true)
+      .fixedSize()
       .settingsMapRegistration(.yourWordsMassEdit)
     }
   }
