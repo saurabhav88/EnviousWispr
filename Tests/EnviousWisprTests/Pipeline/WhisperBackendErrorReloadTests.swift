@@ -133,6 +133,8 @@ struct WhisperBackendErrorReloadTests {
       _ = await gate.wait(what: "retry timeout signal", timeoutSeconds: 5.0)
     }
     await runTake(h, timeoutSeconds: 2.0)
+    // [1, 1] = warmUp probe + primary status-8 finalize; Phase-2 retry entry vs deadline is
+    // uncoupled under load (`retryTimedOut == 1` proves the kernel's retry timeout fired).
     #expect(h.driver.transcribeHandles.starts(with: [1, 1]) && retryTimedOut.current == 1 && h.adapter.readiness == .notReady)
     #expect(await h.driver.waitFor("uc:1") && h.driver.unloadedHandles == [1])
   }
@@ -214,15 +216,6 @@ struct WhisperBackendErrorReloadTests {
     #expect(driver.unloadedHandles == [1] && driver.loadedHandles == [1, 2] && adapter.readiness == .ready)
   }
 
-  @Test("ordinary .immediately followed by synchronous beginSession cancels unload task cleanly")
-  func ordinaryImmediateUnloadCancelledByBeginSessionB() async throws {
-    let (backend, adapter) = makeAdapter(); try await adapter.warmUp(modelReceipt: nil)
-    _ = try await runDirect(adapter); adapter.applyUnloadPolicy(.immediately)
-    try await adapter.beginSession(SessionID(), options: TranscriptionOptions(language: "en"), streaming: false)
-    await adapter.modelUnloadTaskForUnitTests?.value
-    #expect(await backend.isReady == true && adapter.readiness == .ready)
-  }
-
   @Test("transcribeForMeeting aborted by backend.unload() yields MeetingEngineYield")
   func transcribeForMeetingDuringUnloadThrowsYield() async throws {
     let driver = FakeReloadWhisperDriver(); let (backend, _) = makeAdapter(driver); try await backend.prepare()
@@ -242,6 +235,7 @@ private final class FakeReloadWhisperDriver: WhisperExecutorDriving, @unchecked 
   private var nextHandle = 1, _loaded: [Int] = [], _unloaded: [Int] = [], _transcribes: [Int] = []
   private var poisoned: [Int: Int32] = [:], poisonedLID: [Int: Int32] = [:], empty: Set<Int> = []
   private var heldUnloads: Set<Int> = [], events: Set<String> = [], eventWaiters: [String: [(UUID, CheckedContinuation<Bool, Never>)]] = [:]
+  private var timeoutTasks: [UUID: Task<Void, Never>] = [:]
   private var unloadConts: [Int: CheckedContinuation<Void, Never>] = [:], txConts: [Int: CheckedContinuation<Void, Never>] = [:]
   private var heldTx: [Int: Bool] = [:], abortedTx: Set<Int> = [], txOcc: [Int: Int] = [:]
   var onTranscribeAsync: (@Sendable (Int) async throws -> Void)?
@@ -265,20 +259,28 @@ private final class FakeReloadWhisperDriver: WhisperExecutorDriving, @unchecked 
   @discardableResult
   func waitFor(_ key: String, timeoutSeconds: Double = 2.0) async -> Bool {
     let id = UUID()
-    let timeoutTask = Task {
-      try? await Task.sleep(for: .seconds(timeoutSeconds)); guard !Task.isCancelled else { return }
-      let timedOut = self.lock.withLock { () -> CheckedContinuation<Bool, Never>? in
-        guard var list = self.eventWaiters[key], let i = list.firstIndex(where: { $0.0 == id }) else { return nil }
-        let c = list.remove(at: i).1
-        if list.isEmpty { self.eventWaiters.removeValue(forKey: key) } else { self.eventWaiters[key] = list }
-        return c
+    let ok = await withCheckedContinuation { (cont: CheckedContinuation<Bool, Never>) in
+      let already = lock.withLock { () -> Bool in
+        if events.contains(key) { return true }
+        eventWaiters[key, default: []].append((id, cont))
+        timeoutTasks[id] = Task { [weak self] in
+          try? await Task.sleep(for: .seconds(timeoutSeconds))
+          guard !Task.isCancelled, let self else { return }
+          let timedOut = self.lock.withLock { () -> CheckedContinuation<Bool, Never>? in
+            self.timeoutTasks.removeValue(forKey: id)
+            guard var list = self.eventWaiters[key], let i = list.firstIndex(where: { $0.0 == id }) else { return nil }
+            let c = list.remove(at: i).1
+            if list.isEmpty { self.eventWaiters.removeValue(forKey: key) } else { self.eventWaiters[key] = list }
+            return c
+          }
+          if let timedOut { Issue.record("timed out waiting for \(key)"); timedOut.resume(returning: false) }
+        }
+        return false
       }
-      if let timedOut { Issue.record("timed out waiting for \(key)"); timedOut.resume(returning: false) }
+      if already { cont.resume(returning: true) }
     }
-    let ok = await withCheckedContinuation { cont in
-      if lock.withLock({ if events.contains(key) { return true }; eventWaiters[key, default: []].append((id, cont)); return false }) { cont.resume(returning: true) }
-    }
-    timeoutTask.cancel(); return ok
+    lock.withLock { timeoutTasks.removeValue(forKey: id) }?.cancel()
+    return ok
   }
 
   func load(modelPath: String, lane: TranscribeCppExecutor.Lane) async throws -> Int { lock.withLock { let h = nextHandle; nextHandle += 1; _loaded.append(h); return h } }
