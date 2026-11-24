@@ -329,7 +329,7 @@ struct ZoomLayoutSnapshotTests {
   /// `+` for a real mark. The times of the observations that became talking ones.
   private func votes(
     _ script: [(Int, String)], until end: Int, times: [Int]? = nil, bring: [Int: String] = [:],
-    breakAt: Int? = nil, runs: Int = 1_000, lag: Int = 500, count: Int? = nil
+    breakAt: Int? = nil, runs: Int = 1_000, lag: Int = 500, count: String? = nil
   ) -> [Int] {
     var limits = CallEvidenceLimits.current
     limits.runs = runs
@@ -351,13 +351,14 @@ struct ZoomLayoutSnapshotTests {
           + (count.map {
             [
               CallAXNode(
-                role: "AXButton", description: "Open participants panel, closed, \($0) participants")
+                role: "AXButton", description: "Open participants panel, closed, \($0)")
             ]
           } ?? []))
       let windows = [CallAXWindow(title: "Zoom Meeting", root: root)]
       var reading = ZoomAppSpeakerReader.read(windows: windows, accountTitles: ["Host(h@e.com)"])
       reading.follow = ZoomAppSpeakerReader.follow(
-        windows: windows, share: .none, reading: reading)
+        windows: windows, share: ZoomAppSpeakerReader.shareContext(windows: windows),
+        reading: reading)
       all.add(
         reading, context: CallCaptureContext(completeness: .complete, scope: .resolved),
         observationMs: ms)
@@ -377,8 +378,10 @@ struct ZoomLayoutSnapshotTests {
     let two = [(0, "Alex"), (2_000, "Dana"), (10_000, "Alex")]
     #expect(votes(two, until: 18_000, runs: 4) == [6_000], "one vote fills the cap")
     #expect(votes([(0, "Dana")], until: 12_000) == [], "standing still")
-    #expect(votes([(0, "Alex"), (2_000, "Dana")], until: 12_000, count: 3) == [6_000])
-    #expect(votes([(0, "Alex"), (2_000, "Dana")], until: 12_000, count: 4) == [], "one hidden")
+    #expect(votes([(0, "Alex"), (2_000, "Dana")], until: 12_000, count: "3 participants") == [6_000])
+    #expect(votes([(0, "Alex"), (2_000, "Dana")], until: 12_000, count: "4 participants") == [])
+    let waiting = "4 participants, 1 person is waiting"
+    #expect(votes([(0, "Alex"), (2_000, "Dana")], until: 12_000, count: waiting) == [])
     #expect(votes([(0, "Alex"), (2_000, "Dana")], until: 12_000, lag: -500) == [5_000])
     #expect(votes([(0, "Alex"), (2_000, "Dana")], until: 6_000, lag: -500) == [])
     // Turns with the talker muting in between: one vote each, none for the user's own turn.

@@ -617,7 +617,7 @@ package enum ZoomAppSpeakerReader {
         guestShare: share.guestShare),
       name: last.name,
       mayVote: last.isUnmuted && me != nil && me != last.name
-        && (meeting == nil || [nil, people.count].contains(reading.participantCount))
+        && (meeting == nil || !share.countShown || reading.participantCount == people.count)
         && !reading.sharedNames.union(share.listedTwice).contains(last.name))
   }
 
