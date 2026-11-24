@@ -59,6 +59,9 @@ package final class BatchDecodeFaultController {
   package func clearBatchDecodeFault(backend: ASRBackendType) {
     setPendingFailure(.none, backend: backend)
     clearAttemptSampleCounts(backend: backend)
+    #if DEBUG
+      if backend == .whisper { whisperStatus8Remaining = 0 }
+    #endif
   }
 
   private func setPendingFailure(_ value: PendingFailure, backend: ASRBackendType) {
@@ -136,6 +139,14 @@ package final class BatchDecodeFaultController {
   // file, so nothing outside DEBUG ever needs these.
 
   #if DEBUG
+    private var whisperStatus8Remaining = 0
+    package func failWhisperBackendStatus8(count: Int = 2) { whisperStatus8Remaining = count }
+    package func shouldForceWhisperStatus8() -> Bool {
+      guard whisperStatus8Remaining > 0 else { return false }
+      whisperStatus8Remaining -= 1
+      return true
+    }
+
     /// Arms a one-shot hold on the NEXT real decode call the given backend
     /// issues (`TranscribeCppWhisperBackend.armBatchDecodeHold` in-process;
     /// `ParakeetBackend.armBatchDecodeHold` across XPC via `ASRManagerProxy`).

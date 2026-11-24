@@ -4484,12 +4484,13 @@ final class RecordingSessionKernel {
     // `adapterDidBeginSession` reset still runs so a future session re-applies
     // cleanup correctly.
     let shouldApplyUnload = transcriptReadyForDelivery
+    let forceFailureUnload = !shouldApplyUnload && adapter.shouldForceUnloadAfterFailure
     if adapterDidBeginSession {
       adapterDidBeginSession = false
     }
     transcriptReadyForDelivery = false
-    if shouldApplyUnload {
-      let policy = sessionConfig?.modelUnloadPolicy ?? .never
+    if shouldApplyUnload || forceFailureUnload {
+      let policy = forceFailureUnload ? .immediately : (sessionConfig?.modelUnloadPolicy ?? .never)
       log("model unload applied policy=\(policy) terminal=\(terminal) sid=\(sid.raw)")  // PR-4.5 §8
       adapter.applyUnloadPolicy(policy)
     } else {

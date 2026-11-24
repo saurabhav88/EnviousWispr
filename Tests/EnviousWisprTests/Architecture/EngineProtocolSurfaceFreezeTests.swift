@@ -665,6 +665,7 @@ import Testing
           condition: nil,
           signature:
             "func observeSpeechSegments(_ segments: [SpeechSegment], rawCaptureSamples: [Float])"),
+        MemberSignature(condition: nil, signature: "var shouldForceUnloadAfterFailure: Bool { get }"),
         // Extension defaults (two separate `extension ASREngineAdapter { ... }` blocks).
         MemberSignature(
           condition: nil, signature: "public var lastObservedPhase: String { \"warmup\" }"),
@@ -679,6 +680,8 @@ import Testing
         ),
         MemberSignature(
           condition: nil, signature: "public var warmupStallGuardEligible: Bool { false }"),
+        MemberSignature(
+          condition: nil, signature: "public var shouldForceUnloadAfterFailure: Bool { false }"),
       ]),
     "ASREngineLanguageIdentifying": Surface(
       name: "ASREngineLanguageIdentifying",
