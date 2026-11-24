@@ -2,6 +2,7 @@
 """Harness contracts: native lock routing against an isolated real lock owner."""
 import importlib.util
 import hashlib
+import io
 import json
 from pathlib import Path
 import tempfile
@@ -239,6 +240,28 @@ class HookTests(unittest.TestCase):
                         'bash -n +n /tmp/validate-pr.sh'):
             with self.subTest(command=command), self.assertRaises(ValueError):
                 self.hook.handle(self.event(command=command))
+
+    def test_owner_digests_come_from_the_command_line_old_new_and_never_a_third(self):
+        # The live definition passes `--owner-sha256 <old> --owner-sha256 <new>`; main() must parse both.
+        good = hashlib.sha256(self.hook.LOCK_TOOL.read_bytes()).hexdigest()
+        other = '0' * 64
+        third = '1' * 64
+        for argv, accepted in [([good], True), ([other, good], True), ([good, other], True),
+                               ([other, third], False)]:
+            spec = importlib.util.spec_from_file_location('argv_hook', self.hook.__file__)
+            hook = importlib.util.module_from_spec(spec)
+            spec.loader.exec_module(hook)
+            hook.OWNER_SHA256 = None
+            words = [part for digest in argv for part in ('--owner-sha256', digest)]
+            with patch('sys.argv', ['hook'] + words), \
+                    patch('sys.stdin', io.StringIO(json.dumps({'hook_event_name': 'SessionStart'}))), \
+                    patch('sys.stdout', io.StringIO()):
+                hook.main()
+            if accepted:
+                self.assertIsNotNone(hook.get_lock())
+            else:
+                with self.assertRaises(ValueError):
+                    hook.get_lock()
 
     def test_changed_owner_blocks_actions_but_not_repair_or_readers(self):
         self.hook.LOCK_TOOL.write_text(self.hook.LOCK_TOOL.read_text() + '\n# changed dependency\n')

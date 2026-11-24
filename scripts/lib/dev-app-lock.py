@@ -24,6 +24,11 @@ one host. Hook session_id and shell CODEX_THREAD_ID identify the current chat.
 CODEX_SESSION_ID is a legacy fallback, and can differ in nested CLI sessions.
 The holder stays the holder after the
 command that claimed exits, for as long as that session process lives.
+An Antigravity chat (#4913) is the nearest ancestor `.../Antigravity.app/
+Contents/Resources/bin/language_server` plus ANTIGRAVITY_CONVERSATION_ID; one
+server serves many chats, so the id names the chat, and a missing or invalid id,
+or any other `language_serv*` ancestor, is exit 2. Its cards are version 5 and
+it has no waiting release (no Claude hook runs there).
 
 WHEN A HOLD ENDS. Four ways: the holder runs `release`, the holder session
 process exits, the holder has been WAITING ON THE FOUNDER for WAIT_SECONDS
@@ -74,7 +79,10 @@ import time
 import uuid
 
 # 2: UTC starts; 3: no idle timer; 4: Codex chat identity. Old readers refuse v4.
+# 5: Antigravity chat identity (#4913), written only for that kind; Claude and
+# Codex cards stay 4. A reader without this change refuses 5 (exit 2).
 VERSION = 4
+ANTIGRAVITY_VERSION = 5
 LOCK_DIR = os.path.expanduser("~/Library/Caches/EnviousWispr/dev-app-lock")
 AGENT_NAMES = ("claude", "codex")
 REMIND_SECONDS = 30 * 60
@@ -88,6 +96,15 @@ WAIT_SECONDS = 10 * 60
 # 64 holds ran p90 18.5 min. Twice the longest real job.
 JOB_WAIT_SECONDS = 20 * 60
 PS = "/bin/ps"
+
+# #4913: Antigravity agent commands run as shell -> language_server -> app
+# (measured 2026-11-23). One server serves many chats, so the chat is named by
+# ANTIGRAVITY_CONVERSATION_ID, as a Codex chat is named by its thread id.
+ANTIGRAVITY_SERVER = re.compile(
+    "(?:/Applications|" + re.escape(os.path.expanduser("~/Applications")) + ")"
+    + re.escape("/Antigravity.app/Contents/Resources/bin/language_server"))
+_CONVERSATION_ID = re.compile(
+    r"[0-9A-Fa-f]{8}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{12}")
 
 EXIT_OK = 0
 EXIT_UNDECIDED = 2
@@ -106,7 +123,9 @@ def process_info(pid):
     """
     try:
         out = subprocess.run(
-            [PS, "-o", "ppid=,lstart=,stat=,comm=", "-p", str(pid)],
+            # -ww: never cut the name to the terminal width. A cut
+            # `language_serve` would read as "no agent" (a founder run).
+            [PS, "-ww", "-o", "ppid=,lstart=,stat=,comm=", "-p", str(pid)],
             # `lstart` prints LOCAL time: two sessions with different TZ
             # values would see different start strings for one live process
             # and call it dead. Pin both locale and zone.
@@ -142,6 +161,14 @@ def codex_chat_id(native_session_id=None):
     return value
 
 
+def antigravity_chat_id():
+    """Conversation identity of an Antigravity chat; missing or invalid refuses."""
+    value = os.environ.get("ANTIGRAVITY_CONVERSATION_ID")
+    if not isinstance(value, str) or _CONVERSATION_ID.fullmatch(value) is None:
+        raise Undecided("Antigravity chat identity is missing or invalid")
+    return value
+
+
 def find_session(native_session_id=None):
     """Nearest agent process, plus native chat identity for Codex."""
     pid = os.getppid()
@@ -160,6 +187,8 @@ def find_session(native_session_id=None):
             me = {"kind": kind, "pid": pid, "started": started}
             if kind == "codex":
                 me["session_id"] = codex_chat_id(native_session_id)
+            elif kind == "antigravity":
+                me["session_id"] = antigravity_chat_id()
             return me
         pid, seen = ppid, seen + 1
     if pid != 1:
@@ -195,7 +224,7 @@ CLAUDE_DESKTOP_PATH = re.compile(
 
 
 def agent_kind(comm):
-    """`claude`/`codex` when this ps `comm` is a session process, else None.
+    """`claude`/`codex`/`antigravity` when this ps `comm` is a session process, else None.
 
     Measured on this Mac 2026-10-03: interactive sessions show `claude`;
     daemon-hosted sessions rewrite their title to `claude bg-spare` (the
@@ -212,6 +241,13 @@ def agent_kind(comm):
     """
     if "claude" in AGENT_NAMES and CLAUDE_DESKTOP_PATH.fullmatch(comm):
         return "claude"
+    if ANTIGRAVITY_SERVER.fullmatch(comm):
+        return "antigravity"
+    if comm.rsplit("/", 1)[-1].startswith("language_serv"):
+        # A cut name or a server outside the two install roots cannot be told
+        # from the real one, and answering "no agent" would make an agent run a
+        # founder run that takes no lock.
+        raise Undecided(f"unrecognised language server process {comm!r}")
     words = comm.split()
     name = os.path.basename(words[0]) if words else ""
     if name in AGENT_NAMES:
@@ -359,7 +395,13 @@ def clear_all_waits():
 
 
 def wait_expired(card, now):
-    """Why this hold counts as released, or None while it still holds."""
+    """Why this hold counts as released, or None while it still holds.
+
+    An Antigravity hold has no waiting release (#4913): no Claude hook runs
+    there to record a wait, and there is no idle timer (founder 2026-10-03).
+    """
+    if card.get("kind") == "antigravity":
+        return None
     w = waited(card, now)
     if w is not None and w >= WAIT_SECONDS:
         return "holder waited on the founder with no reply"
@@ -372,7 +414,9 @@ def wait_expired(card, now):
 def describe(card, now):
     held = int(now - card["claimed_at"])
     chat = f", chat {card['session_id']}" if card.get("session_id") else ""
-    w, j = waited(card, now), job_waited(card, now)
+    # An Antigravity hold has no waiting release, so a stray wait file is not shown.
+    w, j = ((None, None) if card["kind"] == "antigravity"
+            else (waited(card, now), job_waited(card, now)))
     wait = ""
     if w is not None:
         wait = (f", waiting on the founder {int(w) // 60}m{int(w) % 60:02d}s "
@@ -412,11 +456,11 @@ class Store:
         except (OSError, ValueError) as e:
             raise Undecided(f"unreadable holder card {self.card_path}: {e}. "
                             "Delete that file by hand if no session holds the app.")
-        if not isinstance(card, dict) or card.get("version") not in (3, VERSION):
+        if not isinstance(card, dict) or card.get("version") not in (3, VERSION, ANTIGRAVITY_VERSION):
             raise Undecided(
                 f"holder card {self.card_path} has version "
                 f"{card.get('version') if isinstance(card, dict) else '?'}, "
-                f"this checkout knows {VERSION}. Leaving it alone.")
+                f"this checkout knows {VERSION} and {ANTIGRAVITY_VERSION}. Leaving it alone.")
         # A right-version card with a wrong-typed field could make a live
         # holder look dead (started=None never matches) or feed garbage to ps.
         if type(card.get("pid")) is not int or card["pid"] <= 1:
@@ -428,6 +472,15 @@ class Store:
             value = card.get(key)
             if type(value) not in (int, float) or not math.isfinite(value):
                 raise Undecided(f"holder card {self.card_path} has an invalid {key}")
+        # Version and kind go together: only 5 carries Antigravity, and 5 carries nothing else.
+        if card["kind"] not in (
+                ("antigravity",) if card["version"] == ANTIGRAVITY_VERSION else AGENT_NAMES):
+            raise Undecided(f"holder card {self.card_path} has version "
+                            f"{card['version']} with kind {card['kind']}")
+        if card["kind"] == "antigravity" and (
+                not isinstance(card.get("session_id"), str)
+                or _CONVERSATION_ID.fullmatch(card["session_id"]) is None):
+            raise Undecided(f"holder card {self.card_path} has an invalid Antigravity chat ID")
         if card["version"] == VERSION and card["kind"] == "codex":
             value = card.get("session_id")
             if not isinstance(value, str) or re.fullmatch(r"[A-Za-z0-9_-]{1,128}", value) is None:
@@ -464,7 +517,7 @@ class NonBlockingStore(Store):
 def same_session(card, me):
     return me is not None and card["kind"] == me["kind"] \
         and card["pid"] == me["pid"] and card["started"] == me["started"] \
-        and (me["kind"] != "codex" or
+        and (me["kind"] not in ("codex", "antigravity") or
              bool(card.get("session_id")) and card["session_id"] == me.get("session_id"))
 
 
@@ -508,7 +561,8 @@ def cmd_claim(args):
         card = store.read()
         if card is not None and same_session(card, me):
             # Claiming again is app work, so it is not waiting any more.
-            end_wait(card)
+            if card["kind"] != "antigravity":
+                end_wait(card)
             print(f"dev-app-lock: already yours ({describe(card, now)})")
             return EXIT_OK
         note = "claimed"
@@ -532,8 +586,10 @@ def cmd_claim(args):
             "reminded_at": now,
             "nonce": uuid.uuid4().hex,
         }
-        if me["kind"] == "codex":
+        if me["kind"] in ("codex", "antigravity"):
             new["session_id"] = me["session_id"]
+        if me["kind"] == "antigravity":
+            new["version"] = ANTIGRAVITY_VERSION
         clear_all_waits()
         store.write(new)
     print(f"dev-app-lock: {note} by {describe(new, now)}")
@@ -586,7 +642,7 @@ def cmd_remind(args):
         if now - peek.get("reminded_at", now) < REMIND_SECONDS:
             return EXIT_OK
         me = find_session(args.native_session_id)
-        if me is None or not same_session(peek, me):
+        if me is None or me["kind"] == "antigravity" or not same_session(peek, me):
             return EXIT_OK
         with NonBlockingStore() as store:
             now = time.time()
@@ -712,7 +768,7 @@ def cmd_wait_mark(args):
         if decision is None:
             return EXIT_OK
         me = find_session(args.native_session_id)
-        if me is None:
+        if me is None or me["kind"] == "antigravity":
             return EXIT_OK
         with open(os.path.join(LOCK_DIR, "holder.json")) as f:
             card = json.load(f)
