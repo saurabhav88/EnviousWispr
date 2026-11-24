@@ -186,17 +186,22 @@ struct WhisperBackendErrorReloadTests {
     _ = try await runDirect(h.adapter); _ = await h.adapter.retryDecode(inputSamples: Self.speech)
     h.adapter.applyUnloadPolicy(.immediately); await h.driver.waitFor("us:1")
     let (overlay, _) = OverlayTestDouble.headlessDirectorWithHost()
-    var retryChecked = false, outcome: EngineWarmupOutcome?
-    let settled = SignalWaiter(); h.driverUI.onEngineWarmSettled = { settled.signal() }
-    let warmTask = Task { @MainActor in outcome = await h.driverUI.ensureEngineWarm(reason: .coldPress) }
+    var retryChecked = false
+    let settled = SignalWaiter(), warmingSignal = SignalWaiter(), readySignal = SignalWaiter()
+    h.driverUI.onEngineWarmSettled = { settled.signal() }
+    let c1 = overlay.renderModel.$state.sink {
+      guard case .notice(let n)? = $0.presentation?.content else { return }
+      if n.kind == .warmingUp { warmingSignal.signal() }
+      if n.kind == .ready { readySignal.signal() }
+    }
+    defer { c1.cancel() }
     ColdPressGuard.handle(overlay: overlay, active: h.driverUI, backendTag: "whisper", readiness: h.driverUI.engineReadiness, confirmExplicitRetry: { retryChecked = true; return false })
     var mainRan = false; await Task { @MainActor in mainRan = true }.value
+    _ = await warmingSignal.wait(what: ".warmingUp notice")
     #expect(mainRan && h.driverUI.engineReadiness == .notReady && h.driver.loadedHandles == [1])
-    let warmingSignal = SignalWaiter()
-    let c1 = overlay.renderModel.$state.sink { if case .notice(let n)? = $0.presentation?.content, n.kind == .warmingUp { warmingSignal.signal() } }
-    defer { c1.cancel() }; _ = await warmingSignal.wait(what: ".warmingUp notice")
-    h.driver.releaseUnload(1); _ = await settled.wait(what: "onEngineWarmSettled"); await warmTask.value
-    guard case .ready = outcome else { Issue.record("expected .ready, got \(String(describing: outcome))"); return }
+    h.driver.releaseUnload(1)
+    _ = await settled.wait(what: "onEngineWarmSettled")
+    _ = await readySignal.wait(what: ".ready notice")
     #expect(!retryChecked && h.driver.loadedHandles == [1, 2] && h.driverUI.engineReadiness == .ready)
   }
 
