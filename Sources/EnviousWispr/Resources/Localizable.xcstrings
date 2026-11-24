@@ -49949,6 +49949,29 @@
         }
       }
     },
+    "Search words" : {
+      "comment" : "Dictionary page, search field placeholder",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Wörter suchen"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Buscar palabras"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Rechercher des mots"
+          }
+        }
+      }
+    },
     "Search your words" : {
       "comment" : "Quick Add panel: the search field's placeholder.",
       "localizations" : {

@@ -204,7 +204,7 @@ struct SnippetsAndDictionaryToolbarLayoutTests {
     try await #require(words.add(CustomWord(canonical: "BetaCustomTerm")) == nil)
     let lineH = lineHeight("Mass edit", size: .regular)
     let dictPlaceholderW = ceil(NSAttributedString(
-      string: QuickAddPanelCopy.searchPlaceholder,
+      string: "Search words",
       attributes: [.font: NSFont.systemFont(ofSize: 14, weight: .regular)]).size().width)
     let w750 = SettingsRenderGeometry.pageWidth(window: 750), w1100 = SettingsRenderGeometry.pageWidth(window: 1100)
 
@@ -212,11 +212,20 @@ struct SnippetsAndDictionaryToolbarLayoutTests {
       try await pumpUntil(host, window: window, state: state, width: w750) {
         state.anchors.rects[.yourWordsSearch] != nil && state.anchors.rects[.yourWordsMassEdit] != nil && state.anchors.rects[.yourWordsCategoryFilter] != nil
       }
-      let tf750 = try #require(searchField(in: host, matching: "Search your words"))
+      let tf750 = try #require(searchField(in: host, matching: "Search words"))
       let sr750 = try #require(state.anchors.rects[.yourWordsSearch]), mass750 = try #require(state.anchors.rects[.yourWordsMassEdit])
       let catIdle = try #require(state.anchors.rects[.yourWordsCategoryFilter])
       let tfW750 = frameInHost(tf750, host: host).width
-      #expect(tf750.placeholderString == QuickAddPanelCopy.searchPlaceholder && tfW750 >= dictPlaceholderW && abs(tfW750 - 163.5) <= 2)
+      #expect(tf750.placeholderString == "Search words" && tfW750 >= dictPlaceholderW && abs(tfW750 - 163.5) <= 2)
+      let catalog = RepoRoot.url.appending(path: "Sources/EnviousWispr/Resources/Localizable.xcstrings")
+      let root = try #require(JSONSerialization.jsonObject(with: Data(contentsOf: catalog)) as? [String: Any])
+      let locs = try #require(((root["strings"] as? [String: Any])?["Search words"] as? [String: Any])?["localizations"] as? [String: Any])
+      let bodyFont = NSFont.systemFont(ofSize: 14, weight: .regular)
+      for lang in ["en", "de", "es", "fr"] {
+        let text = lang == "en" ? "Search words" : try #require(((locs[lang] as? [String: Any])?["stringUnit"] as? [String: String])?["value"])
+        let width = ceil(NSAttributedString(string: text, attributes: [.font: bodyFont]).size().width)
+        #expect(width <= tfW750, "Dictionary \(lang) placeholder \(width) pt exceeds \(tfW750) pt")
+      }
       #expect(mass750.height <= lineH + 1.5 && mass750.midY > sr750.midY + 12)
       #expect(mass750.maxX <= w750 - SettingsLayout.contentH + 1)
 
@@ -224,7 +233,7 @@ struct SnippetsAndDictionaryToolbarLayoutTests {
       try await pumpUntil(host, window: window, state: state, width: w750) {
         state.anchors.rects[.yourWordsMassEdit] == nil && state.anchors.rects[.yourWordsCategoryFilter] != nil && state.headerHeight > 0
       }
-      let tfSel = try #require(searchField(in: host, matching: "Search your words")), catSel = try #require(state.anchors.rects[.yourWordsCategoryFilter])
+      let tfSel = try #require(searchField(in: host, matching: "Search words")), catSel = try #require(state.anchors.rects[.yourWordsCategoryFilter])
       #expect(frameInHost(tfSel, host: host).width >= dictPlaceholderW && abs(frameInHost(tfSel, host: host).width - 163.5) <= 2 && abs(catSel.minY - catIdle.minY) <= 2)
 
       let idleH = state.headerHeight
@@ -239,7 +248,7 @@ struct SnippetsAndDictionaryToolbarLayoutTests {
         state.anchors.rects[.yourWordsSearch] != nil && state.anchors.rects[.yourWordsMassEdit] != nil
       }
       let sr1100 = try #require(state.anchors.rects[.yourWordsSearch]), mass1100 = try #require(state.anchors.rects[.yourWordsMassEdit])
-      let tf1100 = try #require(searchField(in: host, matching: "Search your words"))
+      let tf1100 = try #require(searchField(in: host, matching: "Search words"))
       #expect(abs(mass1100.midY - sr1100.midY) < 6 && mass1100.minX > sr1100.maxX && frameInHost(tf1100, host: host).width >= 200)
     }
   }
@@ -251,7 +260,7 @@ struct SnippetsAndDictionaryToolbarLayoutTests {
     let w1100 = SettingsRenderGeometry.pageWidth(window: 1100), w750 = SettingsRenderGeometry.pageWidth(window: 750)
 
     try await withObservedPage(YourWordsView(selection: .constant(.yourWords)).environment(home.settings).environment(words), width: w1100) { host, window, state in
-      let initial = try #require(searchField(in: host, matching: "Search your words")), id = ObjectIdentifier(initial)
+      let initial = try #require(searchField(in: host, matching: "Search words")), id = ObjectIdentifier(initial)
       #expect(window.makeFirstResponder(initial))
       let editor = try #require(initial.currentEditor() as? NSTextView)
 
@@ -259,11 +268,11 @@ struct SnippetsAndDictionaryToolbarLayoutTests {
         guard let m = state.anchors.rects[.yourWordsMassEdit], let s = state.anchors.rects[.yourWordsSearch] else { return false }
         return m.midY > s.midY + 12
       }
-      #expect(ObjectIdentifier(try #require(searchField(in: host, matching: "Search your words"))) == id)
+      #expect(ObjectIdentifier(try #require(searchField(in: host, matching: "Search words"))) == id)
 
       editor.insertText("zzzz-no-match", replacementRange: editor.selectedRange())
       try await pumpUntil(host, window: window, state: state, width: w750) { state.anchors.rects[.yourWordsMassEdit] == nil }
-      let zeroMatch = try #require(searchField(in: host, matching: "Search your words"))
+      let zeroMatch = try #require(searchField(in: host, matching: "Search words"))
       #expect(ObjectIdentifier(zeroMatch) == id && window.firstResponder === zeroMatch.currentEditor())
 
       editor.selectAll(nil); editor.delete(nil)
@@ -271,7 +280,7 @@ struct SnippetsAndDictionaryToolbarLayoutTests {
         guard let m = state.anchors.rects[.yourWordsMassEdit], let s = state.anchors.rects[.yourWordsSearch] else { return false }
         return abs(m.midY - s.midY) < 6
       }
-      let restored = try #require(searchField(in: host, matching: "Search your words"))
+      let restored = try #require(searchField(in: host, matching: "Search words"))
       #expect(ObjectIdentifier(restored) == id && window.firstResponder === restored.currentEditor())
     }
   }

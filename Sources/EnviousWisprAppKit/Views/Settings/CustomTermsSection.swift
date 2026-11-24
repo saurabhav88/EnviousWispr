@@ -424,7 +424,7 @@ struct CustomTermsSection<Actions: View>: View {
         .font(.system(size: 12))
         .accessibilityHidden(true)
       TextField(
-        QuickAddPanelCopy.searchPlaceholder,
+        String(localized: "Search words", comment: "Dictionary page, search field placeholder"),
         text: Bindable(list).query)
         .textFieldStyle(.plain)
         // #4545: a placeholder alone gives the field no accessible name.
