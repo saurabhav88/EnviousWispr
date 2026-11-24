@@ -44582,6 +44582,28 @@
         }
       }
     },
+    "Privacy & Security" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Datenschutz & Sicherheit"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Privacidad y seguridad"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Confidentialité et sécurité"
+          }
+        }
+      }
+    },
     "Privacy & Security › Accessibility" : {
       "localizations" : {
         "de" : {
@@ -44600,6 +44622,28 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Privacidad y seguridad › Accesibilidad"
+          }
+        }
+      }
+    },
+    "Privacy & Security › Device Control and Data Access" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Datenschutz & Sicherheit › Gerätesteuerung und Datenzugriff"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Privacidad y seguridad › Control de dispositivos y acceso a datos"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Confidentialité et sécurité › Contrôle de l’appareil et accès aux données"
           }
         }
       }

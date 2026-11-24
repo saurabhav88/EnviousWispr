@@ -328,7 +328,7 @@ struct SetupPracticeScreen: View {
       VStack(alignment: .leading, spacing: DesignSpacing.xl) {
         SetupSettingsPreview(
           pane: state == .microphoneOff
-            ? "Privacy & Security › Microphone" : "Privacy & Security › Accessibility",
+            ? "Privacy & Security › Microphone" : SetupPermissions.accessibilitySettingsPane(),
           reduceMotion: reduceMotion)
         Text(
           "Flip this switch on. EnviousWispr notices by itself. If it still shows off, quit and reopen EnviousWispr."
