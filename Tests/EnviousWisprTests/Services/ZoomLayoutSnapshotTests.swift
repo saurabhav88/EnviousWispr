@@ -305,6 +305,101 @@ struct ZoomLayoutSnapshotTests {
     #expect(ZoomAppSpeakerReader.read(windows: label, share: twice).sharedNames == ["Dana Fox"])
   }
 
+  @Test(
+    "with no mark, the tile that moves with the talker is the last thumbnail, or the only one",
+    arguments: [("725-gallery", 3, false), ("725-speaker", 3, true), ("725-minimized", 0, false)])
+  func followTile(file: String, people: Int, large: Bool) throws {
+    let copy = try shareCapture(file, account: ["Host Person(host@example.com)"])
+    let reading = try #require(CallSpeakerSurfaceReader.zoomReading(copy, labels: .builtIn))
+    #expect(reading.speaking.isEmpty)
+    #expect(reading.follow?.name == "Dana Fox")
+    #expect(reading.follow?.mayVote == true)
+    #expect(reading.follow?.place.people.count == people)
+    #expect(reading.follow?.place.largeTile == large)
+    let unknown = try shareCapture(file, account: nil)
+    #expect(
+      CallSpeakerSurfaceReader.zoomReading(unknown, labels: .builtIn)?.follow?.mayVote == false)
+    for other in ["hs-thumb-bea", "725-collapsed", "gs-sbs-gallery-bea"] {
+      let marked = try shareCapture(other, account: ["Host Person(host@example.com)"])
+      #expect(CallSpeakerSurfaceReader.zoomReading(marked, labels: .builtIn)?.follow == nil)
+    }
+  }
+
+  /// Readings of a Gallery at `times`: who is last from each time on, `-` before a muted name and
+  /// `+` for a real mark. The times of the observations that became talking ones.
+  private func votes(
+    _ script: [(Int, String)], until end: Int, times: [Int]? = nil, bring: [Int: String] = [:],
+    breakAt: Int? = nil, runs: Int = 1_000
+  ) -> [Int] {
+    var limits = CallEvidenceLimits.current
+    limits.runs = runs
+    var all = CallSpeakerAccumulator(
+      surface: .zoomApp, rules: nil, lag: CallSpeakerLag(milliseconds: 500), limits: limits)
+    for ms in times ?? Array(stride(from: 0, through: end, by: 500)) {
+      if ms == breakAt { all.noteInterruption() }
+      let last = script.last { $0.0 <= ms }!.1
+      let name = last.filter { $0 != "-" && $0 != "+" }
+      let people = ["Host", "Alex", "Dana"] + (bring.filter { $0.key <= ms }.map(\.value))
+      let labels =
+        people.filter { $0 != name }.map { "\($0), Computer audio unmuted, Video off" } + [
+          "\(name), Computer audio \(last.hasPrefix("-") ? "muted" : "unmuted"), Video on"
+            + (last.hasPrefix("+") ? ", active speaker" : "")
+        ]
+      let root = CallAXNode(
+        role: "AXWindow", identifier: "zm.meeting.window.main",
+        children: labels.map { CallAXNode(role: "AXTabGroup", description: $0) })
+      let windows = [CallAXWindow(title: "Zoom Meeting", root: root)]
+      var reading = ZoomAppSpeakerReader.read(windows: windows, accountTitles: ["Host(h@e.com)"])
+      reading.follow = ZoomAppSpeakerReader.follow(
+        windows: windows, share: .none, reading: reading)
+      all.add(
+        reading, context: CallCaptureContext(completeness: .complete, scope: .resolved),
+        observationMs: ms)
+    }
+    let talking = all.segment(endMs: nil, endReason: nil).observations.filter { $0.speaking != [] }
+    #expect(all.health.admittedSpeakingObservations == talking.count)
+    #expect(all.health.admittedQuietObservations == all.observations.count - talking.count)
+    return talking.map(\.observationMs)
+  }
+
+  @Test("one move of the tile is one vote, a second after it, once the tile has held")
+  func moveVotes() {
+    #expect(votes([(0, "Alex"), (2_000, "Dana")], until: 12_000) == [3_000])
+    #expect(votes([(0, "Alex"), (2_000, "Dana")], until: 5_000) == [3_000], "2.5 s after 2.5 s")
+    #expect(votes([(0, "Alex"), (2_000, "Dana")], until: 4_500) == [])
+    #expect(votes([(0, "Alex"), (2_000, "Dana")], until: 12_000, runs: 2) == [], "at the cap")
+    let two = [(0, "Alex"), (2_000, "Dana"), (8_000, "Alex")]
+    #expect(votes(two, until: 14_000, runs: 4) == [3_000], "one vote fills the cap")
+    #expect(votes([(0, "Dana")], until: 12_000) == [], "standing still")
+    // Turns with the talker muting in between: one vote each, none for the user's own turn.
+    let turns = [(0, "Alex"), (2_000, "Dana"), (7_000, "-Dana"), (8_000, "Alex"), (14_000, "Host")]
+    #expect(votes(turns + [(20_000, "Dana")], until: 26_000) == [3_000, 9_000, 21_000])
+    // Moved back inside the response window: a brief reply, then the other person again.
+    #expect(votes([(0, "Alex"), (2_000, "Dana"), (3_500, "Alex")], until: 5_000) == [])
+    // Polls a little early make the stamp late; the window is measured from the stamp.
+    let late = [0, 500, 2_000, 2_490, 2_990, 3_490, 4_000, 4_500, 5_000, 5_500]
+    let reply = [(0, "Alex"), (600, "Dana"), (4_600, "Alex")]
+    #expect(votes(reply, until: 0, times: [0, 490] + late.dropFirst(2).map { $0 - 900 }) == [])
+  }
+
+  @Test("a muted, new, marked or interrupted move is no vote")
+  func movesThatDoNotVote() {
+    #expect(votes([(0, "Alex"), (2_000, "-Dana"), (2_500, "Dana")], until: 9_000) == [])
+    let muted = [(0, "Alex"), (2_000, "Dana"), (3_500, "-Dana"), (4_000, "Dana")]
+    #expect(votes(muted, until: 9_000) == [])
+    #expect(votes([(0, "Alex"), (2_000, "Dana")], until: 9_000, bring: [2_000: "Eve"]) == [])
+    #expect(votes([(0, "Alex"), (2_000, "Dana")], until: 9_000, bring: [4_000: "Eve"]) == [])
+    #expect(votes([(0, "+Alex"), (500, "Alex"), (2_000, "Dana")], until: 9_000) == [0])
+    #expect(votes([(0, "Alex"), (2_000, "Dana")], until: 9_000, breakAt: 3_500) == [])
+    let slow = [1_500, 2_000, 2_500, 3_490, 4_400] + Array(stride(from: 4_900, to: 9_000, by: 500))
+    #expect(votes([(0, "Alex"), (2_500, "Dana")], until: 0, times: slow) == [], "stamp too late")
+    // A capture gap of more than a second, at the move, before the stamp or in the hold.
+    for gap in [1_500, 2_500, 4_000] {
+      let times = stride(from: 0, through: 9_000, by: 500).filter { !(gap..<gap + 1_000 ~= $0) }
+      #expect(votes([(0, "Alex"), (2_000, "Dana")], until: 0, times: times) == [], "\(gap)")
+    }
+  }
+
   // MARK: - Other Zoom languages (#4350)
 
   /// One German or Japanese layout from the #4350 discovery (solo meeting, Zoom 7.1.9 (88375),

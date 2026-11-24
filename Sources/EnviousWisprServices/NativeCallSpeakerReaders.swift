@@ -585,6 +585,41 @@ package enum ZoomAppSpeakerReader {
       && talkingLabels(window, labels: labels).count == 1
   }
 
+  /// The meeting window's last thumbnail, or the minimized window's one tile: Zoom 7.2.5 marks
+  /// nobody but moves these to whoever talks (#4935). Standing still says nothing.
+  static func follow(
+    windows: [CallAXWindow], share: ShareContext, reading: CallSpeakerReading,
+    labels: ZoomLabels = .builtIn
+  ) -> CallSpeakerReading.ZoomFollow? {
+    guard reading.talkerSource == nil, !share.hostShare, let only = windows.first
+    else { return nil }
+    let meeting = windows.first {
+      ZoomCallWindow.isMeeting(identifier: $0.root.identifier, title: $0.title)
+    }
+    let tiles = (meeting ?? only).root.allNodes.filter { $0.role == "AXTabGroup" }.compactMap {
+      $0.label.flatMap { parseTile($0, labels: labels) }
+    }
+    let shown = tiles.filter(\.hasVideoState)
+    let people = Set(shown.map(\.name))
+    guard let last = shown.last, people.count == shown.count, !people.contains(""),
+      !shown.contains(where: \.isJoining)
+    else { return nil }
+    let minimized =
+      tiles.count == 1 && share.tileCount == 1 && only.root.identifier == nil
+      && (only.title ?? "").isEmpty && !isCompactWindow(only, labels: labels)
+    guard meeting == nil ? minimized : shown.count > 1 else { return nil }
+    let me = identifiedSelf(
+      marks: reading.roster.selfNames, boundMarks: reading.boundSelfMarks,
+      account: reading.accountSelfNames)
+    return CallSpeakerReading.ZoomFollow(
+      place: .init(
+        people: meeting == nil ? [] : people, largeTile: tiles.count > shown.count,
+        guestShare: share.guestShare),
+      name: last.name,
+      mayVote: last.isUnmuted && me != nil && me != last.name
+        && !reading.sharedNames.union(share.listedTwice).contains(last.name))
+  }
+
   /// Everyone the whole copy showed, before window choice (#4935): only ever a reason not to add
   /// short two-person stretches together, never a vote or a roster.
   package static func shownPeople(
