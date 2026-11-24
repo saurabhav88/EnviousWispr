@@ -33,6 +33,8 @@ struct SnippetsView: View {
   /// user could type a new keyword, click Add snippet, and be silently left on the old one,
   /// with nothing on screen saying Return was required.
   @FocusState private var keywordFocused: Bool
+  @FocusState private var searchFocused: Bool
+  @State private var measuredSearchMinWidth: CGFloat = 150
 
   var body: some View {
     SettingsContentView {
@@ -226,52 +228,76 @@ struct SnippetsView: View {
     }
   }
 
-  /// One line: a full search field, then Import, Export and Add snippet (mockup 14).
+  /// Single row when the placeholder sizer and actions fit, otherwise search above wrapping buttons.
   private var toolbar: some View {
-    HStack(spacing: 10) {
+    Group {
       if !coordinator.storeUnreadable, !coordinator.snippets.isEmpty {
-        searchField
-      } else {
-        Spacer(minLength: 0)
-      }
-      // Enabled even when the store is unreadable, like Export: the import itself then
-      // refuses with the coordinator's own sentence rather than the button going dark.
-      Button {
-        sheetRoute = .importSnippets
-      } label: {
-        EnviousButtonLabel(
-          SettingsItemCopy.Snippets.importSnippets,
-          size: .medium,
-          systemImage: "square.and.arrow.down")
-      }
-      .settingsButton(shape: .roundedRect, size: .medium, isEnabled: true)
-      .settingsMapRegistration(.snippetsImport)
-      Button {
-        let vocabulary = coordinator.vocabulary
-        Task {
-          exportMessage = SnippetsExportAction.message(
-            for: await SnippetsExportAction.run(
-              vocabulary: vocabulary,
-              currentVocabulary: { coordinator.refreshFromDisk() }))
+        SearchActionToolbarLayout(minSearchWidth: measuredSearchMinWidth) {
+          searchField
+          WrappingHStack(spacing: 8) {
+            actionButtons
+          }
         }
-      } label: {
-        EnviousButtonLabel(
-          SettingsItemCopy.Snippets.exportSnippets,
-          size: .medium,
-          systemImage: "square.and.arrow.up")
+        .background(alignment: .topLeading) {
+          searchPlaceholderSizer
+        }
+      } else {
+        ViewThatFits(in: .horizontal) {
+          HStack(spacing: 10) {
+            Spacer(minLength: 0)
+            actionButtons
+          }
+          WrappingHStack(spacing: 8) {
+            actionButtons
+          }
+          .frame(maxWidth: .infinity, alignment: .leading)
+        }
       }
-      .settingsButton(shape: .roundedRect, size: .medium, isEnabled: !coordinator.snippets.isEmpty)
-      .settingsMapRegistration(.snippetsExport)
-      Button {
-        sheetRoute = .edit(SnippetDraft(snippet: nil))
-      } label: {
-        EnviousButtonLabel(SettingsItemCopy.Snippets.add, size: .medium, systemImage: "plus")
-      }
-      .settingsButton(.filled, shape: .roundedRect, size: .medium, isEnabled: true)
-      .settingsMapRegistration(.snippetsAdd)
     }
     .padding(.horizontal, SettingsLayout.rowPaddingH)
     .padding(.vertical, SettingsLayout.rowPaddingV)
+  }
+
+  @ViewBuilder
+  private var actionButtons: some View {
+    // Enabled even when the store is unreadable, like Export: the import itself then
+    // refuses with the coordinator's own sentence rather than the button going dark.
+    Button {
+      sheetRoute = .importSnippets
+    } label: {
+      EnviousButtonLabel(
+        SettingsItemCopy.Snippets.importSnippets,
+        size: .medium,
+        systemImage: "square.and.arrow.down")
+    }
+    .settingsButton(shape: .roundedRect, size: .medium, isEnabled: true)
+    .fixedSize()
+    .settingsMapRegistration(.snippetsImport)
+    Button {
+      let vocabulary = coordinator.vocabulary
+      Task {
+        exportMessage = SnippetsExportAction.message(
+          for: await SnippetsExportAction.run(
+            vocabulary: vocabulary,
+            currentVocabulary: { coordinator.refreshFromDisk() }))
+      }
+    } label: {
+      EnviousButtonLabel(
+        SettingsItemCopy.Snippets.exportSnippets,
+        size: .medium,
+        systemImage: "square.and.arrow.up")
+    }
+    .settingsButton(shape: .roundedRect, size: .medium, isEnabled: !coordinator.snippets.isEmpty)
+    .fixedSize()
+    .settingsMapRegistration(.snippetsExport)
+    Button {
+      sheetRoute = .edit(SnippetDraft(snippet: nil))
+    } label: {
+      EnviousButtonLabel(SettingsItemCopy.Snippets.add, size: .medium, systemImage: "plus")
+    }
+    .settingsButton(.filled, shape: .roundedRect, size: .medium, isEnabled: true)
+    .fixedSize()
+    .settingsMapRegistration(.snippetsAdd)
   }
 
   private var countLabel: String {
@@ -304,16 +330,43 @@ struct SnippetsView: View {
         .textFieldStyle(.plain)
         // #4545: a placeholder alone gives the field no accessible name.
         .accessibilityLabel(Text(SettingsItemCopy.Snippets.search))
-        .settingsArrivalFocusControl(textEntry: true)
+        .focused($searchFocused)
+        .settingsArrivalFocusControl(textEntry: true) {
+          searchFocused = true
+        }
         .settingsMapRegistration(.snippetsSearch)
     }
+    .frame(maxWidth: .infinity, alignment: .leading)
+    .settingsFieldChrome(focused: $searchFocused)
+  }
+
+  private var searchPlaceholderSizer: some View {
+    HStack(spacing: 8) {
+      Image(systemName: "magnifyingglass")
+      Text(String(localized: SettingsItemCopy.Snippets.search))
+        .lineLimit(1)
+    }
+    .font(.stBody)
     .padding(.horizontal, 10)
     .padding(.vertical, 7)
-    .frame(maxWidth: .infinity, alignment: .leading)
-    .background(Color.stInputBg, in: RoundedRectangle(cornerRadius: 8))
-    .overlay(
-      RoundedRectangle(cornerRadius: 8).strokeBorder(Color.stInputBorder, lineWidth: 1)
-        .allowsHitTesting(false))
+    .fixedSize()
+    .background(
+      GeometryReader { geo in
+        Color.clear
+          .onAppear { updateMeasuredSearchMinWidth(geo.size.width) }
+          .onChange(of: geo.size.width) { _, width in
+            updateMeasuredSearchMinWidth(width)
+          }
+      }
+    )
+    .hidden()
+    .accessibilityHidden(true)
+    .allowsHitTesting(false)
+  }
+
+  private func updateMeasuredSearchMinWidth(_ width: CGFloat) {
+    guard width.isFinite, width > 0, width != measuredSearchMinWidth else { return }
+    measuredSearchMinWidth = width
   }
 
   @ViewBuilder

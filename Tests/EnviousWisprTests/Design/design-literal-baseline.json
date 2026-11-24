@@ -95,7 +95,7 @@
     },
     "Sources\/EnviousWisprAppKit\/Views\/Settings\/CustomTermsSection.swift" : {
       "fontSize" : 3,
-      "radius" : 2
+      "radius" : 0
     },
     "Sources\/EnviousWisprAppKit\/Views\/Settings\/CustomWordEditSheet.swift" : {
       "fontSize" : 2,
@@ -216,7 +216,7 @@
     },
     "Sources\/EnviousWisprAppKit\/Views\/Settings\/SnippetsView.swift" : {
       "fontSize" : 5,
-      "radius" : 5
+      "radius" : 3
     },
     "Sources\/EnviousWisprAppKit\/Views\/Settings\/SpokenPunctuationConfigureSheet.swift" : {
       "fontSize" : 1
@@ -254,6 +254,6 @@
   "total" : {
     "color" : 88,
     "fontSize" : 243,
-    "radius" : 232
+    "radius" : 228
   }
 }
