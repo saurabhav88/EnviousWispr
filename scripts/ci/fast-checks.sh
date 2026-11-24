@@ -153,6 +153,7 @@ member_dev_app_lock_self_test() {
   # only python3, ps and flock, which this Linux runner has. This step
   # is the first Linux run of it; the suite was written on macOS.
   python3 scripts/lib/dev-app-lock-test.py
+  python3 scripts/lib/dev-app-lock-antigravity-test.py
 }
 
 # Portable physical contracts use a fake filesystem; native Darwin fixtures

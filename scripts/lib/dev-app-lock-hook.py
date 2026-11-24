@@ -32,9 +32,13 @@ Ordinary readers and canonical claim/release remain available to repair a
 changed owner. The native trusted definition binds the expected digest.
 """
     global lock
-    if not isinstance(OWNER_SHA256, str) or re.fullmatch('[0-9a-f]{64}', OWNER_SHA256) is None:
+    # One digest, or the reviewed old and new pair while a lock change lands (#4913):
+    # a definition that lists both keeps working before and after the lock file changes.
+    digests = (OWNER_SHA256,) if isinstance(OWNER_SHA256, str) else OWNER_SHA256
+    if not isinstance(digests, (tuple, list)) or not 1 <= len(digests) <= 2 or any(
+            not isinstance(d, str) or re.fullmatch('[0-9a-f]{64}', d) is None for d in digests):
         raise ValueError('missing reviewed lock-owner digest')
-    if hashlib.sha256(LOCK_TOOL.read_bytes()).hexdigest() != OWNER_SHA256:
+    if hashlib.sha256(LOCK_TOOL.read_bytes()).hexdigest() not in digests:
         raise ValueError('lock owner changed; review and trust its new native definition')
     if lock is None:
         spec = importlib.util.spec_from_file_location('dev_app_lock', LOCK_TOOL)
@@ -271,8 +275,8 @@ def main():
     global OWNER_SHA256
     event = {}
     try:
-        if len(sys.argv) == 3 and sys.argv[1] == '--owner-sha256':
-            OWNER_SHA256 = sys.argv[2]
+        if len(sys.argv) in (3, 5) and sys.argv[1::2] == ['--owner-sha256'] * ((len(sys.argv) - 1) // 2):
+            OWNER_SHA256 = tuple(sys.argv[2::2])
         event = json.load(sys.stdin)
         if not isinstance(event, dict):
             raise ValueError('invalid native hook event')
