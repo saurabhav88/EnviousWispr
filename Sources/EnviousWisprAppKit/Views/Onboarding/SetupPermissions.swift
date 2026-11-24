@@ -1,5 +1,6 @@
 @preconcurrency import AVFoundation
 import EnviousWisprServices
+import Foundation
 import SwiftUI
 
 /// Setup's Permissions screen logic (#4528 D4b, plan M81; mockup `isPermissions`, copy
@@ -47,6 +48,21 @@ enum SetupPermissions {
 
   static func bothAllowed(_ microphone: Microphone, _ accessibilityAllowed: Bool) -> Bool {
     microphone == .allowed && accessibilityAllowed
+  }
+
+  /// System Settings pane breadcrumb for Accessibility by macOS version (#4922).
+  /// macOS 27.0-27.2 renamed Accessibility to Device Control and Data Access.
+  /// Starting with macOS 27.3, show the parent Privacy & Security category.
+  static func accessibilitySettingsPane(
+    version: OperatingSystemVersion = ProcessInfo.processInfo.operatingSystemVersion
+  ) -> LocalizedStringKey {
+    if version.majorVersion < 27 {
+      return "Privacy & Security › Accessibility"
+    }
+    if version.majorVersion == 27 && version.minorVersion < 3 {
+      return "Privacy & Security › Device Control and Data Access"
+    }
+    return "Privacy & Security"
   }
 
   static func title(_ microphone: Microphone, accessibilityAllowed: Bool) -> LocalizedStringKey {

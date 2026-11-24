@@ -174,7 +174,7 @@ struct SetupPermissionsScreen: View {
             .accessibility, symbol: "accessibility", title: "Accessibility",
             detail: "So your words land in any app.")
           SetupSettingsPreview(
-            pane: "Privacy & Security › Accessibility", reduceMotion: reduceMotion)
+            pane: SetupPermissions.accessibilitySettingsPane(), reduceMotion: reduceMotion)
           VStack(alignment: .leading, spacing: DesignSpacing.xs) {
             reason("It hears your dictation key, such as \(dictationKey).")
             reason("It pastes your words into the app you are using.")
@@ -375,6 +375,7 @@ struct SetupSettingsPreview: View {
         .font(.firstRunEyebrow)
         .tracking(0.8)
         .foregroundStyle(Color.obTextPrimary)
+        .fixedSize(horizontal: false, vertical: true)
       HStack(spacing: DesignSpacing.lg) {
         // Mockup: the tiny app icon in the Settings picture holds still (a fixed clock draws
         // one frame and runs no timeline).

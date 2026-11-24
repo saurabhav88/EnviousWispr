@@ -59,6 +59,22 @@ struct SetupPermissionsScreenTests {
     #expect(P.mood(.allowed, accessibilityAllowed: true) == .triumph)
   }
 
+  @Test("the Accessibility breadcrumb follows the macOS version")
+  func accessibilitySettingsPane() {
+    #expect(
+      P.accessibilitySettingsPane(version: .init(majorVersion: 26, minorVersion: 6, patchVersion: 2))
+        == "Privacy & Security › Accessibility")
+    #expect(
+      P.accessibilitySettingsPane(version: .init(majorVersion: 27, minorVersion: 0, patchVersion: 0))
+        == "Privacy & Security › Device Control and Data Access")
+    #expect(
+      P.accessibilitySettingsPane(version: .init(majorVersion: 27, minorVersion: 2, patchVersion: 0))
+        == "Privacy & Security › Device Control and Data Access")
+    #expect(
+      P.accessibilitySettingsPane(version: .init(majorVersion: 27, minorVersion: 3, patchVersion: 0))
+        == "Privacy & Security")
+  }
+
   /// #4590: the small accent buttons (permission rows, recovery cards) keep readable text when
   /// hovered. `firstRunButtonHover` measured 4.07:1 under `firstRunOnAccent` in dark mode.
   @Test("small button text clears 4.5:1 at rest and hovered, in both appearances")
