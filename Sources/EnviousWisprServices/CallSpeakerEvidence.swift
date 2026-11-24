@@ -691,12 +691,14 @@ package struct CallSpeakerAccumulator: Sendable, Equatable {
   /// One copy's walk time and size.
   package mutating func noteWalk(
     durationUs: Int, nodes: Int, failedReads: Int = 0, prunedControls: Int = 0,
-    skippedWindows: Int = 0, toleratedFailures: Int = 0, skippedPages: Int = 0
+    skippedWindows: Int = 0, toleratedFailures: Int = 0, skippedPages: Int = 0,
+    webContentOpened: Bool? = nil
   ) {
     health.noteWalk(
       durationUs: durationUs, nodes: nodes, failedReads: failedReads,
       prunedControls: prunedControls, skippedWindows: skippedWindows,
-      toleratedFailures: toleratedFailures, skippedPages: skippedPages)
+      toleratedFailures: toleratedFailures, skippedPages: skippedPages,
+      webContentOpened: webContentOpened)
   }
 
   /// The log of this one segment, still open.

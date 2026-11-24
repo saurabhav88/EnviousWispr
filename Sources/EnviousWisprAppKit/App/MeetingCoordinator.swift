@@ -398,7 +398,7 @@ final class MeetingCoordinator {
         pid: target.pid,
         bounds: CallSpeakerSurfaceChoice.captureBounds(family: family, rule: target.rule),
         policy: CallSpeakerSurfaceChoice.capturePolicy(family: family, rule: target.rule),
-        protectedRoles: protectedRoles,
+        protectedRoles: protectedRoles, opensWebContent: target.rule == .callApp(.teams),
         keepPage: { CallSpeakerSurfaceChoice.keepsPage($0, family: family, rule: target.rule) })
     }
     /// #4356: the Zoom self probe (opens Zoom's Participants panel, reads the `(me)` row, closes

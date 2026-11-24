@@ -158,14 +158,20 @@ public struct CallCaptureHealth: Sendable, Equatable, Codable {
   /// the call app's (#4436). Filter activity, not lost meeting content: expected refusals (a
   /// browser's other tabs) count too. Nil on health written before it existed.
   public var skippedPageCaptures: Int? = 0
+  /// Copies that asked the Teams app to open its web pages, and those that then showed one (#4436).
+  public var webContentAsks: Int? = 0
+  public var webContentOpens: Int? = 0
 
   public init() {}
 
   /// Adds one copy's walk time, size and what it could not read or left out.
   public mutating func noteWalk(
     durationUs: Int, nodes: Int, failedReads: Int = 0, prunedControls: Int = 0,
-    skippedWindows: Int = 0, toleratedFailures: Int = 0, skippedPages: Int = 0
+    skippedWindows: Int = 0, toleratedFailures: Int = 0, skippedPages: Int = 0,
+    webContentOpened: Bool? = nil
   ) {
+    if webContentOpened != nil { webContentAsks = (webContentAsks ?? 0) + 1 }
+    if webContentOpened == true { webContentOpens = (webContentOpens ?? 0) + 1 }
     if skippedPages > 0 { skippedPageCaptures = (skippedPageCaptures ?? 0) + 1 }
     self.failedReads = (self.failedReads ?? 0) + max(0, failedReads)
     self.toleratedFailures = (self.toleratedFailures ?? 0) + max(0, toleratedFailures)

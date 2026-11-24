@@ -407,7 +407,8 @@ final class CallSpeakerObserver {
           from: copy.readStartHostTime, to: copy.readEndHostTime),
         nodes: copy.nodesVisited, failedReads: copy.failedReads,
         prunedControls: copy.prunedControls, skippedWindows: copy.skippedWindows,
-        toleratedFailures: copy.toleratedFailures, skippedPages: copy.skippedPages)
+        toleratedFailures: copy.toleratedFailures, skippedPages: copy.skippedPages,
+        webContentOpened: copy.webContentOpened)
     }
     // Read again at delivery: nothing that would have stopped the copy may have happened since,
     // and the copy's whole binding is still the live one.

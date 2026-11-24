@@ -3,6 +3,7 @@ import Darwin
 import EnviousWisprCore
 import Foundation
 import Testing
+import os
 
 @testable import EnviousWisprPipeline
 @testable import EnviousWisprServices
@@ -1086,6 +1087,7 @@ struct CallSpeakerCaptureTests {
     for key in [
       "invalidNameReadings", "evidenceCapacityDrops", "failedReads", "prunedControls",
       "skippedWindows", "toleratedFailures", "skippedPageCaptures",
+      "webContentAsks", "webContentOpens",
     ] {
       #expect(object.removeValue(forKey: key) != nil, "\(key)")
     }
@@ -1098,10 +1100,98 @@ struct CallSpeakerCaptureTests {
     #expect(CallCaptureHealth().toleratedFailures == 0)
     #expect(health.skippedPageCaptures == nil)
     #expect(CallCaptureHealth().skippedPageCaptures == 0)
+    #expect(health.webContentAsks == nil && health.webContentOpens == nil)
     var counting = health
     counting.noteWalk(durationUs: 1, nodes: 1, failedReads: 2, toleratedFailures: 1)
     #expect(counting.failedReads == 2)
     #expect(counting.toleratedFailures == 1)
+  }
+
+  /// Teams as measured 2026-11-24 (#4436): its page opens to the second read with the flag on.
+  private final class Teams {
+    let tree = Tree()
+    let asks = OSAllocatedUnfairLock(initialState: WebContentAsks())
+    var target: CallEvidenceReader.AppRun? = Teams.run()
+    var flag: Bool? = false
+    var answers = true
+    var flagged = 0
+    var log: [String] = []
+    static let now = ContinuousClock.now
+
+    init() {
+      tree.node(1, "AXWindow", children: [2])
+      tree.node(2)
+      tree.node(3, "AXWebArea")
+      tree.texts[3] = [.url: "https://teams.live.com/v2/"]
+    }
+
+    static func run(_ pid: Int32 = 7) -> CallEvidenceReader.AppRun {
+      .init(pid: pid, bundleIdentifier: "teams", birthSeconds: 1, birthMicroseconds: 0)
+    }
+
+    func read(_ copy: () -> CallAXCapture) -> CallAXCapture {
+      let flag = AccessibilityWake.ScreenReaderFlag {
+        self.log.append("read")
+        return self.flag
+      } write: { on in
+        guard self.answers else { return false }
+        self.log.append(on ? "on" : "off")
+        self.flag = on
+        return true
+      }
+      return CallSpeakerCapture.openingWebContent(
+        copy(), run: { target }, asks: asks, now: Self.now, flag: { _ in flag },
+        wait: { _ in flagged < 9 }
+      ) {
+        flagged += 1
+        if flagged == 2 { tree.children[1] = [2, 3] }
+        return copy()
+      }
+    }
+  }
+
+  @Test("an asleep Teams opens, its flag put back", arguments: ["whole", "incomplete", "empty"])
+  func opensTeamsPage(_ retry: String) {
+    let teams = Teams()
+    if retry == "incomplete" { teams.tree.failing = ["3.AXChildren"] }
+    if retry == "empty" { teams.tree.node(3) }
+    #expect(capture(teams.tree).documents.isEmpty, "control: an asleep Teams shows nobody")
+    let copy = teams.read { capture(teams.tree) }
+    #expect(copy.webContentOpened == (retry != "empty"))
+    #expect(copy.completeness == (retry == "incomplete" ? .unreadable : .complete))
+    #expect(teams.read { capture(teams.tree) }.webContentOpened == nil)
+    #expect(teams.log == ["read", "on", "off"])
+  }
+
+  /// A Teams that is open, half read, flagged already or silent, and any other app.
+  @Test("left alone", arguments: ["open", "refused", "half", "other app", "on", "unread", "unsent"])
+  func leavesAppAlone(_ why: String) {
+    let teams = Teams()
+    if ["open", "refused"].contains(why) { teams.tree.children[1] = [2, 3] }
+    if why == "half" { teams.tree.failing = ["2.AXTitle"] }
+    if why == "other app" { teams.target = nil }
+    if ["on", "unread"].contains(why) { teams.flag = why == "on" ? true : nil }
+    teams.answers = why != "unsent"
+    #expect(teams.read { capture(teams.tree) { _ in why != "refused" } }.webContentOpened == nil)
+    #expect(teams.log == (["on", "unread", "unsent"].contains(why) ? ["read"] : []))
+    #expect(teams.asks.withLock { $0.isDue(Teams.run(), windows: 1, now: Teams.now) })
+  }
+
+  @Test("asks are spaced out, restart with a new window, and stop at 40 for one run of the app")
+  func boundsAsks() {
+    var asks = WebContentAsks()
+    var now = ContinuousClock.now
+    for wait in [1, 2, 4, 8, 16, 32, 64, 64] {
+      asks.spend(Teams.run(), windows: 1, now: now)
+      now = now.advanced(by: .seconds(wait))
+      let early = now.advanced(by: .milliseconds(-1))
+      #expect(!asks.isDue(Teams.run(), windows: 1, now: early), "\(wait)")
+      #expect(asks.isDue(Teams.run(), windows: 2, now: early))
+      #expect(asks.isDue(Teams.run(), windows: 1, now: now), "\(wait)")
+    }
+    for count in 9...40 { asks.spend(Teams.run(), windows: count, now: now) }
+    #expect(!asks.isDue(Teams.run(), windows: 1, now: now.advanced(by: .seconds(3_600))))
+    #expect(asks.isDue(Teams.run(8), windows: 1, now: now), "another run of Teams")
   }
 
   @Test("only the Zoom app gets the Zoom policy")
