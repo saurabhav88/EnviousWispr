@@ -10,15 +10,15 @@ private struct BulkDeleteRequest: Identifiable {
   let ids: Set<UUID>
 }
 
+private enum CustomTermsToolbarMetrics {
+  static let searchMinWidth: CGFloat = 200
+}
+
 /// Phase 4 (#634) — Custom Terms section. Search + pagination + per-term Edit.
 /// Reads `frequencyUsed` from Phase 3a/b for "used N times" subtitle (omitted
 /// when frequency is 0 to avoid the "0 times" looks-like-a-bug case). Bible §10.2.
 /// Bulk select/delete (#1703): a "Mass edit" mode lets several of the user's own
 /// words be checked off and removed in one action.
-private enum CustomTermsToolbarMetrics {
-  static let searchMinWidth: CGFloat = 200
-}
-
 struct CustomTermsSection<Actions: View>: View {
   /// The page-level actions (Add word / Import / Export), rendered on the same
   /// line as the word count instead of in a band above this card. Passed in
@@ -413,9 +413,10 @@ struct CustomTermsSection<Actions: View>: View {
     .accessibilityAddTraits(isSelected ? [.isSelected] : [])
   }
 
-  /// Trailing controls in the search row: "Mass edit" when idle (only offered
-  /// if there is anything selectable in the current filtered set), or
-  /// "Select All"/"Deselect All" + "Cancel" while selecting.
+  /// A real input box styled via `settingsFieldChrome`. The field used to be
+  /// bare text on the card, the same colour as everything around it, so nothing
+  /// said where to type (founder, 2026-08-29: "making it unclear where people
+  /// need to type").
   @ViewBuilder
   private var searchField: some View {
     HStack(spacing: 6) {
@@ -453,6 +454,9 @@ struct CustomTermsSection<Actions: View>: View {
     .settingsFieldChrome(focused: $searchFocused)
   }
 
+  /// Trailing controls in the search row: "Mass edit" when idle (only offered
+  /// if there is anything selectable in the current filtered set), or
+  /// "Select All"/"Deselect All" + "Cancel" while selecting.
   @ViewBuilder
   private var selectionControls: some View {
     if isSelecting {
