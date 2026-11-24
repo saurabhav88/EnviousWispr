@@ -61,14 +61,18 @@ struct WhisperBackendErrorReloadTests {
 
   private func makeKernelHarness(
     driver: FakeReloadWhisperDriver = FakeReloadWhisperDriver(),
-    faultController: BatchDecodeFaultController? = nil
+    faultController: BatchDecodeFaultController? = nil,
+    retryTimeoutSecondsOverride: Double? = nil
   ) -> KernelHarness {
     let (backend, adapter) = makeAdapter(driver, faultController: faultController)
+    let kernelAdapter: any ASREngineAdapter =
+      retryTimeoutSecondsOverride.map { FastRetryTimeoutAdapter(wrapping: adapter, retryTimeoutSeconds: $0) }
+      ?? adapter
     let capture = FakeAudioCapture()
     let vad = FakeVADSignalSource()
     let paste = FakePasteTarget()
     let kernel = RecordingSessionKernel(
-      adapter: adapter,
+      adapter: kernelAdapter,
       audioCapture: capture,
       vad: vad,
       currentTick: { 0 },
@@ -105,7 +109,7 @@ struct WhisperBackendErrorReloadTests {
       outcome: KernelFinalizationOutcome(),
       context: KernelSessionContext(),
       steps: steps,
-      adapter: adapter,
+      adapter: kernelAdapter,
       engineMutationScope: .alwaysAllowedForTesting
     )
     kernelDriver.start()
@@ -417,7 +421,7 @@ struct WhisperBackendErrorReloadTests {
 
   @Test("retry timeout after status 8 primary finalize still triggers forced unload at finishTerminal")
   func retryTimeoutAfterStatus8StillForcesUnload() async throws {
-    let h = makeKernelHarness()
+    let h = makeKernelHarness(retryTimeoutSecondsOverride: 0.05)
     try await h.adapter.warmUp(modelReceipt: nil)
 
     let callsOnHandle1 = LockedCounter()
@@ -426,11 +430,11 @@ struct WhisperBackendErrorReloadTests {
       if callsOnHandle1.incrementAndGet() == 1 {
         throw TranscribeCppError(rawStatus: 8)
       }
-      // Second call is the Phase-2 retry: hang cooperatively until kernel's 5.3s retry deadline cancels it.
+      // Second call is the Phase-2 retry: hang cooperatively until the 0.05s retry deadline cancels it.
       try await Task.sleep(for: .seconds(30))
     }
 
-    await runKernelTake(h, policy: .never, timeoutSeconds: 10)
+    await runKernelTake(h, policy: .never, timeoutSeconds: 2.0)
 
     #expect(h.adapter.readiness == .notReady)
     #expect(await awaitUntil { h.driver.unloadedHandles == [1] })
@@ -612,6 +616,62 @@ struct WhisperBackendErrorReloadTests {
     #expect(adapter.readiness == .ready)
   }
 
+  @Test("timer rearm (.never or timed) after refused forced unload keeps teardown pending and arms no timer")
+  func timerRearmPreservesPendingForcedTeardown() async throws {
+    let driver = FakeReloadWhisperDriver()
+    let claimGate = ClaimGate()
+    let scope = EngineMutationScope.live(
+      tryBegin: { claimGate.allowed },
+      end: { false },
+      wake: {},
+      onRefused: { _ in }
+    )
+    let (backend, adapter) = makeAdapter(driver, scope: scope)
+    try await adapter.warmUp(modelReceipt: nil)
+
+    driver.poisonHandle(1, status: 8)
+    _ = try await runDirectAdapterTake(adapter)
+    _ = await adapter.retryDecode(inputSamples: Self.speech)
+
+    // Forced unload refused by active recovery -> latch restored.
+    claimGate.allowed = false
+    adapter.applyUnloadPolicy(.immediately)
+    for _ in 0..<20 { await Task.yield() }
+    #expect(adapter.shouldForceUnloadAfterFailure == true)
+
+    // File import / Meeting timer rearm passes settings policy (.never or .fiveMinutes): must NOT drop latch or arm timer.
+    adapter.applyUnloadPolicy(.never)
+    #expect(adapter.shouldForceUnloadAfterFailure == true)
+    #expect(adapter.readiness == .notReady)
+    adapter.applyUnloadPolicy(.fiveMinutes)
+    #expect(adapter.shouldForceUnloadAfterFailure == true)
+    #expect(adapter.modelUnloadTaskForUnitTests == nil)
+    #expect(await backend.isReady == true)
+
+    // Once recovery ends, warmUp sees pending forced unload, tears down handle 1, and loads handle 2 cleanly.
+    claimGate.allowed = true
+    try await adapter.warmUp(modelReceipt: nil)
+    #expect(driver.unloadedHandles == [1])
+    #expect(driver.loadedHandles == [1, 2])
+    #expect(adapter.readiness == .ready)
+    let rescueTake = try await runDirectAdapterTake(adapter)
+    guard case .transcript(let res) = rescueTake else {
+      Issue.record("expected transcript after reload, got \(rescueTake)")
+      return
+    }
+    #expect(res.text == "ok from handle 2")
+  }
+
+  @Test("bounded signal waiter fails fast instead of hanging when driver call never starts")
+  func boundedSignalWaiterGivesUpOnTimeout() async {
+    let driver = FakeReloadWhisperDriver()
+    let arrived = await driver.waitForUnloadStarted(99, timeoutSeconds: 0.02, recordFailure: false)
+    #expect(arrived == false)
+    let transcribeArrived = await driver.waitForTranscribeStarted(
+      99, occurrence: 1, timeoutSeconds: 0.02, recordFailure: false)
+    #expect(transcribeArrived == false)
+  }
+
   // MARK: - 11. transcribeForMeeting aborted by backend.unload() yields MeetingEngineYield
 
   @Test("transcribeForMeeting completes normally without unload and throws MeetingEngineYield when unload aborts it")
@@ -700,13 +760,13 @@ private final class FakeReloadWhisperDriver: WhisperExecutorDriving, @unchecked 
 
   private var heldUnloads: Set<Int> = []
   private var startedUnloads: Set<Int> = []
-  private var unloadStartedWaiters: [Int: CheckedContinuation<Void, Never>] = [:]
+  private var unloadStartedWaiters: [(id: UUID, handle: Int, cont: CheckedContinuation<Bool, Never>)] = []
   private var unloadReleaseWaiters: [Int: CheckedContinuation<Void, Never>] = [:]
 
   private var heldTranscribeHandles: [Int: Bool] = [:]
   private var abortedTranscribeHandles: Set<Int> = []
   private var transcribeOccurrenceCount: [Int: Int] = [:]
-  private var transcribeStartedWaiters: [(handle: Int, occ: Int, cont: CheckedContinuation<Void, Never>)] = []
+  private var transcribeStartedWaiters: [(id: UUID, handle: Int, occ: Int, cont: CheckedContinuation<Bool, Never>)] = []
   private var transcribeReleaseWaiters: [Int: CheckedContinuation<Void, Never>] = [:]
 
   var onTranscribe: (@MainActor (Int) -> Void)?
@@ -733,17 +793,54 @@ private final class FakeReloadWhisperDriver: WhisperExecutorDriving, @unchecked 
     lock.withLock { _ = heldUnloads.insert(handle) }
   }
 
-  func waitForUnloadStarted(_ handle: Int) async {
-    await withCheckedContinuation { cont in
-      let alreadyStarted = lock.withLock { () -> Bool in
-        if startedUnloads.contains(handle) || _unloadedHandles.contains(handle) {
-          return true
-        }
-        unloadStartedWaiters[handle] = cont
-        return false
+  private func awaitBoundedSignal(
+    label: String,
+    timeoutSeconds: Double,
+    recordFailure: Bool,
+    register: (UUID, CheckedContinuation<Bool, Never>) -> Bool,
+    removeTimedOut: @escaping @Sendable (UUID) -> CheckedContinuation<Bool, Never>?
+  ) async -> Bool {
+    let id = UUID()
+    let timeoutTask = Task {
+      // deadline-fallback: bound waiter so missing signal never hangs the suite.
+      try? await Task.sleep(for: .seconds(timeoutSeconds))
+      guard !Task.isCancelled else { return }
+      if let cont = removeTimedOut(id) {
+        if recordFailure { Issue.record("timed out waiting for \(label)") }
+        cont.resume(returning: false)
       }
-      if alreadyStarted { cont.resume() }
     }
+    let satisfied = await withCheckedContinuation { cont in
+      if register(id, cont) { cont.resume(returning: true) }
+    }
+    timeoutTask.cancel()
+    return satisfied
+  }
+
+  @discardableResult
+  func waitForUnloadStarted(
+    _ handle: Int, timeoutSeconds: Double = 2.0, recordFailure: Bool = true
+  ) async -> Bool {
+    await awaitBoundedSignal(
+      label: "FakeReloadWhisperDriver.unload(\(handle))",
+      timeoutSeconds: timeoutSeconds,
+      recordFailure: recordFailure,
+      register: { id, cont in
+        lock.withLock {
+          if startedUnloads.contains(handle) || _unloadedHandles.contains(handle) { return true }
+          unloadStartedWaiters.append((id: id, handle: handle, cont: cont))
+          return false
+        }
+      },
+      removeTimedOut: { [weak self] id in
+        self?.lock.withLock { () -> CheckedContinuation<Bool, Never>? in
+          guard let idx = self?.unloadStartedWaiters.firstIndex(where: { $0.id == id }) else {
+            return nil
+          }
+          return self?.unloadStartedWaiters.remove(at: idx).cont
+        }
+      }
+    )
   }
 
   func releaseUnload(_ handle: Int) {
@@ -761,15 +858,30 @@ private final class FakeReloadWhisperDriver: WhisperExecutorDriving, @unchecked 
     }
   }
 
-  func waitForTranscribeStarted(_ handle: Int, occurrence: Int) async {
-    await withCheckedContinuation { cont in
-      let satisfied = lock.withLock { () -> Bool in
-        if (transcribeOccurrenceCount[handle] ?? 0) >= occurrence { return true }
-        transcribeStartedWaiters.append((handle, occurrence, cont))
-        return false
+  @discardableResult
+  func waitForTranscribeStarted(
+    _ handle: Int, occurrence: Int, timeoutSeconds: Double = 2.0, recordFailure: Bool = true
+  ) async -> Bool {
+    await awaitBoundedSignal(
+      label: "FakeReloadWhisperDriver.transcribe(\(handle)#\(occurrence))",
+      timeoutSeconds: timeoutSeconds,
+      recordFailure: recordFailure,
+      register: { id, cont in
+        lock.withLock {
+          if (transcribeOccurrenceCount[handle] ?? 0) >= occurrence { return true }
+          transcribeStartedWaiters.append((id: id, handle: handle, occ: occurrence, cont: cont))
+          return false
+        }
+      },
+      removeTimedOut: { [weak self] id in
+        self?.lock.withLock { () -> CheckedContinuation<Bool, Never>? in
+          guard let idx = self?.transcribeStartedWaiters.firstIndex(where: { $0.id == id }) else {
+            return nil
+          }
+          return self?.transcribeStartedWaiters.remove(at: idx).cont
+        }
       }
-      if satisfied { cont.resume() }
-    }
+    )
   }
 
   func releaseTranscribe(_ handle: Int) {
@@ -811,16 +923,17 @@ private final class FakeReloadWhisperDriver: WhisperExecutorDriving, @unchecked 
     onProgress: (@Sendable (Int64, Int64) -> Void)?
   ) async throws -> TranscribeCppRunResult {
     onInferenceEntered?()
-    let (occ, shouldHold, abortOnRelease) = lock.withLock { () -> (Int, Bool, Bool) in
+    let (occ, shouldHold, abortOnRelease, startedWaiters) = lock.withLock {
+      () -> (Int, Bool, Bool, [CheckedContinuation<Bool, Never>]) in
       _transcribeHandles.append(handle)
       let occ = (transcribeOccurrenceCount[handle] ?? 0) + 1
       transcribeOccurrenceCount[handle] = occ
       let waiters = transcribeStartedWaiters.filter { $0.handle == handle && occ >= $0.occ }
       transcribeStartedWaiters.removeAll { $0.handle == handle && occ >= $0.occ }
-      waiters.forEach { $0.cont.resume() }
       let abort = heldTranscribeHandles[handle]
-      return (occ, abort != nil, abort ?? false)
+      return (occ, abort != nil, abort ?? false, waiters.map(\.cont))
     }
+    startedWaiters.forEach { $0.resume(returning: true) }
     _ = occ
     if shouldHold {
       await withCheckedContinuation { cont in
@@ -856,19 +969,20 @@ private final class FakeReloadWhisperDriver: WhisperExecutorDriving, @unchecked 
   func waitForDrain(_ handle: Int) async {}
 
   func unload(_ handle: Int) async {
-    let (shouldHold, startedCont, abortCont) = lock.withLock {
-      () -> (Bool, CheckedContinuation<Void, Never>?, CheckedContinuation<Void, Never>?) in
+    let (shouldHold, startedConts, abortCont) = lock.withLock {
+      () -> (Bool, [CheckedContinuation<Bool, Never>], CheckedContinuation<Void, Never>?) in
       _ = startedUnloads.insert(handle)
-      let cont = unloadStartedWaiters.removeValue(forKey: handle)
+      let matching = unloadStartedWaiters.filter { $0.handle == handle }
+      unloadStartedWaiters.removeAll { $0.handle == handle }
       var abortWaiter: CheckedContinuation<Void, Never>?
       if heldTranscribeHandles[handle] == true {
         heldTranscribeHandles.removeValue(forKey: handle)
         abortedTranscribeHandles.insert(handle)
         abortWaiter = transcribeReleaseWaiters.removeValue(forKey: handle)
       }
-      return (heldUnloads.contains(handle), cont, abortWaiter)
+      return (heldUnloads.contains(handle), matching.map(\.cont), abortWaiter)
     }
-    startedCont?.resume()
+    startedConts.forEach { $0.resume(returning: true) }
     abortCont?.resume()
     if shouldHold {
       await withCheckedContinuation { cont in
@@ -900,4 +1014,60 @@ private final class LockedCounter: @unchecked Sendable {
 @MainActor
 private final class ClaimGate {
   var allowed = true
+}
+
+@MainActor
+private final class FastRetryTimeoutAdapter: ASREngineAdapter, @unchecked Sendable {
+  private let inner: WhisperEngineAdapter
+  private let retryTimeoutSeconds: Double
+
+  init(wrapping inner: WhisperEngineAdapter, retryTimeoutSeconds: Double) {
+    self.inner = inner
+    self.retryTimeoutSeconds = retryTimeoutSeconds
+  }
+
+  var engineIdentity: ASREngineIdentity { inner.engineIdentity }
+  var capabilities: ASREngineCapabilities { inner.capabilities }
+  var readiness: ASREngineReadiness { inner.readiness }
+  var servingModelIdentity: ASRModelIdentity? { inner.servingModelIdentity }
+  func requestedModelIdentity() -> ASRModelIdentity? { inner.requestedModelIdentity() }
+  func inferenceEntry(for session: SessionID) -> ASRInferenceEntry? { inner.inferenceEntry(for: session) }
+  var onInferenceEntryRecorded: (@MainActor (SessionID) -> Void)? {
+    get { inner.onInferenceEntryRecorded }
+    set { inner.onInferenceEntryRecorded = newValue }
+  }
+  var lastWarmupInferenceMs: Int? { inner.lastWarmupInferenceMs }
+  func warmUp(modelReceipt: WarmUpModelReceipt?) async throws { try await inner.warmUp(modelReceipt: modelReceipt) }
+  var loadProgress: AsyncStream<ASRLoadProgressTick>? { inner.loadProgress }
+  var lastObservedPhase: String { inner.lastObservedPhase }
+  var warmupStallGuardEligible: Bool { inner.warmupStallGuardEligible }
+  func beginSession(_ id: SessionID, options: TranscriptionOptions, streaming: Bool) async throws {
+    try await inner.beginSession(id, options: options, streaming: streaming)
+  }
+  func acceptAudio(_ buffer: AudioBufferHandoff) { inner.acceptAudio(buffer) }
+  func finalize(batchSamples: [Float]) async -> ASREngineOutcome { await inner.finalize(batchSamples: batchSamples) }
+  var finalizeProgress: AsyncStream<ASRFinalizeProgressTick>? { inner.finalizeProgress }
+  var isVendorDecodeInFlight: Bool { inner.isVendorDecodeInFlight }
+  func retryDecode(inputSamples: [Float]) async -> ASREngineOutcome {
+    await inner.retryDecode(inputSamples: inputSamples)
+  }
+  func retryDecodeTimeoutSeconds(forSampleCount sampleCount: Int) -> Double { retryTimeoutSeconds }
+  func bumpRetryGeneration() { inner.bumpRetryGeneration() }
+  func cancel() async { await inner.cancel() }
+  func recoverFromWedge() async { await inner.recoverFromWedge() }
+  var onEngineInterrupted: (@MainActor () -> Void)? {
+    get { inner.onEngineInterrupted }
+    set { inner.onEngineInterrupted = newValue }
+  }
+  func recoverFromASRInterruption() async -> ASRInterruptionRecoveryOutcome {
+    await inner.recoverFromASRInterruption()
+  }
+  func applyUnloadPolicy(_ policy: ModelUnloadPolicy) { inner.applyUnloadPolicy(policy) }
+  var lastResult: ASRResult? { inner.lastResult }
+  func warmUpFromCache() async throws { try await inner.warmUpFromCache() }
+  func cancelPendingUnload() { inner.cancelPendingUnload() }
+  func observeSpeechSegments(_ segments: [SpeechSegment], rawCaptureSamples: [Float]) {
+    inner.observeSpeechSegments(segments, rawCaptureSamples: rawCaptureSamples)
+  }
+  var shouldForceUnloadAfterFailure: Bool { inner.shouldForceUnloadAfterFailure }
 }

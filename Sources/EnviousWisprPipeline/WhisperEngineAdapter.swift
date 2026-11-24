@@ -1184,11 +1184,13 @@ final class WhisperEngineAdapter: ASREngineAdapter, @unchecked Sendable {
     // Only arm when no active session exists (idle/post-terminal).
     guard sessionID == nil || isTerminal else { return }
     let wasForced = policy == .immediately && pendingBackendFailureUnload
-    pendingBackendFailureUnload = false
     if wasForced {
       cachedReadiness = .notReady
       guard pendingForcedUnloadTask == nil else { return }
+    } else if pendingBackendFailureUnload {
+      return
     }
+    pendingBackendFailureUnload = false
     let armedSession = sessionID
     let effectivePolicy: ModelUnloadPolicy = wasForced ? .immediately : policy
     switch effectivePolicy {
