@@ -147,6 +147,8 @@ final class WhisperEngineAdapter: ASREngineAdapter, @unchecked Sendable {
   /// `cancelPendingUnload()` (the Rung 2B kernel hook called pre-`beginSession`)
   /// and `beginSession` (defense-in-depth) both cancel it.
   private var modelUnloadTask: Task<Void, Never>?
+  private var pendingBackendFailureUnload = false
+  private var pendingForcedUnloadTask: Task<Void, Never>?
 
   // MARK: Audio + speech segments
 
@@ -352,6 +354,7 @@ final class WhisperEngineAdapter: ASREngineAdapter, @unchecked Sendable {
   }
 
   var readiness: ASREngineReadiness { cachedReadiness }
+  var shouldForceUnloadAfterFailure: Bool { pendingBackendFailureUnload }
 
   // MARK: ASREngineAdapter — model attribution (#3546 §3.7 T1)
 
@@ -399,6 +402,8 @@ final class WhisperEngineAdapter: ASREngineAdapter, @unchecked Sendable {
   /// no progress signal, so the kernel runs signal-free warm-up — no wedge
   /// detection, no wall-clock timeout (per the protocol's MUST NOT clause).
   func warmUp(modelReceipt: WarmUpModelReceipt?) async throws {
+    if let task = pendingForcedUnloadTask { await task.value }
+    try Task.checkCancellation()
     await checkModelIdentity()
     if await backend.isReady {
       cachedReadiness = .ready
@@ -461,7 +466,7 @@ final class WhisperEngineAdapter: ASREngineAdapter, @unchecked Sendable {
   /// reported as `.notReady`.
   func warmUpFromCache() async throws {
     await checkModelIdentity()
-    let ready = await backend.isReady
+    let ready = await backend.isReady && pendingForcedUnloadTask == nil
     cachedReadiness = ready ? .ready : .notReady
     cachedWarmupInferenceMs = ready ? await backend.lastWarmupInferenceMs : nil
   }
@@ -959,6 +964,9 @@ final class WhisperEngineAdapter: ASREngineAdapter, @unchecked Sendable {
       return .cancelled
     case .failed(let error):
       lastFailureError = error
+      if (error as? TranscribeCppWhisperError) == .runFailed(status: 8) {
+        pendingBackendFailureUnload = true
+      }
       diagnostics.streamingFinalPath = "failed"  // #1309
       lastASRDiagnostics = diagnostics
       isTerminal = true
@@ -1058,6 +1066,7 @@ final class WhisperEngineAdapter: ASREngineAdapter, @unchecked Sendable {
     retryGeneration &+= 1  // #1707 Phase 2: invalidate any pending retry.
     lastResult = nil
     lastLanguageDetection = nil
+    pendingBackendFailureUnload = false
     // Drop feed-task handles — a `finalize()` after `cancel()` short-circuits to
     // `.cancelled` and never drains; the tasks themselves see `isTerminal` / the
     // session mismatch and skip (mirrors `ParakeetEngineAdapter.discardSession`).
@@ -1072,7 +1081,7 @@ final class WhisperEngineAdapter: ASREngineAdapter, @unchecked Sendable {
       streamingActive = false
       await live.cancel()
     }
-    cachedReadiness = await backend.isReady ? .ready : .notReady
+    cachedReadiness = (await backend.isReady && pendingForcedUnloadTask == nil) ? .ready : .notReady
   }
 
   /// #959 fail-open ceiling for the wedge-recovery unload. NOT a measured perf
@@ -1169,12 +1178,20 @@ final class WhisperEngineAdapter: ASREngineAdapter, @unchecked Sendable {
     modelUnloadTask = nil
     // Only arm when no active session exists (idle/post-terminal).
     guard sessionID == nil || isTerminal else { return }
+    let wasForced = policy == .immediately && pendingBackendFailureUnload
+    pendingBackendFailureUnload = false
+    if wasForced {
+      cachedReadiness = .notReady
+      guard pendingForcedUnloadTask == nil else { return }
+    }
     let armedSession = sessionID
-    switch policy {
+    let effectivePolicy: ModelUnloadPolicy = wasForced ? .immediately : policy
+    switch effectivePolicy {
     case .never:
       return
     case .immediately:
-      modelUnloadTask = Task { [backend, engineMutationScope, weak self] in
+      let unloadTask = Task { [backend, engineMutationScope, weak self] in
+        defer { if wasForced { self?.pendingForcedUnloadTask = nil } }
         guard !Task.isCancelled else { return }
         // Re-check session keying right before the unload call — a
         // `beginSession(B)` between arm and execute must NOT see A's
@@ -1212,6 +1229,11 @@ final class WhisperEngineAdapter: ASREngineAdapter, @unchecked Sendable {
           guard !Task.isCancelled else { return }
           self?.cachedReadiness = .notReady
         }
+      }
+      if wasForced {
+        pendingForcedUnloadTask = unloadTask
+      } else {
+        modelUnloadTask = unloadTask
       }
     case .twoMinutes, .fiveMinutes, .tenMinutes, .fifteenMinutes, .sixtyMinutes:
       guard let interval = policy.interval else { return }
@@ -1346,6 +1368,7 @@ final class WhisperEngineAdapter: ASREngineAdapter, @unchecked Sendable {
         silentTailDropped: result.silentTailDropped
       )
       lastResult = correctedResult
+      pendingBackendFailureUnload = false
       // #1707 Codex r9/r10: mirror the normal finalize path's per-
       // transcription latency telemetry (`:930` above) — without this,
       // every Phase-2 retry-rescued dictation silently drops out of the
@@ -1364,6 +1387,9 @@ final class WhisperEngineAdapter: ASREngineAdapter, @unchecked Sendable {
       return .cancelled
     case .failed(let error):
       lastFailureError = error
+      if (error as? TranscribeCppWhisperError) == .runFailed(status: 8) {
+        pendingBackendFailureUnload = true
+      }
       return .failed(.decodeFailed)
     }
   }
@@ -1510,6 +1536,11 @@ final class WhisperEngineAdapter: ASREngineAdapter, @unchecked Sendable {
     // prepared by the caller — proving the retry genuinely re-decodes real,
     // already-captured audio, not a synthetic stand-in. `nil` controller
     // (production, and every test that doesn't opt in) never forces a failure.
+    #if DEBUG
+      if batchDecodeFaultController?.shouldForceWhisperStatus8() == true {
+        return .failed(TranscribeCppWhisperError.runFailed(status: 8))
+      }
+    #endif
     if batchDecodeFaultController?.shouldForceFailBatchDecode(
       backend: .whisper, sampleCount: samples.count) == true
     {

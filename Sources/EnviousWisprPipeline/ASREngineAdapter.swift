@@ -567,6 +567,9 @@ package protocol ASREngineAdapter: AnyObject, Sendable {
   /// `WhisperKitPipeline.swift:614-615` single-coordinate parity). Adapters
   /// that do not consume segments ignore the parameter.
   func observeSpeechSegments(_ segments: [SpeechSegment], rawCaptureSamples: [Float])
+
+  /// `true` when this take ended with a backend failure requiring forced `.immediately` unload.
+  var shouldForceUnloadAfterFailure: Bool { get }
 }
 
 extension ASREngineAdapter {
@@ -592,4 +595,5 @@ extension ASREngineAdapter {
   /// its manager feeds the shared progress file; signal-free adapters
   /// (Whisper) and in-process managers stay uncovered.
   public var warmupStallGuardEligible: Bool { false }
+  public var shouldForceUnloadAfterFailure: Bool { false }
 }

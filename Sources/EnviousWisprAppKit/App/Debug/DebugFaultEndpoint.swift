@@ -558,6 +558,11 @@
           batchDecodeFaultController.failNextBatchDecode(backend: backend)
           return "OK"
         }
+        if cmd == "fail_whisper_backend" {
+          guard let batchDecodeFaultController else { return "ERR no_dependency" }
+          batchDecodeFaultController.failWhisperBackendStatus8()
+          return "OK"
+        }
         if let backend = parseBackendArgCommand(cmd, prefix: "fail_every_batch_decode(") {
           guard let batchDecodeFaultController else { return "ERR no_dependency" }
           batchDecodeFaultController.failEveryBatchDecode(backend: backend)
