@@ -42,8 +42,10 @@ struct ParakeetUpgradeCoordinatorTests {
     var preparations = 0
     rig.coordinator.deliveryStageGateForTesting = {
       preparations += 1
-      // Count only: a third preparation cancels the loop so this test fails by name (#3675).
-      if preparations > 2 { withUnsafeCurrentTask { $0?.cancel() } }
+      guard preparations > 2 else { return }
+      // Ends a loop that never consumes the point; a cancelled test alone does not fail (#3675).
+      Issue.record("prepared \(preparations) times")
+      withUnsafeCurrentTask { $0?.cancel() }
     }
     rig.coordinator.markSelectionPoint()
     rig.coordinator.markSelectionPoint()  // a second launch poke coalesces
