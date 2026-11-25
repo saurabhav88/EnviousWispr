@@ -5,6 +5,7 @@ import Observation
 import QuartzCore
 import SwiftUI
 import Testing
+import os
 
 @testable import EnviousWisprAppKit
 @testable import EnviousWisprStorage
@@ -384,6 +385,47 @@ struct HistoryFilterBarLayoutTests {
   }
 
   #if DEBUG
+    /// #4716: what happened around the rig since its counters were reset, for `failureContext`:
+    /// notification names and counts, and the window state that can change without one.
+    @MainActor private final class RigEvents {
+      private var seen = OSAllocatedUnfairLock<[String: Int]>(initialState: [:])
+      private var tokens: [(NotificationCenter, any NSObjectProtocol)] = []
+      private var stateAtReset = ""
+
+      func begin(_ window: NSWindow) {
+        end()
+        // A new counter for each interval: a post still in flight counts in the old one.
+        let seen = OSAllocatedUnfairLock<[String: Int]>(initialState: [:])
+        self.seen = seen
+        stateAtReset = Self.state(window)
+        let centers: [NotificationCenter] = [
+          .default, NSWorkspace.shared.notificationCenter, DistributedNotificationCenter.default(),
+        ]
+        for center in centers {
+          let token = center.addObserver(forName: nil, object: nil, queue: nil) { note in
+            let name = note.name.rawValue
+            seen.withLock { $0[name, default: 0] += 1 }
+          }
+          tokens.append((center, token))
+        }
+      }
+
+      func end() {
+        for (center, token) in tokens { center.removeObserver(token) }
+        tokens = []
+      }
+
+      func report(_ window: NSWindow) -> String {
+        let names = seen.withLock { $0 }.sorted { $0.key < $1.key }.map { "\($0.key)x\($0.value)" }
+        return "atReset=[\(stateAtReset)] atCheck=[\(Self.state(window))] events=\(names)"
+      }
+
+      private static func state(_ window: NSWindow) -> String {
+        "\(window.effectiveAppearance.name.rawValue) scale=\(window.backingScaleFactor) "
+          + "screen=\(window.screen != nil) key=\(window.isKeyWindow) frame=\(window.frame)"
+      }
+    }
+
     private struct Rig {
       let coordinator: TranscriptCoordinator
       let counts: Counts
@@ -393,6 +435,7 @@ struct HistoryFilterBarLayoutTests {
       let view: NSHostingView<Parent>
       let window: NSWindow
       let field: NSTextField
+      let events: RigEvents
     }
 
     /// Waits for an observed signal, not elapsed time: it publishes a results value for another
@@ -446,7 +489,8 @@ struct HistoryFilterBarLayoutTests {
       try #require(coordinator.browser.requestedHistoryState(for: tab).query.isEmpty)
       let rig = Rig(
         coordinator: coordinator, counts: counts, modes: modes, results: results, probe: probe,
-        view: view, window: window, field: field)
+        view: view, window: window, field: field, events: RigEvents())
+      defer { rig.events.end() }
       reset(rig)
       try body(rig)
     }
@@ -461,7 +505,7 @@ struct HistoryFilterBarLayoutTests {
       return "context: rigWindowKey=\(rig.window.isKeyWindow) appKeyWindow=\(keyWindow) "
         + "windows=\(windows.count) visible=\(windows.filter(\.isVisible).count) "
         + "firstResponder=\(responder) locale=\(Locale.current.identifier) field=\(rig.field.frame) "
-        + "lastPlacements=\(rig.probe.layout.placements.suffix(4))"
+        + "lastPlacements=\(rig.probe.layout.placements.suffix(4)) \(rig.events.report(rig.window))"
     }
 
     private func reset(_ rig: Rig) {
@@ -500,6 +544,7 @@ struct HistoryFilterBarLayoutTests {
     )
     func focusThenFirstCharacter() throws {
       try withRig { rig in
+        rig.events.begin(rig.window)
         let searchFrame = try #require(rig.probe.frames["search"])
         let fieldFrame = rig.field.frame
         try focus(rig)
@@ -522,6 +567,7 @@ struct HistoryFilterBarLayoutTests {
             && first.searchFrameChanged == false,
           "focus plus the first character changed layout: \(first); \(failureContext(rig))")
         reset(rig)
+        rig.events.begin(rig.window)
         for letter in "bcdefghij" {
           try type(String(letter), into: rig.field)
           pump(rig.view)
