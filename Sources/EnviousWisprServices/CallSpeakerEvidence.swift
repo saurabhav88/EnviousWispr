@@ -122,9 +122,12 @@ package enum CallSpeakerSurfaceReader {
   ) -> CallSpeakerReading? {
     let share = ZoomAppSpeakerReader.shareContext(windows: capture.windows, labels: labels)
     return zoomWindows(capture.windows, share: share, labels: labels).map {
-      ZoomAppSpeakerReader.read(
+      var reading = ZoomAppSpeakerReader.read(
         windows: $0, accountTitles: capture.accountTitles, share: share, knownSelf: knownSelf,
         labels: labels)
+      reading.follow = ZoomAppSpeakerReader.follow(
+        windows: $0, share: share, reading: reading, labels: labels)
+      return reading
     }
   }
 
@@ -332,6 +335,16 @@ package struct CallSpeakerAccumulator: Sendable, Equatable {
   private var names = Names()
   /// Names the segment's copies showed anywhere in Zoom (#4935); never saved.
   private var shownNames: Set<String> = []
+  /// Whether a real talker mark was ever read: Zoom's moving tile (#4935) is then not needed.
+  private var sawMark = false
+
+  private struct Follow: Sendable, Equatable {
+    let seen: CallSpeakerReading.ZoomFollow
+    let lastMs: Int
+    var movedMs: Int?
+    var stampIndex = 0
+    var stampMs: Int?
+  }
   /// Whether any capture was complete and about one call.
   private var usable = false
   private let limits: CallEvidenceLimits
@@ -356,6 +369,7 @@ package struct CallSpeakerAccumulator: Sendable, Equatable {
     /// Closed two-person stretches, and the one still being extended.
     var pairs: [CallPairStretch] = []
     var openPair: CallPairStretch?
+    var follow: Follow?
 
     /// Closed stretches plus the open one.
     var allPairs: [CallPairStretch] { pairs + (openPair.map { [$0] } ?? []) }
@@ -363,6 +377,7 @@ package struct CallSpeakerAccumulator: Sendable, Equatable {
     mutating func closePair() {
       if let openPair { pairs.append(openPair) }
       openPair = nil
+      follow = nil
     }
   }
 
@@ -403,6 +418,8 @@ package struct CallSpeakerAccumulator: Sendable, Equatable {
     _ reading: CallSpeakerReading?, context: CallCaptureContext, observationMs: Int
   ) {
     health.captureAttempts += 1
+    let followed = names.follow
+    names.follow = nil
     // First, so that a copy nothing else uses still counts (#4935).
     if let people = context.shownPeople {
       if shownNames.count < 3 { shownNames.formUnion(people.names) }
@@ -424,6 +441,7 @@ package struct CallSpeakerAccumulator: Sendable, Equatable {
     }
     usable = true
     status = .observed
+    if reading?.talkerSource == .flag { sawMark = true }
     guard let reading else {
       breakAbsenceRuns()
       names.closePair()
@@ -477,9 +495,53 @@ package struct CallSpeakerAccumulator: Sendable, Equatable {
       }
       for name in observation.speaking { speakingSpellings.insert(Array(name.utf8)) }
       observations.append(observation)
+      countMove(from: followed, to: reading.follow, at: observationMs)
     case .withheld(let reason):
       health.withheldByReason[reason.rawValue, default: 0] += 1
     }
+  }
+
+  /// One vote for a move of Zoom's tile (#4935): the reading 4 s after it, if the tile still holds
+  /// 0.5 s later (lag 500). Zoom keeps a moved tile about 2.75 s whoever talks (42 live moves),
+  /// then moves within 0.4 s, so nobody else was speaking at the vote, 3.5 s after the move.
+  private mutating func countMove(
+    from before: Follow?, to seen: CallSpeakerReading.ZoomFollow?, at ms: Int
+  ) {
+    guard !sawMark, let seen else { return }
+    var now = Follow(seen: seen, lastMs: ms)
+    defer { names.follow = now }
+    guard let before, before.seen.place == seen.place, ms - before.lastMs <= 1_000, seen.mayVote
+    else { return }
+    if before.seen.name != seen.name { now.movedMs = ms }
+    guard before.seen.name == seen.name, let moved = before.movedMs else { return }
+    (now.stampIndex, now.stampMs) = (before.stampIndex, before.stampMs)
+    let lag = lag?.milliseconds ?? 500
+    if now.stampMs == nil, ms - lag - moved >= 3_500 {
+      (now.stampIndex, now.stampMs) = (observations.count - 1, ms)
+    }
+    if let stamp = now.stampMs {
+      guard stamp - lag - moved <= 4_000 else { return }
+      if ms >= stamp - lag + 1_000 {
+        return vote(for: seen.name, at: now.stampIndex)
+      }
+    }
+    now.movedMs = moved
+  }
+
+  /// Turns a kept quiet observation into a talking one, unless that would pass a cap.
+  private mutating func vote(for name: String, at index: Int) {
+    var used = usage(of: names, adding: nil)
+    used.insertNames([name])
+    used.runs += 2
+    used.speakingReferences += 1
+    guard used.exceeded(limits) == nil else { return }
+    let ms = observations[index].observationMs
+    observations[index] = CallSpeakerObservation(observationMs: ms, speaking: [name])
+    runs += 2
+    speakingReferences += 1
+    speakingSpellings.insert(Array(name.utf8))
+    health.admittedQuietObservations -= 1
+    health.admittedSpeakingObservations += 1
   }
 
   /// What the recording would use with `names` as this segment's and `observation` added; the

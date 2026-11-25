@@ -305,6 +305,121 @@ struct ZoomLayoutSnapshotTests {
     #expect(ZoomAppSpeakerReader.read(windows: label, share: twice).sharedNames == ["Dana Fox"])
   }
 
+  @Test(
+    "with no mark, the tile that moves with the talker is the last thumbnail, or the only one",
+    arguments: [("725-gallery", 3, false), ("725-speaker", 3, true), ("725-minimized", 0, false)])
+  func followTile(file: String, people: Int, large: Bool) throws {
+    let copy = try shareCapture(file, account: ["Host Person(host@example.com)"])
+    let reading = try #require(CallSpeakerSurfaceReader.zoomReading(copy, labels: .builtIn))
+    #expect(reading.speaking.isEmpty)
+    #expect(reading.follow?.name == "Dana Fox")
+    #expect(reading.follow?.mayVote == true)
+    #expect(reading.follow?.place.people.count == people)
+    #expect(reading.follow?.place.largeTile == large)
+    let unknown = try shareCapture(file, account: nil)
+    #expect(
+      CallSpeakerSurfaceReader.zoomReading(unknown, labels: .builtIn)?.follow?.mayVote == false)
+    for other in ["hs-thumb-bea", "725-collapsed", "gs-sbs-gallery-bea"] {
+      let marked = try shareCapture(other, account: ["Host Person(host@example.com)"])
+      #expect(CallSpeakerSurfaceReader.zoomReading(marked, labels: .builtIn)?.follow == nil)
+    }
+  }
+
+  /// Readings of a Gallery at `times`: who is last from each time on, `-` before a muted name and
+  /// `+` for a real mark. The times of the observations that became talking ones.
+  private func votes(
+    _ script: [(Int, String)], until end: Int, times: [Int]? = nil, bring: [Int: String] = [:],
+    breakAt: Int? = nil, runs: Int = 1_000, lag: Int = 500, count: String? = nil
+  ) -> [Int] {
+    var limits = CallEvidenceLimits.current
+    limits.runs = runs
+    var all = CallSpeakerAccumulator(
+      surface: .zoomApp, rules: nil, lag: CallSpeakerLag(milliseconds: lag), limits: limits)
+    for ms in times ?? Array(stride(from: 0, through: end, by: 500)) {
+      if ms == breakAt { all.noteInterruption() }
+      let last = script.last { $0.0 <= ms }!.1
+      let name = last.filter { $0 != "-" && $0 != "+" }
+      let people = ["Host", "Alex", "Dana"] + (bring.filter { $0.key <= ms }.map(\.value))
+      let labels =
+        people.filter { $0 != name }.map { "\($0), Computer audio unmuted, Video off" } + [
+          "\(name), Computer audio \(last.hasPrefix("-") ? "muted" : "unmuted"), Video on"
+            + (last.hasPrefix("+") ? ", active speaker" : "")
+        ]
+      let root = CallAXNode(
+        role: "AXWindow", identifier: "zm.meeting.window.main",
+        children: labels.map { CallAXNode(role: "AXTabGroup", description: $0) }
+          + (count.map {
+            [
+              CallAXNode(
+                role: "AXButton", description: "Open participants panel, closed, \($0)")
+            ]
+          } ?? []))
+      let windows = [CallAXWindow(title: "Zoom Meeting", root: root)]
+      var reading = ZoomAppSpeakerReader.read(windows: windows, accountTitles: ["Host(h@e.com)"])
+      reading.follow = ZoomAppSpeakerReader.follow(
+        windows: windows, share: ZoomAppSpeakerReader.shareContext(windows: windows),
+        reading: reading)
+      all.add(
+        reading, context: CallCaptureContext(completeness: .complete, scope: .resolved),
+        observationMs: ms)
+    }
+    let talking = all.segment(endMs: nil, endReason: nil).observations.filter { $0.speaking != [] }
+    #expect(all.health.admittedSpeakingObservations == talking.count)
+    #expect(all.health.admittedQuietObservations == all.observations.count - talking.count)
+    return talking.map(\.observationMs)
+  }
+
+  @Test("one move of the tile is one vote, four seconds after it, once the tile has held")
+  func moveVotes() {
+    #expect(votes([(0, "Alex"), (2_000, "Dana")], until: 12_000) == [6_000])
+    #expect(votes([(0, "Alex"), (2_000, "Dana")], until: 6_500) == [6_000], "0.5 s after the stamp")
+    #expect(votes([(0, "Alex"), (2_000, "Dana")], until: 6_000) == [])
+    #expect(votes([(0, "Alex"), (2_000, "Dana")], until: 12_000, runs: 2) == [], "at the cap")
+    let two = [(0, "Alex"), (2_000, "Dana"), (10_000, "Alex")]
+    #expect(votes(two, until: 18_000, runs: 4) == [6_000], "one vote fills the cap")
+    #expect(votes([(0, "Dana")], until: 12_000) == [], "standing still")
+    #expect(votes([(0, "Alex"), (2_000, "Dana")], until: 12_000, count: "3 participants") == [6_000])
+    #expect(votes([(0, "Alex"), (2_000, "Dana")], until: 12_000, count: "4 participants") == [])
+    let waiting = "4 participants, 1 person is waiting"
+    #expect(votes([(0, "Alex"), (2_000, "Dana")], until: 12_000, count: waiting) == [])
+    #expect(votes([(0, "Alex"), (2_000, "Dana")], until: 12_000, lag: -500) == [5_000])
+    #expect(votes([(0, "Alex"), (2_000, "Dana")], until: 6_000, lag: -500) == [])
+    // Turns with the talker muting in between: one vote each, none for the user's own turn.
+    let turns = [(0, "Alex"), (2_000, "Dana"), (8_000, "-Dana"), (9_000, "Alex"), (16_000, "Host")]
+    #expect(votes(turns + [(22_000, "Dana")], until: 30_000) == [6_000, 13_000, 26_000])
+    // Another person's turn inside Zoom's hold, then the first again: the tile never moved, and no
+    // vote lies inside the hold. A tile that leaves and returns is a new move of its own.
+    #expect(votes([(0, "Alex"), (2_000, "Dana"), (4_750, "Alex")], until: 8_500) == [])
+    let back = [(0, "Alex"), (2_000, "Dana"), (4_000, "Alex"), (4_500, "Dana")]
+    #expect(votes(back, until: 8_500) == [], "left and returned inside 4 s")
+    #expect(votes(back, until: 9_500) == [8_500])
+    // A short reply before a long turn, with the tile moving as Zoom did in the call with a wrong
+    // vote: the long speaker's reading is far inside the long turn.
+    let reply = [(0, "Dana"), (19_600, "Alex"), (22_300, "Eve"), (32_600, "Alex")]
+    #expect(votes(reply, until: 31_000, bring: [0: "Eve"]) == [26_500])
+  }
+
+  @Test("a muted, new, marked or interrupted move is no vote")
+  func movesThatDoNotVote() {
+    #expect(votes([(0, "Alex"), (2_000, "-Dana"), (2_500, "Dana")], until: 12_000) == [])
+    let muted = [(0, "Alex"), (2_000, "Dana"), (5_500, "-Dana"), (6_000, "Dana")]
+    #expect(votes(muted, until: 12_000) == [])
+    #expect(votes([(0, "Alex"), (2_000, "Dana")], until: 12_000, bring: [2_000: "Eve"]) == [])
+    #expect(votes([(0, "Alex"), (2_000, "Dana")], until: 12_000, bring: [6_000: "Eve"]) == [])
+    #expect(votes([(0, "+Alex"), (500, "Alex"), (2_000, "Dana")], until: 12_000) == [0])
+    #expect(votes([(0, "Alex"), (2_000, "Dana")], until: 12_000, breakAt: 5_500) == [])
+    // The first reading 4 s after the move comes 4.6 s after it, through gaps that are allowed.
+    let slow = [1_500, 2_000, 3_000, 4_000, 5_000, 5_900, 6_600, 7_100, 7_600, 8_100]
+    #expect(votes([(0, "Alex"), (2_000, "Dana")], until: 0, times: slow) == [], "stamp too late")
+    let ontime = slow.map { $0 == 6_600 ? 6_500 : $0 }
+    #expect(votes([(0, "Alex"), (2_000, "Dana")], until: 0, times: ontime) == [6_500])
+    // A capture gap of more than a second, at the move, before the stamp or between it and the check.
+    for gap in [1_500, 4_000, 6_000] {
+      let times = stride(from: 0, through: 12_000, by: 500).filter { !(gap..<gap + 1_000 ~= $0) }
+      #expect(votes([(0, "Alex"), (2_000, "Dana")], until: 0, times: times) == [], "\(gap)")
+    }
+  }
+
   // MARK: - Other Zoom languages (#4350)
 
   /// One German or Japanese layout from the #4350 discovery (solo meeting, Zoom 7.1.9 (88375),

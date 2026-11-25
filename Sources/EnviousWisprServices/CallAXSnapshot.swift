@@ -117,6 +117,20 @@ package struct CallSpeakerReading: Sendable, Equatable {
   /// without a count; a count that is shown, conflicting or incomplete never sets it.
   package let countHiddenByShare: Bool
 
+  /// The Zoom tile that moves with the talker, when nothing says who talks (#4935). Never saved.
+  package var follow: ZoomFollow?
+  package struct ZoomFollow: Sendable, Equatable {
+    /// A change of it is a new layout, not a move; no people in the minimized window.
+    package struct Place: Sendable, Equatable {
+      package let people: Set<String>
+      package let largeTile: Bool
+      package let guestShare: Bool
+    }
+    package let place: Place
+    package let name: String
+    package let mayVote: Bool
+  }
+
   package enum TalkerSource: Sendable, Equatable {
     /// A tile's `active speaker` flag.
     case flag
