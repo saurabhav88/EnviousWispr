@@ -317,8 +317,10 @@ class TestSession:
             windows = get_attr(app, "AXWindows") or []
             for win in windows:
                 title = get_attr(win, "AXTitle") or "(untitled)"
-                # Try AXPress on close button, fallback to Cmd+W
-                close_btn = find_element(win, role="AXButton", description="close button")
+                # The window's own close button first: the AppKit main window's has no "close button"
+                # description (#4858). Then a described one, then Cmd+W below.
+                close_btn = (get_attr(win, "AXCloseButton")
+                             or find_element(win, role="AXButton", description="close button"))
                 if close_btn is not None:
                     perform_action(close_btn, "AXPress")
                     if self.verbose:
