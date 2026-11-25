@@ -39,6 +39,9 @@ struct ParakeetUpgradeCoordinatorTests {
   @Test("a pending selection point is prepared once, and a later load reuses the frozen request")
   func pendingSelectionPreparedOnce() async throws {
     let rig = try await ParakeetUpgradePolicyTests.rig(v3: true, ultra: false)
+    let gate = StageGate(maximumEntries: 2)  // a third preparation fails instead of looping (#3675)
+    gate.open()
+    rig.coordinator.deliveryStageGateForTesting = { await gate.pass() }
     rig.coordinator.markSelectionPoint()
     rig.coordinator.markSelectionPoint()  // a second launch poke coalesces
     #expect(rig.coordinator.hasPendingSelectionPoint)
