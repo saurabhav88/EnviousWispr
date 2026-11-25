@@ -29,6 +29,9 @@ package enum MeetingSpeakerSelection {
     package let offlineCount: Int?
     package let lowCount: Int?
     package let elapsedSeconds: Double
+    /// Voices the comparison counted (`countedVoices`); nil when that analysis gave no result.
+    package let offlineCounted: Int?
+    package let lowCounted: Int?
   }
 
   package static func eligible(
@@ -40,6 +43,18 @@ package enum MeetingSpeakerSelection {
 
   package static func count(_ analysis: MeetingSpeakerAnalysis) -> Int {
     Set(analysis.segments.map(\.speakerId)).count
+  }
+
+  /// #4945: speech a neural voice needs in the whole meeting before it counts in the comparison.
+  /// Real case: 0.21 s in 650 s made `choose` drop the right grouping. Segments are kept; only
+  /// the count ignores them.
+  package static let minimumVoiceMs = 2_000
+
+  /// Neural voices with at least `minimumVoiceMs` of speech.
+  package static func countedVoices(_ analysis: MeetingSpeakerAnalysis) -> Int {
+    var ms: [String: Int] = [:]
+    for segment in analysis.segments { ms[segment.speakerId, default: 0] += segment.endMs - segment.startMs }
+    return ms.values.count { $0 >= minimumVoiceMs }
   }
 
   package static func succeeded(_ analysis: MeetingSpeakerAnalysis) -> Bool {
@@ -56,11 +71,17 @@ package enum MeetingSpeakerSelection {
     guard succeeded(legacy) else { return keep(.legacyFailed) }
     guard count(legacy) <= 8 else { return keep(.capacity) }
     guard let offline, let low, succeeded(offline), succeeded(low) else { return keep(.probeFailed) }
-    let preferred = count(offline)
-    let verification = count(low)
-    guard preferred > 0, verification > 0 else { return keep(.probeFailed) }
+    let offlineRaw = count(offline)
+    let lowRaw = count(low)
+    guard offlineRaw > 0, lowRaw > 0 else { return keep(.probeFailed) }
+    let preferred = countedVoices(offline)
+    let verification = countedVoices(low)
     guard preferred < 8, verification < 8 else { return keep(.saturated) }
-    guard preferred == verification else { return keep(.disagreement) }
+    // Offline found fewer voices than its check: it may have merged two (German control, #4424).
+    // The raw-count clause keeps what #4424 selected; without it two measured recordings got worse.
+    guard (offlineRaw < 8 && offlineRaw == lowRaw) || preferred >= verification else {
+      return keep(.disagreement)
+    }
     return Decision(analysis: offline, reason: .selected)
   }
 }

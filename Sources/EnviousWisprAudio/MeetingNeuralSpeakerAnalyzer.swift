@@ -176,8 +176,8 @@ package enum MeetingNeuralSpeakerAnalyzer {
     mutating func finish() -> [SpeakerSegment] {
       for slot in 0..<slots { close(slot, at: cursor) }
       // Keep the vendor's complete 10 ms frame grid, including its centered tail frame.
-      // Trimming to PCM duration here could erase a tail-only slot and change the frozen
-      // count-agreement policy. Composition already bounds words to their actual timings.
+      // Trimming to PCM duration here could erase a tail-only slot and change the raw slot counts
+      // the selector reads. Composition already bounds words to their actual timings.
       return segments.sorted {
         ($0.startMs, $0.speakerId, $0.endMs) < ($1.startMs, $1.speakerId, $1.endMs)
       }
