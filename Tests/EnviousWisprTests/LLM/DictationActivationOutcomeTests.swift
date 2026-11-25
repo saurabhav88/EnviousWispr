@@ -296,8 +296,10 @@ struct DictationActivationOutcomeTests {
       return
     }
     #expect(rig.coordinator.dictationAdmissionOpenNow(for: .egOne(.full), endpoint: first))
-    // The same model is stopped and started again: a new process, a new endpoint.
-    rig.runtime.deactivate()
+    // The same model is stopped and started again: a new process, a new endpoint. The stop is
+    // awaited: a start that meets it in progress is deferred and answers not ready (#4951).
+    await rig.coordinator.transition(
+      to: .idle(.egOne(.full)), intent: rig.coordinator.claimIntent())
     guard case .ready(let second) = await rig.runtime.activateForDictation().value else {
       Issue.record("the model never came back")
       return
