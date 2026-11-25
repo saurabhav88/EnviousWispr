@@ -322,6 +322,15 @@ struct MeetingSpeakerLabelsModelTests {
     #expect(rig.model.status == .ready)
   }
 
+  @Test("the end of an activity nobody saw starts no check")
+  func unseenIdleStartsNoCheck() {
+    let rig = Rig()
+    rig.state = .admitted
+    rig.model.meetingBecameIdle()
+    #expect(rig.check.calls == 0)
+    #expect(rig.model.checkTaskForTests == nil)
+  }
+
   @Test("a meeting that starts during a check stops it; the next check waits for the first to end")
   func meetingStartStopsTheCheck() async throws {
     let rig = Rig()

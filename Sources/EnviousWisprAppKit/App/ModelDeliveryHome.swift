@@ -1779,34 +1779,63 @@ final class ModelDeliveryHome {
 
   /// Stops an attempt whose request was cancelled before the controller registered it (handoff 3).
   private func cancelStaleSpeakerLiveTransfer(on state: DeliveryState) {
-    guard let epoch = speakerLiveFetchEpoch, epoch != speakerLiveIntentEpoch,
-      speakerLiveScheduledEpoch == nil, !speakerLiveCancelRunning
-    else { return }
+    guard speakerLiveFetchIsStale else { return }
     // Check only the incoming update so an unrelated handle's `.notReady` replay cannot fire a
     // second cancel from the other handle's transfer state (#4540).
     switch state {
-    case .preparing, .downloading, .verifying: cancelSpeakerLiveTransfer()
+    case .preparing, .downloading, .verifying:
+      if speakerLiveCancelRunning {
+        speakerLiveStaleTransferSeen = true
+      } else {
+        cancelSpeakerLiveTransfer()
+      }
     case .notReady, .admitted, .cancelled, .failed: break
     }
   }
 
+  /// A cancelled request is still inside the fetch door and no newer one is scheduled.
+  private var speakerLiveFetchIsStale: Bool {
+    guard let epoch = speakerLiveFetchEpoch else { return false }
+    return epoch != speakerLiveIntentEpoch && speakerLiveScheduledEpoch == nil
+  }
+
   /// Sends one cancellation, after any earlier one. A later request waits for it (handoff 2).
+  ///
+  /// #4936: the stop takes no main-actor turn between the press and the controller. On a Mac whose
+  /// main thread was busy drawing, a stop that came back to the main actor between the two halves
+  /// reached the transfer after it had finished.
   private func cancelSpeakerLiveTransfer() {
     speakerLiveCancelRequestsForTests += 1
     speakerLiveCancelSerial += 1
     let serial = speakerLiveCancelSerial
     let previous = speakerLivePendingCancel
     speakerLiveCancelRunning = true
-    speakerLivePendingCancel = Task { [weak self] in
-      await previous?.value
-      if let substitute = self?.speakerLiveCancelOverrideForTests {
+    if let substitute = speakerLiveCancelOverrideForTests {
+      speakerLivePendingCancel = Task { [weak self] in
+        await previous?.value
         await substitute()
-      } else if let handle = self?.speakerLiveHandle {
-        await handle.cancelActiveFetch()
-        await self?.speakerFinalHandle?.cancelActiveFetch()
+        self?.speakerLiveCancelFinished(serial)
       }
-      if self?.speakerLiveCancelSerial == serial { self?.speakerLiveCancelRunning = false }
+      return
     }
+    let controller = controller
+    let identities = [speakerLiveRegistration, speakerFinalRegistration].compactMap {
+      $0?.manifest.identity
+    }
+    speakerLivePendingCancel = Task.detached(priority: .userInitiated) { [weak self] in
+      await previous?.value
+      for identity in identities { _ = await controller.cancel(identity) }
+      await self?.speakerLiveCancelFinished(serial)
+    }
+  }
+
+  private func speakerLiveCancelFinished(_ serial: Int) {
+    guard speakerLiveCancelSerial == serial else { return }
+    speakerLiveCancelRunning = false
+    // A transfer that showed up while this cancellation ran may have registered behind it.
+    guard speakerLiveStaleTransferSeen else { return }
+    speakerLiveStaleTransferSeen = false
+    if speakerLiveFetchIsStale { cancelSpeakerLiveTransfer() }
   }
 
   /// What a request for the speaker labels model did (the `requestPreviewDownload` shape).
@@ -1844,6 +1873,8 @@ final class ModelDeliveryHome {
   private var speakerLiveCancelSerial = 0
   /// A cancellation has been sent and has not finished.
   private var speakerLiveCancelRunning = false
+  /// A cancelled request's transfer published a state while a cancellation was running.
+  private var speakerLiveStaleTransferSeen = false
   package var speakerLivePendingCancelForTests: Task<Void, Never>? { speakerLivePendingCancel }
   /// The last request was refused (kill switch off). Cleared by the next scheduled request.
   private(set) var speakerLiveDownloadRefused = false

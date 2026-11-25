@@ -394,7 +394,10 @@ final class MeetingSpeakerLabelsModel {
     if finalChecking { finalReadiness = .waitingForMeeting }
   }
 
+  /// Runs the checks that waited for the meeting, and nothing else (#4936: idle can come for an
+  /// activity too short to see, also at launch, and a check never runs at launch).
   func meetingBecameIdle() {
+    guard readiness == .waitingForMeeting || finalReadiness == .waitingForMeeting else { return }
     if readiness == .waitingForMeeting { readiness = .unchecked }
     if finalReadiness == .waitingForMeeting { finalReadiness = .unchecked }
     checkIfNeeded()

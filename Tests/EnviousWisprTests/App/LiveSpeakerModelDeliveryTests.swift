@@ -325,11 +325,11 @@ struct LiveSpeakerModelDeliveryTests {
     // The Cancel lands while the request is still on its way into the controller.
     rig.home.cancelLiveSpeakerModelDownload()
     #expect(rig.home.speakerLiveCancelRequestsForTests == 1)
-    // That cancellation reaches the controller and finds no attempt yet.
+    // The controller registers the attempt behind that cancellation, which found nothing, and
+    // publishes its first transfer state before the cancellation has finished here.
     let sent = try #require(rig.home.speakerLivePendingCancelForTests)
-    _ = try await BoundedWait.result(of: sent)
-    // The controller then registers the attempt and publishes its first transfer state.
     rig.home.applySpeakerLiveStateForTests(.preparing(validatingExistingCache: true))
+    _ = try await BoundedWait.result(of: sent)
     #expect(rig.home.speakerLiveCancelRequestsForTests == 2, "the late attempt is stopped")
     rig.gate.release()
     try await rig.finishDownload()
@@ -551,6 +551,61 @@ struct LiveSpeakerModelDeliveryTests {
     try await it.rig.finishDownload()
     #expect(it.rig.gate.starts == 1)
     #expect(it.final.starts == 1)
+  }
+
+  @Test(
+    "a moment of activity nobody saw loses neither a waiting start nor a queued request",
+    .bug("https://github.com/saurabhav88/EnviousWispr/issues/4936", "launch waited for nothing"),
+    arguments: [false, true])
+  func unseenActivityLosesNothing(userRequest: Bool) async throws {
+    let it = try await AutomaticRig()
+    let meeting = MeetingIdleObserverTests.Meeting()
+    let observer = MeetingIdleObserver(
+      isActive: { meeting.isActive }, onIdle: { [home = it.home] in home.meetingBecameIdle() })
+    it.home.isMeetingActive = { meeting.isActive }
+    // Starts and ends before the observer reads again, as the meeting queue does at launch.
+    meeting.finalPassRunning = true
+    if userRequest { it.home.requestLiveSpeakerModel(meetingActive: true) } else { it.decide() }
+    meeting.finalPassRunning = false
+    try await BoundedWait.until(it.final.started)
+    try await it.rig.finishDownload()
+    #expect(it.final.starts == 1)
+    withExtendedLifetime(observer) {}
+  }
+
+  @Test(
+    "Cancel reaches a running transfer while the main thread is busy",
+    .bug("https://github.com/saurabhav88/EnviousWispr/issues/4936", "Cancel came late"))
+  func cancelNeedsNoMainThread() async throws {
+    let rig = try await Rig.make()
+    rig.home.speakerLiveFetchOverrideForTests = nil
+    rig.home.applySpeakerLiveStateForTests(.admitted)
+    // The attempt is held inside the controller before it checks its files, until it is cancelled:
+    // no network on any exit. The hook is every model's, so the attempt is known by its own state.
+    let controller = rig.home.controller
+    let identity = try #require(rig.home.speakerFinalRegistration).manifest.identity
+    let registered = BoundedWait.Signal()
+    let stopped = DispatchSemaphore(value: 0)
+    let latch = MeetingSpeakerLabelsModelTests.Latch()
+    await controller.setBeforeExistingCacheValidationForTesting {
+      await withTaskCancellationHandler { await latch.wait() } onCancel: { latch.open() }
+    }
+    await controller.setAfterMovedToDrainingForTesting { stopped.signal() }
+    await controller.addStateObserver { observed, state in
+      if observed == identity, case .preparing = state { registered.fire() }
+    }
+    // Ends a request that has not reached the controller, stops one that has.
+    defer { rig.home.cancelLiveSpeakerModelDownload() }
+    rig.home.startMissingFinalSpeakerModel(isSetUp: { true })
+    try await BoundedWait.until(registered)
+    rig.home.cancelLiveSpeakerModelDownload()
+    #expect(Self.blockMainThread(until: stopped), "the stop waited for the main thread")
+    try await rig.finishDownload()
+  }
+
+  /// Holds the main thread, as a Mac busy drawing does; false when nothing arrived in 5 s.
+  private static func blockMainThread(until signal: DispatchSemaphore) -> Bool {
+    signal.wait(timeout: .now() + 5) == .success
   }
 
   @Test("Cancel, also before the final transfer registered, holds the next launches until Download")
