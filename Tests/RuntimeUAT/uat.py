@@ -161,7 +161,7 @@ def collect_settled(w, mark, grace=3.0, stable_reads=3, interval=0.2,
     restores the two-in-one-second safety `_line_in_window` relies on.
 
     `_read`/`_now`/`_sleep` are test seams; the defaults drive the live app."""
-    read = _read if _read is not None else (lambda: lv.collect_dictations(w.log_entries_since(mark)))
+    read = _read if _read is not None else (lambda: lv.collect_dictations(w.log_entries_since(*mark)))
     deadline = _now() + grace
     recs = read()
     stable, last_n = 0, len(recs)
@@ -189,7 +189,7 @@ def run_silent_probe(w, seconds=6.0):
                         take whose transcript row was lost; `words` is None
     """
     audio = _silent_wav(seconds)
-    mark = dt.datetime.now().astimezone()
+    mark = w._take_start()
     w.test_recording(audio=audio, expect="\x00nomatch")
     recs = collect_settled(w, mark)
     state, words = classify_silent(recs)
@@ -387,16 +387,22 @@ def build_identity(worktree, expected_bin, app_start, head):
     Known limit: the receipt names the build's inputs, not a digest of the compiled code."""
     code = "EnviousWispr.debug.dylib"
     deployed = os.path.join(os.path.dirname(expected_bin), code)
-    try:
-        files = [os.stat(expected_bin), os.stat(deployed)]
-    except OSError as exc:
-        return None, f"cannot read the app's code: {exc}"
-    if app_start is None:
-        return None, "cannot read when the running app started"
-    if max(f.st_mtime for f in files) > app_start + 1:
-        return False, "rebuilt, but not relaunched"
-    if max(f.st_ctime for f in files) > app_start + 1:
-        return None, "the app's files were replaced or changed after it launched"
+
+    def outdated():
+        """Why the running process may not be the files on disk, or None."""
+        try:
+            files = [os.stat(expected_bin), os.stat(deployed)]
+        except OSError as exc:
+            return None, f"cannot read the app's code: {exc}"
+        if app_start is None:
+            return None, "cannot read when the running app started"
+        if max(f.st_mtime for f in files) > app_start + 1:
+            return False, "rebuilt, but not relaunched"
+        if max(f.st_ctime for f in files) > app_start + 1:
+            return None, "the app's files were replaced or changed after it launched"
+
+    if (answer := outdated()) is not None:
+        return answer
     derived = os.path.join(worktree, ".derivedData", "Dev")
     try:
         receipt = subprocess.run(
@@ -410,7 +416,8 @@ def build_identity(worktree, expected_bin, app_start, head):
             return None, "the deployed app is not the last Dev build"
     except (OSError, subprocess.TimeoutExpired) as exc:
         return None, f"cannot check the build: {exc}"
-    return True, "the Dev build receipt is of HEAD and the app holds that build"
+    # Read the times again: a build that landed during the checks above was what they compared.
+    return outdated() or (True, "the Dev build receipt is of HEAD and the app holds that build")
 
 
 def cmd_run(args):
@@ -551,7 +558,7 @@ def _run_in_rig(args, recipe, w, run_dir, full_head, build_matches_head):
             kwargs["sentence"] = sentence
         expected_token = args.expect or derive_expected(sentence or "The quick brown fox jumps over the lazy dog")
 
-        mark = dt.datetime.now().astimezone()
+        mark = w._take_start()
         print(f"== RUN {args.recipe} -> {recipe['function']}({', '.join(f'{k}={v!r}' for k, v in kwargs.items())}) ==")
         result = fn(**kwargs)
         # Result adapter per recipe (r1 R6): record_tts returns a DICT whose
