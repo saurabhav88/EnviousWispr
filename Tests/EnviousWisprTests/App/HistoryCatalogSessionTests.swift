@@ -351,9 +351,9 @@ struct HistoryCatalogSessionTests {
   }
 
   @Test(
-    "A catalog found corrupt by a background pass shows the label during the repair, then clears it",
-    .timeLimit(.minutes(1)))
-  func corruptCatalogRepairShows() async throws {
+    "A catalog found corrupt by a background pass, or first by a list read, shows the label during the repair, then clears it",
+    .timeLimit(.minutes(1)), arguments: [false, true])
+  func corruptCatalogRepairShows(listReadFindsIt: Bool) async throws {
     let root = root()
     defer { try? FileManager.default.removeItem(at: root) }
     let (changes, store, meetings) = sources(root)
@@ -361,34 +361,42 @@ struct HistoryCatalogSessionTests {
     let session = HistoryCatalogSession(
       changes: changes, sources: store.historyCatalogSources(meetings: meetings),
       directory: root.appendingPathComponent("catalog"))
-    let coordinator = TranscriptCoordinator(store: store)
-    coordinator.catalogSession = session
-    coordinator.startHistoryCatalog()
+    // No coordinator: its own read of the list races the pass to the damage (#4788).
+    session.start()
     await session.waitForIndexingForTesting()
     #expect(session.status == .ready)
     var trace: [(status: HistoryCatalogSession.Status, shows: Bool)] = []
     session.updatingStateForTesting = { trace.append(($0, $1)) }
     defer { session.updatingStateForTesting = nil }
-    // Damage the database the open session holds, then let a background pass find it.
+    // Damage the database the open session holds, then let one reader find it. A list read starts
+    // the repair itself; a pass reports the catalog unavailable first.
     let database = root.appendingPathComponent("catalog").appendingPathComponent("history.sqlite")
     let handle = try FileHandle(forWritingTo: database)
     try handle.write(contentsOf: Data(repeating: 0x41, count: 8_192))
     try handle.close()
     let revision = session.revision
-    try save(1, into: store, from: 30_000)
+    if listReadFindsIt {
+      await #expect(throws: (any Error).self) { try await session.page(.init(tab: .dictations)) }
+    } else {
+      try save(1, into: store, from: 30_000)
+    }
     while session.revision == revision, !Task.isCancelled {
       await session.waitForChange(revision: revision, notices: session.noticeCount)
     }
-    try #require(!Task.isCancelled, "the background pass did not publish")
+    try #require(!Task.isCancelled, "the damage was not published")
     // The error schedules the repair a moment later; wait for the catalog to certify again.
     while session.status != .ready, !Task.isCancelled {
       await session.waitForChange(revision: session.revision, notices: session.noticeCount)
     }
     try #require(!Task.isCancelled, "the repair did not certify")
     await session.waitForIndexingForTesting()
-    #expect(trace.contains { $0.status == .unavailable }, "the pass found the damage: \(trace.map(\.status))")
     #expect(
-      trace.filter { $0.status == .unavailable }.allSatisfy { $0.shows },
+      listReadFindsIt || trace.contains { $0.status == .unavailable },
+      "the pass found the damage: \(trace.map(\.status))")
+    let found = try #require(trace.firstIndex { $0.status != .ready }, "the damage was published")
+    #expect(
+      trace[found...].prefix { $0.status != .ready }
+        .allSatisfy { $0.shows || (listReadFindsIt && $0.status == .unavailable) },
       "the label shows through the repair: \(trace.map { "\($0.status) \($0.shows)" })")
     #expect(session.status == .ready)
     #expect(session.showsUpdating == false)
