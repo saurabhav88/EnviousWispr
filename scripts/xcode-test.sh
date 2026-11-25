@@ -518,9 +518,7 @@ fi
 APP_LOG_DIR="$LOG_DIR/app-logger"
 mkdir -p "$APP_LOG_DIR"
 if [ "$REAL_BOUNDARY" != 1 ]; then  # #4926: an ordinary run never reaches the real History
-  TEST_HOME_DIR="$LOG_DIR/test-home"
-  if [ -L "$TEST_HOME_DIR" ]; then echo "ERROR: test-home must not be a symlink: $TEST_HOME_DIR" >&2; exit 2; fi
-  mkdir -p "$TEST_HOME_DIR"
+  TEST_HOME_DIR="$(mktemp -d "$LOG_DIR/test-home.XXXXXX")"  # new even when --log-dir is reused
   export TEST_RUNNER_CFFIXED_USER_HOME="$TEST_HOME_DIR" TEST_RUNNER_HOME="$TEST_HOME_DIR"
 fi
 

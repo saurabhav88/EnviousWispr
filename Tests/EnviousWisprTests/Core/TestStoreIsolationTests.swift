@@ -15,6 +15,7 @@ struct TestStoreIsolationTests {
     let isolated = canonical(
       try #require(ProcessInfo.processInfo.environment["CFFIXED_USER_HOME"]))
     #expect(isolated != realHome)
+    #expect(ProcessInfo.processInfo.environment["HOME"].map(canonical) == isolated)
     #expect(canonical(NSHomeDirectory()) == isolated)
     #expect(canonical(URL.applicationSupportDirectory.path).hasPrefix(isolated + "/"))
     let bundle = Bundle.main.bundleIdentifier

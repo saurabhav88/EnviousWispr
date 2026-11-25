@@ -341,14 +341,16 @@ print(json.dumps({'testNodes': [{'nodeType': 'Test Plan', 'children': nodes}]}))
     def test_ordinary_runs_get_their_own_home_and_real_boundary_runs_get_none(self):
         # #4926: a caller's exported home never reaches either kind of run.
         caller = {'TEST_RUNNER_CFFIXED_USER_HOME': '/caller', 'TEST_RUNNER_HOME': '/caller'}
-        for args, home in ((('--filter', 'EnviousWisprTests/A'), str(self.root / 'logs/test-home')),
-                           (('--filter', 'EnviousWisprTests/A', '--real-boundary'), None)):
-            self.run_runner(*args, **caller)
-            self.assertEqual(json.loads((self.root / 'calls.home').read_text()), [home, home])
-            shutil.rmtree(self.root / 'logs')
-        (self.root / 'logs').mkdir()
-        (self.root / 'logs/test-home').symlink_to(self.root)
-        self.run_runner('--filter', 'EnviousWisprTests/A', rc=2)
+        homes = []
+        for extra in ([], [], ['--real-boundary']):
+            shutil.rmtree(self.root / 'logs/xcode-test-debug.xcresult', ignore_errors=True)
+            self.run_runner('--filter', 'EnviousWisprTests/A', *extra, **caller)
+            fixed, home = json.loads((self.root / 'calls.home').read_text())
+            self.assertEqual(fixed, home)
+            homes.append(home)
+        self.assertTrue(homes[0].startswith(str(self.root / 'logs/test-home.')), homes)
+        self.assertNotEqual(homes[0], homes[1], 'a reused log folder must get a new home')
+        self.assertIsNone(homes[2])
 
     def test_a_silent_test_step_is_stopped_as_hung(self):
         # #4507 T4: a test step that prints once and then nothing is stopped at the
