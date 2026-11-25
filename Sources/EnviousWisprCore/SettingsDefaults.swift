@@ -5,7 +5,8 @@ import Foundation
 /// owners. Kept narrow on purpose (#923 grounded review): only these populations belong in the
 /// shared domain, and caches, TCC state and debug settings stay per-build on `.standard`:
 /// - user settings (`SettingsManager`);
-/// - model-delivery override flags (`DeliveryFlags`);
+/// - model-delivery override flags (`DeliveryFlags`), and the Cancel or Remove record of the
+///   speaker labels download beside them (`ModelDeliveryHome.finalSpeakerModelDeclinedKey`, #4936);
 /// - local-polish paused-install projections (`LocalPolishRuntime`: `eg1.`, `eg1.mini.`,
 ///   `eg1.micro.`, `s1.` prefixes).
 ///

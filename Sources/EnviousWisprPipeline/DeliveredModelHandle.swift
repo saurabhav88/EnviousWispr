@@ -77,16 +77,19 @@ public final class DeliveredModelHandle {
     await controller.admitIfComplete(registration)
   }
 
-  /// The EXPLICIT download door (user Download / Update) — fetches the pinned
-  /// HF source into the owned folder.
+  /// The download door: fetches the pinned source into the owned folder. Callers own whether a
+  /// download may start: a user's press, or an automatic start the delivery contract names. For
+  /// the Finished calls speaker model the founder said "Yes to auto update." (2026-11-25, #4936,
+  /// contract §5d; `SpeakerFinalFetchPolicy`).
   public func ensureAvailable() async -> ModelDeliveryController.DeliveryOutcome {
     await controller.ensureModelAvailable(registration)
   }
 
   /// No `repair()` here, unlike the Parakeet and EG-1 handles (#1386 PR-2, Codex
   /// code-diff r6). The shared primitive re-fetches what it could not verify, and
-  /// for this engine a download is only ever the user's explicit choice (#1339).
-  /// Not an omission to fix later: the absence IS the policy.
+  /// a download of one of these models starts only by the user's choice (#1339) or by a
+  /// named automatic start (contract §5b, §5d; the fetch policies). A load that fails is
+  /// neither. Not an omission to fix later: the absence IS the policy.
 
   /// User Cancel during the download — cooperative; resolves after the live
   /// attempt fully drains.

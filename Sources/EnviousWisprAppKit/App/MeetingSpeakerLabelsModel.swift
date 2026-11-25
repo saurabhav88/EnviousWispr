@@ -117,7 +117,7 @@ enum LiveSpeakerLoadCheck {
   }
 }
 
-/// #4355 PR C: the Speaker labels card's model (EnviousMeet > Models). Downloads go through the
+/// #4355 PR C: the Speaker labels card's model (EnviousMeet > Models). A press goes through the
 /// one door, `ModelDeliveryHome.requestLiveSpeakerModel(meetingActive:)`; this model adds only
 /// what the delivery layer cannot know: whether the admitted model actually loads on this Mac.
 ///

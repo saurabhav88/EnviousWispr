@@ -586,7 +586,7 @@ final class ModelDeliveryHome {
     guard !storage.isUnavailable else {
       speakerLiveLaunchProbeTaskDone = true
       speakerFinalLaunchProbeTaskDone = true
-      maybeFinishSpeakerLaunchProbesForTests()
+      maybeFinishSpeakerLaunchProbes()
       Task {
         await AppLogger.shared.log(
           "Model delivery: storage is unavailable, so Parakeet and both Whisper "
@@ -814,7 +814,8 @@ final class ModelDeliveryHome {
 
     // #4355 PR C: the live speaker model. Same launch sequence as the preview model's (observer,
     // first-run baseline, then the adopt-only probe that can never start a download). A download
-    // starts only through `requestLiveSpeakerModel(meetingActive:)`.
+    // starts only through `requestLiveSpeakerModel(meetingActive:)` or, for the final half alone,
+    // `decideMissingFinalSpeakerModel()`.
     do {
       let registration = try Self.speakerLiveDeliveryRegistration(
         manifestBundle: manifestBundle, appSupport: appSupportRoot)
@@ -824,7 +825,7 @@ final class ModelDeliveryHome {
       let speakerHome = self
       let speakerIdentity = registration.manifest.identity
       Task {
-        defer { speakerHome.markSpeakerLiveLaunchProbeDoneForTests() }
+        defer { speakerHome.markSpeakerLiveLaunchProbeDone() }
         await speakerHome.controller.sweepSupersededStaging(registration)
         await speakerHome.attachSpeakerLiveObserver(identity: speakerIdentity)
         await speakerHome.recordFirstRunBaseline(for: registration)
@@ -832,7 +833,7 @@ final class ModelDeliveryHome {
       }
     } catch {
       speakerLiveLaunchProbeTaskDone = true
-      maybeFinishSpeakerLaunchProbesForTests()
+      maybeFinishSpeakerLaunchProbes()
       Task {
         await AppLogger.shared.log(
           "Speaker labels model manifest unavailable: live speaker labels stay off and no "
@@ -842,8 +843,8 @@ final class ModelDeliveryHome {
     }
 
     // #4424: a sibling exhaustive install, never a revision of the working live model.
-    // Registration and adoption are local-only; the existing explicit speaker download door
-    // owns both artifacts and remains the only fetch owner.
+    // Registration and adoption are local-only; the speaker download door owns both artifacts and
+    // remains the only fetch owner (#4936: it may also start the missing final half by itself).
     do {
       let registration = try Self.speakerFinalDeliveryRegistration(
         manifestBundle: manifestBundle, appSupport: appSupportRoot)
@@ -851,7 +852,7 @@ final class ModelDeliveryHome {
       speakerFinalHandle = DeliveredModelHandle(
         controller: controller, registration: registration, defaults: deliveryFlagDefaults)
       Task {
-        defer { self.markSpeakerFinalLaunchProbeDoneForTests() }
+        defer { self.markSpeakerFinalLaunchProbeDone() }
         await controller.sweepSupersededStaging(registration)
         await self.attachSpeakerLiveObserver(identity: registration.manifest.identity, finished: true)
         await self.recordFirstRunBaseline(for: registration)
@@ -859,7 +860,7 @@ final class ModelDeliveryHome {
       }
     } catch {
       speakerFinalLaunchProbeTaskDone = true
-      maybeFinishSpeakerLaunchProbesForTests()
+      maybeFinishSpeakerLaunchProbes()
       Task {
         await AppLogger.shared.log(
           "Finished-call speaker model manifest unavailable; existing speaker analysis remains available",
@@ -1415,20 +1416,24 @@ final class ModelDeliveryHome {
   /// model's and, #4355 PR C, the speaker labels model's) exactly once.
   func meetingBecameIdle() {
     if speakerLiveDownloadQueued {
-      let outcome = requestLiveSpeakerModel(meetingActive: false)
+      // Not the user's entry: a replay never clears a recorded Cancel or Remove.
+      let outcome = scheduleSpeakerRequest(meetingActive: false)
       Task {
         await AppLogger.shared.log(
           "SPEAKER_LIVE_DOWNLOAD meeting ended, queued request outcome=\(outcome)", level: .info,
           category: "Delivery")
       }
     }
-    guard previewDownloadQueued else { return }
-    let outcome = requestPreviewDownload(meetingActive: false)
-    Task {
-      await AppLogger.shared.log(
-        "PREVIEW_DOWNLOAD meeting ended, queued request outcome=\(outcome)", level: .info,
-        category: "Delivery")
+    if previewDownloadQueued {
+      let outcome = requestPreviewDownload(meetingActive: false)
+      Task {
+        await AppLogger.shared.log(
+          "PREVIEW_DOWNLOAD meeting ended, queued request outcome=\(outcome)", level: .info,
+          category: "Delivery")
+      }
     }
+    // #4936: after both user queues, so a user's own speaker request wins.
+    decideMissingFinalSpeakerModel()
   }
 
   /// #4325: a page's Live Preview engine changed. When NEITHER page still wants Universal, a
@@ -1670,29 +1675,32 @@ final class ModelDeliveryHome {
   private let publishedSpeakerFinalSeq = OSAllocatedUnfairLock<UInt64>(initialState: 0)
   private var speakerLiveLaunchProbeTaskDone = false
   private var speakerFinalLaunchProbeTaskDone = false
-  package private(set) var speakerLaunchProbesDidFinishForTests = false
+  /// Both launch probes ended and their published states are applied here, so "missing" is real
+  /// and not "not read yet" (#4936 decides on it).
+  private var speakerLaunchProbesDidFinish = false
   var onSpeakerLaunchProbesFinished: (@MainActor () -> Void)? {
-    didSet { if speakerLaunchProbesDidFinishForTests { onSpeakerLaunchProbesFinished?() } }
+    didSet { if speakerLaunchProbesDidFinish { onSpeakerLaunchProbesFinished?() } }
   }
 
-  private func markSpeakerLiveLaunchProbeDoneForTests() {
+  private func markSpeakerLiveLaunchProbeDone() {
     speakerLiveLaunchProbeTaskDone = true
-    maybeFinishSpeakerLaunchProbesForTests()
+    maybeFinishSpeakerLaunchProbes()
   }
 
-  private func markSpeakerFinalLaunchProbeDoneForTests() {
+  private func markSpeakerFinalLaunchProbeDone() {
     speakerFinalLaunchProbeTaskDone = true
-    maybeFinishSpeakerLaunchProbesForTests()
+    maybeFinishSpeakerLaunchProbes()
   }
 
-  private func maybeFinishSpeakerLaunchProbesForTests() {
-    guard !speakerLaunchProbesDidFinishForTests,
+  private func maybeFinishSpeakerLaunchProbes() {
+    guard !speakerLaunchProbesDidFinish,
       speakerLiveLaunchProbeTaskDone,
       speakerFinalLaunchProbeTaskDone,
       lastAppliedSpeakerLiveStateSeq >= publishedSpeakerLiveSeq.withLock({ $0 }),
       lastAppliedSpeakerFinalStateSeq >= publishedSpeakerFinalSeq.withLock({ $0 })
     else { return }
-    speakerLaunchProbesDidFinishForTests = true
+    speakerLaunchProbesDidFinish = true
+    decideMissingFinalSpeakerModel()
     onSpeakerLaunchProbesFinished?()
   }
 
@@ -1724,13 +1732,13 @@ final class ModelDeliveryHome {
           guard seq > home.lastAppliedSpeakerFinalStateSeq else { return }
           home.lastAppliedSpeakerFinalStateSeq = seq
           home.applySpeakerFinalState(state)
-          home.maybeFinishSpeakerLaunchProbesForTests()
+          home.maybeFinishSpeakerLaunchProbes()
           return
         }
         guard seq > home.lastAppliedSpeakerLiveStateSeq else { return }
         home.lastAppliedSpeakerLiveStateSeq = seq
         home.applySpeakerLiveState(state)
-        home.maybeFinishSpeakerLaunchProbesForTests()
+        home.maybeFinishSpeakerLaunchProbes()
       }
     }
   }
@@ -1820,8 +1828,9 @@ final class ModelDeliveryHome {
     case refused
   }
 
-  /// A request made during a meeting, waiting for it to end. In memory only: a quit drops it and
-  /// the card shows Download on the next launch, so no download starts that nobody can see.
+  /// A user's request made during a meeting, waiting for it to end. In memory only: a quit drops
+  /// it. The automatic start (#4936) never queues here; it decides again when the meeting ends,
+  /// and each launch decides for itself.
   private(set) var speakerLiveDownloadQueued = false
   /// The intent epoch of a scheduled download that has not finished; reserved synchronously so a
   /// Cancel pressed right after Download stops it before it fetches.
@@ -1853,10 +1862,20 @@ final class ModelDeliveryHome {
 
   /// #4355 PR C: the one door for "the user wants speaker labels", from setup's last step and the
   /// Models card. A download already running continues through a meeting; a request made during
-  /// one waits for it to end. A model that arrives during a meeting is first used by the next one
-  /// (the meeting reads the admitted folder once, at its start).
+  /// one waits for it to end. A live model that arrives during a meeting is first used by the next
+  /// one (the meeting reads the admitted folder once, at its start); the final pass uses what is
+  /// admitted when that pass starts.
+  ///
+  /// #4936: the user's entry. An accepted request clears a recorded Cancel or Remove; one refused
+  /// at once (not in this build, a removal running, the kill switch) changes nothing.
   @discardableResult
   func requestLiveSpeakerModel(meetingActive: Bool) -> LiveSpeakerModelRequestOutcome {
+    let outcome = scheduleSpeakerRequest(meetingActive: meetingActive)
+    if outcome != .refused { finalSpeakerModelDeclined = false }
+    return outcome
+  }
+
+  private func scheduleSpeakerRequest(meetingActive: Bool) -> LiveSpeakerModelRequestOutcome {
     guard speakerLiveHandle != nil else {
       speakerLiveDownloadRefused = true
       return .refused
@@ -1884,9 +1903,94 @@ final class ModelDeliveryHome {
     return startSpeakerLiveDownload() ? .started : .refused
   }
 
-  private func startSpeakerLiveDownload() -> Bool {
+  // MARK: - #4936: the missing Finished calls model, by itself
+
+  /// Set by the bootstrapper once `isMeetingActive` is bound: EnviousMeet setup is done.
+  private var isMeetingSetUp: (@MainActor () -> Bool)?
+  /// This launch made its decision (a hold too). A decision put off by a meeting is not made.
+  private var finalSpeakerModelDecided = false
+
+  /// The user's Cancel or Remove of speaker labels, kept until an accepted press. Beside the kill
+  /// switch, in the store both builds share, because they share the model files too.
+  private var finalSpeakerModelDeclined: Bool {
+    get { speakerDefaults.bool(forKey: Self.finalSpeakerModelDeclinedKey) }
+    set {
+      if newValue {
+        speakerDefaults.set(true, forKey: Self.finalSpeakerModelDeclinedKey)
+      } else {
+        speakerDefaults.removeObject(forKey: Self.finalSpeakerModelDeclinedKey)
+      }
+    }
+  }
+  package static let finalSpeakerModelDeclinedKey = DeliveryFlags.key(
+    "automaticDeclined", family: .speakerLive)
+  private var speakerDefaults: UserDefaults { checkerDeliveryDefaults ?? SettingsDefaults.store }
+
+  /// Downloads the Finished calls model by itself when this Mac has the live half and lacks it
+  /// (`SpeakerFinalFetchPolicy`). At most one handoff per launch; a failed one waits for the next
+  /// launch. Decided when both launch probes have finished.
+  func startMissingFinalSpeakerModel(isSetUp: @escaping @MainActor () -> Bool) {
+    isMeetingSetUp = isSetUp
+    decideMissingFinalSpeakerModel()
+  }
+
+  private func decideMissingFinalSpeakerModel() {
+    guard let isMeetingSetUp, speakerLaunchProbesDidFinish, !finalSpeakerModelDecided else {
+      return
+    }
+    guard !isMeetingActive() else {
+      logFinalSpeakerModel("wait reason=meeting")
+      return
+    }
+    finalSpeakerModelDecided = true
+    let decision = SpeakerFinalFetchPolicy.decide(
+      .init(
+        inThisBuild: speakerFinalHandle != nil, meetingSetUp: isMeetingSetUp(),
+        liveState: speakerLiveState, killSwitchOn: speakerFinalHandle?.isEnabled() ?? false,
+        declined: finalSpeakerModelDeclined,
+        requestBusy: speakerLiveDownloadQueued || speakerLiveScheduledEpoch != nil
+          || speakerLiveRemovalTask != nil,
+        finalState: speakerFinalState))
+    switch decision {
+    case .hold(let reason): logFinalSpeakerModel("hold reason=\(reason.rawValue)")
+    case .start:
+      logFinalSpeakerModel("start")
+      _ = startSpeakerLiveDownload(finalOnly: true)
+    }
+  }
+
+  private func logFinalSpeakerModel(_ decision: String) {
+    Task {
+      await AppLogger.shared.log(
+        "SPEAKER_LIVE_DOWNLOAD automatic finished-calls decision=\(decision)", level: .info,
+        category: "Delivery")
+    }
+  }
+
+  /// The automatic request's last look, right before the final fetch: a meeting puts the decision
+  /// off; the kill switch or a "no" from the other build ends it. Nothing is shown on the card.
+  private func automaticFinalFetchMayBegin(_ final: DeliveredModelHandle) -> Bool {
+    if isMeetingActive() {
+      finalSpeakerModelDecided = false
+      logFinalSpeakerModel("wait reason=meeting")
+      return false
+    }
+    guard final.isEnabled() else {
+      logFinalSpeakerModel("hold reason=killSwitchOff")
+      return false
+    }
+    guard !finalSpeakerModelDeclined else {
+      logFinalSpeakerModel("hold reason=declined")
+      return false
+    }
+    return true
+  }
+
+  /// `finalOnly` is the automatic request: it never asks for the live half.
+  private func startSpeakerLiveDownload(finalOnly: Bool = false) -> Bool {
     guard let handle = speakerLiveHandle else { return false }
-    guard handle.isEnabled() else {
+    // The automatic request checks the kill switch at its handoff and shows nothing on the card.
+    guard finalOnly || handle.isEnabled() else {
       Task {
         await AppLogger.shared.log(
           "Speaker labels download refused: the speaker_live delivery kill switch is off "
@@ -1896,7 +2000,7 @@ final class ModelDeliveryHome {
       speakerLiveDownloadRefused = true
       return false
     }
-    speakerLiveDownloadRefused = false
+    if !finalOnly { speakerLiveDownloadRefused = false }
     let epoch = speakerLiveIntentEpoch
     speakerLiveScheduledEpoch = epoch
     speakerLiveDownloadTaskForTests = Task { [weak self] in
@@ -1908,6 +2012,18 @@ final class ModelDeliveryHome {
       guard self.speakerLiveIntentEpoch == epoch else { return }
       self.speakerLiveFetchEpoch = epoch
       defer { if self.speakerLiveFetchEpoch == epoch { self.speakerLiveFetchEpoch = nil } }
+      if finalOnly {
+        guard let final = self.speakerFinalHandle, self.automaticFinalFetchMayBegin(final) else {
+          return
+        }
+        if let fetch = self.speakerFinalFetchOverrideForTests {
+          await fetch()
+        } else if self.speakerLiveFetchOverrideForTests == nil {
+          // A fixture that replaces the live transfer never reaches the network here either.
+          _ = await final.ensureAvailable()
+        }
+        return
+      }
       if let fetch = self.speakerLiveFetchOverrideForTests {
         await fetch()
         // Existing single-transfer fixtures replace the whole request. Paired fixtures opt in
@@ -1934,7 +2050,9 @@ final class ModelDeliveryHome {
 
   /// Cancel: clears a queued or scheduled request and stops a transfer in flight (resumable
   /// partials stay). Ungated by the kill switch, like every delivery Cancel.
+  /// #4936: recorded first, so a later launch never restarts what the user stopped.
   func cancelLiveSpeakerModelDownload() {
+    finalSpeakerModelDeclined = true
     speakerLiveDownloadQueued = false
     speakerLiveScheduledEpoch = nil
     speakerLiveIntentEpoch += 1
@@ -1963,6 +2081,8 @@ final class ModelDeliveryHome {
       return .refusedMeetingActive
     }
     guard let handle = speakerLiveHandle, speakerLiveRemovalTask == nil else { return .refused }
+    // #4936: recorded first; the user's no stands even if the deletion is then refused or fails.
+    finalSpeakerModelDeclined = true
     speakerLiveDownloadQueued = false
     speakerLiveScheduledEpoch = nil
     speakerLiveIntentEpoch += 1

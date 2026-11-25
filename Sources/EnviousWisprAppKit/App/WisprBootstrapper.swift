@@ -3560,6 +3560,9 @@ package final class WisprBootstrapper {
         meetingSpeakerLabels?.meetingBecameIdle()
       },
       onActive: { [weak meetingSpeakerLabels] in meetingSpeakerLabels?.meetingBecameActive() })
+    // #4936: after the meeting activity and its end are bound.
+    modelDelivery.startMissingFinalSpeakerModel(
+      isSetUp: { [settings] in settings.meetingOnboardingComplete })
     self.meetingTranscriptEngineRow = MeetingTranscriptEngineRowModel(
       environment: .init(
         settings: settings, whisperSetup: whisper.setupService))
