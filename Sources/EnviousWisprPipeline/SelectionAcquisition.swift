@@ -955,11 +955,10 @@ public enum SelectionAcquisition {
   /// The hazard it covers is specific: in these apps a synthetic Copy is delivered to somebody
   /// else's session, where it means whatever it means there.
   ///
-  /// #1070: the paste cascade reads the same list. A captured standard window of one of these apps
-  /// is a remote session (`classifyPasteFocus` returns `.remoteSession`), where a key paste can
-  /// reach the field inside. RustDesk and Splashtop's viewer were added from production telemetry
-  /// (2026-11-21: 8 and 1 clipboard-only takes in 30 days).
-  /// `nonisolated`: an immutable `Set<String>` read by the nonisolated paste classifier.
+  /// #1070: RustDesk and Splashtop's viewer were added from production telemetry (2026-11-21: 8 and
+  /// 1 clipboard-only takes in 30 days). The paste cascade's remote-session key paste that also read
+  /// this list is held back (#4796, founder 2026-11-25); the synthetic-Copy refusal keeps them.
+  /// `nonisolated`: an immutable `Set<String>`, safe to read from any isolation.
   nonisolated static let keystrokeForwardingBundleIdentifiers: Set<String> = [
     "com.apple.ScreenSharing",
     "com.microsoft.rdc.macos",
