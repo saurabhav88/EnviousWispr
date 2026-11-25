@@ -285,7 +285,9 @@ struct DictationActivationOutcomeTests {
     #expect(rig.runtime.isLive(notice))
   }
 
-  @Test("after the same model restarts, only the new server's endpoint reads open for dictation")
+  @Test(
+    "after the same model restarts, only the new server's endpoint reads open for dictation",
+    .timeLimit(.minutes(1)))
   func admissionIsBoundToTheServingEndpoint() async throws {
     // When this fails, the old notice renders (and is spent) in the moment after the model
     // restarted, while the runtime's own copy still names the old server and its green verdict.
@@ -296,10 +298,14 @@ struct DictationActivationOutcomeTests {
       return
     }
     #expect(rig.coordinator.dictationAdmissionOpenNow(for: .egOne(.full), endpoint: first))
-    // The same model is stopped and started again: a new process, a new endpoint. The stop is
-    // awaited: a start that meets it in progress is deferred and answers not ready (#4951).
-    await rig.coordinator.transition(
-      to: .idle(.egOne(.full)), intent: rig.coordinator.claimIntent())
+    // The same model is stopped and started again: a new process, a new endpoint. A start that
+    // meets the stop in progress answers not ready (#4951), so wait until the stop is published,
+    // then until the coordinator ends that change (a removal nobody wants waits and claims nothing).
+    let (stops, stopped) = AsyncStream<Void>.makeStream()
+    rig.runtime.onLifecycleAppliedForTesting = { if case .stopped = $0.state { stopped.yield() } }
+    rig.runtime.deactivate()
+    for await _ in stops { break }
+    _ = await rig.coordinator.beginRemoval(for: .egOne(.full), intent: 0) { false }
     guard case .ready(let second) = await rig.runtime.activateForDictation().value else {
       Issue.record("the model never came back")
       return

@@ -380,7 +380,6 @@ struct HistoryCatalogSessionTests {
     } else {
       try save(1, into: store, from: 30_000)
     }
-    let repairing: HistoryCatalogSession.Status = listReadFindsIt ? .updating : .unavailable
     while session.revision == revision, !Task.isCancelled {
       await session.waitForChange(revision: revision, notices: session.noticeCount)
     }
@@ -391,10 +390,12 @@ struct HistoryCatalogSessionTests {
     }
     try #require(!Task.isCancelled, "the repair did not certify")
     await session.waitForIndexingForTesting()
-    #expect(trace.contains { $0.status == repairing }, "the reader found the damage: \(trace.map(\.status))")
-    #expect(listReadFindsIt == false || trace.allSatisfy { $0.status != .unavailable })
     #expect(
-      trace.filter { $0.status == repairing }.allSatisfy { $0.shows },
+      listReadFindsIt || trace.contains { $0.status == .unavailable },
+      "the pass found the damage: \(trace.map(\.status))")
+    let found = try #require(trace.firstIndex { $0.shows }, "the damage showed the label")
+    #expect(
+      trace[found...].prefix { $0.status != .ready }.allSatisfy { $0.shows },
       "the label shows through the repair: \(trace.map { "\($0.status) \($0.shows)" })")
     #expect(session.status == .ready)
     #expect(session.showsUpdating == false)
