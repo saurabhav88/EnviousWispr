@@ -199,7 +199,8 @@ package final class MeetingTranscriptionJob {
   /// echo-cleaned copy, and the key says which copy. This is not the checkpoint FILE format
   /// (`MeetingProcessingCheckpoint.currentFormatVersion`, still 4: the new key field is optional).
   /// 7 (#4424): finished-call speaker selection changes; discard earlier words and speakers once.
-  package nonisolated static let processingVersion = 7
+  /// 8 (#4945): the finished-call speaker selection rule changes again; same discard.
+  package nonisolated static let processingVersion = 8
   private var activeSpeakerProbe: Task<MeetingSpeakerAnalysis?, Never>?
 
   private let dependencies: Dependencies
@@ -604,7 +605,9 @@ package final class MeetingTranscriptionJob {
       dependencies.speakerSelectionObserved(.init(
         reason: decision.reason, legacyCount: MeetingSpeakerSelection.count(legacy),
         offlineCount: offline.map(MeetingSpeakerSelection.count),
-        lowCount: low.map(MeetingSpeakerSelection.count), elapsedSeconds: elapsed()))
+        lowCount: low.map(MeetingSpeakerSelection.count), elapsedSeconds: elapsed(),
+        offlineCounted: offline.map(MeetingSpeakerSelection.countedVoices),
+        lowCounted: low.map(MeetingSpeakerSelection.countedVoices)))
       return decision.analysis
     }
     func keep(_ reason: MeetingSpeakerSelection.Reason) -> MeetingSpeakerAnalysis {

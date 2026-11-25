@@ -140,7 +140,7 @@ struct MeetingWiringTests {
     rig.inputs.analyzeNeuralSpeakers = { request in
       calls.withLock { $0.append(request.preset == .offline ? "offline" : "low") }
       #expect(await request.canContinue())
-      return MeetingNeuralSpeakerTestData.analysis(1)
+      return MeetingNeuralSpeakerTestData.analysis(1, stray: request.preset == .offline ? 1_000 : nil)
     }
     let folder = try MeetingAudioFixture.folder("neural-wiring")
     let url = try MeetingAudioFixture.writeSegment(
@@ -153,7 +153,9 @@ struct MeetingWiringTests {
     #expect(snapshots == 1)
     #expect(result.naming?.result.proposals == ["sys:N0": "Alex Rivera"])
     #expect(result.composition.text.split(whereSeparator: \.isWhitespace).count == 30)
-    #expect(rig.lineBox.lines.contains { $0.contains("MEETING_SPEAKER_SELECTION route=offline reason=selected") })
+    #expect(rig.lineBox.lines.contains { $0.contains("MEETING_SPEAKER_SELECTION route=offline reason=selected")
+      && $0.contains("offline_count=2 low_count=1")
+      && $0.hasSuffix(" offline_counted=1 low_counted=1") })
     #expect(!rig.lease.isBusy)
   }
 

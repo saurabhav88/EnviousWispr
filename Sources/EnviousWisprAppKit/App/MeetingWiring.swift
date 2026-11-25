@@ -758,7 +758,7 @@ enum MeetingWiring {
           analyzeNeuralSpeakers: forwardedNeural,
           speakerSelectionObserved: { observation in
             let route = observation.reason == .selected ? "offline" : "legacy"
-            log("MEETING_SPEAKER_SELECTION route=\(route) reason=\(observation.reason.rawValue) legacy_count=\(observation.legacyCount) offline_count=\(observation.offlineCount ?? -1) low_count=\(observation.lowCount ?? -1) elapsed_seconds=\(observation.elapsedSeconds)")
+            log("MEETING_SPEAKER_SELECTION route=\(route) reason=\(observation.reason.rawValue) legacy_count=\(observation.legacyCount) offline_count=\(observation.offlineCount ?? -1) low_count=\(observation.lowCount ?? -1) elapsed_seconds=\(observation.elapsedSeconds) offline_counted=\(observation.offlineCounted ?? -1) low_counted=\(observation.lowCounted ?? -1)")
           }),
         configuration: configuration)
       // The route's dictation waits show the job's "Paused while you dictate".

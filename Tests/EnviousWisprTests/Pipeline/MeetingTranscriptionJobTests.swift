@@ -723,11 +723,11 @@ struct MeetingTranscriptionJobTests {
     #expect(reused.naming == selected.naming)
     #expect(reused.composition == selected.composition)
 
-    // A real v6 key is stale, including its word pieces; don't merely assert the new constant.
+    // A real v7 key is stale, including its word pieces; don't merely assert the new constant.
     guard case .checkpoint(let saved) = store.load() else { Issue.record("missing selected checkpoint"); return }
     var object = try #require(try JSONSerialization.jsonObject(with: JSONEncoder().encode(saved)) as? [String: Any])
     var key = try #require(object["key"] as? [String: Any])
-    key["processingVersion"] = 6
+    key["processingVersion"] = 7
     object["key"] = key
     try store.save(try JSONDecoder().decode(MeetingProcessingCheckpoint.self,
       from: JSONSerialization.data(withJSONObject: object)))
