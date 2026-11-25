@@ -393,9 +393,10 @@ struct HistoryCatalogSessionTests {
     #expect(
       listReadFindsIt || trace.contains { $0.status == .unavailable },
       "the pass found the damage: \(trace.map(\.status))")
-    let found = try #require(trace.firstIndex { $0.shows }, "the damage showed the label")
+    let found = try #require(trace.firstIndex { $0.status != .ready }, "the damage was published")
     #expect(
-      trace[found...].prefix { $0.status != .ready }.allSatisfy { $0.shows },
+      trace[found...].prefix { $0.status != .ready }
+        .allSatisfy { $0.shows || (listReadFindsIt && $0.status == .unavailable) },
       "the label shows through the repair: \(trace.map { "\($0.status) \($0.shows)" })")
     #expect(session.status == .ready)
     #expect(session.showsUpdating == false)

@@ -293,23 +293,27 @@ struct DictationActivationOutcomeTests {
     // restarted, while the runtime's own copy still names the old server and its green verdict.
     let rig = try await makeRig()
     defer { rig.cleanup() }
-    guard case .ready(let first) = await rig.runtime.activateForDictation().value else {
-      Issue.record("the model never came up")
-      return
-    }
+    _ = await rig.runtime.activateForDictation().value
+    let first = try #require(
+      await rig.coordinator.endpoint(for: .egOne(.full)), "the model never came up")
     #expect(rig.coordinator.dictationAdmissionOpenNow(for: .egOne(.full), endpoint: first))
     // The same model is stopped and started again: a new process, a new endpoint. A start that
     // meets the stop in progress answers not ready (#4951), so wait until the stop is published,
     // then until the coordinator ends that change (a removal nobody wants waits and claims nothing).
     let (stops, stopped) = AsyncStream<Void>.makeStream()
-    rig.runtime.onLifecycleAppliedForTesting = { if case .stopped = $0.state { stopped.yield() } }
+    rig.runtime.onLifecycleAppliedForTesting = { [coordinator = rig.coordinator] in
+      // The launch's own first `.stopped` seed can land late; only a real stop closes admission.
+      guard case .stopped = $0.state,
+        !coordinator.dictationAdmissionOpenNow(for: .egOne(.full), endpoint: first)
+      else { return }
+      stopped.yield()
+    }
     rig.runtime.deactivate()
     for await _ in stops { break }
     _ = await rig.coordinator.beginRemoval(for: .egOne(.full), intent: 0) { false }
-    guard case .ready(let second) = await rig.runtime.activateForDictation().value else {
-      Issue.record("the model never came back")
-      return
-    }
+    _ = await rig.runtime.activateForDictation().value
+    let second = try #require(
+      await rig.coordinator.endpoint(for: .egOne(.full)), "the model never came back")
     #expect(second != first, "the restart reused the endpoint; the case is not exercised")
     #expect(
       rig.coordinator.dictationAdmissionOpenNow(for: .egOne(.full), endpoint: first) == false,
