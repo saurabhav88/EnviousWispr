@@ -102,10 +102,14 @@ package struct CallAXBounds: Sendable, Equatable {
 /// nothing and counted (`CallAXCapture.toleratedFailures`) when no reader could use it: the role
 /// was read, it is not a role any consumer reads (`zoomProtectedRoles`, plus the roles the
 /// recording's mute rules select), the element is not inside a tile or the participants list,
-/// and it is not a window. A failed role, children, page address or window label, and any failed
-/// read on a protected role or inside evidence, still makes the copy unreadable, as does every
-/// failure under any other policy (Superwhisper and Granola likewise skip only failed reads
-/// outside speaker elements).
+/// and, on a window, it is not what tells windows apart (`zoomWindowAttributes`). A failed role,
+/// children or page address, a window's title or identifier, and any failed read on a protected
+/// role or inside evidence (but a list row's own description, #4935), still makes the copy
+/// unreadable, as does every failure under any
+/// other policy (Superwhisper and Granola likewise skip only failed reads outside speaker
+/// elements). Zoom 7.2.5 refuses the description of a small promotion window (707 of 707 live
+/// copies) and of the View options menu's cells (#4943): losing the copy there lost every name
+/// and the mute state of the call.
 package enum CallAXCapturePolicy: Sendable, Equatable {
   case standard
   case zoomApp
@@ -124,10 +128,14 @@ package enum CallAXCapturePolicy: Sendable, Equatable {
   static let zoomEvidenceRoles: Set<String> = ["AXTabGroup", "AXOutline"]
   /// The roles whose labels or identifiers a Zoom consumer reads outside evidence: tiles and the
   /// list (`ZoomAppSpeakerReader`), toolbar and mute buttons (pruning, the closed panel count,
-  /// `CallSelfMuteReader`), the count and entry texts, and the list's cells and row buttons.
+  /// `CallSelfMuteReader`), the count and entry texts, and the list's row buttons. A cell is read
+  /// only inside the list, except its identifier (`ZoomSelfProbe`'s own reads).
   static let zoomProtectedRoles: Set<String> = [
-    "AXTabGroup", "AXOutline", "AXButton", "AXStaticText", "AXCell", "AXMenuButton",
+    "AXTabGroup", "AXOutline", "AXButton", "AXStaticText", "AXMenuButton",
   ]
+  /// What consumers read of a window itself: which one is the meeting, the share toolbar, home
+  /// or the minimized one (#4943).
+  static let zoomWindowAttributes: Set<CallAXAttribute> = [.title, .identifier]
   /// The attributes whose failed read can be tolerated: labels, identifiers and size. Never the
   /// role, children or a page's address, which decide what else is read.
   static let zoomToleratedAttributes: Set<CallAXAttribute> = [
@@ -159,20 +167,26 @@ package enum CallAXCapturePolicy: Sendable, Equatable {
   }
 
   /// Whether a failed read of `attribute` on an element whose `role` was read is copied as
-  /// nothing instead of making the copy unreadable. `protectedRoles` are the extra roles the
-  /// recording's mute rules select; a window (`isWindow`) is never tolerated.
+  /// nothing instead of making the copy unreadable: only where no consumer reads it, and an
+  /// `AXUnknown` label below a window, which the open chat list refuses (losing `Share content`
+  /// there can only take a talker away).
+  /// `protectedRoles` are the extra roles the recording's mute rules select.
   func tolerates(
     attribute: CallAXAttribute, role: String, insideEvidence: Bool, isWindow: Bool,
     protectedRoles: Set<String>
   ) -> Bool {
+    guard self == .zoomApp, Self.zoomToleratedAttributes.contains(attribute),
+      !protectedRoles.contains(role)
+    else { return false }
     // Zoom 7.2.5 refuses the description of every participants-list row (#4935); no reader uses
     // a cell's own label, only its identifier and children.
-    if self == .zoomApp, role == "AXCell", attribute == .description, insideEvidence, !isWindow {
-      return !protectedRoles.contains(role)
+    if insideEvidence { return role == "AXCell" && attribute == .description }
+    // The share scan reads an `AXUnknown` label, a window's own included.
+    if isWindow, role == "AXUnknown" || Self.zoomWindowAttributes.contains(attribute) {
+      return false
     }
-    return self == .zoomApp && !isWindow && !insideEvidence
-      && Self.zoomToleratedAttributes.contains(attribute)
-      && !Self.zoomProtectedRoles.contains(role) && !protectedRoles.contains(role)
+    if role == "AXCell", attribute == .identifier { return false }
+    return !Self.zoomProtectedRoles.contains(role)
   }
 }
 
