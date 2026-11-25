@@ -22,11 +22,13 @@ self-tests and run on CI.
 
 import argparse
 import datetime as dt
+import filecmp
 import glob
 import json
 import os
 import subprocess
 import sys
+import tempfile
 import time
 
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -378,44 +380,55 @@ def derive_expected(sentence):
     return words[len(words) // 2].lower() if words else ""
 
 
+def build_identity(worktree, expected_bin, app_start, head):
+    """(matches, why) for the app running from `expected_bin`. File times cannot say which commit a
+    build is of (an incremental build keeps older files, #4759), so True needs both the Dev build
+    receipt of `head` and the deployed code being that build's code. False: rebuilt, not relaunched."""
+    try:
+        bin_mtime = os.path.getmtime(expected_bin)
+    except OSError as exc:
+        return None, f"cannot read the app binary: {exc}"
+    if app_start is None:
+        return None, "cannot read when the running app started"
+    if bin_mtime > app_start + 1:
+        return False, "rebuilt, but not relaunched"
+    derived = os.path.join(worktree, ".derivedData", "Dev")
+    try:
+        receipt = subprocess.run(
+            [sys.executable, os.path.join(worktree, "scripts/lib/l10n-build-receipt.py"), "verify", "--receipt",
+             os.path.join(derived, "ew-l10n-receipt.json"), "--repo", worktree, "--commit", head,
+             "--derived-data", derived, "--configuration", "Dev"], capture_output=True, text=True, timeout=60)
+        if receipt.returncode != 0:
+            return None, (receipt.stdout + receipt.stderr).strip() or f"receipt check exited {receipt.returncode}"
+        code = "EnviousWispr.debug.dylib"
+        built = os.path.join(derived, "Build/Products/Dev", "EnviousWispr Local.app/Contents/MacOS", code)
+        if not filecmp.cmp(built, os.path.join(os.path.dirname(expected_bin), code), shallow=False):
+            return None, "the deployed app is not the last Dev build"
+    except (OSError, subprocess.TimeoutExpired) as exc:
+        return None, f"cannot check the build: {exc}"
+    return True, "the Dev build receipt is of HEAD and the app holds that build"
+
+
 def cmd_run(args):
     worktree = this_worktree()
     recipe = cat.RECIPES.get(args.recipe)
     if recipe is None:
         raise SystemExit(f"unknown recipe {args.recipe!r}; one of: {', '.join(cat.RECIPES)}")
     full_head = _git("rev-parse", "HEAD")
-    # Build-vs-HEAD freshness for the receipt (local Codex review, PR #2780). The
-    # front door does NOT prove the running build == HEAD — that is the push
-    # gate's job — so if the running binary PREDATES HEAD's commit, these results
-    # are from an older build and stamping them with head_sha would misattribute
-    # them. Record what is verifiable: True (binary built at/after HEAD), False
-    # (older, stale), or None (cannot tell — no single instance at this worktree's
-    # path). A heads-up, never a gate.
-    head_commit_epoch = _git("show", "-s", "--format=%ct", "HEAD")
+    # Whether the running app is HEAD's build, for the receipt (PR #2780, #4759). The front door does
+    # not prove it (the push gate does); it records True, False or None. A heads-up, never a gate.
     expected_bin = worktree + DEV_BUNDLE_SUFFIX
     running_here = [p for p, path in running_enviouswispr_instances().items() if path == expected_bin]
-    build_matches_head = None
-    if len(running_here) == 1 and head_commit_epoch.isdigit():
-        app_start = pf.proc_start_epoch(int(running_here[0]))
-        try:
-            bin_mtime = os.path.getmtime(expected_bin)
-        except OSError:
-            bin_mtime = None
-        if app_start is None or bin_mtime is None:
-            build_matches_head = None  # cannot read one side; do not certify
-        elif bin_mtime > app_start + 1:
-            # Built AFTER the running app launched: rebuilt but not relaunched, so
-            # the RUNNING process is the OLD binary whatever the on-disk mtime says
-            # (the stale-process trap cmd_preflight already checks). A fresh binary
-            # on disk does NOT mean fresh code is running.
-            build_matches_head = False
-        else:
-            # The running app IS this on-disk binary; certify it against HEAD.
-            build_matches_head = bin_mtime >= int(head_commit_epoch)
+    build_matches_head, why = None, "no single app is running from this worktree"
+    if len(running_here) == 1:
+        build_matches_head, why = build_identity(
+            worktree, expected_bin, pf.proc_start_epoch(int(running_here[0])), full_head)
     if build_matches_head is False:
-        print("HEADS UP: the running app is NOT this commit's build (either built without relaunching, or the "
-              "build predates HEAD), so these results are from older code; head_sha would misattribute them. "
-              "Rebuild + relaunch via /wispr-rebuild-debug before trusting the saved revision.")
+        print(f"HEADS UP: the running app is NOT this commit's build ({why}), so these results are from older "
+              "code; head_sha would misattribute them. Rebuild + relaunch via /wispr-rebuild-debug before "
+              "trusting the saved revision.")
+    elif build_matches_head is None:
+        print(f"HEADS UP: cannot tell whether the running app is this commit's build: {why}")
     run_dir = resolve_run_dir(args.run_dir, worktree)
 
     # Script-backed recipe (#996 learn-from-edits): the script owns its cases,
@@ -731,6 +744,29 @@ def _self_test():
     r_two = collect_settled(None, None, stable_reads=3,
                             _read=scripted([one, two, two, two, two, two]), _now=now, _sleep=tick)
     check("collect_settled: a late second record is not missed -> 2", len(r_two) == 2)
+
+    # --- which commit the running app is a build of (#4759) ---
+    with tempfile.TemporaryDirectory() as tree:
+        app_bin = tree + DEV_BUNDLE_SUFFIX
+        built = os.path.join(tree, ".derivedData/Dev/Build/Products/Dev/EnviousWispr Local.app/Contents/MacOS")
+        tool = os.path.join(tree, "scripts/lib/l10n-build-receipt.py")
+        for path, text in ((app_bin, ""), (os.path.join(os.path.dirname(app_bin), "EnviousWispr.debug.dylib"), "a"),
+                           (os.path.join(built, "EnviousWispr.debug.dylib"), "a"),
+                           (tool, "import sys; print('receipt says', sys.argv[sys.argv.index('--commit') + 1]); "
+                                  "sys.exit(sys.argv[sys.argv.index('--commit') + 1] != 'HEAD')")):
+            os.makedirs(os.path.dirname(path), exist_ok=True)
+            with open(path, "w") as fh:
+                fh.write(text)
+        later, at = os.path.getmtime(app_bin) + 60, lambda *a: build_identity(tree, app_bin, *a)[0]
+        check("build identity: receipt of HEAD and the same code -> True, whatever the file times", at(later, "HEAD") is True)
+        check("build identity: receipt of another commit -> None", at(later, "OTHER") is None)
+        check("build identity: rebuilt, not relaunched -> False", at(later - 120, "HEAD") is False)
+        check("build identity: unknown start -> None", at(None, "HEAD") is None)
+        with open(os.path.join(built, "EnviousWispr.debug.dylib"), "w") as fh:
+            fh.write("b")
+        check("build identity: deployed code is another build -> None", at(later, "HEAD") is None)
+        os.remove(tool)
+        check("build identity: no receipt tool -> None", at(later, "HEAD") is None)
 
     # --- silent wav is real ---
     import wave

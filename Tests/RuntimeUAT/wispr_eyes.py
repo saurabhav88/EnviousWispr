@@ -660,9 +660,16 @@ def _recording_idle(seconds=30.0):
         time.sleep(0.3)  # settle: the recording state changes asynchronously; no ack to await
 
 
+def _take_start():
+    """(now, the entries already stamped in this second). Log stamps have one-second resolution,
+    so the previous take's terminal can share the second this take starts in (#4757)."""
+    now = _dt.datetime.now().astimezone()
+    return now, frozenset((fileid, i) for fileid, _name, i, _lines in _sweep_log_entries(now))
+
+
 def _take_lines(start):
     """The take's own app.log entries, rotation-proof (`log_entries_since`)."""
-    return "\n".join(log_entries_since(start))
+    return "\n".join(log_entries_since(*start))
 
 
 def _finish_player(proc):
@@ -2209,7 +2216,7 @@ def test_recording(audio=None, sentence=None, hold=3.0, expect=None, timeout=30.
     # is primary (clipboard-free, doesn't race with the user's activity);
     # clipboard is a fallback when Debug mode is off.
     log_size_before = _snapshot_log_size()
-    take_started = _dt.datetime.now().astimezone()  # #3764: the take gate reads from here
+    take_started = _take_start()  # #3764: the take gate reads from here
     clip_before = get_clipboard_text() or ""
 
     # Phase 1: Start recording via menu
@@ -2662,7 +2669,7 @@ def _merge_entries(entries):
     return lines
 
 
-def log_entries_since(start):
+def log_entries_since(start, skip=frozenset()):
     """Every `app.log` ENTRY stamped at or after `start`, as a flat list of lines,
     oldest first, across the rotated predecessors. THE READER FOR CONTENT.
 
@@ -2675,21 +2682,23 @@ def log_entries_since(start):
     inode) nor loses the new one (a fresh file has a new inode). Grounded review
     r2 + diff review of #2775.
     """
+    return _merge_entries([e for e in _sweep_log_entries(start) + _sweep_log_entries(start)
+                           if (e[0], e[2]) not in skip])
+
+
+def _sweep_log_entries(start):
+    """One pass over the log shelf: `_entries_from_texts` of every readable file."""
     directory = os.path.dirname(_APP_LOG_PATH)
-
-    def sweep():
-        named = []
-        for name in _LOG_SHELF:
-            try:
-                with open(os.path.join(directory, name), "rb") as fh:
-                    st = os.fstat(fh.fileno())
-                    fileid = (st.st_dev, st.st_ino)
-                    named.append((fileid, name, fh.read().decode("utf-8", "replace")))
-            except OSError:
-                continue
-        return _entries_from_texts(named, start)
-
-    return _merge_entries(sweep() + sweep())
+    named = []
+    for name in _LOG_SHELF:
+        try:
+            with open(os.path.join(directory, name), "rb") as fh:
+                st = os.fstat(fh.fileno())
+                fileid = (st.st_dev, st.st_ino)
+                named.append((fileid, name, fh.read().decode("utf-8", "replace")))
+        except OSError:
+            continue
+    return _entries_from_texts(named, start)
 
 
 def launch_banners_since(start):
@@ -3048,7 +3057,7 @@ def test_hands_free(audio=None, sentence=None, hold=4.0, expect=None, timeout=30
             raise
 
     log_size_before = _snapshot_log_size()
-    take_started = _dt.datetime.now().astimezone()  # #3764: the take gate reads from here
+    take_started = _take_start()  # #3764: the take gate reads from here
     clip_before = get_clipboard_text() or ""
 
     # Phase 1: the REAL gesture - two presses inside the app's chain window.
@@ -3322,7 +3331,7 @@ def test_ptt(key=None, audio=None, sentence=None, expect=None, timeout=30.0):
         raise
 
     log_size_before = _snapshot_log_size()
-    take_started = _dt.datetime.now().astimezone()  # #3764: the take gate reads from here
+    take_started = _take_start()  # #3764: the take gate reads from here
 
     # Phase 1: Key down (recording starts)
     import simulate_input as _si
@@ -3475,7 +3484,7 @@ def record_tts(sentence="The quick brown fox jumps over the lazy dog", key=None,
     _tg.check_before_play()
 
     # Mark log position before recording
-    take_started = _dt.datetime.now().astimezone()  # #3764: the take gate reads from here
+    take_started = _take_start()  # #3764: the take gate reads from here
     log_size_before = 0
     if os.path.exists(_APP_LOG_PATH):
         log_size_before = os.path.getsize(_APP_LOG_PATH)
@@ -4020,6 +4029,33 @@ def _self_test():
         failures.append(f"mid-write truncation: got {merged_t!r}, want {want_t!r}")
     else:
         print("  ok      mid-write truncation keeps the complete later block")
+    entry_rows += 1
+
+    # #4757: the previous take's terminal shares the second in which the new take starts. The new
+    # take's own capture line in that same second is kept; with no new take the gate still refuses.
+    import tempfile
+    real_log = _APP_LOG_PATH
+    with tempfile.TemporaryDirectory() as shelf:
+        globals()["_APP_LOG_PATH"] = os.path.join(shelf, "app.log")
+        try:
+            second = _dt.datetime.now().astimezone().isoformat(timespec="seconds")
+
+            def log(*messages):
+                with open(_APP_LOG_PATH, "a") as fh:
+                    fh.writelines(f"[{second}] [INFO] [x] {m}\n" for m in messages)
+
+            log("dictation_terminal result=no_speech take=OLD")
+            start = _take_start()
+            outcomes = [_tg.classify(_take_lines(start), "app")[0]]
+            log("ZERO_PREFIX_MEASURE transport=virtual", "Paste cascade: tier=ax, app=app, ok",
+                "dictation_terminal result=completed take=NEW")
+            outcomes.append(_tg.classify(_take_lines(start), "app")[0])
+        finally:
+            globals()["_APP_LOG_PATH"] = real_log
+    if outcomes != ["COULD_NOT_TELL", "APP"]:
+        failures.append(f"same-second restart: {outcomes}")
+    else:
+        print("  ok      a take that starts in the previous terminal's second reads only its own lines")
     entry_rows += 1
 
     # ---- #2511: tap() must reach every control see() lists -------------------
