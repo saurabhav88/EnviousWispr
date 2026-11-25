@@ -39,6 +39,14 @@ struct ParakeetUpgradeCoordinatorTests {
   @Test("a pending selection point is prepared once, and a later load reuses the frozen request")
   func pendingSelectionPreparedOnce() async throws {
     let rig = try await ParakeetUpgradePolicyTests.rig(v3: true, ultra: false)
+    var preparations = 0
+    rig.coordinator.deliveryStageGateForTesting = {
+      preparations += 1
+      guard preparations > 2 else { return }
+      // Ends a loop that never consumes the point; a cancelled test alone does not fail (#3675).
+      Issue.record("prepared \(preparations) times")
+      withUnsafeCurrentTask { $0?.cancel() }
+    }
     rig.coordinator.markSelectionPoint()
     rig.coordinator.markSelectionPoint()  // a second launch poke coalesces
     #expect(rig.coordinator.hasPendingSelectionPoint)
@@ -49,6 +57,7 @@ struct ParakeetUpgradeCoordinatorTests {
     let reload = try await rig.coordinator.prepareLoad()
     #expect(reload.isSelectionLoad == false, "no new selection: the frozen request")
     #expect(rig.selection.current == afterSettle, "a settled point is not prepared again")
+    #expect(preparations == 2, "the first load and the reuse")
   }
 
   @Test("a pending selection point is prepared once before a direct load")
