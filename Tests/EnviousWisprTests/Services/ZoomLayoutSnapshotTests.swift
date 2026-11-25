@@ -88,9 +88,15 @@ struct ZoomLayoutSnapshotTests {
 
   private func capture(_ layout: Layout) throws -> CallAXCapture {
     let (tree, windows) = try tree(layout.file)
+    return copy(tree, windows)
+  }
+
+  private func copy(
+    _ tree: CallSpeakerCaptureTests.Tree, _ windows: [Int], policy: CallAXCapturePolicy = .zoomApp
+  ) -> CallAXCapture {
     var host: UInt64 = 100
     return CallSpeakerCapture.capture(
-      windows: windows, access: tree.access(), bounds: .standard, policy: .zoomApp,
+      windows: windows, access: tree.access(), bounds: .standard, policy: policy,
       protectedRoles: CallMuteRules.testPackaged.protectedRoles, keepPage: { _ in true },
       hostTime: {
         host += 10
@@ -506,5 +512,142 @@ struct ZoomLayoutSnapshotTests {
       #expect(reading?.participants.isEmpty ?? true, "\(file)")
       #expect(reading?.roster.selfNames.isEmpty ?? true, "\(file)")
     }
+  }
+
+  // MARK: - Reads nobody uses (#4943)
+
+  /// Everything the Zoom consumers make of one copy.
+  private struct Facts: Equatable {
+    let scope: CallCaptureContext.Scope
+    let reading: CallSpeakerReading?
+    let admission: CallNamingAdmission?
+    let mute: CallSelfMute
+    let share: ZoomAppSpeakerReader.ShareContext
+    let shown: ZoomShownPeople
+  }
+
+  private func facts(_ copy: CallAXCapture, file: String) throws -> Facts {
+    let labels = try ZoomLabelsTests.fixtures()
+    let account = file.hasPrefix("725") ? ["Host Person(host@example.com)"] : Self.accountTitles
+    let copy = CallAXCapture(
+      windows: copy.windows, documents: [], completeness: copy.completeness, readStartHostTime: 0,
+      readEndHostTime: 0, accountTitles: account)
+    let scope = CallSpeakerSurfaceReader.scope(
+      surface: .zoomApp, capture: copy, family: .zoom, zoomLabels: labels)
+    let reading = CallSpeakerSurfaceReader.zoomReading(copy, labels: labels)
+    let context = CallCaptureContext(completeness: copy.completeness, scope: scope)
+    return Facts(
+      scope: scope, reading: reading,
+      admission: reading.map { CallSpeakerAdmission.admission(of: $0, context: context) },
+      mute: CallSelfMuteReader.read(
+        surface: .zoomApp, capture: copy,
+        rules: CallMuteRules.testPackaged.withZoomLabels(labels)),
+      share: ZoomAppSpeakerReader.shareContext(windows: copy.windows, labels: labels),
+      shown: ZoomAppSpeakerReader.shownPeople(windows: copy.windows, labels: labels))
+  }
+
+  /// Every read of a layout the policy itself says it tolerates, walked as the capture walks.
+  private func tolerated(
+    _ tree: CallSpeakerCaptureTests.Tree, _ windows: [Int], unknown: Bool
+  ) -> Set<String> {
+    let policy = CallAXCapturePolicy.zoomApp
+    var reads: Set<String> = []
+    func walk(_ id: Int, _ isWindow: Bool, _ inside: Bool) {
+      let role = tree.roles[id]!
+      for attribute in CallAXAttribute.allCases where attribute != .domIdentifier {
+        guard unknown || role != "AXUnknown",
+          policy.tolerates(
+            attribute: attribute, role: role, insideEvidence: inside, isWindow: isWindow,
+            protectedRoles: CallMuteRules.testPackaged.protectedRoles)
+        else { continue }
+        reads.insert("\(id).\(attribute.rawValue)")
+      }
+      let identifier = tree.texts[id]?[.identifier]
+      if policy.prunesChildren(role: role, identifier: identifier, insideEvidence: inside) { return }
+      for child in tree.children[id]! { walk(child, false, inside || policy.isEvidence(role: role)) }
+    }
+    for window in windows { walk(window, true, false) }
+    return reads
+  }
+
+  /// When this fails, a label Zoom refused is thrown away although something reads it, so a
+  /// person, a talking mark or the mute state can be wrong.
+  @Test("a read the policy loses changes nothing any consumer says, in every saved layout")
+  func lostReadsAreUnread() throws {
+    let folder = RepoRoot.url.appending(path: "Tests/EnviousWisprTests/Resources/ZoomLayouts")
+    let names = try FileManager.default.contentsOfDirectory(atPath: folder.path)
+    #expect(names.count >= 29)
+    for file in names.map({ String($0.dropLast(".json".count)) }) {
+      let (tree, windows) = try tree(file)
+      let plain = copy(tree, windows)
+      let was = try facts(plain, file: file)
+      let reads = tolerated(tree, windows, unknown: false).subtracting(tree.failing)
+      let (failing, _) = try self.tree(file)
+      failing.failing.formUnion(reads)
+      let lost = copy(failing, windows)
+      #expect(lost.completeness == .complete, "\(file)")
+      #expect(!reads.isEmpty && reads.isSubset(of: failing.queried), "\(file)")
+      #expect(lost.toleratedFailures == plain.toleratedFailures + reads.count, "\(file)")
+      #expect(try facts(lost, file: file) == was, "\(file)")
+      // A lost read is the same as an attribute the element does not have.
+      let (absent, _) = try self.tree(file)
+      for (id, texts) in absent.texts {
+        absent.texts[id] = texts.filter { !reads.contains("\(id).\($0.key.rawValue)") }
+      }
+      #expect(copy(absent, windows).windows == lost.windows, "\(file)")
+      // `AXUnknown` is tolerated for the open chat list, and `Share content` is one (#4013):
+      // losing it may take a talker away, never add one.
+      let (share, _) = try self.tree(file)
+      share.failing.formUnion(tolerated(share, windows, unknown: true))
+      let quiet = try facts(copy(share, windows), file: file)
+      let added = Set(quiet.reading?.speaking ?? []).subtracting(was.reading?.speaking ?? [])
+      #expect(added.isEmpty, "\(file)")
+    }
+  }
+
+  @Test(
+    "no consumer reads a window's own description or value",
+    arguments: ["chat", "hs-hidden-bea", "725-gallery"])
+  func windowLabelsAreUnread(file: String) throws {
+    let (tree, windows) = try tree(file)
+    let plain = copy(tree, windows)
+    func labelled(_ description: String?, _ value: String?) throws -> Facts {
+      let marked = plain.windows.map { window in
+        CallAXWindow(
+          title: window.title,
+          root: CallAXNode(
+            role: window.root.role, description: description, value: value,
+            identifier: window.root.identifier, children: window.root.children))
+      }
+      return try facts(
+        CallAXCapture(
+          windows: marked, documents: [], completeness: .complete, readStartHostTime: 0,
+          readEndHostTime: 0), file: file)
+    }
+    let was = try labelled(nil, nil)
+    if file == "725-gallery" { #expect(was.reading?.follow?.mayVote == true) }
+    for text in CallCaptureToleranceTests.consumedTexts {
+      #expect(try labelled(text, nil) == was, "\(text)")
+      #expect(try labelled(nil, text) == was, "\(text)")
+    }
+  }
+
+  /// The live copies of 2026-11-25 (a Zoom promotion window) and 2026-11-24 (View options open):
+  /// before #4943 every reading of such a call was thrown away, names and mute state with it.
+  @Test(
+    "a promotion window or an open View options menu leaves the call readable",
+    arguments: [("725-promotion", 1), ("725-view-menu", 10)])
+  func refusedLabelsLeaveTheCall(file: String, refused: Int) throws {
+    let (tree, windows) = try tree(file)
+    let whole = copy(tree, windows)
+    #expect(whole.completeness == .complete)
+    #expect(whole.toleratedFailures == refused)
+    let found = try facts(whole, file: file)
+    #expect(found.reading?.roster.names.sorted() == ["Alex Rivera", "Dana Fox", "Host Person"])
+    #expect(found.reading?.participantCount == 3)
+    #expect(found.admission == .admitted)
+    #expect(found.mute == .muted)
+    #expect(found.reading?.follow?.mayVote == (file == "725-promotion"))
+    #expect(copy(tree, windows, policy: .standard).completeness == .unreadable)
   }
 }

@@ -133,7 +133,7 @@ struct CallCaptureToleranceTests {
   func protectedRoles(id: Int, role: String) {
     // A list row's own description is the one Zoom 7.2.5 refuses and no reader uses (#4935).
     let label = role == "AXCell" ? "AXTitle" : "AXDescription"
-    #expect(CallAXCapturePolicy.zoomProtectedRoles.contains(role))
+    #expect(role == "AXCell" || CallAXCapturePolicy.zoomProtectedRoles.contains(role))
     let tree = meetingTree()
     #expect(tree.roles[id] == role)
     tree.failing.insert("\(id).\(label)")
@@ -142,11 +142,11 @@ struct CallCaptureToleranceTests {
     #expect(copy.toleratedFailures == 0)
   }
 
-  @Test("the protected roles are exactly the six readers use")
+  @Test("the protected roles are exactly the five read outside tiles and lists")
   func protectedRoleSet() {
     #expect(
       CallAXCapturePolicy.zoomProtectedRoles == [
-        "AXTabGroup", "AXOutline", "AXButton", "AXStaticText", "AXCell", "AXMenuButton",
+        "AXTabGroup", "AXOutline", "AXButton", "AXStaticText", "AXMenuButton",
       ])
   }
 
@@ -179,18 +179,38 @@ struct CallCaptureToleranceTests {
     #expect(capture(page).completeness == .unreadable)
   }
 
-  @Test("a failed window label is never tolerated, whatever role the window reports")
+  @Test("a window's title and identifier are never lost, its other labels are (#4943)")
   func windowIdentity() {
-    for failing in ["1.AXIdentifier", "1.AXTitle", "1.AXDescription", "1.AXValue"] {
+    for failing in ["1.AXIdentifier", "1.AXTitle", "1.AXChildren"] {
       let tree = meetingTree()
       tree.failing.insert(failing)
       #expect(capture(tree).completeness == .unreadable, "\(failing)")
     }
-    // A window that reports an unread role is still a window by its place.
-    let odd = meetingTree()
-    odd.roles[1] = "AXUnknown"
-    odd.failing.insert("1.AXDescription")
-    #expect(capture(odd).completeness == .unreadable)
+    let lost = meetingTree()
+    lost.failing = ["1.AXDescription", "1.AXValue"]
+    #expect(capture(lost).completeness == .complete)
+    #expect(capture(lost).toleratedFailures == 2)
+    // A cell outside a list: only its identifier is read.
+    let cell = meetingTree()
+    cell.roles[43] = "AXCell"
+    cell.failing.insert("43.AXDescription")
+    #expect(capture(cell).completeness == .complete)
+    cell.failing.insert("43.AXIdentifier")
+    #expect(capture(cell).completeness == .unreadable)
+    // A window is one by its place, not by the role it reports; the share scan reads an
+    // `AXUnknown` root's label, and a tile or a button is read as one.
+    for role in ["AXWindow", "AXCell", "AXUnknown", "AXTabGroup", "AXButton"] {
+      for attribute in CallAXCapturePolicy.zoomToleratedAttributes {
+        let lost =
+          ["AXWindow", "AXCell"].contains(role)
+          && !CallAXCapturePolicy.zoomWindowAttributes.contains(attribute)
+        #expect(
+          CallAXCapturePolicy.zoomApp.tolerates(
+            attribute: attribute, role: role, insideEvidence: false, isWindow: true,
+            protectedRoles: []) == lost, "\(role) \(attribute)")
+      }
+    }
+    #expect(CallAXCapturePolicy.zoomWindowAttributes == [.title, .identifier])
   }
 
   @Test("a role the mute rules select is protected like the fixed ones")
@@ -207,11 +227,13 @@ struct CallCaptureToleranceTests {
     #expect(capture(protected, protectedRoles: ["AXCheckBox"]).completeness == .unreadable)
   }
 
-  @Test("a failed mute-button identifier still reads the mute state as unknown")
-  func failedMuteSelector() {
+  @Test(
+    "a failed mute-button read still reads the mute state as unknown",
+    arguments: ["AXIdentifier", "AXTitle", "AXDescription", "AXValue"])
+  func failedMuteSelector(attribute: String) {
     let tree = meetingTree()
     chatFailures(tree)
-    tree.failing.insert("13.AXIdentifier")
+    tree.failing.formUnion(["13.\(attribute)", "1.AXDescription"])
     let copy = capture(tree)
     #expect(copy.completeness == .unreadable)
     #expect(
@@ -223,16 +245,16 @@ struct CallCaptureToleranceTests {
   /// Every text a Zoom consumer matches on, placed on elements whose failed labels tolerance
   /// copies as nothing. If any consumer read such an element (an unrestricted label scan as much
   /// as a role check), adding these would change what it reads.
-  private static let consumedTexts = [
+  static let consumedTexts = [
     "Alex Rivera, Computer audio unmuted, Video off, active speaker",
     "Priya Shah, Computer audio muted, Video off", "Participants (5)", "Participants list",
     "Open participants panel, closed, 5 participants", "Priya Shah (Host, me)",
     "More options for Priya Shah, collapsed", "Unmute my audio", "Mute my audio", "audio",
-    "leave", "more", "ZMHCTableItemType_PANELIST", "zm.meeting.window.main",
+    "leave", "more", "ZMHCTableItemType_PANELIST", "zm.meeting.window.main", "Talking: Zoe",
   ]
   private static let unreadRoles = [
     "AXGroup", "AXTextArea", "AXUnknown", "AXImage", "AXRow", "AXScrollArea", "AXCheckBox",
-    "AXTextField", "AXList", "AXLink",
+    "AXTextField", "AXList", "AXLink", "AXCell",
   ]
 
   private func decoys(role: String) -> [CallAXNode] {
@@ -254,18 +276,23 @@ struct CallCaptureToleranceTests {
         identifier: root.identifier, children: root.children + extra))
   }
 
-  private func outcome(_ window: CallAXWindow) -> (
-    CallSpeakerReading, CallCaptureContext.Scope, CallSelfMute
-  ) {
+  private struct Outcome: Equatable {
+    let reading: CallSpeakerReading?
+    let scope: CallCaptureContext.Scope
+    let mute: CallSelfMute
+    let shown: ZoomShownPeople
+  }
+
+  private func outcome(_ window: CallAXWindow) -> Outcome {
     let capture = CallAXCapture(
       windows: [window], documents: [], completeness: .complete, readStartHostTime: 0,
       readEndHostTime: 0)
-    return (
-      ZoomAppSpeakerReader.read(windows: [window]),
-      CallSpeakerSurfaceReader.scope(
+    return Outcome(
+      reading: CallSpeakerSurfaceReader.zoomReading(capture, labels: .builtIn),
+      scope: CallSpeakerSurfaceReader.scope(
         surface: .zoomApp, capture: capture, family: .zoom, zoomLabels: .builtIn),
-      CallSelfMuteReader.read(surface: .zoomApp, capture: capture, rules: .testPackaged)
-    )
+      mute: CallSelfMuteReader.read(surface: .zoomApp, capture: capture, rules: .testPackaged),
+      shown: ZoomAppSpeakerReader.shownPeople(windows: [window]))
   }
 
   @Test("no Zoom consumer reads a role whose failed labels are tolerated", arguments: unreadRoles)
@@ -273,9 +300,7 @@ struct CallCaptureToleranceTests {
     #expect(CallAXCapturePolicy.zoomProtectedRoles.contains(role) == false)
     let plain = outcome(meetingWindow(extra: []))
     let decoyed = outcome(meetingWindow(extra: decoys(role: role)))
-    #expect(decoyed.0 == plain.0)
-    #expect(decoyed.1 == plain.1)
-    #expect(decoyed.2 == plain.2)
+    #expect(decoyed == plain)
   }
 
   /// Control for the inventory: the same decoys on protected roles do change what is read, so
@@ -285,8 +310,7 @@ struct CallCaptureToleranceTests {
     let plain = outcome(meetingWindow(extra: []))
     for role in ["AXTabGroup", "AXButton", "AXStaticText"] {
       let decoyed = outcome(meetingWindow(extra: decoys(role: role)))
-      #expect(
-        decoyed.0 != plain.0 || decoyed.1 != plain.1 || decoyed.2 != plain.2, "\(role)")
+      #expect(decoyed != plain, "\(role)")
     }
   }
 }

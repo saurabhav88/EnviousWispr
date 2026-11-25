@@ -19,8 +19,8 @@ package struct CallCaptureContext: Sendable, Equatable {
     /// The copy stopped at its node, depth or time bound.
     case truncated
     /// A read that could hide evidence failed (the app went away; a role, children, a page
-    /// address or a window label could not be read; or any read on a role a consumer reads or
-    /// inside a tile or list).
+    /// address, or a window's title or identifier could not be read; or any read on a role a
+    /// consumer reads or inside a tile or list).
     case unreadable
     case unknown
   }
