@@ -2216,8 +2216,6 @@ def test_recording(audio=None, sentence=None, hold=3.0, expect=None, timeout=30.
     # Snapshot app.log size + clipboard before the test. Log-based detection
     # is primary (clipboard-free, doesn't race with the user's activity);
     # clipboard is a fallback when Debug mode is off.
-    log_size_before = _snapshot_log_size()
-    take_started = _take_start()  # #3764: the take gate reads from here
     clip_before = get_clipboard_text() or ""
 
     # Phase 1: Start recording via menu
@@ -2225,6 +2223,8 @@ def test_recording(audio=None, sentence=None, hold=3.0, expect=None, timeout=30.
     # Registered BEFORE the start, so the previous take is proven over while the app is idle;
     # a Stop tap when the start failed finds nothing to stop (#3764).
     _tg.take_started(lambda: tap("Stop Recording"), _recording_idle)
+    take_started = _take_start()  # #3764: the take gate reads from here
+    log_size_before = _snapshot_log_size()
     if not tap("Start Recording"):
         print("BLOCKED: Could not tap 'Start Recording'")
         _tg.take_stopped()
@@ -3057,8 +3057,8 @@ def test_hands_free(audio=None, sentence=None, hold=4.0, expect=None, timeout=30
             end_test()
             raise
 
-    log_size_before = _snapshot_log_size()
     take_started = _take_start()  # #3764: the take gate reads from here
+    log_size_before = _snapshot_log_size()
     clip_before = get_clipboard_text() or ""
 
     # Phase 1: the REAL gesture - two presses inside the app's chain window.
@@ -3331,9 +3331,6 @@ def test_ptt(key=None, audio=None, sentence=None, expect=None, timeout=30.0):
         end_test()
         raise
 
-    log_size_before = _snapshot_log_size()
-    take_started = _take_start()  # #3764: the take gate reads from here
-
     # Phase 1: Key down (recording starts)
     import simulate_input as _si
     print(f"\n--- KEY DOWN ({key}) ---")
@@ -3355,6 +3352,8 @@ def test_ptt(key=None, audio=None, sentence=None, expect=None, timeout=30.0):
     # Registered BEFORE the key goes down, so the previous take is proven over while the app is
     # idle; any exit before the key-up below still releases it (#3764).
     _tg.take_started(_key_up, _recording_idle)
+    take_started = _take_start()  # #3764: the take gate reads from here
+    log_size_before = _snapshot_log_size()
     if key_lower in _si.MODIFIER_KEYS:
         _si.modifier_down(_si.MODIFIER_KEYS[key_lower])
     else:
@@ -3484,12 +3483,6 @@ def record_tts(sentence="The quick brown fox jumps over the lazy dog", key=None,
     # #3764: refuse right before the key goes down (after the slow TTS step), never mid-take.
     _tg.check_before_play()
 
-    # Mark log position before recording
-    take_started = _take_start()  # #3764: the take gate reads from here
-    log_size_before = 0
-    if os.path.exists(_APP_LOG_PATH):
-        log_size_before = os.path.getsize(_APP_LOG_PATH)
-
     # Hold PTT key + play audio concurrently
     import threading
     played = []  # the player's exit status, judged after the take (#3764)
@@ -3507,6 +3500,12 @@ def record_tts(sentence="The quick brown fox jumps over the lazy dog", key=None,
     # `hold_key` releases the key in its own finally; the registration makes an interrupted take
     # stop its player and prove the app idle before the audio rig restores the microphone.
     _tg.take_started(lambda: None, _recording_idle)
+
+    # Mark log position before recording
+    take_started = _take_start()  # #3764: the take gate reads from here
+    log_size_before = 0
+    if os.path.exists(_APP_LOG_PATH):
+        log_size_before = os.path.getsize(_APP_LOG_PATH)
 
     player = threading.Thread(target=_play)
     player.start()

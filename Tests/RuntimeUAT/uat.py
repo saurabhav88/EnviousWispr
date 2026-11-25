@@ -386,7 +386,8 @@ def build_identity(worktree, expected_bin, app_start, head):
     receipt of `head` and the deployed code being that build's code. False: rebuilt, not relaunched.
     Known limit: the receipt names the build's inputs, not a digest of the compiled code."""
     code = "EnviousWispr.debug.dylib"
-    deployed = os.path.join(os.path.dirname(expected_bin), code)
+    contents = os.path.dirname(os.path.dirname(expected_bin))
+    deployed = os.path.join(contents, "MacOS", code)
 
     def outdated():
         """Why the running process may not be the files on disk, or None."""
@@ -408,12 +409,15 @@ def build_identity(worktree, expected_bin, app_start, head):
         receipt = subprocess.run(
             [sys.executable, os.path.join(worktree, "scripts/lib/l10n-build-receipt.py"), "verify", "--receipt",
              os.path.join(derived, "ew-l10n-receipt.json"), "--repo", worktree, "--commit", head,
-             "--derived-data", derived, "--configuration", "Dev"], capture_output=True, text=True, timeout=60)
+             "--derived-data", derived, "--configuration", "Dev"], capture_output=True, text=True, errors="replace",
+            timeout=60)
         if receipt.returncode != 0:
             return None, (receipt.stdout + receipt.stderr).strip() or f"receipt check exited {receipt.returncode}"
-        built = os.path.join(derived, "Build/Products/Dev", "EnviousWispr Local.app/Contents/MacOS", code)
-        if not filecmp.cmp(built, deployed, shallow=False):
-            return None, "the deployed app is not the last Dev build"
+        built = os.path.join(derived, "Build/Products/Dev", "EnviousWispr Local.app/Contents")
+        # CodeResources holds a digest of every resource and nested program in the bundle.
+        for part in ("MacOS/EnviousWispr", f"MacOS/{code}", "_CodeSignature/CodeResources"):
+            if not filecmp.cmp(os.path.join(built, part), os.path.join(contents, part), shallow=False):
+                return None, f"the deployed app is not the last Dev build ({part} differs)"
     except (OSError, subprocess.TimeoutExpired) as exc:
         return None, f"cannot check the build: {exc}"
     # Read the times again: a build that landed during the checks above was what they compared.
@@ -759,10 +763,11 @@ def _self_test():
     # --- which commit the running app is a build of (#4759) ---
     with tempfile.TemporaryDirectory() as tree:
         app_bin = tree + DEV_BUNDLE_SUFFIX
-        built = os.path.join(tree, ".derivedData/Dev/Build/Products/Dev/EnviousWispr Local.app/Contents/MacOS")
+        built = os.path.join(tree, ".derivedData/Dev/Build/Products/Dev/EnviousWispr Local.app/Contents")
+        bundles = (os.path.dirname(os.path.dirname(app_bin)), built)
         tool = os.path.join(tree, "scripts/lib/l10n-build-receipt.py")
-        for path, text in ((app_bin, ""), (os.path.join(os.path.dirname(app_bin), "EnviousWispr.debug.dylib"), "a"),
-                           (os.path.join(built, "EnviousWispr.debug.dylib"), "a"),
+        parts = ("MacOS/EnviousWispr", "MacOS/EnviousWispr.debug.dylib", "_CodeSignature/CodeResources")
+        for path, text in (*((os.path.join(c, part), "a") for c in bundles for part in parts),
                            (tool, "import sys; print('receipt says', sys.argv[sys.argv.index('--commit') + 1]); "
                                   "sys.exit(sys.argv[sys.argv.index('--commit') + 1] != 'HEAD')")):
             os.makedirs(os.path.dirname(path), exist_ok=True)
@@ -778,9 +783,12 @@ def _self_test():
         check("build identity: only the code was rebuilt after launch -> False", at(later - 120, "HEAD") is False)
         os.utime(dylib, (0, 0))
         check("build identity: files swapped in with old times after launch -> None", at(later - 120, "HEAD") is None)
-        with open(os.path.join(built, "EnviousWispr.debug.dylib"), "w") as fh:
-            fh.write("b")
-        check("build identity: deployed code is another build -> None", at(later, "HEAD") is None)
+        for part in parts[1:]:
+            with open(os.path.join(built, part), "w") as fh:
+                fh.write("b")
+            check(f"build identity: {part} is another build -> None", at(later, "HEAD") is None)
+            with open(os.path.join(built, part), "w") as fh:
+                fh.write("a")
         os.remove(tool)
         check("build identity: no receipt tool -> None", at(later, "HEAD") is None)
 
