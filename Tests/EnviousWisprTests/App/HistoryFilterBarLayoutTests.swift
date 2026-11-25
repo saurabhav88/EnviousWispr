@@ -388,19 +388,21 @@ struct HistoryFilterBarLayoutTests {
     /// #4716: what happened around the rig since its counters were reset, for `failureContext`:
     /// notification names and counts, and the window state that can change without one.
     @MainActor private final class RigEvents {
-      private let seen = OSAllocatedUnfairLock<[String: Int]>(initialState: [:])
+      private var seen = OSAllocatedUnfairLock<[String: Int]>(initialState: [:])
       private var tokens: [(NotificationCenter, any NSObjectProtocol)] = []
       private var stateAtReset = ""
 
       func begin(_ window: NSWindow) {
         end()
-        seen.withLock { $0 = [:] }
+        // A new counter for each interval: a post still in flight counts in the old one.
+        let seen = OSAllocatedUnfairLock<[String: Int]>(initialState: [:])
+        self.seen = seen
         stateAtReset = Self.state(window)
         let centers: [NotificationCenter] = [
           .default, NSWorkspace.shared.notificationCenter, DistributedNotificationCenter.default(),
         ]
         for center in centers {
-          let token = center.addObserver(forName: nil, object: nil, queue: nil) { [seen] note in
+          let token = center.addObserver(forName: nil, object: nil, queue: nil) { note in
             let name = note.name.rawValue
             seen.withLock { $0[name, default: 0] += 1 }
           }
@@ -511,7 +513,6 @@ struct HistoryFilterBarLayoutTests {
       rig.counts.measurements = 0
       rig.counts.bodies = 0
       rig.probe.layout.reset()
-      rig.events.begin(rig.window)
     }
 
     /// What one edit or publication cost the controls and the search row.
@@ -543,6 +544,7 @@ struct HistoryFilterBarLayoutTests {
     )
     func focusThenFirstCharacter() throws {
       try withRig { rig in
+        rig.events.begin(rig.window)
         let searchFrame = try #require(rig.probe.frames["search"])
         let fieldFrame = rig.field.frame
         try focus(rig)
@@ -565,6 +567,7 @@ struct HistoryFilterBarLayoutTests {
             && first.searchFrameChanged == false,
           "focus plus the first character changed layout: \(first); \(failureContext(rig))")
         reset(rig)
+        rig.events.begin(rig.window)
         for letter in "bcdefghij" {
           try type(String(letter), into: rig.field)
           pump(rig.view)
