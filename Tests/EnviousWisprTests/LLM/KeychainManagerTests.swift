@@ -172,8 +172,8 @@ struct KeychainManagerTests {
   @Test(
     "Legacy-backend item is invisible to a DP-scoped retrieve",
     .enabled(
-      if: KeychainManagerTests.hasLegacyKeychainAccess
-        && KeychainManagerTests.hasDataProtectionKeychainEntitlement,
+      if: KeychainManagerTests.hasDataProtectionKeychainEntitlement
+        && KeychainManagerTests.hasLegacyKeychainAccess,
       "Requires both legacy and DP keychain access; verified in Live UAT against shipped .app"
     ),
     .bug(

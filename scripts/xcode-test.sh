@@ -295,6 +295,8 @@ if [ "$REAL_BOUNDARY" = 1 ]; then
 else
   unset TEST_RUNNER_EW_REAL_BOUNDARY
 fi
+# #4926: the test home is this run's own (set below), never a caller's.
+unset TEST_RUNNER_CFFIXED_USER_HOME TEST_RUNNER_HOME
 
 FULL_VALIDATION=0
 NO_RECEIPT_REASON=""
@@ -515,6 +517,10 @@ else
 fi
 APP_LOG_DIR="$LOG_DIR/app-logger"
 mkdir -p "$APP_LOG_DIR"
+if [ "$REAL_BOUNDARY" != 1 ]; then  # #4926: an ordinary run never reaches the real History
+  TEST_HOME_DIR="$(mktemp -d "$LOG_DIR/test-home.XXXXXX")"  # new even when --log-dir is reused
+  export TEST_RUNNER_CFFIXED_USER_HOME="$TEST_HOME_DIR" TEST_RUNNER_HOME="$TEST_HOME_DIR"
+fi
 
 # Both owned by scripts/lib/log-dir.sh, which has its own two-way suite. Neither
 # runs for an explicit `--log-dir`: that caller asked for a durable receipt at an
