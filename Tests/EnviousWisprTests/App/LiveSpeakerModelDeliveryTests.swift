@@ -70,8 +70,9 @@ struct LiveSpeakerModelDeliveryTests {
     let flags: UserDefaults
     let gate = FetchGate()
 
-    @MainActor private init() throws {
-      flags = try #require(TestDefaults.suite("ew.tests.4355.speaker-live.\(UUID().uuidString)"))
+    @MainActor private init(flags shared: UserDefaults?) throws {
+      flags = try shared
+        ?? #require(TestDefaults.suite("ew.tests.4355.speaker-live.\(UUID().uuidString)"))
       home = ModelDeliveryHome(
         engineMutationScope: .live(
           tryBegin: { true }, end: { true }, wake: {}, onRefused: { _ in }),
@@ -82,8 +83,13 @@ struct LiveSpeakerModelDeliveryTests {
       home.speakerLiveFetchOverrideForTests = { await gate.fetch() }
     }
 
-    @MainActor static func make() async throws -> Rig {
-      let rig = try Rig()
+    /// `flags`: the same store as an earlier rig, so this one is its next launch.
+    /// `beforeProbes` runs before either launch probe can (nothing has suspended yet).
+    @MainActor static func make(
+      flags: UserDefaults? = nil, beforeProbes: @MainActor (Rig) -> Void = { _ in }
+    ) async throws -> Rig {
+      let rig = try Rig(flags: flags)
+      beforeProbes(rig)
       let probed = BoundedWait.Signal()
       rig.home.onSpeakerLaunchProbesFinished = { probed.fire() }
       defer {
@@ -431,5 +437,160 @@ struct LiveSpeakerModelDeliveryTests {
     // cancellation can never stop it.
     #expect(order.withLock { $0 } == ["fetch 0", "cancel finished", "fetch 1"])
     #expect(rig.home.speakerLiveCancelRequestsForTests == 1)
+  }
+
+  // MARK: - #4936: the missing Finished calls model downloads by itself
+
+  /// A launch after its probes, with the live half ready and the Finished calls half missing.
+  /// `decide` is the bootstrapper's call.
+  struct AutomaticRig {
+    let rig: Rig
+    let final = FetchGate()
+    @MainActor var home: ModelDeliveryHome { rig.home }
+
+    @MainActor init(flags: UserDefaults? = nil) async throws {
+      rig = try await Rig.make(flags: flags)
+      rig.home.applySpeakerLiveStateForTests(.admitted)
+      let final = final
+      rig.home.speakerFinalFetchOverrideForTests = { await final.fetch() }
+    }
+
+    @MainActor func decide(setUp: Bool = true) {
+      home.startMissingFinalSpeakerModel(isSetUp: { setUp })
+    }
+
+    @MainActor var declined: Bool {
+      rig.flags.bool(forKey: ModelDeliveryHome.finalSpeakerModelDeclinedKey)
+    }
+  }
+
+  @Test("the missing half is fetched once by itself, never the live half; a failure waits a launch")
+  func automaticStart() async throws {
+    let it = try await AutomaticRig()
+    let final = it.final
+    it.home.speakerFinalFetchOverrideForTests = { [home = it.home] in
+      await final.fetch()
+      home.applySpeakerFinalStateForTests(.failed(DeliveryFailure(reason: .sourceUnreachable)))
+    }
+    it.decide()
+    try await it.rig.finishDownload()
+    it.home.meetingBecameIdle()
+    it.decide()
+    try await it.rig.finishDownload()
+    #expect(it.final.starts == 1)
+    #expect(it.rig.gate.starts == 0)
+
+    let next = try await AutomaticRig(flags: it.rig.flags)
+    next.decide()
+    try await next.rig.finishDownload()
+    #expect(next.final.starts == 1)
+  }
+
+  @Test("the end of both launch probes makes the decision, once, and not before")
+  func waitsForTheProbes() async throws {
+    var reads = 0
+    let rig = try await Rig.make(beforeProbes: { rig in
+      rig.home.applySpeakerLiveStateForTests(.admitted)
+      rig.home.startMissingFinalSpeakerModel(isSetUp: {
+        reads += 1
+        return true
+      })
+      #expect(reads == 0)
+    })
+    #expect(reads == 1)
+    rig.home.meetingBecameIdle()
+    #expect(reads == 1)
+  }
+
+  @Test("setup not done, no live half, or the kill switch: nothing starts, nothing shows")
+  func automaticHolds() async throws {
+    let it = try await AutomaticRig()
+    it.decide(setUp: false)
+    #expect(it.home.speakerLiveDownloadTaskForTests == nil)
+
+    let noLive = try await AutomaticRig()
+    noLive.home.applySpeakerLiveStateForTests(.notReady)
+    noLive.decide()
+    #expect(noLive.home.speakerLiveDownloadTaskForTests == nil)
+
+    let killed = try await AutomaticRig()
+    killed.rig.flags.set(false, forKey: DeliveryFlags.key("enabled", family: .speakerLive))
+    killed.decide()
+    #expect(killed.home.speakerLiveDownloadTaskForTests == nil)
+    #expect(killed.home.speakerLiveDownloadRefused == false)
+  }
+
+  @Test("a meeting, at the decision or just before the handoff, moves the start to its end")
+  func automaticWaitsForTheMeeting() async throws {
+    let it = try await AutomaticRig()
+    it.home.isMeetingActive = { true }
+    it.decide()
+    #expect(it.home.speakerLiveDownloadTaskForTests == nil)
+    #expect(it.home.speakerLiveDownloadQueued == false)
+    it.home.isMeetingActive = { false }
+    it.home.meetingBecameIdle()
+    // Scheduled, not yet run: the next meeting starts before the handoff.
+    it.home.isMeetingActive = { true }
+    try await it.rig.finishDownload()
+    #expect(it.final.starts == 0)
+    it.home.isMeetingActive = { false }
+    it.home.meetingBecameIdle()
+    try await it.rig.finishDownload()
+    #expect(it.final.starts == 1)
+    #expect(it.rig.gate.starts == 0)
+  }
+
+  @Test("a press in that meeting downloads once at its end, as the user's own request")
+  func userPressInTheMeetingWins() async throws {
+    let it = try await AutomaticRig()
+    it.home.isMeetingActive = { true }
+    it.decide()
+    it.home.requestLiveSpeakerModel(meetingActive: true)
+    it.home.isMeetingActive = { false }
+    it.home.meetingBecameIdle()
+    try await it.rig.finishDownload()
+    #expect(it.rig.gate.starts == 1)
+    #expect(it.final.starts == 1)
+  }
+
+  @Test("Cancel, also before the final transfer registered, holds the next launches until Download")
+  func cancelIsRemembered() async throws {
+    let first = try await AutomaticRig()
+    first.home.speakerLiveCancelOverrideForTests = {}
+    first.final.holdNext()
+    first.decide()
+    try await BoundedWait.until(first.final.started)
+    first.home.cancelLiveSpeakerModelDownload()
+    let sent = try #require(first.home.speakerLivePendingCancelForTests)
+    _ = try await BoundedWait.result(of: sent)
+    first.home.applySpeakerFinalStateForTests(.preparing(validatingExistingCache: false))
+    #expect(first.home.speakerLiveCancelRequestsForTests == 2, "the late attempt is stopped")
+    first.final.release()
+    try await first.rig.finishDownload()
+
+    let second = try await AutomaticRig(flags: first.rig.flags)
+    second.decide()
+    #expect(second.home.speakerLiveDownloadTaskForTests == nil)
+    #expect(second.home.requestLiveSpeakerModel(meetingActive: true) == .queuedUntilMeetingEnds)
+    #expect(second.declined == false)
+    second.home.cancelLiveSpeakerModelDownload()
+    #expect(second.declined, "a Cancel of a waiting request counts too")
+  }
+
+  @Test("an accepted Remove is remembered; a refused Remove or press changes nothing")
+  func removeIsRemembered() async throws {
+    let it = try await AutomaticRig()
+    it.home.isMeetingActive = { true }
+    it.home.removeLiveSpeakerModel()
+    #expect(it.declined == false)
+    it.home.isMeetingActive = { false }
+    it.home.deleteSpeakerLiveModelOverrideForTests = { false }
+    #expect(it.home.removeLiveSpeakerModel() == .started)
+    #expect(it.home.requestLiveSpeakerModel(meetingActive: false) == .refused)
+    #expect(it.declined)
+    let task = try #require(it.home.speakerLiveRemovalTaskForTests)
+    _ = try await BoundedWait.result(of: task)
+    it.decide()
+    #expect(it.home.speakerLiveDownloadTaskForTests == nil)
   }
 }

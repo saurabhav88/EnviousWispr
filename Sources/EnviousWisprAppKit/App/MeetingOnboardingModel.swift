@@ -234,7 +234,8 @@ final class MeetingOnboardingModel {
     report(outcome: .finished)
     deps.settings.meetingOnboardingComplete = true
     // #4355 PR C: setup's last step starts the speaker labels download (it waits for a meeting
-    // to end if one is running). Setups finished before this change get Download on the card.
+    // to end if one is running). A setup finished before the Finished calls half existed gets it
+    // at launch (#4936).
     deps.requestSpeakerLabelsModel()
     screen = .welcome
     consented = false
