@@ -383,15 +383,20 @@ def derive_expected(sentence):
 def build_identity(worktree, expected_bin, app_start, head):
     """(matches, why) for the app running from `expected_bin`. File times cannot say which commit a
     build is of (an incremental build keeps older files, #4759), so True needs both the Dev build
-    receipt of `head` and the deployed code being that build's code. False: rebuilt, not relaunched."""
+    receipt of `head` and the deployed code being that build's code. False: rebuilt, not relaunched.
+    Known limit: the receipt names the build's inputs, not a digest of the compiled code."""
+    code = "EnviousWispr.debug.dylib"
+    deployed = os.path.join(os.path.dirname(expected_bin), code)
     try:
-        bin_mtime = os.path.getmtime(expected_bin)
+        files = [os.stat(expected_bin), os.stat(deployed)]
     except OSError as exc:
-        return None, f"cannot read the app binary: {exc}"
+        return None, f"cannot read the app's code: {exc}"
     if app_start is None:
         return None, "cannot read when the running app started"
-    if bin_mtime > app_start + 1:
+    if max(f.st_mtime for f in files) > app_start + 1:
         return False, "rebuilt, but not relaunched"
+    if max(f.st_ctime for f in files) > app_start + 1:
+        return None, "the app's files were replaced or changed after it launched"
     derived = os.path.join(worktree, ".derivedData", "Dev")
     try:
         receipt = subprocess.run(
@@ -400,9 +405,8 @@ def build_identity(worktree, expected_bin, app_start, head):
              "--derived-data", derived, "--configuration", "Dev"], capture_output=True, text=True, timeout=60)
         if receipt.returncode != 0:
             return None, (receipt.stdout + receipt.stderr).strip() or f"receipt check exited {receipt.returncode}"
-        code = "EnviousWispr.debug.dylib"
         built = os.path.join(derived, "Build/Products/Dev", "EnviousWispr Local.app/Contents/MacOS", code)
-        if not filecmp.cmp(built, os.path.join(os.path.dirname(expected_bin), code), shallow=False):
+        if not filecmp.cmp(built, deployed, shallow=False):
             return None, "the deployed app is not the last Dev build"
     except (OSError, subprocess.TimeoutExpired) as exc:
         return None, f"cannot check the build: {exc}"
@@ -762,6 +766,11 @@ def _self_test():
         check("build identity: receipt of another commit -> None", at(later, "OTHER") is None)
         check("build identity: rebuilt, not relaunched -> False", at(later - 120, "HEAD") is False)
         check("build identity: unknown start -> None", at(None, "HEAD") is None)
+        dylib = os.path.join(os.path.dirname(app_bin), "EnviousWispr.debug.dylib")
+        os.utime(app_bin, (0, 0))
+        check("build identity: only the code was rebuilt after launch -> False", at(later - 120, "HEAD") is False)
+        os.utime(dylib, (0, 0))
+        check("build identity: files swapped in with old times after launch -> None", at(later - 120, "HEAD") is None)
         with open(os.path.join(built, "EnviousWispr.debug.dylib"), "w") as fh:
             fh.write("b")
         check("build identity: deployed code is another build -> None", at(later, "HEAD") is None)

@@ -660,11 +660,12 @@ def _recording_idle(seconds=30.0):
         time.sleep(0.3)  # settle: the recording state changes asynchronously; no ack to await
 
 
-def _take_start():
+def _take_start(now=None):
     """(now, the entries already stamped in this second). Log stamps have one-second resolution,
     so the previous take's terminal can share the second this take starts in (#4757)."""
-    now = _dt.datetime.now().astimezone()
-    return now, frozenset((fileid, i) for fileid, _name, i, _lines in _sweep_log_entries(now))
+    now = now or _dt.datetime.now().astimezone()
+    entries = _sweep_log_entries(now) + _sweep_log_entries(now)  # twice, for a rotation between
+    return now, frozenset((fileid, i) for fileid, _name, i, _lines in entries)
 
 
 def _take_lines(start):
@@ -4038,14 +4039,15 @@ def _self_test():
     with tempfile.TemporaryDirectory() as shelf:
         globals()["_APP_LOG_PATH"] = os.path.join(shelf, "app.log")
         try:
-            second = _dt.datetime.now().astimezone().isoformat(timespec="seconds")
+            now = _dt.datetime.now().astimezone()
+            second = now.isoformat(timespec="seconds")
 
             def log(*messages):
                 with open(_APP_LOG_PATH, "a") as fh:
                     fh.writelines(f"[{second}] [INFO] [x] {m}\n" for m in messages)
 
             log("dictation_terminal result=no_speech take=OLD")
-            start = _take_start()
+            start = _take_start(now)
             outcomes = [_tg.classify(_take_lines(start), "app")[0]]
             log("ZERO_PREFIX_MEASURE transport=virtual", "Paste cascade: tier=ax, app=app, ok",
                 "dictation_terminal result=completed take=NEW")
