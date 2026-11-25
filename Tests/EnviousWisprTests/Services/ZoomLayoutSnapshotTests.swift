@@ -636,8 +636,8 @@ struct ZoomLayoutSnapshotTests {
   /// before #4943 every reading of such a call was thrown away, names and mute state with it.
   @Test(
     "a promotion window or an open View options menu leaves the call readable",
-    arguments: [("725-promotion", 1), ("725-view-menu", 10)])
-  func refusedLabelsLeaveTheCall(file: String, refused: Int) throws {
+    arguments: [("725-promotion", 1, "Alex Rivera"), ("725-view-menu", 10, nil)])
+  func refusedLabelsLeaveTheCall(file: String, refused: Int, voted: String?) throws {
     let (tree, windows) = try tree(file)
     let whole = copy(tree, windows)
     #expect(whole.completeness == .complete)
@@ -647,7 +647,8 @@ struct ZoomLayoutSnapshotTests {
     #expect(found.reading?.participantCount == 3)
     #expect(found.admission == .admitted)
     #expect(found.mute == .muted)
-    #expect(found.reading?.follow?.mayVote == (file == "725-promotion"))
+    let follow = found.reading?.follow
+    #expect((follow?.mayVote == true ? follow?.name : nil) == voted)
     #expect(copy(tree, windows, policy: .standard).completeness == .unreadable)
   }
 }

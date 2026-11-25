@@ -20,7 +20,7 @@ package struct CallCaptureContext: Sendable, Equatable {
     case truncated
     /// A read that could hide evidence failed (the app went away; a role, children, a page
     /// address, or a window's title or identifier could not be read; or any read on a role a
-    /// consumer reads or inside a tile or list).
+    /// consumer reads or inside a tile or list, except a list row's own description).
     case unreadable
     case unknown
   }

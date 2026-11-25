@@ -104,7 +104,8 @@ package struct CallAXBounds: Sendable, Equatable {
 /// recording's mute rules select), the element is not inside a tile or the participants list,
 /// and, on a window, it is not what tells windows apart (`zoomWindowAttributes`). A failed role,
 /// children or page address, a window's title or identifier, and any failed read on a protected
-/// role or inside evidence, still makes the copy unreadable, as does every failure under any
+/// role or inside evidence (but a list row's own description, #4935), still makes the copy
+/// unreadable, as does every failure under any
 /// other policy (Superwhisper and Granola likewise skip only failed reads outside speaker
 /// elements). Zoom 7.2.5 refuses the description of a small promotion window (707 of 707 live
 /// copies) and of the View options menu's cells (#4943): losing the copy there lost every name
