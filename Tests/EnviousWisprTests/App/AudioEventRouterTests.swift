@@ -92,7 +92,7 @@ struct AudioEventRouterTests {
       asrManager: asr,
       parakeetUpgrade: .legacyForTesting(),
       vadSignalSource: vad,
-      transcriptStore: TranscriptStore(),
+      transcriptStore: DictationRuntimeFixtures.tempStore(),
       keychainManager: KeychainManager(), localPolishers: .llamaForTests,
       captureTelemetry: CaptureTelemetryState(),
       pasteCompletionRegistry: PasteCompletionRegistry(),

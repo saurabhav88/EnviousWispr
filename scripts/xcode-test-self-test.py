@@ -165,6 +165,7 @@ if args[0] == 'build-for-testing':
     Path(os.environ['PACKAGE_STATE']).write_text('current lockfile dependencies')
     sys.exit(int(os.environ.get('BUILD_RC', '0')))
 if args[0] == 'test':
+    Path(os.environ['CALLS'] + '.home').write_text(json.dumps([os.environ.get('TEST_RUNNER_' + n) for n in ('CFFIXED_USER_HOME', 'HOME')]))
     Path(args[args.index('-resultBundlePath') + 1]).mkdir()
     if os.environ.get('HANG'):
         helper = subprocess.Popen(['sleep', '60'])
@@ -336,6 +337,18 @@ print(json.dumps({'testNodes': [{'nodeType': 'Test Plan', 'children': nodes}]}))
                                  '--filter', 'EnviousWisprTests/A'],
                                 env=env, text=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, timeout=15)
         self.assertNotIn('needs real audio', result.stdout)
+
+    def test_ordinary_runs_get_their_own_home_and_real_boundary_runs_get_none(self):
+        # #4926: a caller's exported home never reaches either kind of run.
+        caller = {'TEST_RUNNER_CFFIXED_USER_HOME': '/caller', 'TEST_RUNNER_HOME': '/caller'}
+        for args, home in ((('--filter', 'EnviousWisprTests/A'), str(self.root / 'logs/test-home')),
+                           (('--filter', 'EnviousWisprTests/A', '--real-boundary'), None)):
+            self.run_runner(*args, **caller)
+            self.assertEqual(json.loads((self.root / 'calls.home').read_text()), [home, home])
+            shutil.rmtree(self.root / 'logs')
+        (self.root / 'logs').mkdir()
+        (self.root / 'logs/test-home').symlink_to(self.root)
+        self.run_runner('--filter', 'EnviousWisprTests/A', rc=2)
 
     def test_a_silent_test_step_is_stopped_as_hung(self):
         # #4507 T4: a test step that prints once and then nothing is stopped at the
