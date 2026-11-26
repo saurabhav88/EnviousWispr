@@ -448,10 +448,11 @@ public struct InverseTextNormalizer: Sendable {
     t = moneyPct(t)  // re-run: 'twenty twenty six dollars'->'2026 dollars'->'$2,026' (idempotence)
 
     // phone / digit-read runs (before generic cardinal so "two zero three…" stays a read).
-    // #4991: an "o" glued to an apostrophe ("o'clock", "O'Brien") is a word, not a spoken zero,
-    // so "3 o'clock" is not read as "30 'clock". Only the letter "o"; other digit words unchanged.
+    // #4991: an "o" glued to an apostrophe and a letter ("o'clock", "O'Brien") is a word, not a
+    // spoken zero, so "3 o'clock" is not read as "30 'clock". A closing quote after the "o"
+    // (‘3 o’) is still a zero. Only the letter "o"; other digit words unchanged.
     let runPat =
-      #"(?:\b(?:"# + Self.digitWordAlt + #")\b(?!(?<=\bo)['’])\s*|\b\d{1,4}\b\s*){2,}"#
+      #"(?:\b(?:"# + Self.digitWordAlt + #")\b(?!(?<=\bo)['’]\p{L})\s*|\b\d{1,4}\b\s*){2,}"#
     t = reSub(runPat, t) { m in
       let toks = Self.splitWords(m.whole)
       var out: [String] = []

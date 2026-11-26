@@ -34,6 +34,7 @@ struct InverseTextNormalizerDigitOclockTests {
     ("it starts at three o'clock", "it starts at 3:00"),
     ("the code is two o five", "the code is 205"),
     ("go to room 3 o 5", "go to room 305"),
+    ("type \u{2018}3 o\u{2019} here", "type \u{2018}30\u{2019} here"),
   ]
 
   @Test("a digit hour before o'clock is kept", arguments: rows)
