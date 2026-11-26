@@ -197,9 +197,7 @@ struct LearningSection: View {
     // One decision for where the reason shows: the visible action line, or else the "?".
     let showsActionLine = isOn && learnFromEdits.secondaryLine != nil && learnFromEdits.action != nil
     return VStack(alignment: .leading, spacing: DesignSpacing.md) {
-      HStack(alignment: .center, spacing: DesignSpacing.md) {
-        Text(LearnFromEditsSettingsPresentation.rowTitle)
-          .settingsRowLabel()
+      LearnLine(title: LearnFromEditsSettingsPresentation.rowTitle, status: word.text) {
         SettingsInfoButton(rowTitle: LearnFromEditsSettingsPresentation.rowTitle, tooltip: nil) {
           VStack(alignment: .leading, spacing: DesignSpacing.lg) {
             SettingsHelpText(text: LearnFromEditsSettingsPresentation.learningSwitchHelp)
@@ -218,8 +216,7 @@ struct LearningSection: View {
         // article link (#5006, founder 2026-11-26: keep the search result).
         .settingsArrivalFocusControl()
         .settingsMapRegistration(.selfLearningDictionaryLearnMore)
-        Text(word.text).font(.stHelper).foregroundStyle(.stTextSecondary)
-        Spacer(minLength: DesignSpacing.md)
+      } trailing: {
         Toggle("", isOn: settings.learnFromEdits)
           .toggleStyle(BrandedToggleStyle())
           .labelsHidden()
@@ -270,8 +267,7 @@ struct LearningSection: View {
     let word: LearnFromEditsSettingsPresentation.StatusWord? =
       !dictionaryOn ? .paused : !fixOn ? .off : statuses?.dictation.readiness
     return VStack(alignment: .leading, spacing: DesignSpacing.md) {
-      HStack(spacing: DesignSpacing.md) {
-        Text(LearnFromEditsSettingsPresentation.fixesTitle).settingsRowLabel()
+      LearnLine(title: String(localized: LearnFromEditsSettingsPresentation.fixesTitle), status: word?.text) {
         SettingsInfoButton(rowTitle: String(localized: LearnFromEditsSettingsPresentation.fixesTitle), tooltip: nil) {
           VStack(alignment: .leading, spacing: DesignSpacing.lg) {
             SettingsHelpText(text: String(localized: LearnFromEditsSettingsPresentation.fixesHelp))
@@ -283,10 +279,7 @@ struct LearningSection: View {
             }
           }
         }
-        if let word {
-          Text(word.text).font(.stHelper).foregroundStyle(.stTextSecondary)
-        }
-        Spacer(minLength: DesignSpacing.md)
+      } trailing: {
         Toggle("", isOn: settings.fixLearnedWords)
           .toggleStyle(BrandedToggleStyle())
           .labelsHidden()
@@ -345,12 +338,14 @@ struct LearningSection: View {
   /// where one fix or everything can be forgotten.
   private var learnMemoryLine: some View {
     let count = customWords.learnMemoryBlockedCount
-    return HStack(alignment: .center, spacing: DesignSpacing.md) {
-      Text(LearnFromEditsSettingsPresentation.memoryTitle).settingsRowLabel()
+    return LearnLine(
+      title: String(localized: LearnFromEditsSettingsPresentation.memoryTitle), status: nil,
+      trailingDropsBelow: true
+    ) {
       SettingsInfoButton(rowTitle: String(localized: LearnFromEditsSettingsPresentation.memoryTitle), tooltip: nil) {
         SettingsHelpText(text: String(localized: LearnFromEditsSettingsPresentation.memoryHelp))
       }
-      Spacer(minLength: DesignSpacing.md)
+    } trailing: {
       Button {
         showingBlocked = true
       } label: {
@@ -583,6 +578,50 @@ struct LearningSection: View {
       string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Contacts")
     {
       NSWorkspace.shared.open(url)
+    }
+  }
+}
+
+/// One Learn from line (#5006): title, its "?", a short status word and a trailing
+/// control on one line when they fit. When they do not (German or French at the
+/// 750 pt window, where this column is about 190 pt wide), the title takes the full
+/// width and wraps at word boundaries; its "?", the status word and, with
+/// `trailingDropsBelow`, the trailing control follow on the line below; a switch
+/// stays on the right.
+private struct LearnLine<Help: View, Trailing: View>: View {
+  let title: String
+  let status: String?
+  var trailingDropsBelow = false
+  @ViewBuilder let help: () -> Help
+  @ViewBuilder let trailing: () -> Trailing
+
+  private var statusText: some View {
+    Text(status ?? "").font(.stHelper).foregroundStyle(.stTextSecondary).fixedSize()
+  }
+
+  var body: some View {
+    ViewThatFits(in: .horizontal) {
+      HStack(alignment: .center, spacing: DesignSpacing.md) {
+        Text(title).settingsRowLabel().fixedSize()
+        help()
+        if status != nil { statusText }
+        Spacer(minLength: DesignSpacing.md)
+        trailing()
+      }
+      HStack(alignment: .center, spacing: DesignSpacing.md) {
+        VStack(alignment: .leading, spacing: DesignSpacing.xs) {
+          // The title takes the whole width so a long single word ("Korrekturen",
+          // "aprendidas") is never split; the "?" and the status follow below it.
+          Text(title).settingsRowLabel().fixedSize(horizontal: false, vertical: true)
+          HStack(alignment: .center, spacing: DesignSpacing.md) {
+            help()
+            if status != nil { statusText }
+            if trailingDropsBelow { trailing() }
+          }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        if !trailingDropsBelow { trailing() }
+      }
     }
   }
 }
