@@ -2554,34 +2554,6 @@
         }
       }
     },
-    "%@, %lld of %lld" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "new",
-            "value" : "%1$@, %2$lld of %3$lld"
-          }
-        },
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "%@, %lld von %lld"
-          }
-        },
-        "fr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "%@, %lld sur %lld"
-          }
-        },
-        "es" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "%@, %lld de %lld"
-          }
-        }
-      }
-    },
     "%@, example, pastes %@" : {
       "localizations" : {
         "en" : {
@@ -14548,28 +14520,6 @@
         }
       }
     },
-    "Choose an audio or video file here to get a transcript." : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Wähle hier eine Audio- oder Videodatei, um ein Transkript zu erhalten."
-          }
-        },
-        "fr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Choisissez ici un fichier audio ou vidéo pour obtenir une transcription."
-          }
-        },
-        "es" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Elige aquí un archivo de audio o vídeo para obtener una transcripción."
-          }
-        }
-      }
-    },
     "Choose an engine" : {
       "comment" : "EnviousMeet page, Live Preview: the engine menu before an engine is chosen.",
       "localizations" : {
@@ -15090,28 +15040,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Elige tu Pulido con IA"
-          }
-        }
-      }
-    },
-    "Choose your speech engine, microphone and recording pill here." : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Wähle hier deine Engine für die Spracherkennung, dein Mikrofon und die Aufnahmeanzeige."
-          }
-        },
-        "fr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Choisissez ici votre moteur de reconnaissance vocale, votre micro et la pastille d’enregistrement."
-          }
-        },
-        "es" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Elige aquí tu motor de reconocimiento de voz, tu micrófono y la píldora de grabación."
           }
         }
       }
@@ -22524,28 +22452,6 @@
         }
       }
     },
-    "End tour" : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Tour beenden"
-          }
-        },
-        "fr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Quitter la visite"
-          }
-        },
-        "es" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Salir del recorrido"
-          }
-        }
-      }
-    },
     "Ends recording after you stop speaking." : {
       "comment" : "Speech engine settings: short line under Stop recording on silence.",
       "localizations" : {
@@ -22910,28 +22816,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "EnviousMeet detecta tus llamadas"
-          }
-        }
-      }
-    },
-    "EnviousMeet records your calls and turns them into transcripts." : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "EnviousMeet nimmt deine Anrufe auf und macht daraus Transkripte."
-          }
-        },
-        "fr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "EnviousMeet enregistre vos appels et les transforme en transcriptions."
-          }
-        },
-        "es" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "EnviousMeet graba tus llamadas y las convierte en transcripciones."
           }
         }
       }
@@ -25203,28 +25087,6 @@
         }
       }
     },
-    "Finish tour" : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Tour abschließen"
-          }
-        },
-        "fr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Terminer la visite"
-          }
-        },
-        "es" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Terminar el recorrido"
-          }
-        }
-      }
-    },
     "Finish upgrade" : {
       "comment" : "Settings > AI Polish, local model row: button.",
       "localizations" : {
@@ -27194,28 +27056,6 @@
         }
       }
     },
-    "Go back to the list if needed, then choose Dictations." : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Geh bei Bedarf zurück zur Liste und wähle „Diktate“."
-          }
-        },
-        "fr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Revenez à la liste si nécessaire, puis choisissez Dictées."
-          }
-        },
-        "es" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Vuelve a la lista si es necesario y selecciona Dictados."
-          }
-        }
-      }
-    },
     "Good meetings start with a heads-up." : {
       "comment" : "EnviousMeet setup: the consent screen's title.",
       "localizations" : {
@@ -28649,28 +28489,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Si estás usando una red Wi‑Fi de un hotel o pública, termina de iniciar sesión en la red y vuelve a intentarlo."
-          }
-        }
-      }
-    },
-    "If you don’t see a recording, clear search or filters." : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Wenn du eine Aufnahme nicht findest, lösche den Suchbegriff oder setze die Filter zurück."
-          }
-        },
-        "fr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Si vous ne trouvez pas l’enregistrement, effacez votre recherche ou réinitialisez les filtres."
-          }
-        },
-        "es" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Si no encuentras una grabación, borra el texto de búsqueda o quita los filtros."
           }
         }
       }
@@ -50205,28 +50023,6 @@
         }
       }
     },
-    "See where everything is in EnviousWispr." : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Schau dir an, wo du in EnviousWispr alles findest."
-          }
-        },
-        "fr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Découvrez où tout se trouve dans EnviousWispr."
-          }
-        },
-        "es" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Descubre dónde está todo en EnviousWispr."
-          }
-        }
-      }
-    },
     "See words before you finish your dictation." : {
       "comment" : "Live Preview settings: short line under Show words while you speak.",
       "localizations" : {
@@ -50973,28 +50769,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Configurar modelos de resumen en EnviousMeet"
-          }
-        }
-      }
-    },
-    "Set your dictation shortcut under %@." : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Lege dein Diktat-Tastenkürzel unter „%@“ fest."
-          }
-        },
-        "fr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Définissez votre raccourci de dictée dans « %@ »."
-          }
-        },
-        "es" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Define tu atajo de dictado en «%@»."
           }
         }
       }
@@ -53629,28 +53403,6 @@
         }
       }
     },
-    "Start tour" : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Tour starten"
-          }
-        },
-        "fr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Lancer la visite"
-          }
-        },
-        "es" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Iniciar recorrido"
-          }
-        }
-      }
-    },
     "Start transcription" : {
       "comment" : "Transcribe a File, Review step: button that starts the run.",
       "localizations" : {
@@ -55057,28 +54809,6 @@
         }
       }
     },
-    "Take a quick tour" : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Mach eine kurze Tour"
-          }
-        },
-        "fr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Faites une visite rapide"
-          }
-        },
-        "es" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Haz un recorrido rápido"
-          }
-        }
-      }
-    },
     "Take notes on this %@ call?" : {
       "comment" : "EnviousMeet: a call app uses the microphone; the app's short name. Recording is offered, not started.",
       "localizations" : {
@@ -55121,29 +54851,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "¿Tomar notas de esta reunión de Slack?"
-          }
-        }
-      }
-    },
-    "Take the Tour" : {
-      "comment" : "Menu bar menu: starts the guided tour of the app.",
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Tour machen"
-          }
-        },
-        "fr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Faire la visite"
-          }
-        },
-        "es" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Hacer el recorrido"
           }
         }
       }
@@ -62248,28 +61955,6 @@
         }
       }
     },
-    "Turn off %@ to stop saving audio, or delete recordings here." : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Schalte „%@“ aus, um keine Audiodaten mehr zu speichern, oder lösche hier Aufnahmen."
-          }
-        },
-        "fr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Désactivez « %@ » pour ne plus sauvegarder l’audio, ou supprimez ici les enregistrements."
-          }
-        },
-        "es" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Desactiva «%@» para dejar de guardar audio, o elimina aquí las grabaciones."
-          }
-        }
-      }
-    },
     "Turn off an app to never be asked about its calls." : {
       "comment" : "EnviousMeet page: the short line under Notice calls in.",
       "localizations" : {
@@ -62358,28 +62043,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Activar"
-          }
-        }
-      }
-    },
-    "Turn on %@ to tidy your dictation with a model you choose." : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Aktiviere „%@“, um dein Diktat mit einem Modell deiner Wahl zu überarbeiten."
-          }
-        },
-        "fr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Activez « %@ » pour retoucher votre dictée avec un modèle de votre choix."
-          }
-        },
-        "es" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Activa «%@» para pulir tu dictado con un modelo de tu elección."
           }
         }
       }
@@ -63719,28 +63382,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Usar %@"
-          }
-        }
-      }
-    },
-    "Use %@ to teach EnviousWispr names and terms." : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Mit „%@“ bringst du EnviousWispr Namen und Begriffe bei."
-          }
-        },
-        "fr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Utilisez « %@ » pour apprendre des noms et des termes à EnviousWispr."
-          }
-        },
-        "es" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Usa «%@» para enseñarle nombres y términos a EnviousWispr."
           }
         }
       }
@@ -68123,28 +67764,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "El dictado mantiene toda su velocidad. Desactiva “Transcripción más rápida” para ver la vista previa."
-          }
-        }
-      }
-    },
-    "Your dictations are listed here. When one has a recording, press Play to hear it." : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Hier findest du deine Diktate. Wenn zu einem Diktat eine Aufnahme vorliegt, drücke auf „Abspielen“, um sie anzuhören."
-          }
-        },
-        "fr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Vos dictées s’affichent ici. Si une dictée est associée à un enregistrement, appuyez sur « Lire » pour écouter l’enregistrement."
-          }
-        },
-        "es" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Tus dictados aparecen aquí. Cuando uno tiene grabación, pulsa «Reproducir» para escucharla."
           }
         }
       }
@@ -88633,28 +88252,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Ahora las notificaciones son más claras cuando algo falla, con avisos distintos para los fallos parciales y completos."
-          }
-        }
-      }
-    },
-    "Use %@ to save text that appears when you say your keyword, then its trigger." : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Mit „%@“ speicherst du Text, der erscheint, wenn du dein Schlüsselwort und dann den Auslöser sagst."
-          }
-        },
-        "fr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Avec « %@ », enregistrez un texte qui apparaît quand vous dites votre mot-clé, puis son déclencheur."
-          }
-        },
-        "es" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Con «%@» guardas un texto que aparece cuando dices tu palabra clave y luego su activador."
           }
         }
       }

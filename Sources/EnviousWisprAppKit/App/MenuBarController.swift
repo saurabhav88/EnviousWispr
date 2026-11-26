@@ -736,16 +736,6 @@ final class MenuBarController: NSObject {
 
     menu.addItem(.separator())
 
-    // #4565: replays the guided tour; the same action as Help › Take the Tour.
-    let tourItem = NSMenuItem(
-      title: String(
-        localized: "Take the Tour", comment: "Menu bar menu: starts the guided tour of the app."),
-      action: #selector(takeTourAction), keyEquivalent: "")
-    tourItem.image = NSImage(systemSymbolName: "map", accessibilityDescription: nil)
-    tourItem.target = self
-    tourItem.identifier = MenuBarItemID.takeTour
-    menu.addItem(tourItem)
-
     // #3454: the help website, the app's only general help link.
     let helpItem = NSMenuItem(
       title: String(
@@ -915,10 +905,6 @@ final class MenuBarController: NSObject {
 
   @objc private func openMainWindowAction() {
     actions.openMainWindow()
-  }
-
-  @objc private func takeTourAction() {
-    actions.takeTour()
   }
 
   @objc private func openHelpCenterAction() {
@@ -1267,8 +1253,6 @@ struct MenuBarActions: Sendable {
   let continueOnboarding: @MainActor () -> Void
   /// Open the unified window on History (#3454).
   let openMainWindow: @MainActor () -> Void
-  /// Replay the guided tour (#4565).
-  let takeTour: @MainActor () -> Void
   /// Open the help website (#3454).
   let openHelpCenter: @MainActor () -> Void
   /// The inputs for the Microphone submenu, in the Settings dropdown's order, read when the menu

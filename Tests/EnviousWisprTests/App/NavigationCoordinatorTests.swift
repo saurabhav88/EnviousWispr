@@ -60,20 +60,4 @@ struct NavigationCoordinatorTests {
     #expect(coordinator.takeSharedMedia(matching: extra.url) == nil)
   }
 
-  @Test("a tour replay and a page request: the latest one wins, whichever order they arrive in")
-  func tourReplayAndPageRequestLatestWins() {
-    let coordinator = NavigationCoordinator()
-    coordinator.request(.history)
-    coordinator.requestGuidedTour()
-    #expect(coordinator.pendingGuidedTour)
-    #expect(coordinator.pendingDestination == nil, "the replay replaced the page request")
-
-    coordinator.request(.transcribeFile)
-    #expect(!coordinator.pendingGuidedTour, "a later page request replaced the replay")
-    #expect(coordinator.pendingDestination == .transcribeFile)
-
-    coordinator.requestGuidedTour()
-    coordinator.consumeGuidedTour()
-    #expect(!coordinator.pendingGuidedTour, "accepted once, then gone")
-  }
 }

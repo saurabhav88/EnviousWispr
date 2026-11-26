@@ -160,26 +160,4 @@ struct MainWindowPresenterTests {
     #expect(sut.window === window)
     #expect(reported == 0)
   }
-
-  @Test("the quit handler runs once for the open window and is dropped when that window closes")
-  func quitHandlerIsBoundToTheOpenWindow() {
-    let builds = Counter()
-    let presenter = presenter(builds: builds)
-    presenter.show()
-    let window = presenter.window!
-    var ran = 0
-    presenter.registerQuitHandler(for: window) { ran += 1 }
-    presenter.runQuitHandler()
-    presenter.runQuitHandler()
-    #expect(ran == 1, "a quit reports one end")
-
-    presenter.registerQuitHandler(for: window) { ran += 10 }
-    close(presenter, window)
-    presenter.runQuitHandler()
-    #expect(ran == 1, "closing the window dropped the handler")
-
-    presenter.registerQuitHandler(for: NSWindow()) { ran += 100 }
-    presenter.runQuitHandler()
-    #expect(ran == 1, "a window that is not the main window cannot register")
-  }
 }

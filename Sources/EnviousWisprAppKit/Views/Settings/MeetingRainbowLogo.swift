@@ -1,20 +1,37 @@
 import SwiftUI
 
 /// EnviousMeet's mark (#4346, founder 2026-11-02): the sidebar's two-people glyph
-/// (`person.2.wave.2`) in the lips' rainbow, animated with Apple's iterative variable-color
-/// effect; Reduce Motion shows the still rainbow glyph. Which layers animate on macOS 14 is
-/// verified in the #4346 UAT, not assumed here.
+/// (`person.2.wave.2`) in the lips' rainbow. It plays Apple's iterative variable-color wave
+/// twice each time it appears, then rests on the still rainbow glyph (#4987: a forever effect
+/// kept an M1 busy); Reduce Motion and the design harness show only the still glyph.
 struct MeetingRainbowLogo: View {
   var size: CGFloat = 28
   @Environment(\.accessibilityReduceMotion) private var reduceMotion
   @Environment(\.holdsAnimatedMarksStill) private var holdsStill
+  /// #4987: bumped once per appearance; the wave plays `Self.plays` times, then the glyph rests.
+  @State private var appearances = 0
+
+  /// #4987: a forever effect kept an M1's main thread waiting on the window server about 37% of
+  /// the time while any EnviousMeet page was open (0% with the still glyph).
+  static let plays = 2
 
   var body: some View {
+    ZStack {
+      if reduceMotion || holdsStill {
+        glyph
+      } else {
+        glyph.symbolEffect(
+          .variableColor.iterative, options: .repeat(Self.plays), value: appearances)
+      }
+    }
+    .onAppear { if !reduceMotion && !holdsStill { appearances += 1 } }
+    .accessibilityHidden(true)
+  }
+
+  private var glyph: some View {
     Image(systemName: "person.2.wave.2")
       .font(.system(size: size, weight: .semibold))
       .foregroundStyle(Color.obRainbow)
-      .symbolEffect(.variableColor.iterative, isActive: !reduceMotion && !holdsStill)
-      .accessibilityHidden(true)
   }
 }
 

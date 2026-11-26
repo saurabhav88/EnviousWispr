@@ -791,7 +791,8 @@ public final class TelemetryService {
   /// and one `recovered` per abandoned read, because the lane refuses new reads while one is stuck.
   package func coreAudioReadStuck(
     read: CoreAudioReadTelemetry.Read, phase: CoreAudioReadTelemetry.Phase, boundMs: Int,
-    returnedAfterMs: Int? = nil
+    returnedAfterMs: Int? = nil, releaseStep: CoreAudioReadTelemetry.ReleaseStep? = nil,
+    refusedWhileStuck: Int? = nil
   ) {
     var props: [String: Any] = [
       "read": read.rawValue,
@@ -800,11 +801,17 @@ public final class TelemetryService {
     ]
     // Only a recovery carries how long the read took.
     if phase == .recovered, let returnedAfterMs { props["returned_after_ms"] = returnedAfterMs }
+    // #4934: the release step sampled when the limit passed, and (recovery only) how many reads
+    // and opens were refused while it stayed stuck.
+    if let releaseStep { props["release_step"] = releaseStep.rawValue }
+    if phase == .recovered, let refusedWhileStuck {
+      props["refused_while_stuck"] = refusedWhileStuck
+    }
     #if DEBUG
       testEventHook?(
         CapturedTelemetryEvent(
           name: "audio.core_audio_read_stuck",
-          stringProps: ["read": read.rawValue, "phase": phase.rawValue],
+          stringProps: props.compactMapValues { $0 as? String },
           intProps: props.compactMapValues { $0 as? Int }))
       testRawPropertiesHook?("audio.core_audio_read_stuck", props)
     #endif
@@ -4604,25 +4611,6 @@ public final class TelemetryService {
     PostHogSDK.shared.capture("meeting.setup", properties: props)
   }
 
-  /// #4565: one `guided_tour` row per tour action (offered, started, stop viewed, ended early,
-  /// completed, replayed). Two closed vocabularies; never a count or content. PostHog runs only
-  /// while "Share usage metrics" is on, so a switched-off install sends nothing.
-  public func trackGuidedTour(_ event: GuidedTourTelemetry) {
-    let props = Self.guidedTourProperties(event)
-    #if DEBUG
-      testEventHook?(
-        CapturedTelemetryEvent(
-          name: "guided_tour",
-          stringProps: props.compactMapValues { $0 as? String },
-          intProps: [:], doubleProps: [:], boolProps: [:]))
-    #endif
-    PostHogSDK.shared.capture("guided_tour", properties: props)
-  }
-
-  static func guidedTourProperties(_ event: GuidedTourTelemetry) -> [String: Any] {
-    ["action": event.action.rawValue, "stop": event.stop.rawValue]
-  }
-
   /// #4012 c1 C3: one `meeting.call_prompt` row per answered or timed-out call prompt, and per
   /// call started by itself. Closed enums only.
   public func trackMeetingCallPrompt(_ event: MeetingCallPromptTelemetry) {
@@ -6223,5 +6211,12 @@ package enum CoreAudioReadTelemetry {
   package enum Phase: String, Sendable, CaseIterable {
     case timedOut = "timed_out"
     case recovered
+  }
+
+  /// #4934: `release_step` on a `microphone_release` row.
+  package enum ReleaseStep: String, Sendable, CaseIterable {
+    case notStarted = "not_started"
+    case listenerRemoval = "listener_removal"
+    case stop, uninitialize, dispose, cleanup, unknown
   }
 }

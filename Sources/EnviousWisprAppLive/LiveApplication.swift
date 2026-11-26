@@ -87,11 +87,6 @@ package final class LiveApplication {
     sequencer.target?.showMainWindow()
   }
 
-  /// #4565: Help › Take the Tour.
-  package func takeGuidedTour() {
-    sequencer.target?.takeGuidedTour()
-  }
-
   /// The app's menu commands: Edit › Find Settings (#3482), and Window › EnviousWispr, which
   /// brings back the main window (#4842: a SwiftUI `Window` scene used to add it). Built here,
   /// not on the bootstrapper, whose public surface stays the lifecycle forwards and view
@@ -100,7 +95,6 @@ package final class LiveApplication {
   package func mainWindowCommands() -> some Commands {
     FindSettingsCommand()
     MainWindowMenuCommand(title: appName, show: { [weak self] in self?.showMainWindow() })
-    GuidedTourMenuCommand(take: { [weak self] in self?.takeGuidedTour() })
   }
   /// #3147 PR3: one transcript opened in its own window.
   package var transcriptWindowID: String { TranscriptWindowIdentity.sceneID }

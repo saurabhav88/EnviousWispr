@@ -302,15 +302,14 @@ struct TelemetryEmitterRegistryTests {
   /// same site, same once-per-visit cadence, two more properties (`skip_ahead_offered`,
   /// `offer_to_first_delivery_seconds`, `setup_visit_id`), and `onboardingSkipAhead` gained the
   /// same `visit:` key (same site, same cadence).
-  /// #4565: one new per_user_action guided_tour site (`trackGuidedTour`), kept whole; one row per
-  /// tour action (offered, started, stop viewed, ended early, completed, replayed), at most about
-  /// 12 per automatic run and 11 per replay, an estimated 20k rows per month at worst (497
-  /// installs and 1,319 active installs over 30 days on 2026-11-23). Two closed vocabularies
-  /// (`action`, `stop`), no content. Reader: founder first-release tour funnel.
+  /// #5003: the #4565 `guided_tour` site (`trackGuidedTour`) was removed with the tour before any
+  /// release (founder 2026-11-25); its registry row went with it.
   /// #4937: `livePreviewOutcome` gained `error:` and `unclaimed:` (existing `live_preview.outcome`
   /// site, same cadence): closed `error_domain`, Int `error_code`, Bool; registry row unchanged.
+  /// #4934: `coreAudioReadStuck` gained `releaseStep:` and `refusedWhileStuck:`, which changes
+  /// the enclosing-function identity of that same single site; same event, same cadence.
   static let sitesFingerprint =
-    "5468a6d01e65caa91f644b967489bc4a26ccafb1c31ae13b5d9a679db679b69e"
+    "dffc5b2b67826dc2127f1799ed61a6d4016ba2f094da141c64cae9aa41a073aa"
   /// #4721: `api_key.validation_completed` graded (per_launch, keep) when the launch key check
   /// added `source=launch`; ceiling 106 -> 105.
   static let ungradedFingerprint =
