@@ -128,6 +128,10 @@ public enum ObservabilityBootstrap {
     var writeLaunchTags: (_ joinKey: String?) -> Void
     var setJoinKey: (_ joinKey: String?) -> Void
     var setOffPeriodUser: (_ id: UUID?) -> Void
+    /// #5022: publishes the identity rule `beforeSend` applies to MetricKit hang reports from an
+    /// earlier run, which the SDK sends without the current scope's user. Defaults to no-op so a
+    /// recorder that does not care about it stays unchanged.
+    var publishIdentityPolicy: (_ policy: SentryIdentityPolicy) -> Void = { _ in }
 
     @MainActor static let live = Operations(
       setUpPostHog: {
@@ -172,7 +176,8 @@ public enum ObservabilityBootstrap {
       },
       setOffPeriodUser: { id in
         SentrySDK.configureScope { scope in writeOffPeriodUser(id, to: scope) }
-      })
+      },
+      publishIdentityPolicy: { policy in identityPolicyStore.publish(policy) })
   }
 
   /// The one owner of PostHog and Sentry lifecycle (#3269). Starts both once, applies the
@@ -207,10 +212,14 @@ public enum ObservabilityBootstrap {
       // Crash reports OFF: the SDK is never started, so it installs no crash handler, keeps no
       // session and reads no cached envelope. Send Feedback uses its own outbox either way.
       guard crashReports else { return }
+      // #5022: publish the identity rule BEFORE the SDK starts, because MetricKit can deliver a
+      // report from an earlier run as soon as it starts. One UUID per OFF period, reused below.
+      let offPeriodID = usageMetrics ? nil : makeUUID()
+      operations.publishIdentityPolicy(offPeriodID.map { .metricsOff(userID: $0) } ?? .metricsOn)
       isSentryRunning = operations.startSentry()
       guard isSentryRunning else { return }
       operations.writeLaunchTags(currentJoinKey)
-      if !usageMetrics { operations.setOffPeriodUser(makeUUID()) }
+      if let offPeriodID { operations.setOffPeriodUser(offPeriodID) }
     }
 
     func apply(usageMetrics: Bool, crashReports _: Bool) {
@@ -218,21 +227,27 @@ public enum ObservabilityBootstrap {
       guard launchedCrashReports != nil, usageMetrics != self.usageMetrics else { return }
       self.usageMetrics = usageMetrics
       if usageMetrics {
+        // #5022: publish first, before any PostHog or scope effect of the change.
+        if isSentryRunning { operations.publishIdentityPolicy(.metricsOn) }
         startPostHog()
         guard isSentryRunning else { return }
         // Clear the OFF-period user before the join comes back, so no report carries both.
         operations.setOffPeriodUser(nil)
         operations.setJoinKey(currentJoinKey)
       } else {
+        // #5022: publish first, before any PostHog or scope effect of the change, so a hang
+        // report sent during the change already follows OFF. One UUID for the whole period.
+        let offPeriodID = isSentryRunning ? makeUUID() : nil
+        if let offPeriodID { operations.publishIdentityPolicy(.metricsOff(userID: offPeriodID)) }
         // Stops new capture and the flush timer. Rows already queued on disk stay there and a
         // flush already under way may finish; the plan promises no exact cutoff.
         if isPostHogRunning {
           operations.closePostHog()
           isPostHogRunning = false
         }
-        guard isSentryRunning else { return }
+        guard let offPeriodID else { return }
         operations.setJoinKey(nil)
-        operations.setOffPeriodUser(makeUUID())
+        operations.setOffPeriodUser(offPeriodID)
       }
     }
 
@@ -340,10 +355,19 @@ public enum ObservabilityBootstrap {
     // `beforeSend` like every error. It needs no swizzling or auto breadcrumbs, which stay off.
     // The SDK skips hang tracking while a debugger is attached.
     // DEPRECATED in the SDK: `enableAppHangTracking` is removed in sentry-cocoa v10
-    // (pinned fork revision beaa5941c0057dccf8a17837103aea0ca1376afc, `Sources/Swift/Options.swift`
+    // (pinned fork revision 1095075123a2e0f98c6b5dc4e881537840bfe723, `Sources/Swift/Options.swift`
     // lines 647-653). A v10 bump must replace it; Sentry points to its MetricKit integration.
     options.enableAppHangTracking = true
     options.appHangTimeoutInterval = 2.0
+
+    // #5022: Apple's own hang reports (MetricKit), which carry the real freeze length. Hang
+    // reports only: no CPU, disk-write, crash or launch diagnostics. Apple decides which hangs it
+    // reports on macOS and samples devices, so the 2 s tracker above stays on for comparison;
+    // step 2 adds the hang-time histogram and retires it. Since 9.31.0 the SDK keeps the
+    // current scope off reports from an earlier run; `processSentryEvent` fixes the two fields
+    // it still gets wrong for us (release, user). No raw payload attachment (it skips redaction).
+    options.experimental.metrickit.enabledDiagnosticReports = [.hang]
+    options.enableMetricKitRawPayload = false
 
     // PII redaction: strip transcript content, API keys, emails, and
     // username-bearing crash paths. Extracted into `sanitizeSentryEvent`
@@ -351,7 +375,7 @@ public enum ObservabilityBootstrap {
     // assert on the exact output the SDK transmits, not a pre-`beforeSend`
     // hook. This is a limb — `sanitizeSentryEvent` must never throw or crash.
     options.beforeSend = { event in
-      ObservabilityBootstrap.sanitizeSentryEvent(event)
+      ObservabilityBootstrap.processSentryEvent(event)
     }
 
     // #3269: the app calls no Sentry metrics or logs API, and client reports (counts of events
@@ -493,6 +517,63 @@ public enum ObservabilityBootstrap {
   // redaction tripwire (#1095) and the app's `beforeSend` wiring already call,
   // so their output stays byte-identical.
 
+  /// The `beforeSend` body (#5022): repair a MetricKit hang report from an earlier run, then the
+  /// shared sanitizer. Every other event goes straight to the sanitizer, unchanged.
+  static func processSentryEvent(
+    _ event: Event,
+    policy: SentryIdentityPolicy? = identityPolicyStore.current,
+    runningVersion: String = appVersion,
+    runningBuild: String? = Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String
+  ) -> Event {
+    if isMetricKitHang(event) {
+      repairHangRelease(event, runningVersion: runningVersion, runningBuild: runningBuild)
+      applyHangIdentity(event, policy: policy)
+    }
+    return sanitizeSentryEvent(event)
+  }
+
+  /// A MetricKit hang report: one exception whose mechanism the SDK names `mx_hang_diagnostic`.
+  static func isMetricKitHang(_ event: Event) -> Bool {
+    guard let exceptions = event.exceptions, exceptions.count == 1 else { return false }
+    return exceptions[0].mechanism?.type == "mx_hang_diagnostic"
+  }
+
+  /// The SDK keeps the delivering launch's release and dist for apps with a custom release name
+  /// like ours (`com.enviouswispr.app@<version>`, no build). Act only on an established mismatch
+  /// between the report's own app version or build and the running bundle; a missing value with
+  /// no mismatch keeps the SDK fields.
+  static func repairHangRelease(_ event: Event, runningVersion: String, runningBuild: String?) {
+    let app = event.context?["app"]
+    let version = (app?["app_version"] as? String).flatMap { $0.isEmpty ? nil : $0 }
+    let build = (app?["app_build"] as? String).flatMap { $0.isEmpty ? nil : $0 }
+    // Compare only known pairs: an unknown running value never establishes a mismatch.
+    let running = runningVersion == "unknown" || runningVersion.isEmpty ? nil : runningVersion
+    let runningBuild = runningBuild.flatMap { $0.isEmpty ? nil : $0 }
+    let versionDiffers = version.flatMap { v in running.map { v != $0 } } ?? false
+    let buildDiffers = build.flatMap { b in runningBuild.map { b != $0 } } ?? false
+    guard versionDiffers || buildDiffers else { return }
+    event.releaseName = version.map { sentryReleaseName(version: $0, stamped: nil) }
+    event.dist = build
+  }
+
+  /// #3269 for reports sent without the current scope: the SDK then stamps the machine-wide
+  /// installation id when the user is empty. Metrics OFF gets that period's id and no join tag;
+  /// an unknown policy gets no user and no join tag; metrics ON keeps the SDK's normal handling.
+  static func applyHangIdentity(_ event: Event, policy: SentryIdentityPolicy?) {
+    switch policy {
+    case .metricsOn:
+      return
+    case .metricsOff(let userID):
+      event.user = User(userId: SentryEventSanitizer.redactString(userID.uuidString))
+    case nil:
+      event.user = nil
+    }
+    event.tags?.removeValue(forKey: joinTagKey)
+  }
+
+  /// The identity rule `beforeSend` reads on the SDK's queues; written on the main actor.
+  static let identityPolicyStore = SentryIdentityPolicyStore()
+
   /// Forwarder to the shared sanitizer — the `beforeSend` body + tripwire seam.
   static func sanitizeSentryEvent(_ event: Event) -> Event {
     SentryEventSanitizer.sanitize(event)
@@ -543,5 +624,30 @@ public enum ObservabilityBootstrap {
   /// Forwarder to the shared recursive dictionary redactor (#1095 tripwire seam).
   static func redactDict(_ input: [String: Any]) -> [String: Any] {
     SentryEventSanitizer.redactDict(input)
+  }
+}
+
+/// #5022: which Sentry user a report without the current scope may carry.
+enum SentryIdentityPolicy: Equatable, Sendable {
+  case metricsOn
+  case metricsOff(userID: UUID)
+}
+
+/// One lock-protected value: published by `Lifecycle` on the main actor, read by `beforeSend` on
+/// the SDK's queues. The lock is never held across an SDK call.
+final class SentryIdentityPolicyStore: @unchecked Sendable {
+  private let lock = NSLock()
+  private var value: SentryIdentityPolicy?
+
+  var current: SentryIdentityPolicy? {
+    lock.lock()
+    defer { lock.unlock() }
+    return value
+  }
+
+  func publish(_ policy: SentryIdentityPolicy) {
+    lock.lock()
+    value = policy
+    lock.unlock()
   }
 }

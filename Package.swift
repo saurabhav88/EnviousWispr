@@ -103,9 +103,10 @@ let package = Package(
     .package(url: "https://github.com/sparkle-project/Sparkle.git", from: "2.6.0"),
     .package(url: "https://github.com/PostHog/posthog-ios.git", from: "3.0.0"),
     // #3685: qualified macOS artifact with native crash attribution/caller fixes.
+    // #5022: rebased onto upstream 9.35.0 (MetricKit hang reports, earlier-run isolation).
     .package(
       url: "https://github.com/saurabhav88/sentry-cocoa.git",
-      revision: "beaa5941c0057dccf8a17837103aea0ca1376afc"),
+      revision: "1095075123a2e0f98c6b5dc4e881537840bfe723"),
     // Test-only (#1741 Chunk 10): real Swift lexical/syntactic awareness for
     // EngineMutationInventoryFreezeTests's comment/string handling, replacing
     // a hand-rolled character scanner that hit diminishing returns across 5
