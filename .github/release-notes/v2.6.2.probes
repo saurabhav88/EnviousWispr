@@ -9,5 +9,7 @@ Search blocked words
 Unload polish model after
 # Setup Skip ahead (#4845): the slow-download card title.
 This download is taking longer than expected.
+# Save audio (#4799): its error notice in History.
+EnviousWispr couldn't save the audio.
 # Dictation output language (#3181): Settings > AI Polish row.
 Dictation output language
