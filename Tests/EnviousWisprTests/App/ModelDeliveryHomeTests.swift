@@ -1,3 +1,4 @@
+import EnviousWisprAppKitTestSupport
 import EnviousWisprCore
 import Foundation
 import Testing
@@ -6,7 +7,6 @@ import Testing
 @testable import EnviousWisprAppKit
 @testable import EnviousWisprModelDelivery
 @testable import EnviousWisprPipeline
-import EnviousWisprAppKitTestSupport
 
 /// #1741 Chunk 6 — pins the gate-refusal contract for `ModelDeliveryHome`'s
 /// two Settings-row mutation sites (Parakeet Cancel/Resume).
@@ -101,7 +101,7 @@ struct ModelDeliveryHomeTests {
     // #4578: the launch migration starts with the coordinator, which reads the install intent.
     _ = home.installParakeetUpgrade(
       parakeetSelection: ParakeetSelectionProvider(), isOnboardingComplete: { false })
-    _ = try await Self.awaitBounded(home.retiredV3LaunchMigration)
+    _ = try await Self.awaitBounded(home.parakeetLaunchMigration)
     let owned = ParakeetInstallLocation.directory(for: .v3, dataDirectory: fixture.dataDirectory)
     for file in ManifestFixture.smallFiles {
       #expect(try Data(contentsOf: owned.appendingPathComponent(file.path)) == file.content)
@@ -111,7 +111,107 @@ struct ModelDeliveryHomeTests {
     }
   }
 
-  @Test("before any selection, Settings names v3 for an upgrade and Ultra for a fresh install",
+  /// #4997: rewrites the seeded Ultra marker as an earlier build left it (another manifest digest,
+  /// same files), the state 2.6.1's runtimeABI bump left on every 2.6.0 Ultra install.
+  private static func makeUltraMarkerStale(
+    _ fixture: ParakeetHomeFixture.Made,
+    sourceLocation: SourceLocation = #_sourceLocation
+  ) throws -> (url: URL, staleBytes: Data) {
+    let url = fixture.dataDirectory.appendingPathComponent("ModelDelivery")
+      .appendingPathComponent("\(fixture.ultra.identity.cacheKey).admission.json")
+    let original = try Data(contentsOf: url)
+    var marker = try #require(
+      JSONSerialization.jsonObject(with: original) as? [String: Any],
+      sourceLocation: sourceLocation)
+    marker["manifestDigest"] = fixture.ultra.manifestDigest + "-stale"
+    let staleBytes = try JSONSerialization.data(withJSONObject: marker)
+    try staleBytes.write(to: url, options: .atomic)
+    return (url, staleBytes)
+  }
+
+  /// #4997: when this fails, an update whose Parakeet manifest changes but whose files do not
+  /// leaves every Ultra user with "model missing" and blocked dictation, and nothing downloads.
+  @Test(
+    "launch re-admits a complete Ultra copy with a stale marker before the first installed read")
+  func launchReadmitsStaleUltra() async throws {
+    let fixture = try ParakeetHomeFixture.make()
+    defer { try? FileManager.default.removeItem(at: fixture.root) }
+    try await ParakeetHomeFixture.seedAdmitted(.ultra, fixture)
+    let marker = try Self.makeUltraMarkerStale(fixture)
+
+    let (home, _) = try await Self.upgradeHome(fixture)
+    let library = SpeechModelLibrary(modelDelivery: home)
+    let installed = try await Self.awaitBounded(
+      Task { await library.freshInstalled(.parakeet) })
+
+    #expect(installed)
+    let data = try Data(contentsOf: marker.url)
+    let updated = try #require(JSONSerialization.jsonObject(with: data) as? [String: Any])
+    #expect((updated["manifestDigest"] as? String) == fixture.ultra.manifestDigest)
+  }
+
+  /// #4997: when this fails, a person who removed Parakeet gets it back at the next launch.
+  @Test("launch leaves a removed Ultra copy and its stale marker untouched")
+  func launchRespectsRemovedUltraIntent() async throws {
+    let fixture = try ParakeetHomeFixture.make()
+    defer { try? FileManager.default.removeItem(at: fixture.root) }
+    try await ParakeetHomeFixture.seedAdmitted(.ultra, fixture)
+    let marker = try Self.makeUltraMarkerStale(fixture)
+    let intent = ParakeetInstallIntentStore(
+      metadataDirectory: marker.url.deletingLastPathComponent())
+    try intent.write(removedByUser: true)
+
+    let (home, _) = try await Self.upgradeHome(fixture)
+    try await Self.awaitBounded(home.parakeetLaunchMigration)
+
+    let library = SpeechModelLibrary(modelDelivery: home)
+    #expect(await library.freshInstalled(.parakeet) == false)
+    #expect(try Data(contentsOf: marker.url) == marker.staleBytes)
+  }
+
+  /// #4997: when this fails, launch deletes a partial Ultra download or starts a download nobody
+  /// asked for.
+  @Test("launch keeps incomplete Ultra files and starts no download")
+  func launchPreservesIncompleteUltra() async throws {
+    let fixture = try ParakeetHomeFixture.make()
+    defer { try? FileManager.default.removeItem(at: fixture.root) }
+    let directory = ParakeetInstallLocation.directory(
+      for: .ultra, dataDirectory: fixture.dataDirectory)
+    try ParakeetHomeFixture.writeBytes(into: directory)
+    let missing = try #require(ManifestFixture.smallFiles.last)
+    let survivors = ManifestFixture.smallFiles.dropLast()
+    try #require(survivors.isEmpty == false)
+    try FileManager.default.removeItem(at: directory.appendingPathComponent(missing.path))
+
+    let identity = fixture.ultra.identity
+    let unexpected = AsyncStream<Bool>.makeStream(bufferingPolicy: .bufferingOldest(1))
+    defer { unexpected.continuation.finish() }
+    let (home, _) = try await Self.upgradeHome(fixture, onboarding: false) { home in
+      await home.controller.addEventObserver { observedIdentity, event in
+        guard observedIdentity == identity else { return }
+        switch event {
+        case .attemptStarted, .attemptFailed:
+          unexpected.continuation.yield(true)
+        default:
+          break
+        }
+      }
+    }
+    try await Self.awaitBounded(home.parakeetLaunchMigration)
+    unexpected.continuation.finish()
+
+    let library = SpeechModelLibrary(modelDelivery: home)
+    #expect(await library.freshInstalled(.parakeet) == false)
+    #expect(await home.controller.state(of: identity) == .notReady)
+    for file in survivors {
+      #expect(try Data(contentsOf: directory.appendingPathComponent(file.path)) == file.content)
+    }
+    var events = unexpected.stream.makeAsyncIterator()
+    #expect(await events.next() == nil)
+  }
+
+  @Test(
+    "before any selection, Settings names v3 for an upgrade and Ultra for a fresh install",
     arguments: [false, true])
   func fallbackModelLabel(admittedV3: Bool) async throws {
     let fixture = try ParakeetHomeFixture.make()
@@ -123,14 +223,15 @@ struct ModelDeliveryHomeTests {
       retiredV3Progress: .init(write: { _, _, _ in }, clear: {}))
     _ = home.installParakeetUpgrade(
       parakeetSelection: ParakeetSelectionProvider(), isOnboardingComplete: { true })
-    try await Self.awaitBounded(home.parakeetObserverSetupForTesting)
+    try await Self.awaitBounded(home.parakeetObserverSetup)
     #expect(home.parakeetModelLabel == (admittedV3 ? "Parakeet v3" : "Parakeet Ultra"))
     #expect(home.parakeetRowIsBackgroundUpgrade == admittedV3, "v3 serves while Ultra arrives")
   }
 
   /// A Home with the fixture's Ultra target and its observers wired.
   fileprivate static func upgradeHome(
-    _ fixture: ParakeetHomeFixture.Made, enabled: Bool = true, onboarding: Bool = true
+    _ fixture: ParakeetHomeFixture.Made, enabled: Bool = true, onboarding: Bool = true,
+    beforeUpgrade: (@MainActor (ModelDeliveryHome) async -> Void)? = nil
   ) async throws -> (ModelDeliveryHome, ParakeetUpgradeCoordinator) {
     let flags = TestDefaults.suite("test.home-upgrade.\(UUID().uuidString)")!
     flags.set(enabled, forKey: DeliveryFlags.key("enabled", family: .parakeet))
@@ -140,9 +241,10 @@ struct ModelDeliveryHomeTests {
       manifestBundle: fixture.bundle, appSupportOverride: fixture.root,
       deliveryFlagDefaults: flags,
       retiredV3Progress: .init(write: { _, _, _ in }, clear: {}))
+    await beforeUpgrade?(home)
     let coordinator = home.installParakeetUpgrade(
       parakeetSelection: ParakeetSelectionProvider(), isOnboardingComplete: { onboarding })
-    try await Self.awaitBounded(home.parakeetObserverSetupForTesting)
+    try await Self.awaitBounded(home.parakeetObserverSetup)
     return (home, coordinator)
   }
 
@@ -158,8 +260,9 @@ struct ModelDeliveryHomeTests {
     try await ParakeetHomeFixture.seedAdmitted(.ultra, fixture)
     try await ParakeetHomeFixture.seedAdmitted(.v3, fixture)
     let (home, upgrade) = try await Self.upgradeHome(fixture)
-    _ = await home.retiredV3LaunchMigration?.value
-    let ultraDir = ParakeetInstallLocation.directory(for: .ultra, dataDirectory: fixture.dataDirectory)
+    _ = await home.parakeetLaunchMigration?.value
+    let ultraDir = ParakeetInstallLocation.directory(
+      for: .ultra, dataDirectory: fixture.dataDirectory)
     let v3Dir = ParakeetInstallLocation.directory(for: .v3, dataDirectory: fixture.dataDirectory)
     let ultraRegistration = DeliveryRegistration(
       manifest: fixture.ultra, installDirectory: ultraDir,
@@ -189,7 +292,7 @@ struct ModelDeliveryHomeTests {
 
     // The next launch over the same disk: nothing comes back from the donor.
     let (relaunched, _) = try await Self.upgradeHome(fixture)
-    _ = await relaunched.retiredV3LaunchMigration?.value
+    _ = await relaunched.parakeetLaunchMigration?.value
     #expect(!FileManager.default.fileExists(atPath: v3Dir.path), "the donor was not copied back")
     #expect(await SpeechModelLibrary(modelDelivery: relaunched).freshInstalled(.parakeet) == false)
   }
@@ -199,9 +302,11 @@ struct ModelDeliveryHomeTests {
   @Test("a Remove whose deletion fails says so and reports the leftover files")
   func parakeetRemoveFailureLeavesLeftovers() async throws {
     let fixture = try ParakeetHomeFixture.make()
-    let ultraDir = ParakeetInstallLocation.directory(for: .ultra, dataDirectory: fixture.dataDirectory)
+    let ultraDir = ParakeetInstallLocation.directory(
+      for: .ultra, dataDirectory: fixture.dataDirectory)
     defer {
-      try? FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: ultraDir.path)
+      try? FileManager.default.setAttributes(
+        [.posixPermissions: 0o755], ofItemAtPath: ultraDir.path)
       try? FileManager.default.removeItem(at: fixture.root)
     }
     try await ParakeetHomeFixture.seedAdmitted(.ultra, fixture)
@@ -225,10 +330,12 @@ struct ModelDeliveryHomeTests {
   func parakeetInstallExcludesRemove() async throws {
     let fixture = try ParakeetHomeFixture.make()
     defer { try? FileManager.default.removeItem(at: fixture.root) }
+    let (home, upgrade) = try await Self.upgradeHome(fixture)
+    // #4997: the launch migration revalidates complete Ultra bytes, so they arrive after it.
+    try await Self.awaitBounded(home.parakeetLaunchMigration)
     // Complete, unmarked Ultra bytes: the install validates them, and the test holds it there.
     try ParakeetHomeFixture.writeBytes(
       into: ParakeetInstallLocation.directory(for: .ultra, dataDirectory: fixture.dataDirectory))
-    let (home, upgrade) = try await Self.upgradeHome(fixture)
     let entered = BoundedWait.Signal()
     let release = BoundedWait.Signal()
     await home.controller.setBeforeExistingCacheValidationForTesting {
@@ -238,7 +345,10 @@ struct ModelDeliveryHomeTests {
     let library = SpeechModelLibrary(modelDelivery: home)
     var unloads = 0
     library.parakeetRemoval.refusal = { nil }
-    library.parakeetRemoval.unloadForRemoval = { unloads += 1; return true }
+    library.parakeetRemoval.unloadForRemoval = {
+      unloads += 1
+      return true
+    }
 
     let install = try #require(library.installParakeet())
     try await BoundedWait.until(entered)
@@ -262,9 +372,11 @@ struct ModelDeliveryHomeTests {
   func admittedDownloadWarms(enabled: Bool) async throws {
     let fixture = try ParakeetHomeFixture.make()
     defer { try? FileManager.default.removeItem(at: fixture.root) }
+    let (home, _) = try await Self.upgradeHome(fixture, enabled: enabled)
+    // #4997: the launch migration revalidates complete Ultra bytes, so they arrive after it.
+    try await Self.awaitBounded(home.parakeetLaunchMigration)
     try ParakeetHomeFixture.writeBytes(
       into: ParakeetInstallLocation.directory(for: .ultra, dataDirectory: fixture.dataDirectory))
-    let (home, _) = try await Self.upgradeHome(fixture, enabled: enabled)
     let warmed = BoundedWait.Signal()
     var warms = 0
     home.warmParakeetAfterAdmission = {
@@ -351,7 +463,8 @@ struct ModelDeliveryHomeTests {
       needsExplicitRetry: home.parakeetNeedsExplicitRetry,
       rowIsBackgroundUpgrade: home.parakeetRowIsBackgroundUpgrade,
       background: home.parakeetBackgroundUpgrade,
-      foreground: .downloading(fractionCompleted: 0.5, bytesWritten: 2_097_152, totalBytes: 4_194_304))
+      foreground: .downloading(
+        fractionCompleted: 0.5, bytesWritten: 2_097_152, totalBytes: 4_194_304))
     #expect(downloading?.owner == .foreground, "Ultra's download shows with its own Cancel")
     #expect(downloading?.showsCancel == true)
     let failed = SpeechEngineSettingsView.parakeetRow(
@@ -1517,7 +1630,7 @@ struct ParakeetUpgradeFirstRunTests {
         tryBegin: { true }, end: { true }, wake: {}, onRefused: { _ in }),
       manifestBundle: fixture.bundle, appSupportOverride: fixture.root,
       retiredV3Progress: .init(write: { _, _, _ in }, clear: {}))
-    try await ModelDeliveryHomeTests.awaitBounded(home.parakeetObserverSetupForTesting)
+    try await ModelDeliveryHomeTests.awaitBounded(home.parakeetObserverSetup)
     #expect(home.firstRunForTesting(fixture.ultra.identity) == !admittedV3)
   }
 }
@@ -1563,7 +1676,8 @@ struct WhisperGGUFRegistrationTests {
       .deletingLastPathComponent()  // App
       .deletingLastPathComponent()  // EnviousWisprTests
       .deletingLastPathComponent()  // Tests
-    return try #require(Bundle(url: repoRoot.appendingPathComponent("Sources/EnviousWispr/Resources")))
+    return try #require(
+      Bundle(url: repoRoot.appendingPathComponent("Sources/EnviousWispr/Resources")))
   }
 
   @Test("both registrations load the bundled manifests and install into their own sibling folders")
@@ -1571,15 +1685,20 @@ struct WhisperGGUFRegistrationTests {
     let appSupport = URL(fileURLWithPath: TestTemporaryDirectory.path)
       .appendingPathComponent("ew-3735-reg-\(UUID().uuidString)", isDirectory: true)
     let bundle = try Self.manifestBundle()
-    let turbo = try ModelDeliveryHome.whisperGGUFRegistration(manifestBundle: bundle, appSupport: appSupport)
+    let turbo = try ModelDeliveryHome.whisperGGUFRegistration(
+      manifestBundle: bundle, appSupport: appSupport)
     let preview = try ModelDeliveryHome.whisperPreviewGGUFRegistration(
       manifestBundle: bundle, appSupport: appSupport)
 
     #expect(turbo.manifest.identity.name == "whisper-large-v3-turbo-gguf")
     #expect(preview.manifest.identity.name == "whisper-small-gguf")
     let models = appSupport.appendingPathComponent("EnviousWispr/Models", isDirectory: true)
-    #expect(turbo.installDirectory.standardizedFileURL.path == models.appendingPathComponent("whisper-gguf").standardizedFileURL.path)
-    #expect(preview.installDirectory.standardizedFileURL.path == models.appendingPathComponent("whisper-preview-gguf").standardizedFileURL.path)
+    #expect(
+      turbo.installDirectory.standardizedFileURL.path
+        == models.appendingPathComponent("whisper-gguf").standardizedFileURL.path)
+    #expect(
+      preview.installDirectory.standardizedFileURL.path
+        == models.appendingPathComponent("whisper-preview-gguf").standardizedFileURL.path)
     // Never the retired CoreML homes, and never each other.
     for dir in [turbo.installDirectory, preview.installDirectory] {
       #expect(!["whisper", "whisper-preview"].contains(dir.lastPathComponent))
@@ -1621,7 +1740,8 @@ struct WhisperGGUFRegistrationTests {
       manifestBundle: try Self.manifestBundle(), appSupport: appSupport)
     let megabytes = Int((Double(turbo.manifest.totalBytes) / 1_000_000).rounded())
     #expect(megabytes == 886)
-    #expect(String(localized: DictationSettingsCopy.Engine.modelSetupHelp).contains("\(megabytes) MB"))
+    #expect(
+      String(localized: DictationSettingsCopy.Engine.modelSetupHelp).contains("\(megabytes) MB"))
   }
 }
 
@@ -1766,7 +1886,8 @@ extension ModelDeliveryHomeTests {
     let probed = SubjectSignal()
     installed.onPreviewLaunchProbeFinished = { probed.fire() }
     await probed.wait("the preview launch probe")
-    try #require(installed.previewLaunchProbeDidFinishForTests, "the launch probe must finish first")
+    try #require(
+      installed.previewLaunchProbeDidFinishForTests, "the launch probe must finish first")
     installed.applyPreviewStateForTests(.admitted)
     #expect(installed.requestPreviewDownload(meetingActive: false) == .alreadyAvailable)
     #expect(installed.requestPreviewDownload(meetingActive: true) == .alreadyAvailable)
@@ -1828,7 +1949,8 @@ extension ModelDeliveryHomeTests {
     #expect(home.previewDownloadTaskForTests == nil, "a cancelled queue starts nothing later")
   }
 
-  @Test("a Cancel whose decline cannot be written leaves queued and scheduled requests as they were")
+  @Test(
+    "a Cancel whose decline cannot be written leaves queued and scheduled requests as they were")
   func refusedCancelPreservesTheRequest() async throws {
     let queued = try universalHome()
     let queuedCommands = PreviewCommandRecorder()

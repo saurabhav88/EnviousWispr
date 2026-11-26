@@ -50,15 +50,15 @@ final class ModelDeliveryHome {
   private var parakeetUpgradeTarget: ParakeetUpgradeCoordinator.UpgradeTarget?
   /// #4578: the person's Parakeet install choice, beside the upgrade state on the same disk.
   private var parakeetInstallIntent: ParakeetInstallIntentStore?
-  /// #3546 test observations (internal): the launch donor migration's task and
-  /// the Parakeet observer setup, so a test can wait for what construction
-  /// started without starting either itself. Production never reads them.
-  private(set) var retiredV3LaunchMigration: Task<Void, Never>?
+  /// #3546/#4997: the Parakeet launch migration (v3 donor adoption, then the in-place
+  /// revalidation of a stale Ultra marker). The installation read awaits it; tests also wait
+  /// on it to observe what construction started without starting it themselves.
+  private(set) var parakeetLaunchMigration: Task<Void, Never>?
 
-  /// #4578: waits for the launch migration of a donor v3 copy (if one started), so an
-  /// installation read sees the adopted copy rather than its absence.
+  /// #4578: waits for the Parakeet launch migration (if one started), so an installation read
+  /// sees the adopted or re-admitted copy rather than its absence.
   func awaitLaunchMigration() async {
-    await retiredV3LaunchMigration?.value
+    await parakeetLaunchMigration?.value
   }
 
   /// #3546: what Settings presents for Parakeet, mirrored from the upgrade
@@ -109,7 +109,9 @@ final class ModelDeliveryHome {
     parakeetV3Rejected = parakeetUpgrade.v3RejectedForPresentation
     parakeetPresentationRevision &+= 1
   }
-  private(set) var parakeetObserverSetupForTesting: Task<Void, Never>?
+  /// The Parakeet observer setup (first-run baseline, state mirror, telemetry bridge). #4997:
+  /// the launch migration awaits it, so an in-place re-admission is mirrored and reported.
+  private(set) var parakeetObserverSetup: Task<Void, Never>?
 
   func firstRunForTesting(_ identity: ModelIdentity) -> Bool? {
     firstRunByIdentity[identity]
@@ -152,8 +154,15 @@ final class ModelDeliveryHome {
     // `installRetiredV3`). #4578: through the coordinator, which skips it when the person
     // removed Parakeet, so a donor copy is never adopted back. The coordinator is built at
     // launch by the bootstrapper, so this is still launch, not the first take.
-    if parakeetRetiredV3Handle != nil {
-      retiredV3LaunchMigration = Task { await coordinator.runLaunchMigration() }
+    // #4997: also with only the Ultra target, whose stale marker the migration revalidates.
+    // The observers attach first, so the re-admission's state and event reach Settings and
+    // telemetry, and the first-run baseline is read before the migration changes it.
+    if parakeetRetiredV3Handle != nil || parakeetUpgradeTarget != nil {
+      let observerSetup = parakeetObserverSetup
+      parakeetLaunchMigration = Task {
+        await observerSetup?.value
+        await coordinator.runLaunchMigration()
+      }
     }
     return coordinator
   }
@@ -1188,7 +1197,7 @@ final class ModelDeliveryHome {
     let registration = parakeetRegistration
     let retiredV3 = parakeetRetiredV3Registration
     let sequencer = DeliveryStateSequencer()
-    parakeetObserverSetupForTesting = Task {
+    parakeetObserverSetup = Task {
       if let registration {
         // #3546: a user upgrading from an admitted v3 is not on a first run.
         var admitted = await controller.isAdmitted(registration)
