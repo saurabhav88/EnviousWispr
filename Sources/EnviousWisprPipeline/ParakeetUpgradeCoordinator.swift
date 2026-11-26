@@ -1252,9 +1252,27 @@ extension ParakeetUpgradeCoordinator {
   /// #4578: the launch migration of an existing v3 copy into our own directory (a local copy,
   /// never a fetch), skipped when the person removed Parakeet. Its result is discarded: it acts
   /// on nothing (see `ModelDeliveryHome.installParakeetUpgrade`).
+  ///
+  /// #4997: it also revalidates the owned Ultra copy in place when its admission marker no
+  /// longer matches. A manifest change that keeps the files (2.6.1's runtimeABI bump) leaves
+  /// every earlier marker stale, and the installation read that gates the launch warm-up is a
+  /// marker read, so without this a complete Ultra copy reads as missing and nothing re-admits
+  /// it. Never fetches; incomplete files settle not ready and stay on disk. Row K holds here
+  /// too: with delivery off, no owned Ultra admission.
   package func runLaunchMigration() async {
-    guard isInstallWanted, let delivery else { return }
-    _ = await delivery.ensureModelLocationReady()
+    guard isInstallWanted, !Task.isCancelled else { return }
+    if let delivery {
+      _ = await delivery.ensureModelLocationReady()
+    }
+    guard let target, isInstallWanted, target.delivery.locationIsUsable,
+      (delivery ?? target.delivery).isEnabled(),
+      await target.delivery.isAdmitted() == false
+    else { return }
+    // A Remove can record its intent while the marker read above is suspended.
+    guard isInstallWanted, !Task.isCancelled, target.delivery.locationIsUsable,
+      (delivery ?? target.delivery).isEnabled()
+    else { return }
+    _ = await target.delivery.admitIfComplete()
   }
 
   /// #4578: Settings' Resume and Setup's download request, one consent-aware command. Joins the
