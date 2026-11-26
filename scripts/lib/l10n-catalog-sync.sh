@@ -556,7 +556,7 @@ def sync_seeded_table(catalog_path, seed, default_comment):
 def keep_translated_removals(committed_strings, kept, source_language):
     """{key: entry} for keys gone from the source that still carry a translation (#3142 phase 5,
     architecture review item 1): each stays, marked `stale`, so an English copy edit never
-    silently drops reviewed German. The German can be reused for the new key; only a person
+    silently drops reviewed translations. They can be reused for the new key; only a person
     removes the stale entry, and that edit is the review's disposition."""
     stale = {}
     for key, entry in committed_strings.items():
@@ -997,7 +997,7 @@ def main(argv):
             stale = sorted(k for k, e in after["strings"].items() if e.get("extractionState") == "stale")
             if stale:
                 print(f"STALE: {path.name}: {len(stale)} key(s) gone from the source, kept with their "
-                      "translations for review; reuse the German for the new wording, then delete each by hand:")
+                      "translations for review; reuse those translations for the new wording, then delete each by hand:")
                 for key in stale:
                     print(f"  {key!r}")
         if not languages:
