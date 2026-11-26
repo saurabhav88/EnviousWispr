@@ -97,25 +97,48 @@ package final class AudioUnitLane: Sendable {
   package static let openLimit: Duration = .seconds(5)
   package static let retireLimit: Duration = .seconds(5)
 
+  /// #4934: which native call of a microphone release is running. Observation only.
+  package enum ReleaseStep: Sendable, Equatable {
+    case notStarted, listenerRemoval, stop, uninitialize, dispose, cleanup
+  }
+
+  /// #4934: one release's step marker. Written on the lane queue before each native call (never
+  /// the HAL render thread) and read once by the limit timer. A lock, not `Atomic`, which needs
+  /// macOS 15.
+  package final class ReleaseProgress: Sendable {
+    private let state = OSAllocatedUnfairLock<ReleaseStep>(initialState: .notStarted)
+    package init() {}
+    package func mark(_ step: ReleaseStep) { state.withLock { $0 = step } }
+    package var current: ReleaseStep { state.withLock { $0 } }
+  }
+
   /// Reported by the composition root (this module cannot reach telemetry). Hooks run outside the
   /// lane's lock and must not block. `id` identifies one job across its hooks.
   package struct Hooks: Sendable {
     /// A running job passed its own operation limit (the lane is now wedged). Once per job.
+    /// `step` is the release marker sampled at that decision; nil when the job carries none.
     package var operationTimedOut:
-      @Sendable (_ id: UInt64, _ name: String, _ limit: Duration) -> Void
-    /// A job that had passed its operation limit finally returned. Once per such job.
+      @Sendable (_ id: UInt64, _ name: String, _ limit: Duration, _ step: ReleaseStep?) -> Void
+    /// A job that had passed its operation limit finally returned. Once per such job. `step` is
+    /// the same sample; `refusedWhileStuck` counts the reads and opens answered `.wedged` while
+    /// the job was past its limit.
     package var operationRecovered:
-      @Sendable (_ id: UInt64, _ name: String, _ after: Duration, _ limit: Duration) -> Void
+      @Sendable (
+        _ id: UInt64, _ name: String, _ after: Duration, _ limit: Duration, _ step: ReleaseStep?,
+        _ refusedWhileStuck: Int
+      ) -> Void
     /// Every job that ran, with how long it ran (DEBUG logging).
     package var completed: @Sendable (_ id: UInt64, _ name: String, _ duration: Duration) -> Void
     /// DEBUG only: an armed stall is about to block this job.
     package var debugStallFired: @Sendable (_ id: UInt64, _ name: String, _ stall: Duration) -> Void
 
     package init(
-      operationTimedOut: @escaping @Sendable (UInt64, String, Duration) -> Void = { _, _, _ in },
-      operationRecovered: @escaping @Sendable (UInt64, String, Duration, Duration) -> Void = {
+      operationTimedOut: @escaping @Sendable (UInt64, String, Duration, ReleaseStep?) -> Void = {
         _, _, _, _ in
       },
+      operationRecovered: @escaping @Sendable (
+        UInt64, String, Duration, Duration, ReleaseStep?, Int
+      ) -> Void = { _, _, _, _, _, _ in },
       completed: @escaping @Sendable (UInt64, String, Duration) -> Void = { _, _, _ in },
       debugStallFired: @escaping @Sendable (UInt64, String, Duration) -> Void = { _, _, _ in }
     ) {
@@ -137,6 +160,11 @@ package final class AudioUnitLane: Sendable {
     let operation: Operation
     let attempt: UInt64?
     var phase: Phase = .queued
+    /// #4934: a release's step marker; nil for every other job.
+    let progress: ReleaseProgress?
+    /// The marker read when the limit timer decided this job was stuck.
+    var stuckStep: ReleaseStep?
+    var refusedWhileStuck = 0
     /// Absolute caller deadline (nil for a retirement nobody waits on).
     var callerDeadline: ContinuousClock.Instant?
     /// The caller stopped waiting (deadline, cancellation, abandonment).
@@ -152,7 +180,11 @@ package final class AudioUnitLane: Sendable {
     var onTerminal: (@Sendable () -> Void)?
     private var claimed = false
 
-    init(id: UInt64, name: String, operation: Operation, attempt: UInt64?) {
+    init(
+      id: UInt64, name: String, operation: Operation, attempt: UInt64?,
+      progress: ReleaseProgress? = nil
+    ) {
+      self.progress = progress
       self.id = id
       self.name = name
       self.operation = operation
@@ -263,8 +295,11 @@ package final class AudioUnitLane: Sendable {
 
   /// Queues a retirement and returns at once. Never refused, even while wedged; stays ordered
   /// before every later job.
-  package func retire(_ name: String = "microphone_release", _ work: @escaping @Sendable () -> Void) {
-    submitDetached(name, work)
+  package func retire(
+    _ name: String = "microphone_release", progress: ReleaseProgress? = nil,
+    _ work: @escaping @Sendable () -> Void
+  ) {
+    submitDetached(name, progress: progress, work)
   }
 
   /// Queues a retirement and waits for it at most until `deadline` (quit only). Returns whether it
@@ -324,10 +359,13 @@ package final class AudioUnitLane: Sendable {
 
   // MARK: - Internals
 
-  private func makeJob(_ name: String, _ operation: Operation, _ attempt: UInt64?) -> Job {
+  private func makeJob(
+    _ name: String, _ operation: Operation, _ attempt: UInt64?, _ progress: ReleaseProgress? = nil
+  ) -> Job {
     state.withLock { state in
       defer { state.nextID += 1 }
-      return Job(id: state.nextID, name: name, operation: operation, attempt: attempt)
+      return Job(
+        id: state.nextID, name: name, operation: operation, attempt: attempt, progress: progress)
     }
   }
 
@@ -371,7 +409,11 @@ package final class AudioUnitLane: Sendable {
           job.deliverAbandoned = { continuation.resume(returning: .abandoned) }
           job.deliverWedged = { continuation.resume(returning: .wedged) }
           if job.callerGone { return job.claim() ? .abandoned : nil }
-          if state.isWedged { return job.claim() ? .wedged : nil }
+          if state.isWedged {
+            guard job.claim() else { return nil }
+            state.running?.refusedWhileStuck += 1
+            return .wedged
+          }
           if let attempt,
             state.outstanding.values.contains(where: { $0.attempt == attempt.id && !$0.callerGone })
           {
@@ -436,8 +478,10 @@ package final class AudioUnitLane: Sendable {
     }
   }
 
-  private func submitDetached(_ name: String, _ work: @escaping @Sendable () -> Void) {
-    let job = makeJob(name, .retire, nil)
+  private func submitDetached(
+    _ name: String, progress: ReleaseProgress? = nil, _ work: @escaping @Sendable () -> Void
+  ) {
+    let job = makeJob(name, .retire, nil, progress)
     // Never refused; admitted and queued in one decision like every other job.
     state.withLock { state in
       state.outstanding[job.id] = job
@@ -485,18 +529,23 @@ package final class AudioUnitLane: Sendable {
     if let limitDeadline { scheduleCallerDeadline(job, limitDeadline) }
     let started = now()
     schedule(limit) { [self] in
-      let (fired, queuedDeliveries) = state.withLock { state -> (Bool, [@Sendable () -> Void]) in
-        guard state.running === job, job.phase == .running, !job.exceeded else { return (false, []) }
+      let (fired, step, queuedDeliveries) = state.withLock {
+        state -> (Bool, ReleaseStep?, [@Sendable () -> Void]) in
+        guard state.running === job, job.phase == .running, !job.exceeded else {
+          return (false, nil, [])
+        }
         job.exceeded = true
+        job.stuckStep = job.progress?.current
         // The lane is wedged: reads and opens still waiting their turn behind this job get the
         // same answer a new one gets, at once (a caller with no deadline would otherwise wait
         // for as long as the driver stays stuck). Retirements stay queued.
         let deliveries = state.outstanding.values
           .filter { $0.phase == .queued && $0.operation != .retire }
           .compactMap { Self.terminate($0, with: $0.deliverWedged) }
-        return (true, deliveries)
+        job.refusedWhileStuck += deliveries.count
+        return (true, job.stuckStep, deliveries)
       }
-      if fired { hooks.operationTimedOut(job.id, job.name, limit) }
+      if fired { hooks.operationTimedOut(job.id, job.name, limit, step) }
       for deliver in queuedDeliveries { deliver() }
     }
     #if DEBUG
@@ -507,14 +556,16 @@ package final class AudioUnitLane: Sendable {
     #endif
     body()
     let elapsed = now() - started
-    let recovered = state.withLock { state -> Bool in
+    let (recovered, stuckStep, refused) = state.withLock { state -> (Bool, ReleaseStep?, Int) in
       job.phase = .finished
       if state.running === job { state.running = nil }
       state.outstanding[job.id] = nil
-      return job.exceeded
+      return (job.exceeded, job.stuckStep, job.refusedWhileStuck)
     }
     hooks.completed(job.id, job.name, elapsed)
-    if recovered { hooks.operationRecovered(job.id, job.name, elapsed, limit) }
+    if recovered {
+      hooks.operationRecovered(job.id, job.name, elapsed, limit, stuckStep, refused)
+    }
     finishWaiters()
   }
 

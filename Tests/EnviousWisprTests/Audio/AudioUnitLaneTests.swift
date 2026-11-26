@@ -128,8 +128,8 @@ struct AudioUnitLaneTests {
       schedule: { delay, fire in timers.schedule(delay, fire) },
       now: { clock.now },
       hooks: .init(
-        operationTimedOut: { id, name, _ in log.add("timedOut:\(name)#\(id)") },
-        operationRecovered: { id, name, _, _ in log.add("recovered:\(name)#\(id)") },
+        operationTimedOut: { id, name, _, _ in log.add("timedOut:\(name)#\(id)") },
+        operationRecovered: { id, name, _, _, _, _ in log.add("recovered:\(name)#\(id)") },
         completed: { _, name, _ in log.add("completed:\(name)") },
         debugStallFired: { _, name, _ in log.add("stall:\(name)") }),
       stallExecutor: { _ in stalls?.add("stalled") })
@@ -611,6 +611,84 @@ struct AudioUnitLaneTests {
     #expect(mainWork == 3)
     gate.open()
     _ = await stuck.value
+  }
+}
+
+/// #4934. When these fail, the dashboard cannot say which native call of a stuck microphone
+/// release hung, or how many starts were refused meanwhile. Native calls are injected.
+@Suite("Stuck release telemetry — #4934", .tags(.observabilityContract))
+struct StuckReleaseStepTests {
+  @Test("a release stuck in stop is sampled as stop, and counts only winning wedge refusals")
+  func stuckStepAndRefusals() async {
+    let timers = AudioUnitLaneTests.ManualTimers()
+    let log = AudioUnitLaneTests.Log()
+    let lane = AudioUnitLane(
+      label: "test.audio.unit-lane.step",
+      schedule: { delay, fire in timers.schedule(delay, fire) },
+      now: { AudioUnitLaneTests.base },
+      hooks: .init(
+        operationTimedOut: { _, _, _, step in log.add("timedOut:\(step.map { "\($0)" } ?? "nil")") },
+        operationRecovered: { _, _, _, _, step, refused in
+          log.add("recovered:\(step.map { "\($0)" } ?? "nil"):\(refused)")
+        }))
+    let progress = AudioUnitLane.ReleaseProgress()
+    let gate = AudioUnitLaneTests.Gate()
+    defer { gate.open() }
+    let seen: @Sendable (String) -> Void = { log.add("\($0)@\(progress.current)") }
+    let native = HALNativeCalls(
+      stop: { _ in
+        seen("stop")
+        gate.block()
+        return noErr
+      },
+      uninitialize: { _ in
+        seen("uninitialize")
+        return noErr
+      },
+      dispose: { _ in
+        seen("dispose")
+        return noErr
+      },
+      removeListener: { _, _, _, _ in
+        seen("removeListener")
+        return noErr
+      },
+      storageReleased: {})
+    let resources = HALUnitResources.makeForTesting(
+      stage: .started, native: native, listenerCount: 1)
+    lane.retire(progress: progress) { resources.retire(progress: progress) }
+    #expect(await log.waitFor("stop@stop"), "the release is blocked in stop")
+
+    let queued = Task {
+      await lane.run("route", deadline: AudioUnitLaneTests.base + .seconds(21)) { 1 }
+    }
+    let withdrawn = Task {
+      await lane.run("probe", deadline: AudioUnitLaneTests.base + .seconds(22)) { 1 }
+    }
+    #expect(await timers.scheduled(.seconds(21)))
+    #expect(await timers.scheduled(.seconds(22)))
+    withdrawn.cancel()
+    guard case .abandoned = await withdrawn.value else {
+      Issue.record("the withdrawn read must be abandoned")
+      return
+    }
+    #expect(await timers.scheduled(AudioUnitLane.retireLimit))
+    timers.fire(AudioUnitLane.retireLimit)
+    guard case .wedged = await queued.value else {
+      Issue.record("the queued read must hear the wedge")
+      return
+    }
+    guard case .wedged = await lane.run("late", { 1 }) else {
+      Issue.record("a new read must be refused")
+      return
+    }
+    gate.open()
+    #expect(await log.waitFor("recovered:stop:2"), "got \(log.all)")
+    #expect(log.all.contains("timedOut:stop"))
+    #expect(log.all.contains("removeListener@listenerRemoval"))
+    #expect(log.all.contains("uninitialize@uninitialize"))
+    #expect(log.all.contains("dispose@dispose"))
+    #expect(progress.current == .cleanup)
   }
 }
 #endif

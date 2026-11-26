@@ -306,8 +306,10 @@ struct TelemetryEmitterRegistryTests {
   /// release (founder 2026-11-25); its registry row went with it.
   /// #4937: `livePreviewOutcome` gained `error:` and `unclaimed:` (existing `live_preview.outcome`
   /// site, same cadence): closed `error_domain`, Int `error_code`, Bool; registry row unchanged.
+  /// #4934: `coreAudioReadStuck` gained `releaseStep:` and `refusedWhileStuck:`, which changes
+  /// the enclosing-function identity of that same single site; same event, same cadence.
   static let sitesFingerprint =
-    "903ba47788436386c999cc3ad841eb112a61e084687ded4296c0f08eb8226f65"
+    "dffc5b2b67826dc2127f1799ed61a6d4016ba2f094da141c64cae9aa41a073aa"
   /// #4721: `api_key.validation_completed` graded (per_launch, keep) when the launch key check
   /// added `source=launch`; ceiling 106 -> 105.
   static let ungradedFingerprint =
