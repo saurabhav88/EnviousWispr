@@ -12,7 +12,6 @@ final class AppWindowCoordinator: UpdateDialogPresenting {
   /// #4842: the main window, an AppKit window this app creates and releases. Its close never
   /// quits the app (a SwiftUI `Window` primary scene did, for some 2.6.1 users).
   let mainWindowPresenter = MainWindowPresenter()
-  private(set) var mainWindowVisitIsSetupHandoff = false
   private var openedFirstSurface = false
 
   /// #2455 C3: required and non-defaulted. Every activation and Dock-policy call
@@ -238,13 +237,8 @@ final class AppWindowCoordinator: UpdateDialogPresenting {
     openOnboardingWindow()
   }
 
-  func endMainWindowVisit() {
-    mainWindowVisitIsSetupHandoff = false
-  }
-
   /// The Setup session has already marked the visit complete and dismissed its window.
   func finishSetup() {
-    mainWindowVisitIsSetupHandoff = true
     showWindow()
     refreshActivationPolicy(excluding: nil)
   }

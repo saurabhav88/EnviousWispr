@@ -209,7 +209,7 @@ class LaunchTests(Temp):
         # The banner moves the page during open-History timing; the labelled jump check turns it on.
         on = fixture.launch_plan(self.app, self.home, storage_warning=True)
         self.assertNotIn("-recordingStorageWarningThreshold", on.argv)
-        # The recordings tour card stays off in the banner check too (#4784).
+        # The History recordings notice stays off in the banner check too (#4784).
         self.assertEqual(on.argv[-4:], ("-onboardingState", "completed",
                                         "-recordingDisclosureAcknowledged", "YES"))
 

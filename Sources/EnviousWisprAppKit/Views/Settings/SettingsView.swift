@@ -25,13 +25,6 @@ struct UnifiedWindowView: View {
   /// monitor.
   @Environment(SummarySetupMonitorHolder.self) private var summarySetup
   @Environment(SettingsManager.self) private var settings
-  @Environment(AppWindowCoordinator.self) private var appWindow
-  @Environment(TranscriptCoordinator.self) private var transcripts
-  /// #4565: the guided tour's card state (offer, stop, arrival) and the window that staged its
-  /// offer. The model owns the analytics rows; this view owns navigation and the persisted offer
-  /// state.
-  @State private var tour = GuidedTourModel(emit: { TelemetryService.shared.trackGuidedTour($0) })
-  @State private var tourWindow: NSWindow?
   /// The question on screen and its identity; a dismissal clears only the one it belongs to.
   @State private var pendingLeave: PolishSetupLeaveRequest?
   /// #4578: the speech-engine leave question, when that one is open (never both at once).
@@ -83,12 +76,7 @@ struct UnifiedWindowView: View {
         searchDropdown(anchor)
       }
       .background(
-        SettingsWindowCloseObserver(
-          onKey: tourWindowBecameKey, onResign: tourWindowResigned
-        ) {
-          tour.end()
-          tourWindow = nil
-          appWindow.endMainWindowVisit()
+        SettingsWindowCloseObserver {
           search.reset(endedBy: .windowClose)
           navigationState.endWindowSession()
           historyPaste.windowClosed()
@@ -115,20 +103,6 @@ struct UnifiedWindowView: View {
       .onChange(of: navigationState.appSettingsTab) { _, _ in navigationState.noteTabChange() }
       .onChange(of: navigationState.dictionaryTab) { _, _ in navigationState.noteTabChange() }
       .onChange(of: navigationState.meetingsTab) { _, _ in navigationState.noteTabChange() }
-      // #4565: the tour's arrival and obstruction checks follow what the window shows.
-      .onChange(of: navigationState) { _, _ in noteTourArrival() }
-      .onChange(of: transcripts.browser.historyTab) { _, _ in noteTourArrival() }
-      .onChange(of: tour.phase) { _, _ in noteTourArrival() }
-      .onChange(of: tourIsObstructed) { _, obstructed in
-        if !obstructed {
-          presentStagedTourOffer()
-          noteTourArrival()
-        }
-      }
-      .onChange(of: settings.saveDictationRecordings) { _, on in
-        tour.settingsChanged(recordingsOn: on)
-        noteTourArrival()
-      }
       .focusedSceneValue(\.settingsFind) {
         search.reopenPanel()
         searchFocused = true
@@ -155,10 +129,6 @@ struct UnifiedWindowView: View {
     }
     .onChange(of: navigationCoordinator.pendingSharedMedia?.url, initial: true) { _, url in
       if let url { navigate(.sharedMedia(url)) }
-    }
-    // #4565: a replay asked for from the Help or icon menu, accepted once (also on first mount).
-    .onChange(of: navigationCoordinator.pendingGuidedTour, initial: true) { _, pending in
-      if pending { startGuidedTourReplay() }
     }
     // #4353 D4: a control the page on screen asked to bring into view and ring. The same
     // arrival a search result uses (scrolls only when the control is not fully visible), applied
@@ -471,7 +441,7 @@ struct UnifiedWindowView: View {
     case .sidebar(let page):
       search.finish(
         endedBy: .sidebar, sidebarPage: page.rawValue, sidebarTab: openTab(on: page))
-    case .destination, .sharedMedia, .externalReveal, .dictionaryTab:
+    case .destination, .sharedMedia, .externalReveal:
       search.finish(endedBy: .externalDestination)
     }
     search.reset()
@@ -531,7 +501,7 @@ struct UnifiedWindowView: View {
     // #3482 §3.4: a search arrival owns focus (the reveal moves it to the chosen control).
     switch intent {
     case .search, .externalReveal: break
-    case .sidebar, .destination, .sharedMedia, .dictionaryTab: focusedSidebarPage = intent.page
+    case .sidebar, .destination, .sharedMedia: focusedSidebarPage = intent.page
     }
   }
 
@@ -629,113 +599,16 @@ struct UnifiedWindowView: View {
   /// (same radius, border, and inset) so the window reads as two balanced,
   /// equally-inset panels on the canvas.
   private var detailCard: some View {
-    VStack(spacing: 0) {
-      if let phase = tour.phase {
-        guidedTourCard(phase)
-          .padding(DesignSpacing.lg)
-          // Under the search dropdown the card is out of reach for the keyboard too.
-          .disabled(search.showsPanel)
-      }
-      detailContent
-    }
-    .searchPanelBlocksBackground(search.showsPanel)
-    .frame(maxWidth: .infinity, maxHeight: .infinity)
-    .clipShape(
-      RoundedRectangle(cornerRadius: SettingsLayout.windowCardRadius, style: .continuous)
-    )
-    .overlay(
-      RoundedRectangle(cornerRadius: SettingsLayout.windowCardRadius, style: .continuous)
-        .strokeBorder(Color.stDivider, lineWidth: 1)
-    )
-  }
-
-  // MARK: - Guided tour (#4565)
-
-  /// An eligible install, after Setup, on a visit that is not the Setup handoff itself.
-  private var canStageGuidedTourOffer: Bool {
-    settings.onboardingState == .completed && !appWindow.mainWindowVisitIsSetupHandoff
-      && settings.guidedTourOfferState == .eligible
-  }
-
-  /// The search dropdown and a leave question hold the card out of reach.
-  private var tourIsObstructed: Bool {
-    search.showsPanel || pendingLeave != nil || pendingSpeechLeave != nil
-  }
-
-  private func tourWindowBecameKey(_ window: NSWindow) {
-    tourWindow = window
-    // Quit ends a shown card once, before telemetry is torn down; closing drops the handler.
-    appWindow.mainWindowPresenter.registerQuitHandler(for: window) { [tour] in tour.end() }
-    if canStageGuidedTourOffer { tour.stageOffer() }
-    presentStagedTourOffer()
-  }
-
-  /// A resign keeps a shown card (an ordinary app switch) and discards an offer never shown.
-  private func tourWindowResigned() {
-    tourWindow = nil
-    tour.discardStagedOffer()
-    appWindow.endMainWindowVisit()
-  }
-
-  /// Shows the staged offer once nothing obstructs it, rechecking eligibility and that the exact
-  /// window is still key. Persists `consumed` when the card first appears.
-  private func presentStagedTourOffer() {
-    guard tour.staged else { return }
-    guard canStageGuidedTourOffer else {
-      tour.discardStagedOffer()
-      return
-    }
-    let canPresent =
-      tourWindow?.isKeyWindow == true && !tourIsObstructed
-      && !navigationCoordinator.pendingGuidedTour
-    if tour.presentStagedOffer(canPresent: canPresent) {
-      settings.consumeGuidedTourOffer()
-    }
-  }
-
-  /// A replay accepted by this window replaces whatever the card shows and starts at the first
-  /// stop. An install still eligible has now been shown the tour, so the automatic offer is spent;
-  /// every other install's state is left alone.
-  private func startGuidedTourReplay() {
-    navigationCoordinator.consumeGuidedTour()
-    settings.consumeGuidedTourOffer()
-    navigate(tour.replay(recordingsOn: settings.saveDictationRecordings).intent)
-  }
-
-  /// The stop's page and tab are showing and the card is reachable: its first view of this run.
-  private func noteTourArrival() {
-    guard let stop = tour.currentStop else { return }
-    tour.noteArrival(
-      showing: stop.isShowing(in: navigationState, showingDictationsTab: showingDictationsTab),
-      reachable: !tourIsObstructed)
-  }
-
-  private var showingDictationsTab: Bool {
-    navigationState.selectedPage == .history && transcripts.browser.historyTab == .dictations
-  }
-
-  private func guidedTourCard(_ phase: GuidedTourModel.Phase) -> some View {
-    let showingHistory = navigationState.selectedPage == .history
-    let dictations = transcripts.browser.requestedHistoryState(for: .dictations)
-    let showing = tour.currentStop.map {
-      $0.isShowing(in: navigationState, showingDictationsTab: showingDictationsTab)
-    } ?? false
-    return GuidedTourCard(
-      phase: phase, plan: tour.plan, run: tour.run, showing: showing, showingHistory: showingHistory,
-      dictationsFiltered: !dictations.query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-        || dictations.listFilter != .none,
-      start: {
-        if let first = tour.start(recordingsOn: settings.saveDictationRecordings) {
-          navigate(first.intent)
-        }
-      },
-      notNow: { tour.end() },
-      next: {
-        if let next = tour.advance() { navigate(next.intent) }
-      },
-      finish: { tour.finish() },
-      open: { navigate($0.intent) },
-      end: { tour.end() })
+    detailContent
+      .searchPanelBlocksBackground(search.showsPanel)
+      .frame(maxWidth: .infinity, maxHeight: .infinity)
+      .clipShape(
+        RoundedRectangle(cornerRadius: SettingsLayout.windowCardRadius, style: .continuous)
+      )
+      .overlay(
+        RoundedRectangle(cornerRadius: SettingsLayout.windowCardRadius, style: .continuous)
+          .strokeBorder(Color.stDivider, lineWidth: 1)
+      )
   }
 
   @ViewBuilder

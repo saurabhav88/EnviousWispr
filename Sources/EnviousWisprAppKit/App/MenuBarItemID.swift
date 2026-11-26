@@ -22,7 +22,6 @@ enum MenuBarItemID {
   static let microphone = NSUserInterfaceItemIdentifier("menu.microphone")
   static let openApp = NSUserInterfaceItemIdentifier("menu.openApp")
   static let appearance = NSUserInterfaceItemIdentifier("menu.appearance")
-  static let takeTour = NSUserInterfaceItemIdentifier("menu.takeTour")
   static let helpCenter = NSUserInterfaceItemIdentifier("menu.helpCenter")
   static let checkForUpdates = NSUserInterfaceItemIdentifier("menu.checkForUpdates")
   static let quit = NSUserInterfaceItemIdentifier("menu.quit")

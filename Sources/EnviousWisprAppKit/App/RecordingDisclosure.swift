@@ -3,7 +3,8 @@ import Foundation
 
 /// The recording disclosure's words (#3147 §16 C9), owned here for the History banner; What's
 /// New carries the same facts as literal entry text. Setup shows no note since #4528 (founder
-/// 2026-11-13: new users learn about recordings in the post-install tour, #4565). Each surface reads
+/// 2026-11-13), and the post-install tour meant to teach recordings was removed before release
+/// (founder 2026-11-25, #5003), so no in-app surface teaches new users about it. Each surface reads
 /// the LIVE settings, so it never describes a default the user already changed: saving off says
 /// so, and a chosen keep period is never called "until you delete them". Fresh installs read the
 /// canonical defaults through the same live values (nothing is seeded).
