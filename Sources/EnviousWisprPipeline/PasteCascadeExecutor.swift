@@ -255,8 +255,10 @@ internal enum PasteFocusClassification: Equatable {
   case nonText
   /// #1070: the captured focus is the standard window of a known remote-desktop or virtual-machine
   /// client (`SelectionAcquisition.isKeystrokeForwarding`). The session behind it is one opaque
-  /// view, so Tier 1 has no field to write, but a key paste reaches the field inside the session.
-  /// Its landing cannot be observed, so the dictation stays on the clipboard.
+  /// view, so Tier 1 has no field to write; a key paste is meant to reach the field inside the
+  /// session, which was never verified in a real client. Its landing cannot be observed, so the
+  /// dictation stays on the clipboard.
+  /// HELD BACK (#4796, founder 2026-11-25): `classifyPasteFocus` never returns it today.
   case remoteSession
 }
 
@@ -271,13 +273,16 @@ internal enum PasteFocusClassification: Equatable {
 /// Electron lazy-AX case. Native Mac apps with a focused non-text element
 /// (button, image, page body) continue to fall through to clipboard-only.
 ///
-/// #1070: a non-text focus that is the standard window of a known remote-desktop client
-/// classifies `.remoteSession`. Both halves are required: the bundle alone would include the
-/// client's local dialogs and controls, and the window alone would include every local app
-/// (Emacs, Safari, the macOS password dialog `com.apple.SecurityAgent` all report
-/// `AXWindow` / `AXStandardWindow`). Screen Sharing's surface reports `AXSharedScreen`, so it
-/// stays `.nonText`. Founder decision 2026-11-21 (answer A): this shared remote-client list
-/// supersedes the 2026-09-09 "deliberately not an allowlist" ruling, for remote clients only.
+/// #1070 / #4796: HELD BACK (founder 2026-11-25). Nothing classifies `.remoteSession`: a
+/// remote-desktop client's own window stays `.nonText`, the v2.6.1 route (no key paste; the
+/// later tiers and the clipboard-only fallback are unchanged). The key paste into the session was
+/// never tested in a real remote client, and it can paste the guest's OLD clipboard with no Copied
+/// notice. `focusRole` / `focusSubrole` stay (no production caller passes them) so the route can
+/// return. To bring it back, a non-text focus that is the standard window
+/// (`AXWindow` / `AXStandardWindow`) of a known remote client
+/// (`SelectionAcquisition.isKeystrokeForwarding`, minus Apple Screen Sharing per #3279) would
+/// classify `.remoteSession`; both halves are required, because local apps and the macOS password
+/// dialog also report a standard window.
 internal func classifyPasteFocus(
   elementPresent: Bool,
   roleIsTextField: Bool,
@@ -287,22 +292,9 @@ internal func classifyPasteFocus(
 ) -> PasteFocusClassification {
   guard elementPresent else { return .missing }
   if roleIsTextField { return .textField }
-  if focusRole == "AXWindow", focusSubrole == "AXStandardWindow",
-    SelectionAcquisition.isKeystrokeForwarding(targetBundleID),
-    !remoteSessionPasteExclusions.contains(targetBundleID ?? "")
-  {
-    return .remoteSession
-  }
   if isKnownWebWrapperBundle(targetBundleID) { return .missing }  // #729
   return .nonText
 }
-
-/// #1070: remote clients on the shared list that never receive the remote-session key paste.
-/// Apple Screen Sharing: a Cmd+V on the remote Mac pastes that Mac's OLD clipboard when its shared
-/// clipboard has not synced (#3279, user report), which would insert the wrong text silently. Its
-/// surface normally reports `AXSharedScreen` and is excluded by role; this keeps it excluded if its
-/// focus ever reports a standard window. The synthetic-Copy refusal for it is unchanged.
-internal let remoteSessionPasteExclusions: Set<String> = ["com.apple.ScreenSharing"]
 
 /// #729 — bundle-id prefixes for known web-wrapper packagers. Conservative
 /// list: only prefixes that no native macOS app uses in practice. Each
@@ -910,9 +902,9 @@ internal final class PasteCascadeExecutor {
     // - nonText:   element present but role not in textRoles (button, page body).
     //              Cmd+V would fire into a void; fall straight to clipboard-only
     //              with the "Copied. Press Cmd+V" overlay (PR #220's protection).
-    // - remoteSession (#1070): a remote-desktop client's own standard window. Skip Tier 1 (the
-    //              field is inside the session), attempt the key paste, keep the dictation on
-    //              the clipboard.
+    // - remoteSession (#1070): HELD BACK (#4796), never produced today. When on: a
+    //              remote-desktop client's own standard window. Skip Tier 1 (the field is inside
+    //              the session), attempt the key paste, keep the dictation on the clipboard.
     // If Accessibility is not trusted, CGEvent Cmd+V can't paste anyway
     // (see gotchas.md § CGEvent Paste Requires Accessibility). Fall back
     // to clipboard-only + overlay so the user can press Cmd+V themselves,
@@ -934,16 +926,14 @@ internal final class PasteCascadeExecutor {
         elementPresent: true, roleIsTextField: false, targetBundleID: nil)
       targetDiagnostics = .unavailable
     } else if let element = request.targetElement {
-      // Role/subrole are read at paste time from the captured AXUIElement handle, before the
-      // classification, which reads them for the #1070 remote-session rule.
-      targetDiagnostics = PasteService.capturedElementDiagnostics(element)
       classification = classifyPasteFocus(
         elementPresent: true,
         roleIsTextField: PasteService.isTextFieldRole(element),
-        targetBundleID: targetBundleID,
-        focusRole: targetDiagnostics.role,
-        focusSubrole: targetDiagnostics.subrole
+        targetBundleID: targetBundleID
       )
+      // Role/subrole are read at paste time from the captured AXUIElement handle.
+      // #4796: the remote-session rule that read them first is held back.
+      targetDiagnostics = PasteService.capturedElementDiagnostics(element)
     } else {
       classification = classifyPasteFocus(
         elementPresent: false, roleIsTextField: false, targetBundleID: targetBundleID)

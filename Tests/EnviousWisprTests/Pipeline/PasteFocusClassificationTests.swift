@@ -116,25 +116,21 @@ struct PasteFocusClassificationTests {
   }
 
   @Test(
-    "A remote client's own standard window is a remote session: key paste allowed, Tier 1 declined",
+    "A remote client's own standard window stays non-text while the key paste is held back (#4796)",
     arguments: [
       "com.citrix.receiver.icaviewer.mac", "com.utmapp.UTM", "com.parallels.desktop.console",
       "com.microsoft.rdc.macos", "com.carriez.rustdesk", "com.splashtop.stb.macosx",
     ])
   func remoteClientWindowIsRemoteSession(_ bundle: String) {
     let c = classify(bundle, role: "AXWindow", subrole: "AXStandardWindow")
-    #expect(c == .remoteSession)
-    #expect(c.canAttemptKeyPaste)
-    #expect(
-      tier1DeclineReason(
-        axTrusted: true, classification: c, isChromiumOmnibox: false, directWriteSkip: nil)
-        == .focusRemoteSession)
+    #expect(c == .nonText)
+    #expect(!c.canAttemptKeyPaste)
   }
 
   @Test("Screen Sharing's shared screen stays non-text (#3279 is out of scope)")
   func screenSharingStaysNonText() {
     #expect(classify("com.apple.ScreenSharing", role: "AXSharedScreen", subrole: nil) == .nonText)
-    // Excluded by name too, should its focus ever report a standard window.
+    // A standard window stays non-text too.
     #expect(
       classify("com.apple.ScreenSharing", role: "AXWindow", subrole: "AXStandardWindow") == .nonText)
   }
