@@ -25,6 +25,18 @@ package enum CorrectionPairKey {
     "\(version):[" + jsonString(normalise(original)) + "," + jsonString(normalise(corrected)) + "]"
   }
 
+  /// The two normalised strings back out of a key made by `make` (#5006, the
+  /// Blocked words list). Nil for any other version or shape.
+  package static func parts(_ key: String) -> (original: String, corrected: String)? {
+    let prefix = version + ":"
+    guard key.hasPrefix(prefix),
+      let data = key.dropFirst(prefix.count).data(using: .utf8),
+      let array = try? JSONSerialization.jsonObject(with: data) as? [String],
+      array.count == 2
+    else { return nil }
+    return (array[0], array[1])
+  }
+
   /// A JSON string literal with the minimal escaping the grammar requires.
   static func jsonString(_ text: String) -> String {
     var out = "\""
