@@ -123,6 +123,35 @@
         }
       }
     },
+    "%@ %@ at %@" : {
+      "comment" : "History: suggested file name when saving a dictation, like a macOS screenshot. 1: app name (or Dictation), 2: date 2026-11-25, 3: time 3.42.10 PM.",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "%1$@ %2$@ at %3$@"
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%1$@ %2$@ um %3$@"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%1$@ %2$@ à %3$@"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%1$@ %2$@ a las %3$@"
+          }
+        }
+      }
+    },
     "%@ (%@)" : {
       "comment" : "Menu bar menu: a stopped meeting's transcript work and how far it is, e.g. Writing the transcript (42%).\nSpeech engine settings: the locked language, as in \"Deutsch (German)\". The first %@ is its name in its own language, the second its name in the interface language.",
       "localizations" : {
@@ -19881,7 +19910,7 @@
       }
     },
     "Dictation" : {
-      "comment" : "History detail title for a row made by dictating. Also the default file name when saving it.",
+      "comment" : "History detail title for a row made by dictating. Also starts the default file name when saving it and the app is unknown.",
       "localizations" : {
         "de" : {
           "stringUnit" : {

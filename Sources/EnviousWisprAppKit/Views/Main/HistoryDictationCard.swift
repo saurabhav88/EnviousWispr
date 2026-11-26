@@ -741,9 +741,14 @@ struct HistoryDictationCard: View {
       })
   }
 
+  /// #5001: both saves suggest the same name, so a dictation's text and audio pair up.
+  private var defaultSaveName: String {
+    Self.saveName(targetApp: display.targetApp, createdAt: display.createdAt)
+  }
+
   /// The text is read AFTER the panel closes: the row can be deleted or expire while it is open.
   private func saveDocument() {
-    HistoryDelivery.save(defaultName: Self.dictationWord, text: { exportText }) {
+    HistoryDelivery.save(defaultName: defaultSaveName, text: { exportText }) {
       saveError = $0
     }
   }
@@ -755,7 +760,7 @@ struct HistoryDictationCard: View {
     let window = moreAnchor.view?.window
     audioExport.save(
       HistoryAudioExport.dictation(
-        rowID: rowID, defaultName: Self.dictationWord, recordings: recordings,
+        rowID: rowID, defaultName: defaultSaveName, recordings: recordings,
         window: { [weak window] in window }))
   }
 
@@ -1029,7 +1034,36 @@ struct HistoryDictationCard: View {
     String(
       localized: "Dictation",
       comment:
-        "History detail title for a row made by dictating. Also the default file name when saving it."
+        "History detail title for a row made by dictating. Also starts the default file name when saving it and the app is unknown."
+    )
+  }
+
+  /// #5001: Save's suggested name, the app and the time like a macOS screenshot ("Slack
+  /// 2026-11-25 at 3.42.10 PM"), so many saves into one folder do not collide. "Dictation" when
+  /// the app is unknown. Finder forbids ":" and a leading "."; "/" separates folders.
+  @MainActor static func saveName(
+    targetApp: String?, createdAt: Date, locale: Locale = .current, timeZone: TimeZone = .current,
+    appLabel: @MainActor (String) -> String = HistoryAppName.label(for:)
+  ) -> String {
+    var app = ""
+    if let id = targetApp?.trimmingCharacters(in: .whitespacesAndNewlines), !id.isEmpty {
+      app = appLabel(id).replacingOccurrences(of: ":", with: "-")
+        .replacingOccurrences(of: "/", with: "-")
+      while app.hasPrefix(".") { app.removeFirst() }
+      app = app.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+    if app.isEmpty { app = dictationWord }
+    var calendar = Calendar(identifier: .gregorian)
+    calendar.timeZone = timeZone
+    let day = calendar.dateComponents([.year, .month, .day], from: createdAt)
+    let date = String(format: "%04ld-%02ld-%02ld", day.year ?? 0, day.month ?? 0, day.day ?? 0)
+    var style = Date.FormatStyle(date: .omitted, time: .standard, locale: locale)
+    style.timeZone = timeZone
+    let time = createdAt.formatted(style).replacingOccurrences(of: ":", with: ".")
+    return String(
+      localized: "\(app) \(date) at \(time)",
+      comment:
+        "History: suggested file name when saving a dictation, like a macOS screenshot. 1: app name (or Dictation), 2: date 2026-11-25, 3: time 3.42.10 PM."
     )
   }
 

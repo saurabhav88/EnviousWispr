@@ -6,7 +6,8 @@ import Foundation
 /// complete on first display and never resizes when a file read finishes, or from a live
 /// `Transcript` (rows this process holds, the legacy reader). It is never written anywhere and
 /// never delivered: Copy, Paste, Share, Save and every action read the live, verified row at the
-/// press through `TranscriptCoordinator`.
+/// press through `TranscriptCoordinator`. Its app and date also make Save's suggested file
+/// name (#5001); the text is still read, and the audio admitted, after the save panel closes.
 ///
 /// Property names follow `Transcript`'s, so the card reads the same fields it always did.
 struct HistoryDictationDisplay: Equatable, Sendable, Identifiable {
@@ -26,6 +27,8 @@ struct HistoryDictationDisplay: Equatable, Sendable, Identifiable {
   let isRecovered: Bool?
   let escapeRecoveredAt: Date?
   let escapeRecoveryTakeID: String?
+  /// The app the dictation went to as History records it (a bundle id); nil when unknown.
+  let targetApp: String?
 
   /// `Transcript.displayText`: polished, else processed, else the recognized text.
   var displayText: String { polishedText ?? processedText ?? text }
@@ -49,6 +52,7 @@ struct HistoryDictationDisplay: Equatable, Sendable, Identifiable {
     isRecovered = row.isRecovered
     escapeRecoveredAt = row.escapeRecoveredAt
     escapeRecoveryTakeID = row.escapeRecoveryTakeID
+    targetApp = row.isImported ? nil : row.metrics?.targetApp
   }
 
   /// Nil for a summary without the dictation projection (a catalog row indexed before #4609;
@@ -70,6 +74,7 @@ struct HistoryDictationDisplay: Equatable, Sendable, Identifiable {
     isRecovered = summary.recovered
     escapeRecoveredAt = data.escapeRecoveredAt
     escapeRecoveryTakeID = data.escapeRecoveryTakeID
+    targetApp = summary.appKey
   }
 
   /// The catalog's copy of a dictation's drawn fields, written by the projection.
