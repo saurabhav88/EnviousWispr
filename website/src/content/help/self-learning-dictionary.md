@@ -125,7 +125,7 @@ EnviousWispr keeps a small memory on your Mac of the fixes the correction model 
 1. Open **Settings** > **Dictionary** > **Learn from...**.
 2. When the memory holds something, a **Learning memory** row shows how many fixes are blocked, for example **2 blocked**. Click it to open the **Blocked words** window.
 3. Each blocked fix shows what was heard and the word it was fixed to. Type in **Search blocked words** to find one.
-4. To let one fix be learned again, click **Remove** beside it. While the window is open, **Undo** puts it back.
+4. To let one fix be learned again, click **Remove** beside it. While the window is open, **Undo** puts back the last one you removed.
 5. To clear everything, click **Forget all**, then confirm. Blocked words may be learned again.
 
 Remove and Forget all change only this memory. Words already in Your Words stay there. If it says **Couldn’t forget. Try again.**, some of the memory may not have been cleared; try again.
