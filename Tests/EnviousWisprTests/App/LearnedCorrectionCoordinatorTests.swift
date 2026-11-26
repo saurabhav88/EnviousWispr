@@ -702,6 +702,8 @@ struct LearnedCorrectionCoordinatorTests {
     let second = try #require(shown(f))
     await #expect(await f.coordinator.undoThroughClaim(pillID: second.id) == .undone)
     #expect(f.memory.isBlocked(key))
+    // #5006: the Blocked words list shows the pair as written, not casefolded.
+    #expect(f.memory.blockedPairs.map { [$0.heard, $0.fixed] } == [["kumala", "Kwmala"]])
     #expect(
       f.telemetry.events.suffix(2) == [
         .undone(.added, .undone, .judge, .blocked), .refusedByUser(.undo, .blocked),
