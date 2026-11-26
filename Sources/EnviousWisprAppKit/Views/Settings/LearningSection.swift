@@ -9,6 +9,8 @@ import SwiftUI
 struct LearnedCheckerSettingsStatus: Equatable {
   let line: String
   let canRetry: Bool
+  /// The status word for Fix words it learned (#5006), decided with the state.
+  let readiness: LearnFromEditsSettingsPresentation.StatusWord
   static let retryTitle = LocalizedStringResource(
     "Try again",
     comment: "Your Words, Learn from: the self-learning dictionary row: retry the word check download.")
@@ -18,6 +20,7 @@ struct LearnedCheckerSettingsStatus: Equatable {
   init(checkedBy judge: LearnedWordJudge) {
     line = Self.checkedByLine(judge.displayName)
     canRetry = false
+    readiness = .ready
   }
 
   private static func checkedByLine(_ judge: String) -> String {
@@ -43,9 +46,11 @@ struct LearnedCheckerSettingsStatus: Equatable {
     if selection.checker != nil {
       line = Self.checkedByLine(judge)
       canRetry = false
+      readiness = .ready
       return
     }
     canRetry = selection.retryAvailable
+    readiness = selection.absence == .engineHasNoChecker ? .notAvailable : .notReady
     switch selection.absence {
     case .adapterDownloading:
       line = String(

@@ -55,6 +55,37 @@ struct LearnFromEditsSettingsPresentation: Equatable, Sendable {
   /// The one-line reason under the row when it is disabled; nil when enabled.
   let secondaryLine: String?
   let action: Action?
+  /// The short word on the switch's line (#5006), decided here with the state,
+  /// never read back from the copy. The view shows `.off` when the switch is off.
+  let readiness: StatusWord
+
+  /// The short status word after a Learn from switch's "?" (#5006). One owner
+  /// for both switches: this presentation and `LearnedCheckerSettingsStatus`
+  /// each assign one in their own state branches.
+  enum StatusWord: Equatable, Sendable {
+    case ready, off, paused, notReady, notAvailable
+
+    var text: String {
+      switch self {
+      case .ready:
+        String(localized: "Ready", comment: "Dictionary, Learn from: status word after a switch: it works now.")
+      case .off:
+        String(localized: "Off", comment: "Dictionary, Learn from: status word after a switch: the switch is off.")
+      case .paused:
+        String(
+          localized: "Paused",
+          comment: "Dictionary, Learn from: status word after Fix words it learned: Enable Dictionary is off.")
+      case .notReady:
+        String(
+          localized: "Not ready",
+          comment: "Dictionary, Learn from: status word after a switch: it is downloading, loading or needs a retry.")
+      case .notAvailable:
+        String(
+          localized: "Not available",
+          comment: "Dictionary, Learn from: status word after a switch: this Mac or this polish choice cannot do it.")
+      }
+    }
+  }
 
   /// Founder copy 2026-09-21, verbatim. The row says what the feature does
   /// and how to take a word back; where it works, how the judge runs and
@@ -130,10 +161,12 @@ struct LearnFromEditsSettingsPresentation: Equatable, Sendable {
       isEnabled = true
       secondaryLine = nil
       action = nil
+      readiness = .ready
     case (.unavailable, .downloadedNotLoaded):
       isEnabled = true
       secondaryLine = nil
       action = nil
+      readiness = .ready
     case (.unavailable, .notInstalled):
       isEnabled = false
       secondaryLine = String(
@@ -141,10 +174,12 @@ struct LearnFromEditsSettingsPresentation: Equatable, Sendable {
         comment:
           "Your Words, Learn from: the self-learning dictionary row: the line under the switch.")
       action = .download
+      readiness = .notReady
     case (.unavailable, .downloading(_, let written, let total)):
       isEnabled = false
       secondaryLine = Self.downloadingLine(written: written, total: total)
       action = .cancel
+      readiness = .notReady
     case (.unavailable, .verifying):
       isEnabled = false
       secondaryLine = String(
@@ -152,6 +187,7 @@ struct LearnFromEditsSettingsPresentation: Equatable, Sendable {
         comment:
           "Your Words, Learn from: the self-learning dictionary row: the line under the switch.")
       action = nil
+      readiness = .notReady
     case (.unavailable, .loading):
       isEnabled = false
       secondaryLine = String(
@@ -159,6 +195,7 @@ struct LearnFromEditsSettingsPresentation: Equatable, Sendable {
         comment:
           "Your Words, Learn from: the self-learning dictionary row: the line under the switch.")
       action = nil
+      readiness = .notReady
     case (.unavailable, .cancelled):
       isEnabled = false
       secondaryLine = String(
@@ -166,6 +203,7 @@ struct LearnFromEditsSettingsPresentation: Equatable, Sendable {
         comment:
           "Your Words, Learn from: the self-learning dictionary row: the line under the switch.")
       action = .download
+      readiness = .notReady
     case (.unavailable, .deliveryFailed):
       isEnabled = false
       secondaryLine = String(
@@ -173,6 +211,7 @@ struct LearnFromEditsSettingsPresentation: Equatable, Sendable {
         comment:
           "Your Words, Learn from: the self-learning dictionary row: the line under the switch.")
       action = .download
+      readiness = .notReady
     case (.unavailable, .loadFailed):
       isEnabled = false
       secondaryLine = String(
@@ -180,6 +219,7 @@ struct LearnFromEditsSettingsPresentation: Equatable, Sendable {
         comment:
           "Your Words, Learn from: the self-learning dictionary row: the line under the switch.")
       action = .retryLoad
+      readiness = .notReady
     case (.unavailable, .identityMismatch):
       isEnabled = false
       secondaryLine = String(
@@ -187,6 +227,7 @@ struct LearnFromEditsSettingsPresentation: Equatable, Sendable {
         comment:
           "Your Words, Learn from: the self-learning dictionary row: the line under the switch.")
       action = .removeAndDownload
+      readiness = .notReady
     case (.unavailable, .pausedByKillSwitch):
       isEnabled = false
       secondaryLine = String(
@@ -194,6 +235,7 @@ struct LearnFromEditsSettingsPresentation: Equatable, Sendable {
         comment:
           "Your Words, Learn from: the self-learning dictionary row: the line under the switch.")
       action = nil
+      readiness = .notReady
     case (.unavailable, .waitingForOnboarding):
       isEnabled = false
       secondaryLine = String(
@@ -201,6 +243,7 @@ struct LearnFromEditsSettingsPresentation: Equatable, Sendable {
         comment:
           "Your Words, Learn from: the self-learning dictionary row: the line under the switch.")
       action = nil
+      readiness = .notReady
     case (.unavailable, .waitingForSpeechModel):
       isEnabled = false
       secondaryLine = String(
@@ -208,6 +251,7 @@ struct LearnFromEditsSettingsPresentation: Equatable, Sendable {
         comment:
           "Your Words, Learn from: the self-learning dictionary row: the line under the switch.")
       action = nil
+      readiness = .notReady
     case (.unavailable, .debugLoading):
       isEnabled = false
       secondaryLine = String(
@@ -216,6 +260,7 @@ struct LearnFromEditsSettingsPresentation: Equatable, Sendable {
           "Your Words, Learn from: the self-learning dictionary row: the line under the switch. Developer builds only."
       )
       action = nil
+      readiness = .notReady
     case (.unavailable, .debugFailed):
       isEnabled = false
       secondaryLine = String(
@@ -224,6 +269,7 @@ struct LearnFromEditsSettingsPresentation: Equatable, Sendable {
           "Your Words, Learn from: the self-learning dictionary row: the line under the switch. Developer builds only."
       )
       action = nil
+      readiness = .notReady
     case (.unavailable, .removalFailed):
       isEnabled = false
       secondaryLine = String(
@@ -231,6 +277,7 @@ struct LearnFromEditsSettingsPresentation: Equatable, Sendable {
         comment:
           "Your Words, Learn from: the self-learning dictionary row: the line under the switch.")
       action = .removeAndDownload
+      readiness = .notReady
     case (.unavailable(.noQualifiedArm), .none), (.unavailable(.noQualifiedArm), .ready):
       // `.ready` with no arm: the loaded judge is not qualified for THIS macOS.
       isEnabled = false
@@ -239,6 +286,7 @@ struct LearnFromEditsSettingsPresentation: Equatable, Sendable {
         comment:
           "Your Words, Learn from: the self-learning dictionary row: the line under the switch.")
       action = nil
+      readiness = .notAvailable
     case (.unavailable(.afmUnavailableNoRulesFallback), .none),
       (.unavailable(.afmUnavailableNoRulesFallback), .ready):
       isEnabled = false
@@ -247,6 +295,7 @@ struct LearnFromEditsSettingsPresentation: Equatable, Sendable {
         comment:
           "Your Words, Learn from: the self-learning dictionary row: the line under the switch.")
       action = nil
+      readiness = .notAvailable
     }
   }
 

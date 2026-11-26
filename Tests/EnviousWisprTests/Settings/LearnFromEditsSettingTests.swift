@@ -110,6 +110,10 @@ struct LearnFromEditsRowTests {
     #expect(LearnFromEditsSettingsPresentation.unwired == none, "before wiring the row is disabled")
     let classifier = LearnFromEditsSettingsPresentation(selection: .arm(.classifier), judge: .ready)
     #expect(classifier.isEnabled && classifier.secondaryLine == nil && classifier.action == nil)
+    // #5006: the status word is decided with the state.
+    #expect([rules, afm, classifier].allSatisfy { $0.readiness == .ready })
+    #expect(none.readiness == .notAvailable && off.readiness == .notAvailable)
+    #expect(LearnFromEditsSettingsPresentation(selection: .unavailable(.noQualifiedArm), judge: .downloadedNotLoaded).readiness == .ready)
   }
 
   @Test("#996 phase D: every delivered-judge phase disables the row with its own line and its one action, and a ready judge on an unqualified macOS still says so")
@@ -140,6 +144,7 @@ struct LearnFromEditsRowTests {
       #expect(!p.isEnabled, "\(phase)")
       #expect(p.secondaryLine == line, "\(phase)")
       #expect(p.action == action, "\(phase)")
+      #expect(p.readiness == ([.ready, .none].contains(phase) ? .notAvailable : .notReady), "\(phase)")
     }
     // A total of zero bytes (size unknown yet) drops the count.
     #expect(P.downloadingLine(written: 0, total: 0) == "Downloading the correction model")
