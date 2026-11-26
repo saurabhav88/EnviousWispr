@@ -99,6 +99,16 @@ struct AFMPreparedSessionKeyTests {
     #expect(calls == 1)
   }
 
+  // When this fails, a model service hiccup silently skips Apple polish (#5014).
+  @Test("a window the live read could not report becomes the floor, a reported one is kept")
+  func unreportedWindowUsesTheFloor() {
+    let floor = C.afmContextWindowTokens
+    #expect(C.usableContextWindow(reported: 0) == floor)
+    #expect(C.usableContextWindow(reported: -1) == floor)
+    #expect(C.usableContextWindow(reported: 4096) == 4096)
+    #expect(C.usableContextWindow(reported: 8192) == 8192)
+  }
+
   @Test("the outcome labels match the telemetry values")
   func outcomeLabels() {
     #expect(C.AFMPrewarmOutcome.hit.rawValue == "hit")
@@ -119,7 +129,8 @@ struct AFMPreparedSessionKeyTests {
   /// including hosted CI): a prepared session is used on a hit, refused on a key mismatch,
   /// and absent when none is offered.
   @Suite(
-    "Apple prepared session through the real connector (#3195)", .tags(.productOutcome),
+    "Apple prepared session through the real connector (#3195)",
+    .tags(.productOutcome, .realBoundary), .realBoundaryRun,
     .serialized, .enabled(if: appleModelAvailable(), "needs the on-device Apple model"))
   struct AFMPreparedSessionConnectorTests {
     private let text = "so the invoice is still open I think and I was going to send it today"
