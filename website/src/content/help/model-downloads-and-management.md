@@ -29,7 +29,7 @@ EnviousWispr retries some temporary network problems by itself. Anything else st
 
 ### AI polish download in the menu bar
 
-While your AI polish model downloads after setup, the EnviousWispr menu shows **AI polish downloading · NN%**. After setup, once the download finishes and the model is ready, EnviousWispr can show **AI polish download complete** once.
+While your EG-1 or S1-mini AI polish model downloads after setup, the EnviousWispr menu shows **AI polish downloading · NN%**. After setup, once the download finishes and the model is ready, EnviousWispr can show **AI polish download complete** once.
 
 The download continues only while EnviousWispr is open. If you quit before it finishes, the download is paused and its progress is kept. The menu then shows **AI polish download paused · Resume**; click it to continue from where it stopped. If the menu shows no Resume line, start the download again in **Settings** > **AI Polish**.
 
