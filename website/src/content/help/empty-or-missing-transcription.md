@@ -35,7 +35,7 @@ If you see it, check the mute switch, the cable or the Bluetooth connection, and
 
 This notice is for a microphone that still looks connected but sends silence; a microphone that is switched off can look like that too. When EnviousWispr detects that the microphone was disconnected, or a recording starts without receiving any audio at all, the recording can end, and the pill tells you what happened instead.
 
-To hide the notice, switch off **Warn when the microphone is silent** on the **Microphone** tab. Without **Stop recording on silence**, digital silence never ends a recording. With it on, digital silence counts as a pause, so a dictation ends after the pause length you choose.
+To hide the notice, switch off **Warn when the microphone is silent** on the **Microphone** tab. Without **Stop recording on silence**, digital silence never ends a recording. With it on, digital silence after you have spoken counts as a pause, so a dictation ends after the pause length you choose.
 
 ### Pick the right microphone
 
