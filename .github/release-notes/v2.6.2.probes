@@ -3,6 +3,8 @@
 Warn when the microphone is silent
 # Clipboard-only dictation (#4479): the line under Paste dictations automatically.
 Turn this off to keep your latest dictation on the clipboard for manual paste.
+# Fix words it learned switch (#3294): Settings > Dictionary > Learn from....
+Fix words it learned
 # Blocked words window (#5006): its search field.
 Search blocked words
 # Unload the on-Mac polish model (#3853): the line under Unload polish model after.
