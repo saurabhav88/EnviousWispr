@@ -42,6 +42,7 @@ When **Save dictation recordings** is on, EnviousWispr saves a recording of each
 - **Choose how long recordings stay.** Go to **Settings** > **App Settings** > **Recordings** to set **Keep dictation recordings** and the **Storage warning threshold**, or to turn off **Save dictation recordings**. Turning it off stops new recordings; existing ones still follow your keep period and storage settings.
 - **Keep one recording for good.** Click **···** on its card and choose **Keep this recording**. EnviousWispr keeps it regardless of your keep period.
 - **Delete a recording but keep the text.** Click **···** and choose **Delete recording, keep text**. To remove every dictation recording at once, use **Delete all dictation recordings** on the **Recordings** page. Your text always stays.
+- **Save a recording as a file.** Click **···** on the card and choose **Save audio…** when it appears. EnviousWispr saves the recording as an M4A file where you choose and shows it in Finder. The saved file is your own copy: deleting the dictation or its recording later does not touch it.
 
 ### Use a transcript
 
@@ -49,6 +50,7 @@ Click **Open** on a transcript card to view the full transcript. To rename it, c
 
 - **Listen along.** When the original file can be played, a player lets you listen at speeds from 0.75× to 2× and jump back or forward 15 seconds. If the transcript has saved times, **Transcript settings** offers **Timestamps**, and **Follow playback** keeps the playing line in view while audio plays.
 - **Transcribe it again.** Click **···**, choose **Transcribe again with**, pick a ready speech engine and confirm. The new text replaces the existing transcript, including speaker names and cleanup, without changing your original file. This only works while the original file can be played.
+- **Find the original file.** When the original file can be played, click **···** and choose **Show in Finder** to see it in Finder.
 - **Find a moved file.** If the original is unavailable and **Locate original…** appears, choose it and select the original file.
 - **Polish it again, share it or open it in its own window.** You will find **Polish again with**, **Share…**, **Save as…** and **Open in new window** in the **···** menu as well.
 

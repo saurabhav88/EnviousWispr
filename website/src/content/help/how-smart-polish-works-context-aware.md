@@ -15,7 +15,7 @@ When EnviousWispr sends your dictation to an AI for polishing, it includes a few
 EnviousWispr can send these pieces of information alongside your text.
 
 - **That this is speech, not typing.** The AI knows to look for words that sound alike but are wrong, such as "their" for "there".
-- **Your language.** OpenAI, Gemini, Claude and most Ollama models are told your language when you lock one. Otherwise they are told to keep the language of the transcript and never translate it. EG-1 and S1-mini follow their own built-in language guidance. Either way, it corrects your grammar instead of translating you.
+- **Your language.** OpenAI, Gemini, Claude and most Ollama models are told your language when you lock one. Otherwise they are told to keep the language of the transcript and never translate it. EG-1 and S1-mini follow their own built-in language guidance. Either way, it corrects your grammar instead of translating you, unless you choose another **Dictation output language** with Claude.
 - **Which app you are dictating into.** A message in Slack and a comment in a code editor need different styles of tidying.
 - **Your custom words.** Your own vocabulary list goes along too, so your spellings survive the rewrite.
 

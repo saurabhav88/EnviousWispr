@@ -25,7 +25,7 @@ The polish step has limits that protect what you said.
 
 - **Add ideas.** The model is not allowed to add new thoughts or expand on your points.
 - **Answer questions.** If you dictate a question, the model tidies the wording instead of replying.
-- **Translate text.** It is told to keep your language. If you dictate in French, you should get French back.
+- **Translate text.** It is told to keep your language. If you dictate in French, you should get French back. The one exception is a choice you make yourself: with Claude, **Dictation output language** can write your dictation in English, German or Hindi. See [Dictating in other languages](/help/multi-language-dictation/).
 
 AI can still make mistakes. EnviousWispr checks the result and rejects the obvious failures. Read [_Hallucination Protection_](/help/hallucination-protection/) for details, and read anything important before you send it.
 

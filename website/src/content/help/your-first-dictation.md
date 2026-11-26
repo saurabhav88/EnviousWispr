@@ -14,6 +14,8 @@ You dictate by holding a key, speaking, and letting go. Your first attempt takes
 
 If you have finished setup, you have already done one. The last setup screen is a practice box where you hold your keybind, say something, and watch it typed. This page is about doing the same in a real app.
 
+If you chose **Skip ahead** in setup because AI polish was still downloading, the practice box shows **Basic cleanup for now**: it fixes filler words and formatting only until AI polish is ready. After you try it, the screen says **Dictation worked**. AI polish turns on by itself when it is ready. After setup, a pill can tell you **AI polish download complete**.
+
 ### Try it now
 
 1. **Open a text box.** Open any app you type in, such as Notes or Mail, and click into a text box so the cursor is blinking.

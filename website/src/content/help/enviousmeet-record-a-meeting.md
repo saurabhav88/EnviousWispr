@@ -22,7 +22,7 @@ Open EnviousWispr and click **EnviousMeet** in the sidebar. The first time, the 
 3. **Permissions.** Allow **Microphone** and, on macOS 14.2 or later, **Call sound** to continue. macOS may ask about call sound during your first recording. **Calendar** is optional and has **Not now**. Below macOS 14.2, call sound is not available, and only your microphone is recorded.
 4. **You're all set!** Click **Open EnviousMeet**. If something is still off, the screen lists it under "Not allowed yet".
 
-Finishing setup also starts the **Speaker labels** download, which live speaker labels use (see below).
+Finishing setup also starts the **Speaker labels** download, which live speaker labels use (see below). It has two parts of about 199 MB each: one for live labels and one for finished calls. If you have the live part and the finished-calls part is missing after an update, EnviousWispr can download it by itself when EnviousMeet is idle, and never starts it while a meeting is being recorded or transcribed. **Cancel** or **Remove** on the **Models** tab stops that until you press **Download** again.
 
 ### What you agree to before you record
 
@@ -87,7 +87,7 @@ On the **Models** tab of the EnviousMeet page, choose the engine under **Live Pr
 
 **Download.** Choosing Universal starts its download. During a meeting, the download waits until the meeting is recorded and transcribed. Apple language downloads are unavailable until recording and transcription finish; start the download then. Downloads already running continue. If Universal is not downloaded yet, an installed Apple language can show live words meanwhile. Until live words are ready, a meeting records without them.
 
-**Live speaker labels.** With live words and call sound working, and the **Speaker labels** download ready (its card is on the **Models** tab), call words first show under **Speaker**. Words the speaker model can assign move into numbered blocks such as **Speaker 1** and **Speaker 2**, and show names from supported call apps when there is enough evidence. Words it cannot assign stay under **Speaker**, and similar or overlapping voices can share a label. Your microphone is labeled **You**. A Speaker labels download that finishes during a meeting is used from the next meeting.
+**Live speaker labels.** With live words and call sound working, and the **Speaker labels** download ready (its card is on the **Models** tab), call words first show under **Speaker**. Words the speaker model can assign move into numbered blocks such as **Speaker 1** and **Speaker 2**, and show names from supported call apps when there is enough evidence. Words it cannot assign stay under **Speaker**, and similar or overlapping voices can share a label. Your microphone is labeled **You**. A Speaker labels download that finishes during a meeting is used from the next meeting. Older meetings change only when you use **Transcribe again with**.
 
 ### Choose the transcript engine and language
 
@@ -105,7 +105,8 @@ Your meetings are on the **Meetings** tab of **History**. Click **Open** on a me
 - **Notes.** Type your own notes on the **Your notes** tab, beside the transcript. While the meeting records, **Mark moment** adds a timed marker and **Action item** turns the current note into a task, or back.
 - **Summary.** When automatic summaries are on, your EnviousMeet summary engine writes one on the meeting's **AI summary** tab.
 - **If a change cannot be saved.** History says **Your notes could not be saved.** or **Your summary changes could not be saved.** Click **Try again**. Your typing stays in the app until a save works.
-- **Audio.** Each recording keeps its audio for the period set in **Keep meeting audio** in **Settings** > **App Settings** > **Recordings**, or until you delete it. **Delete recording, keep text** in the **···** menu removes only the audio and keeps the transcript and notes. **Delete meeting** removes everything.
+- **Audio.** Each recording keeps its audio for the period set in **Keep meeting audio** in **Settings** > **App Settings** > **Recordings**, or until you delete it. **Delete recording, keep text** in the **···** menu removes only the audio and keeps the transcript and notes. **Delete meeting** removes everything. To save space, EnviousWispr keeps a smaller copy of a finished meeting's audio on your Mac and removes the full-size recording files once it has checked the copy. Playback, **Save audio…** and **Transcribe again with** use the smaller copy.
+- **Save the meeting's audio.** While the meeting still keeps its recording, click **···** on the meeting card or the meeting page and choose **Save audio…** when it appears. EnviousWispr saves one M4A file with what it recorded, your microphone and the call sound when it was captured, as you hear it in playback, and shows it in Finder.
 - **Transcribe again with** in the **···** menu writes the transcript again from the kept audio, with any ready transcript engine. It asks you first, because the new text replaces the transcript, including speaker names. Your current transcript stays until the new one is ready.
 
 ### How meetings are named

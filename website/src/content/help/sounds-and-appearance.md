@@ -42,10 +42,10 @@ To keep it in the menu bar alone, go to **App Settings** > **Appearance** and sw
 
 ### Change the app's language
 
-EnviousWispr's menus, settings and messages come in English and German. Go to **App Settings** > **Appearance** and pick a language in the **Language** row:
+EnviousWispr's menus, settings and messages come in English, German, Spanish and French. Go to **App Settings** > **Appearance** and pick a language in the **Language** row:
 
 - **System default** follows the language your Mac uses.
-- **English** or **Deutsch** uses that language no matter what your Mac is set to.
+- **English**, **Deutsch**, **Español** or **Français** uses that language no matter what your Mac is set to.
 
 EnviousWispr then shows **EnviousWispr uses the new language after it relaunches.** with a **Relaunch to apply** button. The button is unavailable while a dictation or file transcription is in progress, so a relaunch never cuts off your work.
 
