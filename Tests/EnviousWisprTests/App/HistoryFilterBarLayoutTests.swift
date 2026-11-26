@@ -494,10 +494,13 @@ struct HistoryFilterBarLayoutTests {
           rig.coordinator.browser.requestedHistoryState(for: .dictations).query == "a",
           "the first character reached the query")
         #expect(rig.field.stringValue == "a")
-        // #4716: no layout or row counts here. Around focus SwiftUI sometimes re-walks the whole
-        // bar's size by itself (full runs only, never typing, nothing a user sees), so a count here
-        // failed at random and never found a bug. The keystroke cost (#4682) is asserted in
-        // `typingLeavesTheControlsAlone` and `typingClosesAnOpenPicker`.
+        #expect(
+          rig.probe.frames["search"] == searchFrame && rig.field.frame == fieldFrame,
+          "focus and the first character kept the search row where it was")
+        // #4716: no layout or row counts here. In some full runs, never alone, a whole-bar size
+        // walk (trigger not identified) landed in the focus window or in the next nine characters,
+        // so a count here failed at random and never found a bug. The keystroke cost (#4682) is
+        // asserted in `typingLeavesTheControlsAlone` and `typingClosesAnOpenPicker`.
         for letter in "bcdefghij" {
           try type(String(letter), into: rig.field)
           pump(rig.view)
@@ -506,7 +509,7 @@ struct HistoryFilterBarLayoutTests {
         #expect(rig.coordinator.browser.requestedHistoryState(for: .dictations).query == "abcdefghij")
         #expect(
           rig.probe.frames["search"] == searchFrame && rig.field.frame == fieldFrame,
-          "focus and typing kept the search row where it was")
+          "the next nine characters kept the search row where it was")
       }
     }
 
