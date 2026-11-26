@@ -218,6 +218,31 @@ struct HistoryDiaryTests {
     #expect(Set(options.map(\.filter)) == [.all, .named("com.openai.codex"), .named("Codex")])
   }
 
+  @MainActor
+  @Test("a saved dictation suggests its app and time, file-safe, else Dictation (#5001)")
+  func saveNames() throws {
+    let at = Date(timeIntervalSince1970: 1_764_085_330)  // 2025-11-25 15:42:10 UTC
+    func name(_ app: String?, _ locale: String = "en_US", label: String = "Slack") -> String {
+      HistoryDictationCard.saveName(
+        targetApp: app, createdAt: at, locale: Locale(identifier: locale),
+        timeZone: TimeZone(identifier: "UTC")!, appLabel: { _ in label }
+      ).replacingOccurrences(of: "\u{202F}", with: " ")
+    }
+    #expect(name("com.tinyspeck.slackmacgap") == "Slack 2025-11-25 at 3.42.10 PM")
+    #expect(name("com.tinyspeck.slackmacgap", "en_GB") == "Slack 2025-11-25 at 15.42.10")
+    #expect(name(nil) == "Dictation 2025-11-25 at 3.42.10 PM")
+    #expect(name(" ") == "Dictation 2025-11-25 at 3.42.10 PM")
+    #expect(name("x", label: ".A/B: C") == "A-B- C 2025-11-25 at 3.42.10 PM")
+    // A card built from the catalog carries the app the save name uses.
+    let row = Transcript(text: "hi", backendType: .parakeet)
+    let summary = HistoryCatalog.Summary(
+      key: .init(tab: .dictations, id: row.id), date: row.createdAt,
+      appKey: "com.tinyspeck.slackmacgap", preview: "hi", sources: [], rowID: row.id,
+      dictation: HistoryDictationDisplay.catalogData(of: row))
+    let display = try #require(HistoryDictationDisplay(summary))
+    #expect(display.targetApp == "com.tinyspeck.slackmacgap")
+  }
+
   @Test("help leaves out Polish again and states the real recording retention")
   func helpPerTab() throws {
     let dictations = HistoryHelpContent.items(for: .dictations, retention: .forever)
