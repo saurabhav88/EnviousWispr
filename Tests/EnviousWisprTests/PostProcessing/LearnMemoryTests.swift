@@ -291,6 +291,8 @@ struct LearnMemoryTests {
     let memory = LearnMemory(fileURL: url, now: { Date(timeIntervalSince1970: 1_800_000_000) })
     #expect(memory.isRepeat(Self.cenit))
     #expect(memory.isBlocked(Self.sify))
+    // #5006: an entry written before spellings were kept lists its key's words.
+    #expect(memory.blockedPairs == [.init(key: Self.sify, heard: "cifi", fixed: "sify")])
     memory.recordJudgeRefusal(CorrectionPairKey.make(original: "a", corrected: "B"))
     let written = try String(contentsOf: url, encoding: .utf8)
     #expect(written.contains("\"lastSeen\" : \"2027-01-15T10:00:00Z\""))
@@ -403,5 +405,86 @@ struct LearnMemoryTests {
   private static func writeStore(_ pairs: [String: LearnMemory.Entry], to url: URL) throws {
     try LearnMemory.encoder().encode(Store(version: LearnMemory.currentVersion, pairs: pairs)).write(
       to: url)
+  }
+
+  // MARK: Blocked words list (#5006)
+
+  private static func block(_ memory: LearnMemory, _ key: String, _ heard: String, _ fixed: String) {
+    memory.recordUndo(key, display: (heard, fixed))
+    memory.recordUndo(key, display: (heard, fixed))
+  }
+
+  @Test("Remove unblocks only that pair, keeps its spelling for Undo, and Undo puts it back")
+  func removeAndRestore() throws {
+    let dir = Self.tempDir()
+    defer { Self.cleanup(dir) }
+    let memory = Self.memory(dir)
+    Self.block(memory, Self.cenit, "Senate", "CENIT")
+    Self.block(memory, Self.sify, "CIFI", "Sify")
+    #expect(Set(memory.blockedPairs.map(\.fixed)) == ["CENIT", "Sify"])
+    guard case .committed(let token?) = memory.removeBlocked(Self.cenit) else {
+      Issue.record("removeBlocked did not commit a token")
+      return
+    }
+    #expect(!memory.isBlocked(Self.cenit) && memory.isBlocked(Self.sify))
+    let url = dir.appendingPathComponent(LearnMemory.fileName)
+    let identity = { try FileManager.default.attributesOfItem(atPath: url.path)[.systemFileNumber] as? Int }
+    let before = try identity()
+    #expect(memory.removeBlocked(Self.cenit) == .committed(nil))
+    #expect(try identity() == before, "a miss writes nothing (every save replaces the file)")
+    #expect(Self.memory(dir).restoreBlocked(token) == .committed(true))
+    #expect(memory.blockedPairs.map(\.heard).contains("Senate"))
+  }
+
+  @Test("after a Remove the next no counts as the first")
+  func removedPairStartsOver() {
+    let dir = Self.tempDir()
+    defer { Self.cleanup(dir) }
+    let memory = Self.memory(dir)
+    Self.block(memory, Self.cenit, "Senate", "CENIT")
+    memory.removeBlocked(Self.cenit)
+    #expect(memory.recordUndo(Self.cenit) == .committed(.watching))
+  }
+
+  @Test("Undo survives an unrelated write but not the same pair returning or a Forget all elsewhere")
+  func undoEligibility() {
+    let dir = Self.tempDir()
+    defer { Self.cleanup(dir) }
+    let memory = Self.memory(dir)
+    func removed() -> LearnMemory.UnblockToken? {
+      Self.block(memory, Self.cenit, "Senate", "CENIT")
+      guard case .committed(let token?) = memory.removeBlocked(Self.cenit) else { return nil }
+      return token
+    }
+    let unrelated = removed()
+    memory.recordJudgeRefusal(Self.sify)
+    #expect(unrelated.map { memory.restoreBlocked($0) } == .committed(true))
+    memory.removeBlocked(Self.cenit)
+    let samePair = removed()
+    memory.recordJudgeRefusal(Self.cenit)
+    #expect(samePair.map { memory.restoreBlocked($0) } == .committed(false), "the pair exists again")
+    memory.removeBlocked(Self.cenit)
+    let forgotten = removed()
+    let other = Self.memory(dir)
+    other.forgetAll()
+    other.recordJudgeRefusal(Self.sify)
+    #expect(forgotten.map { memory.restoreBlocked($0) } == .committed(false), "a new memory after Forget all")
+    #expect(CorrectionPairKey.parts("v1:[\"a\",") == nil)
+  }
+
+  @Test("Undo into an unreadable memory is unavailable and leaves the file untouched")
+  func undoIntoUnreadableFile() throws {
+    let dir = Self.tempDir()
+    defer { Self.cleanup(dir) }
+    let memory = Self.memory(dir)
+    Self.block(memory, Self.cenit, "Senate", "CENIT")
+    guard case .committed(let token?) = memory.removeBlocked(Self.cenit) else {
+      Issue.record("removeBlocked did not commit a token")
+      return
+    }
+    let url = dir.appendingPathComponent(LearnMemory.fileName)
+    try Data("not json".utf8).write(to: url)
+    #expect(memory.restoreBlocked(token) == .committed(false))
+    #expect(try Data(contentsOf: url) == Data("not json".utf8))
   }
 }

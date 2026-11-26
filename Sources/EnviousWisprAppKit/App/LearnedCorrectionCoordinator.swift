@@ -217,6 +217,9 @@ final class LearnedCorrectionCoordinator {
     /// The learned pair (`CorrectionPairKey`), so an Undo records the user's
     /// "no" against exactly what was learned (#3975).
     let pairKey: String
+    /// The pair as written (trimmed), shown in the Blocked words list (#5006).
+    let heard: String
+    let fixed: String
     /// How the pair was learned; `learn_undone.via` copies it.
     let via: T.LearnVia
     /// `learn_undo_shown` fires once, at the first admission.
@@ -425,7 +428,8 @@ final class LearnedCorrectionCoordinator {
       id: makeID(), wordID: wordID, canonical: postSave.canonical, kind: kind)
     undoRecord = UndoRecord(
       pillID: pill.id, wordID: wordID, operation: operation, preSave: preSave,
-      postSave: postSave, kind: kind == .added ? .added : .updated, pairKey: pairKey, via: via)
+      postSave: postSave, kind: kind == .added ? .added : .updated, pairKey: pairKey,
+      heard: original, fixed: corrected, via: via)
     telemetry.learnAdded(state: state, via: via)
     presenter?.show(pill: pill)
     return .learned(pill)
@@ -540,7 +544,7 @@ final class LearnedCorrectionCoordinator {
     // #3975: only a proven Undo is the user's "no". The memory key and the
     // refusal row ride only when the memory write committed.
     let memoryResult: T.UndoMemory?
-    switch memory.recordUndo(record.pairKey) {
+    switch memory.recordUndo(record.pairKey, display: (record.heard, record.fixed)) {
     case .committed(.watching): memoryResult = .watching
     case .committed(.blocked): memoryResult = .blocked
     case .notRemembered: memoryResult = nil

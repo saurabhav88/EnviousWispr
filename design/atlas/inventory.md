@@ -119,10 +119,10 @@ Each picture is the whole page, top to bottom, at the 820pt window (a 578pt page
 
 ## page-dictionary-learnFrom
 **Dictionary > Learn From.** Controls learning new words from corrections, applying learned corrections, and importing Contacts.
-- **Top to bottom:** LEARN FROM... introduction, Learn new words card, Fix words it learned card, Import from Contacts card.
-- **Controls:** Independent learning and fixing switches with help and availability. Keep in sync on launch belongs to Contacts.
-- **Buttons:** Learn more, Import, and any action needed to restore availability.
-- **Parts:** SettingsSectionHeading, SettingsInfoButton, BrandedToggleStyle.
+- **Top to bottom:** LEARN FROM... introduction, Self-Learning Dictionary heading, one card with Learn new words and Fix words it learned on one line each (title, "?", status word such as Ready, Off, Paused, Not ready or Not available, switch) and, while the app remembers something, a Learning memory row with an "N blocked" button; then the Import from Contacts card. The picture shows no learning memory, so that row is absent.
+- **Controls:** Independent learning and fixing switches. Learn more sits inside the Learn new words "?", and informational reasons inside each switch's "?"; a state you must act on adds one line with its button. Keep in sync on launch belongs to Contacts.
+- **Buttons:** "N blocked" (opens the Blocked words window: search, Remove with Undo, Forget all with a confirm; not pictured), Import, and any action needed to restore availability.
+- **Parts:** SettingsInfoButton, SettingsHelpArticleLink, BrandedToggleStyle, settingsButton.
 
 ## page-dictionary-quickAdd
 **Dictionary > Quick Add.** Explains how to add a highlighted word to the dictionary from any app.

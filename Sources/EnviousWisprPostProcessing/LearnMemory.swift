@@ -79,11 +79,44 @@ package final class LearnMemory {
     package var userNos: Int
     package var blocked: Bool
     package var lastSeen: Date
+    /// How the pair was written when the user last said no to it: [heard,
+    /// fixed] (#5006). Display only, never identity; nil in entries written
+    /// before #5006, which the Blocked words list shows from the key.
+    package var display: [String]?
+  }
+
+  /// A blocked pair as the Blocked words list shows it (#5006).
+  package struct BlockedPair: Equatable, Sendable, Identifiable {
+    package let key: String
+    package let heard: String
+    package let fixed: String
+    package var id: String { key }
+  }
+
+  /// What one Remove took away, so Undo can put exactly that back (#5006).
+  package struct UnblockToken: Equatable, Sendable {
+    package let key: String
+    let entry: Entry
+    /// The memory the entry was removed from; see `StoreFile.fileID`.
+    let fileID: UUID
   }
 
   private struct StoreFile: Codable {
     var version: Int
     var pairs: [String: Entry]
+    /// Names this memory since the last Forget all or reset (#5006): minted
+    /// by the first write that finds none (a new file, a file an older app
+    /// wrote, the first write after a Forget all) and carried by every later
+    /// write. Undo of a Remove restores only into the same memory.
+    var fileID: UUID?
+  }
+
+  /// One transaction's decision: write the new pairs, answer without writing,
+  /// or refuse (a cap; the event is not remembered).
+  private enum Step<T> {
+    case write(T)
+    case keep(T)
+    case refuse
   }
 
   /// What was on disk at the last read: absent, or a file with this identity.
@@ -97,6 +130,8 @@ package final class LearnMemory {
   private let lockSyscall: (Int32, Int32) -> Int32
   private let report: (LearnMemoryDiagnostic) -> Void
   private var pairs: [String: Entry] = [:]
+  /// `StoreFile.fileID` of the last successful read; nil when absent or none.
+  private var lastReadFileID: UUID?
   /// The identity of the file `pairs` was read from; nil means "read again".
   private var stamp: Stamp?
   /// Test seam: runs after a read and before the file is stat-ed again, so a
@@ -143,6 +178,22 @@ package final class LearnMemory {
     return Set(pairs.filter { $0.value.blocked }.keys)
   }
 
+  /// Every blocked pair the list can name, newest first (#5006). An entry
+  /// with no `display` whose key does not parse is left out, so the list and
+  /// its count always agree; Forget all still clears it.
+  package var blockedPairs: [BlockedPair] {
+    refreshIfChanged()
+    return pairs.filter(\.value.blocked)
+      .sorted { ($0.value.lastSeen, $1.key) > ($1.value.lastSeen, $0.key) }
+      .compactMap { key, entry in
+        if let shown = entry.display, shown.count == 2 {
+          return BlockedPair(key: key, heard: shown[0], fixed: shown[1])
+        }
+        guard let parts = CorrectionPairKey.parts(key) else { return nil }
+        return BlockedPair(key: key, heard: parts.original, fixed: parts.corrected)
+      }
+  }
+
   package var blockedCount: Int {
     refreshIfChanged()
     return pairs.values.filter(\.blocked).count
@@ -178,25 +229,67 @@ package final class LearnMemory {
   }
 
   /// One user "no" for this pair (Undo, deleting the learned word, removing
-  /// the learned sound-alike). The second blocks it.
+  /// the learned sound-alike). The second blocks it. `display` is how the
+  /// pair was written (#5006): kept for the Blocked words list, latest wins;
+  /// an already blocked pair writes only when its spelling changed.
   @discardableResult
-  package func recordUndo(_ pairKey: String) -> LearnMemoryMutation<LearnUserNoResult> {
+  package func recordUndo(
+    _ pairKey: String, display: (heard: String, fixed: String)? = nil
+  ) -> LearnMemoryMutation<LearnUserNoResult> {
     let at = now()
-    return transact { pairs in
+    let shown = display.map { [$0.heard, $0.fixed] }
+    return transactSteps { pairs, _ in
       var entry =
         pairs[pairKey] ?? Entry(judgeRefusals: 0, userNos: 0, blocked: false, lastSeen: at)
-      if entry.blocked { return .blocked }
+      if entry.blocked {
+        guard let shown, entry.display != shown else { return .keep(.blocked) }
+        entry.display = shown
+        pairs[pairKey] = entry
+        return .write(.blocked)
+      }
       entry.userNos += 1
       entry.lastSeen = at
+      if let shown { entry.display = shown }
       if entry.userNos >= 2 {
         guard pairs.values.filter(\.blocked).count < Self.blockedCap else {
           report(.notRemembered(.blockCap))
-          return nil
+          return .refuse
         }
         entry.blocked = true
       }
       pairs[pairKey] = entry
-      return entry.blocked ? .blocked : .watching
+      return .write(entry.blocked ? .blocked : .watching)
+    }
+  }
+
+  /// Removes one blocked pair (#5006): the whole entry goes, so the next "no"
+  /// for it counts as the first, as after Forget all. Nil, with nothing
+  /// written, when the pair is gone or no longer blocked.
+  @discardableResult
+  package func removeBlocked(_ pairKey: String) -> LearnMemoryMutation<UnblockToken?> {
+    transactSteps { pairs, fileID in
+      guard let entry = pairs[pairKey], entry.blocked else { return .keep(nil) }
+      pairs[pairKey] = nil
+      return .write(UnblockToken(key: pairKey, entry: entry, fileID: fileID))
+    }
+  }
+
+  /// Undo of `removeBlocked` (#5006): puts the removed entry back only into
+  /// the same memory (no Forget all, reset or older-app rewrite since; see
+  /// `StoreFile.fileID`) and only while the pair is absent. Never recovers or
+  /// sets aside an unreadable file. False, with nothing written, otherwise.
+  @discardableResult
+  package func restoreBlocked(_ token: UnblockToken) -> LearnMemoryMutation<Bool> {
+    // An unreadable memory means this Undo is no longer available (§3.3),
+    // not a retryable failure, and restore never sets the file aside.
+    transactSteps(unreadableAnswer: false) { pairs, fileID in
+      guard fileID == token.fileID, pairs[token.key] == nil else { return .keep(false) }
+      guard pairs.values.filter(\.blocked).count < Self.blockedCap else {
+        report(.notRemembered(.blockCap))
+        return .refuse
+      }
+      pairs[token.key] = token.entry
+      return .write(true)
     }
   }
 
@@ -235,22 +328,57 @@ package final class LearnMemory {
   private func transact<T: Equatable & Sendable>(
     _ apply: (inout [String: Entry]) -> T?
   ) -> LearnMemoryMutation<T> {
-    let result = lockedTransact(apply)
-    if case .committed = result { onChange?() }
+    transactSteps { pairs, _ in apply(&pairs).map(Step.write) ?? .refuse }
+  }
+
+  /// `onChange` fires only after a write landed.
+  /// With `unreadableAnswer`, an unreadable file is left exactly as it is and
+  /// that answer returned; without it, the file is set aside as on any read.
+  private func transactSteps<T: Equatable & Sendable>(
+    unreadableAnswer: T? = nil,
+    _ apply: (inout [String: Entry], UUID) -> Step<T>
+  ) -> LearnMemoryMutation<T> {
+    var wrote = false
+    let result = lockedTransact(unreadableAnswer: unreadableAnswer, wrote: &wrote, apply)
+    if wrote { onChange?() }
     return result
   }
 
+  /// `apply` sees the memory's id: the file's, or a new one a write will mint.
   private func lockedTransact<T: Equatable & Sendable>(
-    _ apply: (inout [String: Entry]) -> T?
+    unreadableAnswer: T?, wrote: inout Bool,
+    _ apply: (inout [String: Entry], UUID) -> Step<T>
   ) -> LearnMemoryMutation<T> {
     do {
       return try DurableJSONFile.withExclusiveLock(on: fileURL, lockSyscall: lockSyscall) {
-        var fresh = loadWhileLocked()
-        guard let value = apply(&fresh) else { return .notRemembered }
+        var fresh: [String: Entry]
+        if unreadableAnswer == nil {
+          fresh = loadWhileLocked()
+        } else {
+          switch read() {
+          case .absent: fresh = [:]
+          case .loaded(var loaded):
+            Self.prune(&loaded, now: now())
+            fresh = loaded
+          case .unreadable:
+            guard let unreadableAnswer else { return .notRemembered }
+            return .committed(unreadableAnswer)
+          }
+        }
+        let fileID = lastReadFileID ?? UUID()
+        let value: T
+        switch apply(&fresh, fileID) {
+        case .refuse: return .notRemembered
+        case .keep(let kept):
+          pairs = fresh
+          stamp = currentStamp()
+          return .committed(kept)
+        case .write(let written): value = written
+        }
         Self.prune(&fresh, now: now())
         do {
           let data = try Self.encoder().encode(
-            StoreFile(version: Self.currentVersion, pairs: fresh))
+            StoreFile(version: Self.currentVersion, pairs: fresh, fileID: fileID))
           try DurableJSONFile.write(data: data, to: fileURL, tempPrefix: ".learn-memory")
         } catch {
           report(.notRemembered(.writeFailed))
@@ -258,7 +386,9 @@ package final class LearnMemory {
           return .notRemembered
         }
         pairs = fresh
+        lastReadFileID = fileID
         stamp = currentStamp()
+        wrote = true
         return .committed(value)
       }
     } catch DurableJSONFile.LockFailure.busy {
@@ -342,11 +472,13 @@ package final class LearnMemory {
   }
 
   private func read() -> ReadResult {
+    lastReadFileID = nil
     guard FileManager.default.fileExists(atPath: fileURL.path) else { return .absent }
     guard let data = try? Data(contentsOf: fileURL),
       let file = try? Self.decoder().decode(StoreFile.self, from: data),
       file.version == Self.currentVersion
     else { return .unreadable }
+    lastReadFileID = file.fileID
     return .loaded(file.pairs)
   }
 

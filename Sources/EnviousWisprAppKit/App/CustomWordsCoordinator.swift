@@ -808,6 +808,8 @@ final class CustomWordsCoordinator {
   /// What the Learning memory row shows; read by `refreshLearnMemorySummary`.
   private(set) var learnMemoryStored = false
   private(set) var learnMemoryBlockedCount = 0
+  /// What the Blocked words list shows (#5006); the count above is its length.
+  private(set) var blockedPairs: [LearnMemory.BlockedPair] = []
   /// The last Forget did not delete everything; the row says so.
   private(set) var learnMemoryForgetFailed = false
 
@@ -819,7 +821,43 @@ final class CustomWordsCoordinator {
 
   func refreshLearnMemorySummary() {
     learnMemoryStored = learnMemory.hasStoredMemory
-    learnMemoryBlockedCount = learnMemory.blockedCount
+    blockedPairs = learnMemory.blockedPairs
+    learnMemoryBlockedCount = blockedPairs.count
+  }
+
+  /// What one Remove in the Blocked words list did (#5006).
+  enum UnblockResult: Equatable {
+    case removed(LearnMemory.UnblockToken)
+    case alreadyGone
+    case notRemembered
+  }
+
+  /// What Undo of a Remove did (#5006).
+  enum UndoUnblockResult: Equatable {
+    case restored
+    case expired
+    case notRemembered
+  }
+
+  /// Removes one blocked fix so it can be learned again. The list refreshes
+  /// either way, so a line another app copy already removed disappears.
+  func unblock(_ pair: LearnMemory.BlockedPair) -> UnblockResult {
+    defer { refreshLearnMemorySummary() }
+    switch learnMemory.removeBlocked(pair.key) {
+    case .committed(let token?): return .removed(token)
+    case .committed(nil): return .alreadyGone
+    case .notRemembered: return .notRemembered
+    }
+  }
+
+  /// Puts back what `unblock` removed, while the memory allows it (§3.3).
+  func undoUnblock(_ token: LearnMemory.UnblockToken) -> UndoUnblockResult {
+    defer { refreshLearnMemorySummary() }
+    switch learnMemory.restoreBlocked(token) {
+    case .committed(true): return .restored
+    case .committed(false): return .expired
+    case .notRemembered: return .notRemembered
+    }
   }
 
   /// Deletes the memory file and every corrupt copy; the row reads the result.
@@ -893,7 +931,7 @@ final class CustomWordsCoordinator {
               let key = CorrectionPairKey.normalise($0)
               return asked.contains(key) && !kept.contains(key)
             }
-            .map { CorrectionPairKey.make(original: $0, corrected: before.canonical) }
+            .map { LearnedPair(original: $0, corrected: before.canonical) }
           recordUserNo(removed, source: .removeSoundAlike)
         }
         return CustomWordEditorCopy.message(for: edit.outcome).map(notSaved)
@@ -920,17 +958,26 @@ final class CustomWordsCoordinator {
     }
   }
 
-  private func learnedPairs(of words: [CustomWord]) -> [String] {
+  /// A learned pair as written, so its "no" keeps the spelling (#5006).
+  private struct LearnedPair {
+    let original: String
+    let corrected: String
+    var key: String { CorrectionPairKey.make(original: original, corrected: corrected) }
+  }
+
+  private func learnedPairs(of words: [CustomWord]) -> [LearnedPair] {
     words.flatMap { word in
-      word.learnedAliases.map { CorrectionPairKey.make(original: $0, corrected: word.canonical) }
+      word.learnedAliases.map { LearnedPair(original: $0, corrected: word.canonical) }
     }
   }
 
+  /// One "no" per pair key; the first spelling seen for a key is kept.
   private func recordUserNo(
-    _ pairKeys: [String], source: TelemetryService.LearnFromEditsTelemetry.RefusalSource
+    _ pairs: [LearnedPair], source: TelemetryService.LearnFromEditsTelemetry.RefusalSource
   ) {
-    for key in Set(pairKeys) {
-      switch learnMemory.recordUndo(key) {
+    var seen = Set<String>()
+    for pair in pairs where seen.insert(pair.key).inserted {
+      switch learnMemory.recordUndo(pair.key, display: (pair.original, pair.corrected)) {
       case .committed(.watching): onLearnRefusedByUser?(source, .watching)
       case .committed(.blocked): onLearnRefusedByUser?(source, .blocked)
       case .notRemembered: break

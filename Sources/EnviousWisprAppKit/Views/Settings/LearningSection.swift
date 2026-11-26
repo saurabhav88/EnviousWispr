@@ -9,6 +9,8 @@ import SwiftUI
 struct LearnedCheckerSettingsStatus: Equatable {
   let line: String
   let canRetry: Bool
+  /// The status word for Fix words it learned (#5006), decided with the state.
+  let readiness: LearnFromEditsSettingsPresentation.StatusWord
   static let retryTitle = LocalizedStringResource(
     "Try again",
     comment: "Your Words, Learn from: the self-learning dictionary row: retry the word check download.")
@@ -18,6 +20,7 @@ struct LearnedCheckerSettingsStatus: Equatable {
   init(checkedBy judge: LearnedWordJudge) {
     line = Self.checkedByLine(judge.displayName)
     canRetry = false
+    readiness = .ready
   }
 
   private static func checkedByLine(_ judge: String) -> String {
@@ -43,9 +46,11 @@ struct LearnedCheckerSettingsStatus: Equatable {
     if selection.checker != nil {
       line = Self.checkedByLine(judge)
       canRetry = false
+      readiness = .ready
       return
     }
     canRetry = selection.retryAvailable
+    readiness = selection.absence == .engineHasNoChecker ? .notAvailable : .notReady
     switch selection.absence {
     case .adapterDownloading:
       line = String(
@@ -113,7 +118,7 @@ struct LearningSection: View {
   }
 
   @State private var checkerStatuses: CheckerStatuses?
-  @State private var confirmingForget = false
+  @State private var showingBlocked = false
 
   private var checkerStatusKey: CheckerStatusKey {
     CheckerStatusKey(
@@ -134,8 +139,28 @@ struct LearningSection: View {
       description: SettingsItemCopy.Dictionary.learnFromShort
     ) {
       VStack(alignment: .leading, spacing: 12) {
-        editsCard(settings: $settings)
-        fixesCard(settings: $settings)
+        // #5006 (founder 2026-11-26): one heading over both switches, one line
+        // each, the learning memory as a third row in the same card.
+        Text(LearnFromEditsSettingsPresentation.sectionTitle)
+          .font(.stRowTitle)
+          .foregroundStyle(.stTextPrimary)
+          .accessibilityAddTraits(.isHeader)
+        learnCard(verticalPadding: DesignSpacing.xs) {
+          VStack(alignment: .leading, spacing: 0) {
+            editsLine(settings: $settings)
+            Divider().overlay(Color.stDivider)
+            fixesLine(settings: $settings)
+            if customWords.learnMemoryStored {
+              Divider().overlay(Color.stDivider)
+              learnMemoryLine
+            }
+          }
+        }
+        // On the stack, not the memory row: removing the last blocked fix hides
+        // the row while the window and its Undo stay open (#5006 §16.1).
+        .sheet(isPresented: $showingBlocked) {
+          BlockedWordsSheet().environment(customWords)
+        }
         contactsCard(settings: $settings)
       }
     }
@@ -160,111 +185,129 @@ struct LearningSection: View {
     }
   }
 
-  /// Self-Learning Dictionary (#996 §3.9; "Learn from my edits" until
-  /// 2026-09-21). The toggle is the stored choice; the
-  /// injected presentation says whether this Mac can act on it and, when it
-  /// cannot, why, on one line under the paragraph. A disabled row keeps
-  /// showing the stored value rather than snapping it off: the choice
-  /// survives an OS without a qualified judge and applies again on one with.
-  private func editsCard(settings: Bindable<SettingsManager>) -> some View {
+  /// Learn new words (#996 §3.9; "Learn from my edits" until 2026-09-21): one
+  /// line with its status word (#5006). The toggle is the stored choice; a
+  /// disabled row keeps showing it, and the choice applies again on a Mac that
+  /// can act on it. A state with an action keeps one visible line and its button;
+  /// any other reason, and the article link, live in the "?".
+  private func editsLine(settings: Bindable<SettingsManager>) -> some View {
     let learnFromEdits = availability.presentation
-    return learnCard {
-      VStack(alignment: .leading, spacing: 8) {
-        HStack(alignment: .center, spacing: 8) {
-          Text(LearnFromEditsSettingsPresentation.rowTitle)
-            .settingsRowLabel()
-          SettingsInfoButton(rowTitle: LearnFromEditsSettingsPresentation.rowTitle, tooltip: nil) {
+    let isOn = settings.wrappedValue.learnFromEdits
+    let word = isOn ? learnFromEdits.readiness : .off
+    // One decision for where the reason shows: the visible action line, or else the "?".
+    let showsActionLine = isOn && learnFromEdits.secondaryLine != nil && learnFromEdits.action != nil
+    return VStack(alignment: .leading, spacing: DesignSpacing.md) {
+      LearnLine(title: LearnFromEditsSettingsPresentation.rowTitle, status: word.text) {
+        SettingsInfoButton(rowTitle: LearnFromEditsSettingsPresentation.rowTitle, tooltip: nil) {
+          VStack(alignment: .leading, spacing: DesignSpacing.lg) {
             SettingsHelpText(text: LearnFromEditsSettingsPresentation.learningSwitchHelp)
+            if !showsActionLine, let reason = learnFromEdits.secondaryLine {
+              SettingsHelpText(text: reason)
+            }
+            // Which apps it works in, how the on-device judge runs and what a
+            // remembered word reaches are the article's job, not the card's.
+            SettingsHelpArticleLink(
+              url: URL(string: LearnFromEditsSettingsPresentation.learnMoreURL),
+              label: LearnFromEditsSettingsPresentation.learnMoreLabelResource,
+              accessibilityLabel: LearnFromEditsSettingsPresentation.learnMoreAccessibilityLabel)
           }
-          Spacer(minLength: 8)
-          Toggle("", isOn: settings.learnFromEdits)
-            .toggleStyle(BrandedToggleStyle())
-            .labelsHidden()
-            // BrandedToggleStyle wraps label-Spacer-track in a content shape so
-            // a labelled row is clickable end to end. With the label hidden its
-            // Spacer claims the whole remaining row, which would make the empty
-            // middle of this card toggle the switch. `fixedSize` collapses it.
-            .fixedSize()
-            .accessibilityLabel(LearnFromEditsSettingsPresentation.rowTitle)
         }
-        .settingsMapRegistration(.selfLearningDictionary)
-        if !settings.wrappedValue.learnFromEdits {
-          Text("Off").font(.stHelper).foregroundStyle(.stTextSecondary)
-        } else if learnFromEdits.secondaryLine == nil {
-          Text("Available").font(.stHelper).foregroundStyle(.stTextSecondary)
-        }
-        // Which apps it works in, how the on-device judge runs and what a
-        // remembered word reaches are the article's job, not the card's
-        // (same shape as the Live Preview engines link).
-        Link(destination: URL(string: LearnFromEditsSettingsPresentation.learnMoreURL)!) {
-          HStack(spacing: 4) {
-            Text(LearnFromEditsSettingsPresentation.learnMoreLabel)
-            Image(systemName: "arrow.up.right")
-          }
-          .font(.stHelper)
-        }
-        .foregroundStyle(.stAccent)
+        // The "Learn more" search result lands on this "?", which holds the
+        // article link (#5006, founder 2026-11-26: keep the search result).
         .settingsArrivalFocusControl()
         .settingsMapRegistration(.selfLearningDictionaryLearnMore)
-        if customWords.learnMemoryStored {
-          learnMemoryRow
+      } trailing: {
+        Toggle("", isOn: settings.learnFromEdits)
+          .toggleStyle(BrandedToggleStyle())
+          .labelsHidden()
+          // BrandedToggleStyle wraps label-Spacer-track in a content shape so
+          // a labelled row is clickable end to end. With the label hidden its
+          // Spacer claims the whole remaining row, which would make the empty
+          // middle of this card toggle the switch. `fixedSize` collapses it.
+          .fixedSize()
+          .accessibilityLabel(LearnFromEditsSettingsPresentation.rowTitle)
+      }
+      .settingsMapRegistration(.selfLearningDictionary)
+      if showsActionLine, let reason = learnFromEdits.secondaryLine, let action = learnFromEdits.action {
+        HStack(alignment: .center, spacing: DesignSpacing.md) {
+          Text(reason)
+            .font(.stHelper)
+            .foregroundStyle(.stTextSecondary)
+            .fixedSize(horizontal: false, vertical: true)
+          Spacer(minLength: DesignSpacing.md)
+          Button {
+            availability.perform(action)
+          } label: {
+            EnviousButtonLabel(verbatim: Self.actionTitle(action))
+          }
+          .settingsButton(isEnabled: true)
+          .settingsArrivalWithoutInheritedPlace()
         }
-        if settings.wrappedValue.learnFromEdits, let reason = learnFromEdits.secondaryLine {
-          HStack(alignment: .center, spacing: 8) {
-            Text(reason)
-              .font(.stHelper)
-              .foregroundStyle(.stTextSecondary)
-              .fixedSize(horizontal: false, vertical: true)
-            if let action = learnFromEdits.action {
-              Spacer(minLength: 8)
-              Button {
-                availability.perform(action)
-              } label: {
-                EnviousButtonLabel(verbatim: Self.actionTitle(action))
+      }
+    }
+    .padding(.vertical, DesignSpacing.lg)
+  }
+
+  /// Fix words it learned: one line with its status word (#5006). Enable
+  /// Dictionary off comes first (switch disabled, one line, no button; the
+  /// wider Dictionary rethink is #5007). The word follows the dictation status;
+  /// a different file-transcription model adds its sentence to the "?" and its
+  /// own retry line when it can retry.
+  private func fixesLine(settings: Bindable<SettingsManager>) -> some View {
+    let key = checkerStatusKey
+    let dictionaryOn = settings.wrappedValue.wordCorrectionEnabled
+    let fixOn = settings.wrappedValue.fixLearnedWords
+    let statuses = checkerStatuses.flatMap { $0.key == key ? $0 : nil }
+    let showsStatus = dictionaryOn && fixOn
+    // A different file model always gets its sentence in the "?"; its own Try again
+    // only when its status differs too, so one shared word-check failure offers one
+    // Try again, not two (as before #5006).
+    let fileModelDiffers = key.file != key.dictation
+    let fileRetrySeparate = fileModelDiffers && statuses.map { $0.file != $0.dictation } == true
+    let word: LearnFromEditsSettingsPresentation.StatusWord? =
+      !dictionaryOn ? .paused : !fixOn ? .off : statuses?.dictation.readiness
+    return VStack(alignment: .leading, spacing: DesignSpacing.md) {
+      LearnLine(title: String(localized: LearnFromEditsSettingsPresentation.fixesTitle), status: word?.text) {
+        SettingsInfoButton(rowTitle: String(localized: LearnFromEditsSettingsPresentation.fixesTitle), tooltip: nil) {
+          VStack(alignment: .leading, spacing: DesignSpacing.lg) {
+            SettingsHelpText(text: String(localized: LearnFromEditsSettingsPresentation.fixesHelp))
+            if showsStatus, let statuses {
+              SettingsHelpText(text: statuses.dictation.line)
+              if fileModelDiffers {
+                SettingsHelpText(text: Self.fileLine(statuses.file))
               }
-              .settingsButton(isEnabled: true)
-              .settingsArrivalWithoutInheritedPlace()
             }
           }
         }
+      } trailing: {
+        Toggle("", isOn: settings.fixLearnedWords)
+          .toggleStyle(BrandedToggleStyle())
+          .labelsHidden()
+          .fixedSize()
+          .disabled(!dictionaryOn)
+          .accessibilityLabel(String(localized: LearnFromEditsSettingsPresentation.fixesTitle))
+      }
+      .settingsMapRegistration(.fixLearnedWords)
+
+      if !dictionaryOn {
+        Text(LearnFromEditsSettingsPresentation.dictionaryOffLine)
+          .font(.stHelper).foregroundStyle(.stTextSecondary)
+      } else if showsStatus, let statuses {
+        if statuses.dictation.canRetry {
+          checkerStatusLine(statuses.dictation.line, status: statuses.dictation, model: key.dictation, key: key)
+        }
+        if fileRetrySeparate, statuses.file.canRetry {
+          checkerStatusLine(Self.fileLine(statuses.file), status: statuses.file, model: key.file, key: key)
+        }
       }
     }
+    .padding(.vertical, DesignSpacing.lg)
   }
 
-  private func fixesCard(settings: Bindable<SettingsManager>) -> some View {
-    learnCard {
-      VStack(alignment: .leading, spacing: DesignSpacing.md) {
-        HStack(spacing: DesignSpacing.md) {
-          Text(LearnFromEditsSettingsPresentation.fixesTitle).settingsRowLabel()
-          SettingsInfoButton(rowTitle: String(localized: LearnFromEditsSettingsPresentation.fixesTitle), tooltip: nil) {
-            SettingsHelpText(text: String(localized: LearnFromEditsSettingsPresentation.fixesHelp))
-          }
-          Spacer(minLength: DesignSpacing.md)
-          Toggle("", isOn: settings.fixLearnedWords)
-            .toggleStyle(BrandedToggleStyle())
-            .labelsHidden()
-            .fixedSize()
-            .disabled(!settings.wrappedValue.wordCorrectionEnabled)
-            .accessibilityLabel(String(localized: LearnFromEditsSettingsPresentation.fixesTitle))
-        }
-        .settingsMapRegistration(.fixLearnedWords)
-
-        let key = checkerStatusKey
-        if !settings.wrappedValue.wordCorrectionEnabled {
-          Text("Paused by Dictionary").font(.stHelper).foregroundStyle(.stTextSecondary)
-        } else if !settings.wrappedValue.fixLearnedWords {
-          Text("Off").font(.stHelper).foregroundStyle(.stTextSecondary)
-        } else if let statuses = checkerStatuses, statuses.key == key {
-          checkerStatusLine(statuses.dictation.line, status: statuses.dictation, model: key.dictation, key: key)
-          if statuses.file != statuses.dictation {
-            checkerStatusLine(
-              String(localized: "Transcribe a File: \(statuses.file.line)",
-                comment: "Dictionary: word checker status for file transcription."),
-              status: statuses.file, model: key.file, key: key)
-          }
-        }
-      }
-    }
+  private static func fileLine(_ status: LearnedCheckerSettingsStatus) -> String {
+    String(
+      localized: "Transcribe a File: \(status.line)",
+      comment: "Dictionary: word checker status for file transcription.")
   }
 
   private func checkerStatusLine(
@@ -290,39 +333,31 @@ struct LearningSection: View {
     }
   }
 
-  /// #3975 §3.4: what the app remembers about the user's fixes, and the one
-  /// control that clears it from the same place.
-  private var learnMemoryRow: some View {
-    VStack(alignment: .leading, spacing: 4) {
-      HStack(alignment: .center, spacing: 8) {
-        Text(LearnFromEditsSettingsPresentation.memoryLine(blocked: customWords.learnMemoryBlockedCount))
-          .font(.stHelper)
-          .foregroundStyle(.stTextSecondary)
-          .fixedSize(horizontal: false, vertical: true)
-        Spacer(minLength: 8)
-        Button {
-          confirmingForget = true
-        } label: {
-          EnviousButtonLabel(verbatim: LearnFromEditsSettingsPresentation.forgetButton)
-        }
-        .settingsButton(isEnabled: true)
-        .settingsArrivalFocusControl()
-        .settingsMapRegistration(.selfLearningDictionaryForgetMemory)
+  /// #3975 §3.4, #5006: what the app remembers about the user's fixes, outside
+  /// the "?" (founder 2026-11-26). The count opens the Blocked words window,
+  /// where one fix or everything can be forgotten.
+  private var learnMemoryLine: some View {
+    let count = customWords.learnMemoryBlockedCount
+    return LearnLine(
+      title: String(localized: LearnFromEditsSettingsPresentation.memoryTitle), status: nil,
+      trailingDropsBelow: true
+    ) {
+      SettingsInfoButton(rowTitle: String(localized: LearnFromEditsSettingsPresentation.memoryTitle), tooltip: nil) {
+        SettingsHelpText(text: String(localized: LearnFromEditsSettingsPresentation.memoryHelp))
       }
-      if customWords.learnMemoryForgetFailed {
-        Text(LearnFromEditsSettingsPresentation.forgetFailed)
-          .font(.stHelper)
-          .foregroundStyle(.stTextSecondary)
+    } trailing: {
+      Button {
+        showingBlocked = true
+      } label: {
+        EnviousButtonLabel(
+          verbatim: LearnFromEditsSettingsPresentation.blockedCount(count), trailingSystemImage: "chevron.right")
       }
+      .settingsButton(isEnabled: true)
+      .accessibilityLabel(LearnFromEditsSettingsPresentation.blockedCountAccessibility(count))
+      .settingsArrivalFocusControl()
+      .settingsMapRegistration(.selfLearningDictionaryForgetMemory)
     }
-    .alert(LearnFromEditsSettingsPresentation.forgetAlertTitle, isPresented: $confirmingForget) {
-      Button(LearnFromEditsSettingsPresentation.forgetConfirm, role: .destructive) {
-        customWords.forgetLearnMemory()
-      }
-      Button(LearnFromEditsSettingsPresentation.cancelTitle, role: .cancel) {}
-    } message: {
-      Text(LearnFromEditsSettingsPresentation.forgetAlertMessage)
-    }
+    .padding(.vertical, DesignSpacing.lg)
   }
 
   /// The row's one verb per state (phase D); copy lives with the state table.
@@ -429,9 +464,12 @@ struct LearningSection: View {
 
   /// The card each feature sits in, in the shared control fill `stInputBg`, the
   /// same fill the search field on the Your Words tab uses (founder, 2026-10-03).
-  private func learnCard<Content: View>(@ViewBuilder content: () -> Content) -> some View {
+  private func learnCard<Content: View>(
+    verticalPadding: CGFloat = 14, @ViewBuilder content: () -> Content
+  ) -> some View {
     content()
-      .padding(14)
+      .padding(.horizontal, 14)
+      .padding(.vertical, verticalPadding)
       .frame(maxWidth: .infinity, alignment: .leading)
       .background(
         RoundedRectangle(cornerRadius: 12, style: .continuous)
@@ -540,6 +578,50 @@ struct LearningSection: View {
       string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Contacts")
     {
       NSWorkspace.shared.open(url)
+    }
+  }
+}
+
+/// One Learn from line (#5006): title, its "?", a short status word and a trailing
+/// control on one line when they fit. When they do not (German or French at the
+/// 750 pt window, where this column is about 190 pt wide), the title takes the full
+/// width and wraps at word boundaries; its "?", the status word and, with
+/// `trailingDropsBelow`, the trailing control follow on the line below; a switch
+/// stays on the right.
+private struct LearnLine<Help: View, Trailing: View>: View {
+  let title: String
+  let status: String?
+  var trailingDropsBelow = false
+  @ViewBuilder let help: () -> Help
+  @ViewBuilder let trailing: () -> Trailing
+
+  private var statusText: some View {
+    Text(status ?? "").font(.stHelper).foregroundStyle(.stTextSecondary).fixedSize()
+  }
+
+  var body: some View {
+    ViewThatFits(in: .horizontal) {
+      HStack(alignment: .center, spacing: DesignSpacing.md) {
+        Text(title).settingsRowLabel().fixedSize()
+        help()
+        if status != nil { statusText }
+        Spacer(minLength: DesignSpacing.md)
+        trailing()
+      }
+      HStack(alignment: .center, spacing: DesignSpacing.md) {
+        VStack(alignment: .leading, spacing: DesignSpacing.xs) {
+          // The title takes the whole width so a long single word ("Korrekturen",
+          // "aprendidas") is never split; the "?" and the status follow below it.
+          Text(title).settingsRowLabel().fixedSize(horizontal: false, vertical: true)
+          HStack(alignment: .center, spacing: DesignSpacing.md) {
+            help()
+            if status != nil { statusText }
+            if trailingDropsBelow { trailing() }
+          }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        if !trailingDropsBelow { trailing() }
+      }
     }
   }
 }
