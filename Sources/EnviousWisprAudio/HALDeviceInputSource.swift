@@ -1118,6 +1118,12 @@ final class HALDeviceInputSource: AudioInputSource {
     teardownUnit()
   }
 
+  /// #4934: the one path that queues a release, so each carries its own step marker.
+  private func queueRelease(_ take: @escaping @Sendable () -> HALUnitResources?) {
+    let progress = AudioUnitLane.ReleaseProgress()
+    lane.retire(progress: progress) { take()?.retire(progress: progress) }
+  }
+
   /// The ONE way a pending attempt is given up (abort, a newer attempt, stop, quit). It cancels
   /// the attempt and, in the same step, queues a lane job that retires the attempt's unit if
   /// nobody took it: that job runs after the open finishes (the lane is serial), so the unit has a
@@ -1129,7 +1135,7 @@ final class HALDeviceInputSource: AudioInputSource {
     pendingAttempt = nil
     pendingHandoff = nil
     attempt.cancel()
-    if let handoff { lane.retire { handoff.take()?.retire() } }
+    if let handoff { queueRelease { handoff.take() } }
   }
 
   func rebuild() {
@@ -1323,7 +1329,7 @@ extension HALDeviceInputSource {
       pendingHandoff = nil
     }
     if invalidated {
-      if let unit = handoff.take() { lane.retire { unit.retire() } }
+      if let unit = handoff.take() { queueRelease { unit } }
       finalize?(progress.terminal(failedStep: "HALDeviceInputSource.prepare.abandoned"))
       throw CancellationError()
     }
@@ -1425,7 +1431,7 @@ extension HALDeviceInputSource {
       resources.markStopping()
       // #4601 §3.4: the native retirement runs on the audio-unit lane and the main actor never
       // waits for it; it stays ordered before any later open of this or any other source.
-      lane.retire { resources.retire() }
+      queueRelease { resources }
     }
     boundDeviceID = nil
     boundUID = nil
@@ -2207,10 +2213,12 @@ final class HALUnitResources: @unchecked Sendable {
   /// Retires the unit once; a second call returns the first report and touches
   /// nothing native.
   @discardableResult
-  func retire() -> RetirementReport {
+  func retire(progress: AudioUnitLane.ReleaseProgress? = nil) -> RetirementReport {
     if let report { return report }
     // Set before anything blocks: the render callback and the consumer both check it.
     context?.stopped.set()
+    // #4934: mark before each native call, so a stuck release names the call it is in.
+    if !listeners.isEmpty { progress?.mark(.listenerRemoval) }
     let removals = listeners.map {
       native.removeListener($0.object, $0.address, $0.queue, $0.block)
     }
@@ -2221,9 +2229,13 @@ final class HALUnitResources: @unchecked Sendable {
     // (#1540), so the DEBUG quiescence assert below verifies it empirically
     // rather than trusting the assumption — this is the load-bearing check
     // before the in-process collapse (C1) makes a UAF here a full-app crash.
+    if stage >= .started { progress?.mark(.stop) }
     let stopStatus = stage >= .started ? native.stop(unit) : nil
+    if stage >= .initialized { progress?.mark(.uninitialize) }
     let uninitializeStatus = stage >= .initialized ? native.uninitialize(unit) : nil
+    progress?.mark(.dispose)
     let disposeStatus = native.dispose(unit)
+    progress?.mark(.cleanup)
     let safe = (stopStatus ?? noErr) == noErr && disposeStatus == noErr
     #if DEBUG
       // (#1540) Best-effort quiescence tripwire for the assumption above: after

@@ -81,11 +81,17 @@ enum AudioUnitLaneReporting {
 
   static func hooks() -> AudioUnitLane.Hooks {
     var hooks = AudioUnitLane.Hooks(
-      operationTimedOut: { _, name, limit in
-        Task { @MainActor in report(name: name, phase: .timedOut, limit: limit, after: nil) }
+      operationTimedOut: { _, name, limit, step in
+        Task { @MainActor in
+          report(name: name, phase: .timedOut, limit: limit, after: nil, step: step)
+        }
       },
-      operationRecovered: { _, name, after, limit in
-        Task { @MainActor in report(name: name, phase: .recovered, limit: limit, after: after) }
+      operationRecovered: { _, name, after, limit, step, refused in
+        Task { @MainActor in
+          report(
+            name: name, phase: .recovered, limit: limit, after: after, step: step,
+            refusedWhileStuck: refused)
+        }
       })
     #if DEBUG
       hooks.completed = { id, name, duration in
@@ -109,12 +115,31 @@ enum AudioUnitLaneReporting {
   @MainActor
   static func report(
     name: String, phase: CoreAudioReadTelemetry.Phase, limit: Duration, after: Duration?,
+    step: AudioUnitLane.ReleaseStep? = nil, refusedWhileStuck: Int? = nil,
     service: TelemetryService = .shared
   ) {
     guard let read = readForOperation[name] else { return }
     service.coreAudioReadStuck(
       read: read, phase: phase, boundMs: CoreAudioLaneReporting.milliseconds(limit),
-      returnedAfterMs: after.map(CoreAudioLaneReporting.milliseconds))
+      returnedAfterMs: after.map(CoreAudioLaneReporting.milliseconds),
+      releaseStep: read == .microphoneRelease ? releaseStep(step) : nil,
+      refusedWhileStuck: refusedWhileStuck)
+  }
+
+  /// #4934: the lane's step in the event's closed vocabulary. A release job without a marker (the
+  /// quit barrier) is `unknown`.
+  static func releaseStep(_ step: AudioUnitLane.ReleaseStep?)
+    -> CoreAudioReadTelemetry.ReleaseStep
+  {
+    guard let step else { return .unknown }
+    switch step {
+    case .notStarted: return .notStarted
+    case .listenerRemoval: return .listenerRemoval
+    case .stop: return .stop
+    case .uninitialize: return .uninitialize
+    case .dispose: return .dispose
+    case .cleanup: return .cleanup
+    }
   }
 }
 

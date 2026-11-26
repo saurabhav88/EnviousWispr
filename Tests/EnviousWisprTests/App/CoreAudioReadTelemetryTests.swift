@@ -1,3 +1,4 @@
+import EnviousWisprAudio
 import EnviousWisprServices
 import Foundation
 import Testing
@@ -84,8 +85,45 @@ struct CoreAudioReadTelemetryTests {
           intProps: ["bound_ms": 1000]),
         CapturedTelemetryEvent(
           name: "audio.core_audio_read_stuck",
-          stringProps: ["read": "microphone_release", "phase": "timed_out"],
+          stringProps: [
+            "read": "microphone_release", "phase": "timed_out", "release_step": "unknown",
+          ],
           intProps: ["bound_ms": 5000]),
+      ])
+  }
+
+  /// #4934: only a release row names a step; only a recovery carries the refusal count.
+  @Test("A release row names its step, and a recovery counts the refused starts")
+  func releaseStepFields() {
+    let events = capture {
+      AudioUnitLaneReporting.report(
+        name: "microphone_release", phase: .timedOut, limit: .seconds(5), after: nil, step: .stop,
+        refusedWhileStuck: 3)
+      AudioUnitLaneReporting.report(
+        name: "microphone_release", phase: .recovered, limit: .seconds(5), after: .seconds(15),
+        step: .stop, refusedWhileStuck: 0)
+      AudioUnitLaneReporting.report(
+        name: "microphone_start", phase: .recovered, limit: .seconds(5), after: .seconds(6),
+        step: .stop, refusedWhileStuck: 2)
+    }
+    #expect(
+      events == [
+        CapturedTelemetryEvent(
+          name: "audio.core_audio_read_stuck",
+          stringProps: [
+            "read": "microphone_release", "phase": "timed_out", "release_step": "stop",
+          ],
+          intProps: ["bound_ms": 5000]),
+        CapturedTelemetryEvent(
+          name: "audio.core_audio_read_stuck",
+          stringProps: [
+            "read": "microphone_release", "phase": "recovered", "release_step": "stop",
+          ],
+          intProps: ["bound_ms": 5000, "returned_after_ms": 15000, "refused_while_stuck": 0]),
+        CapturedTelemetryEvent(
+          name: "audio.core_audio_read_stuck",
+          stringProps: ["read": "microphone_start", "phase": "recovered"],
+          intProps: ["bound_ms": 5000, "returned_after_ms": 6000, "refused_while_stuck": 2]),
       ])
   }
 
