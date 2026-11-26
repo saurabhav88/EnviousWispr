@@ -253,7 +253,7 @@ struct LearnFromEditsRowTests {
     #expect(
       !FileManager.default.fileExists(atPath: dir.appendingPathComponent(LearnMemory.fileName).path))
     #expect(
-      LearnFromEditsSettingsPresentation.memoryLine(blocked: 1) == "Learning memory: 1 blocked")
+      [0, 1, 5].map(LearnFromEditsSettingsPresentation.blockedCount) == ["0 blocked", "1 blocked", "5 blocked"])
   }
 }
 

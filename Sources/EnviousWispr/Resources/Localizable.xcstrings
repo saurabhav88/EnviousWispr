@@ -15966,7 +15966,7 @@
       }
     },
     "Close" : {
-      "comment" : "Dictation language picker: VoiceOver name of the close button.\nEnviousMeet: closes the call panel.\nHistory page banner, VoiceOver and tooltip: closes the setup notice about meeting summaries.\nLive Preview settings: catalog close label.\nSpoken punctuation window: spoken name of the close button.",
+      "comment" : "Blocked words window: spoken name of the close button.\nDictation language picker: VoiceOver name of the close button.\nEnviousMeet: closes the call panel.\nHistory page banner, VoiceOver and tooltip: closes the setup notice about meeting summaries.\nLive Preview settings: catalog close label.\nSpoken punctuation window: spoken name of the close button.",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -20833,7 +20833,7 @@
       }
     },
     "Done" : {
-      "comment" : "AI Polish, Ollama: closes the model list sheet.\nHistory change details: closes the details.\nHistory: leaves selection mode (the Select button while selecting).\nLive Preview settings: catalog done button.\nSpoken punctuation window: button that closes the window.\nTranscribe a File: a step name in the step bar.\nVoiceOver: an Ollama setup step that is finished.",
+      "comment" : "AI Polish, Ollama: closes the model list sheet.\nBlocked words window: closes the window.\nHistory change details: closes the details.\nHistory: leaves selection mode (the Select button while selecting).\nLive Preview settings: catalog done button.\nSpoken punctuation window: button that closes the window.\nTranscribe a File: a step name in the step bar.\nVoiceOver: an Ollama setup step that is finished.",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -26050,7 +26050,7 @@
       }
     },
     "Forget" : {
-      "comment" : "Your Words, Learn from: the Forget learning memory confirmation: the destructive button.\nYour Words, Learn from: the self-learning dictionary row: button that opens the Forget learning memory confirmation.",
+      "comment" : "Your Words, Learn from: the Forget learning memory confirmation: the destructive button.",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -31787,29 +31787,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Aprender palabras nuevas"
-          }
-        }
-      }
-    },
-    "Learning memory: %lld blocked" : {
-      "comment" : "Your Words, Learn from: the self-learning dictionary row: how many fixes the user refused twice, so they are never learned again until Forget.",
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Lerngedächtnis: %lld blockiert"
-          }
-        },
-        "fr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Mémoire d’apprentissage : %lld bloqués"
-          }
-        },
-        "es" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Memoria de aprendizaje: %lld bloqueadas"
           }
         }
       }
@@ -38924,7 +38901,7 @@
       }
     },
     "Not ready" : {
-      "comment" : "Transcribe a File, Polish step: the line under an engine's name.",
+      "comment" : "Dictionary, Learn from: status word after a switch: it is downloading, loading or needs a retry.\nTranscribe a File, Polish step: the line under an engine's name.",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -39866,7 +39843,7 @@
       }
     },
     "Off" : {
-      "comment" : "AI Polish provider status chip: AI Polish is off.\nEnviousMeet page: When a call starts, do nothing.\nLive Preview settings: status off label.\nMicrophone settings: readiness option; the microphone is released at once.\nSettings: Live Preview is switched off.\nShort disabled-state label shared by AI polish, model unload policy, microphone readiness, Live Preview, and switches.\nVoiceOver: the value of a switch that is off.",
+      "comment" : "AI Polish provider status chip: AI Polish is off.\nDictionary, Learn from: status word after a switch: the switch is off.\nEnviousMeet page: When a call starts, do nothing.\nLive Preview settings: status off label.\nMicrophone settings: readiness option; the microphone is released at once.\nSettings: Live Preview is switched off.\nShort disabled-state label shared by AI polish, model unload policy, microphone readiness, Live Preview, and switches.\nVoiceOver: the value of a switch that is off.",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -42830,28 +42807,6 @@
         }
       }
     },
-    "Paused by Dictionary" : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Pausiert, weil das Wörterbuch deaktiviert ist"
-          }
-        },
-        "fr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Mis en pause par le Dictionnaire"
-          }
-        },
-        "es" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "En pausa por el Diccionario"
-          }
-        }
-      }
-    },
     "Paused to free memory for other apps. Use the refresh button to restart it." : {
       "comment" : "AI Polish, local model card: the reason under the health status.",
       "localizations" : {
@@ -45469,7 +45424,7 @@
       }
     },
     "Ready" : {
-      "comment" : "AI Polish provider status chip.\nEnviousMeet list: status of a meeting.\nSettings: the selected preview engine can run for the current language.\nTranscribe a File, Polish step: the line under an engine's name.",
+      "comment" : "AI Polish provider status chip.\nDictionary, Learn from: status word after a switch: it works now.\nEnviousMeet list: status of a meeting.\nSettings: the selected preview engine can run for the current language.\nTranscribe a File, Polish step: the line under an engine's name.",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -47381,7 +47336,7 @@
       }
     },
     "Remove" : {
-      "comment" : "AI Polish, EG-1 size card: deletes this size's download.\nAI Polish, Ollama model list: removes a downloaded model from this Mac.\nLive Preview settings, Universal engine card: button. It deletes the downloaded engine.\nSpeech engine settings, remove confirm box: deletes the speech model.",
+      "comment" : "AI Polish, EG-1 size card: deletes this size's download.\nAI Polish, Ollama model list: removes a downloaded model from this Mac.\nBlocked words window: button that unblocks one fix.\nLive Preview settings, Universal engine card: button. It deletes the downloaded engine.\nSpeech engine settings, remove confirm box: deletes the speech model.",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -62867,7 +62822,7 @@
       }
     },
     "Undo" : {
-      "comment" : "Button on the pill shown after a word is added to the dictionary. Removes it again.\nHistory dictation card: undoes the text choice just made.\nPill button after Escape: brings the cancelled dictation back.",
+      "comment" : "Blocked words window: puts back the fix just removed.\nButton on the pill shown after a word is added to the dictionary. Removes it again.\nHistory dictation card: undoes the text choice just made.\nPill button after Escape: brings the cancelled dictation back.",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -88700,6 +88655,520 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Con «%@» guardas un texto que aparece cuando dices tu palabra clave y luego su activador."
+          }
+        }
+      }
+    },
+    "%lld blocked" : {
+      "comment" : "Dictionary, Learn from: button on the Learning memory row that opens the blocked list. %lld is the number of blocked fixes.",
+      "localizations" : {
+        "de" : {
+          "variations" : {
+            "plural" : {
+              "one" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "%lld blockiert"
+                }
+              },
+              "other" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "%lld blockiert"
+                }
+              }
+            }
+          }
+        },
+        "es" : {
+          "variations" : {
+            "plural" : {
+              "many" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "%lld bloqueadas"
+                }
+              },
+              "one" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "%lld bloqueada"
+                }
+              },
+              "other" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "%lld bloqueadas"
+                }
+              }
+            }
+          }
+        },
+        "fr" : {
+          "variations" : {
+            "plural" : {
+              "many" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "%lld bloqués"
+                }
+              },
+              "one" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "%lld bloqué"
+                }
+              },
+              "other" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "%lld bloqués"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "Blocked words" : {
+      "comment" : "Blocked words window: title.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Blockierte Wörter"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Palabras bloqueadas"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Mots bloqués"
+          }
+        }
+      }
+    },
+    "Blocked words: %lld, open list" : {
+      "comment" : "Dictionary, Learn from: spoken name of the button that opens the blocked list. %lld is the number of blocked fixes.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Blockierte Wörter: %lld, Liste öffnen"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Palabras bloqueadas: %lld, abrir la lista"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Mots bloqués : %lld, ouvrir la liste"
+          }
+        }
+      }
+    },
+    "Couldn’t remove. Try again." : {
+      "comment" : "Blocked words window: Remove could not save.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Entfernen fehlgeschlagen. Erneut versuchen."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "No se ha podido eliminar. Inténtalo de nuevo."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Impossible de supprimer. Réessayez."
+          }
+        }
+      }
+    },
+    "Couldn’t undo. Try again." : {
+      "comment" : "Blocked words window: Undo could not save.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Rückgängigmachen fehlgeschlagen. Erneut versuchen."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "No se ha podido deshacer. Inténtalo de nuevo."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Impossible d’annuler. Réessayez."
+          }
+        }
+      }
+    },
+    "Dictionary is off in Your Words." : {
+      "comment" : "Dictionary, Learn from: line under Fix words it learned while Enable Dictionary is off. Your Words is a tab name.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Das Wörterbuch ist unter „Deine Wörter“ ausgeschaltet."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "El Diccionario está desactivado en «Tus palabras»."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Le Dictionnaire est désactivé dans « Vos mots »."
+          }
+        }
+      }
+    },
+    "EnviousWispr will not learn these fixes again. Remove one to let it be learned again." : {
+      "comment" : "Blocked words window: what the list is.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "EnviousWispr lernt diese Korrekturen nicht mehr. Entferne eine, damit sie wieder gelernt werden kann."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "EnviousWispr no volverá a aprender estas correcciones. Elimina una para que pueda volver a aprenderse."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "EnviousWispr n’apprendra plus ces corrections. Supprimez-en une pour qu’EnviousWispr puisse l’apprendre à nouveau."
+          }
+        }
+      }
+    },
+    "Forget all" : {
+      "comment" : "Blocked words window: button that opens the forget-everything confirmation.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Alles vergessen"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Olvidar todo"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Tout oublier"
+          }
+        }
+      }
+    },
+    "Learn more about the Self-Learning Dictionary" : {
+      "comment" : "Dictionary, Learn from: spoken name of the help article link inside the Learn new words help.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Mehr über das selbstlernende Wörterbuch erfahren"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Más información sobre el diccionario de autoaprendizaje"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "En savoir plus sur le dictionnaire autoapprenant"
+          }
+        }
+      }
+    },
+    "Learning memory" : {
+      "comment" : "Dictionary, Learn from: the row that opens the list of blocked fixes.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Lerngedächtnis"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Memoria de aprendizaje"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Mémoire d’apprentissage"
+          }
+        }
+      }
+    },
+    "No blocked words match “%@”." : {
+      "comment" : "Blocked words window: no line matches the search. %@ is what the user typed.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Keine blockierten Wörter für „%@“ gefunden."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ninguna palabra bloqueada coincide con «%@»."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Aucun mot bloqué ne correspond à « %@ »."
+          }
+        }
+      }
+    },
+    "Not available" : {
+      "comment" : "Dictionary, Learn from: status word after a switch: this Mac or this polish choice cannot do it.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Nicht verfügbar"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "No disponible"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Non disponible"
+          }
+        }
+      }
+    },
+    "Nothing is blocked." : {
+      "comment" : "Blocked words window: the list is empty.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Es ist nichts blockiert."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "No hay nada bloqueado."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Aucun mot n’est bloqué."
+          }
+        }
+      }
+    },
+    "Paused" : {
+      "comment" : "Dictionary, Learn from: status word after Fix words it learned: Enable Dictionary is off.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Pausiert"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "En pausa"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "En pause"
+          }
+        }
+      }
+    },
+    "Remove %@, fixed as %@" : {
+      "comment" : "Blocked words window: spoken name of a Remove button. First %@ is what was heard, second %@ the fixed word.",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Remove %1$@, fixed as %2$@"
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%1$@ entfernen, korrigiert zu %2$@"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Eliminar %1$@, corregido como %2$@"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Supprimer %1$@, corrigé en %2$@"
+          }
+        }
+      }
+    },
+    "Search blocked words" : {
+      "comment" : "Blocked words window: placeholder and spoken name of the search field.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Blockierte Wörter suchen"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Buscar palabras bloqueadas"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Rechercher des mots bloqués"
+          }
+        }
+      }
+    },
+    "Self-Learning Dictionary" : {
+      "comment" : "Dictionary, Learn from: heading over the Learn new words and Fix words it learned switches.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Selbstlernendes Wörterbuch"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Diccionario de autoaprendizaje"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Dictionnaire autoapprenant"
+          }
+        }
+      }
+    },
+    "Undo is no longer available." : {
+      "comment" : "Blocked words window: Undo cannot put the fix back because the learning memory changed.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Rückgängigmachen ist nicht mehr möglich."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ya no se puede deshacer."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "L’annulation n’est plus possible."
+          }
+        }
+      }
+    },
+    "When you undo or delete the same learned fix twice, EnviousWispr blocks it and never learns it again. In the list, remove one to let it be learned again, or forget everything." : {
+      "comment" : "Dictionary, Learn from: help for the Learning memory row.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Wenn du dieselbe gelernte Korrektur zweimal rückgängig machst oder löschst, blockiert EnviousWispr sie und lernt sie nie wieder. In der Liste kannst du eine entfernen, damit sie wieder gelernt werden kann, oder alles vergessen."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Si deshaces o eliminas dos veces la misma corrección aprendida, EnviousWispr la bloquea y no vuelve a aprenderla. En la lista puedes eliminar una para que pueda volver a aprenderse, u olvidarlo todo."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Si vous annulez ou supprimez deux fois la même correction apprise, EnviousWispr la bloque et ne l’apprend plus jamais. Dans la liste, vous pouvez en supprimer une pour qu’EnviousWispr puisse l’apprendre à nouveau, ou tout oublier."
+          }
+        }
+      }
+    },
+    "“%@” can be learned again." : {
+      "comment" : "Blocked words window: shown after Remove. %@ is the fixed word.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "„%@“ kann wieder gelernt werden."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "«%@» puede volver a aprenderse."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "« %@ » peut être appris à nouveau."
           }
         }
       }

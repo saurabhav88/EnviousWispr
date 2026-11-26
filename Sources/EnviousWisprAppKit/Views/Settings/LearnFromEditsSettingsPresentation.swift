@@ -123,6 +123,74 @@ struct LearnFromEditsSettingsPresentation: Equatable, Sendable {
     comment: "Your Words, Learn from: the self-learning dictionary row: link to the help article.")
   static var learnMoreLabel: String { String(localized: learnMoreLabelResource) }
   static let learnMoreURL = "https://enviouswispr.com/help/self-learning-dictionary/"
+  static let learnMoreAccessibilityLabel = LocalizedStringResource(
+    "Learn more about the Self-Learning Dictionary",
+    comment: "Dictionary, Learn from: spoken name of the help article link inside the Learn new words help.")
+
+  // #5006: the tighter Learn from card and the Blocked words list.
+  static let sectionTitle = LocalizedStringResource(
+    "Self-Learning Dictionary",
+    comment: "Dictionary, Learn from: heading over the Learn new words and Fix words it learned switches.")
+  static let dictionaryOffLine = LocalizedStringResource(
+    "Dictionary is off in Your Words.",
+    comment: "Dictionary, Learn from: line under Fix words it learned while Enable Dictionary is off. Your Words is a tab name.")
+  static let memoryTitle = LocalizedStringResource(
+    "Learning memory",
+    comment: "Dictionary, Learn from: the row that opens the list of blocked fixes.")
+  static let memoryHelp = LocalizedStringResource(
+    "When you undo or delete the same learned fix twice, EnviousWispr blocks it and never learns it again. In the list, remove one to let it be learned again, or forget everything.",
+    comment: "Dictionary, Learn from: help for the Learning memory row.")
+  static func blockedCount(_ count: Int) -> String {
+    String(
+      localized: "\(count) blocked",
+      comment: "Dictionary, Learn from: button on the Learning memory row that opens the blocked list. %lld is the number of blocked fixes.")
+  }
+  static func blockedCountAccessibility(_ count: Int) -> String {
+    String(
+      localized: "Blocked words: \(count), open list",
+      comment: "Dictionary, Learn from: spoken name of the button that opens the blocked list. %lld is the number of blocked fixes.")
+  }
+  static let blockedTitle = LocalizedStringResource(
+    "Blocked words", comment: "Blocked words window: title.")
+  static let blockedIntro = LocalizedStringResource(
+    "EnviousWispr will not learn these fixes again. Remove one to let it be learned again.",
+    comment: "Blocked words window: what the list is.")
+  static let blockedSearch = LocalizedStringResource(
+    "Search blocked words", comment: "Blocked words window: placeholder and spoken name of the search field.")
+  static let blockedClose = LocalizedStringResource(
+    "Close", comment: "Blocked words window: spoken name of the close button.")
+  static let removeTitle = LocalizedStringResource(
+    "Remove", comment: "Blocked words window: button that unblocks one fix.")
+  static func removeAccessibility(heard: String, fixed: String) -> String {
+    String(
+      localized: "Remove \(heard), fixed as \(fixed)",
+      comment: "Blocked words window: spoken name of a Remove button. First %@ is what was heard, second %@ the fixed word.")
+  }
+  static let nothingBlocked = LocalizedStringResource(
+    "Nothing is blocked.", comment: "Blocked words window: the list is empty.")
+  static func noMatch(_ query: String) -> String {
+    String(
+      localized: "No blocked words match “\(query)”.",
+      comment: "Blocked words window: no line matches the search. %@ is what the user typed.")
+  }
+  static func canLearnAgain(_ word: String) -> String {
+    String(
+      localized: "“\(word)” can be learned again.",
+      comment: "Blocked words window: shown after Remove. %@ is the fixed word.")
+  }
+  static let undoTitle = LocalizedStringResource(
+    "Undo", comment: "Blocked words window: puts back the fix just removed.")
+  static let undoExpired = LocalizedStringResource(
+    "Undo is no longer available.",
+    comment: "Blocked words window: Undo cannot put the fix back because the learning memory changed.")
+  static let removeFailed = LocalizedStringResource(
+    "Couldn’t remove. Try again.", comment: "Blocked words window: Remove could not save.")
+  static let undoFailed = LocalizedStringResource(
+    "Couldn’t undo. Try again.", comment: "Blocked words window: Undo could not save.")
+  static let forgetAllTitle = LocalizedStringResource(
+    "Forget all", comment: "Blocked words window: button that opens the forget-everything confirmation.")
+  static let doneTitle = LocalizedStringResource(
+    "Done", comment: "Blocked words window: closes the window.")
 
   // #3975 plan §3.4: the learning memory row, shown only while the memory
   // holds something. Forget deletes the file and every corrupt copy.
@@ -130,15 +198,6 @@ struct LearnFromEditsSettingsPresentation: Equatable, Sendable {
     "Forget learning memory",
     comment:
       "Your Words, Learn from: the self-learning dictionary row: the action that deletes what the app remembers about the user's fixes (refused, undone and blocked words).")
-  static func memoryLine(blocked: Int) -> String {
-    String(
-      localized: "Learning memory: \(blocked) blocked",
-      comment:
-        "Your Words, Learn from: the self-learning dictionary row: how many fixes the user refused twice, so they are never learned again until Forget.")
-  }
-  static let forgetButton = String(
-    localized: "Forget",
-    comment: "Your Words, Learn from: the self-learning dictionary row: button that opens the Forget learning memory confirmation.")
   static let forgetAlertTitle = String(
     localized: "Forget what EnviousWispr remembers about your fixes?",
     comment: "Your Words, Learn from: the Forget learning memory confirmation: the question.")
