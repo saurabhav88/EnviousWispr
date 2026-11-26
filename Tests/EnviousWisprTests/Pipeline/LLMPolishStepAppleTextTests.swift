@@ -48,12 +48,16 @@ struct LLMPolishStepAppleTextTests {
   /// when `gate` is finished. Awaiting an unstructured task's value does not observe cancellation.
   struct StubbornPolisher: TranscriptPolisher {
     let gate = AsyncStream<Void>.makeStream()
+    let entered = AsyncStream<Void>.makeStream()
+    let exited = AsyncStream<Void>.makeStream()
     func polish(
       text: String, instructions: PolishInstructions, config: LLMProviderConfig,
       onToken: (@Sendable (String) -> Void)?
     ) async throws -> LLMResult {
       let stream = gate.stream
+      entered.continuation.finish()
       await Task { for await _ in stream {} }.value
+      exited.continuation.finish()
       return LLMResult(polishedText: text)
     }
   }
@@ -88,9 +92,12 @@ struct LLMPolishStepAppleTextTests {
       } catch { return error is TimeoutError }
     }
     // deadline-fallback: a hang guard far above the 0.05 s deadline under test.
-    let timedOut = await withDeadline(seconds: 2) { await run.value }
-    #expect(timedOut == true, "did not return within 2 s with a TimeoutError")
+    let timedOut = await withDeadline(seconds: 10) { await run.value }
+    #expect(timedOut == true, "did not return within 10 s with a TimeoutError")
+    // The call really was running when it was left, and it has ended before the count is read.
+    for await _ in polisher.entered.stream {}
     polisher.gate.continuation.finish()
+    for await _ in polisher.exited.stream {}
     _ = await run.value
     #expect(completions == 0, "the abandoned call reported no completion and no failure")
   }

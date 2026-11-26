@@ -794,20 +794,20 @@ public final class LLMPolishStep: TextProcessingStep, PolishVocabularyConsumer {
     try Task.checkCancellation()
     // The Apple connector never calls `onToken`, so none is passed to the abandonable call.
     let call = Task { @MainActor in
-      try await Self.polishApple(
+      try Task.checkCancellation()
+      return try await Self.polishApple(
         polisher, text: text, instructions: instructions, config: config, onToken: nil,
         claimed: claimed)
     }
+    // Every exit stops the call: the deadline, a cancel, and a cancel that lands between them.
+    defer { call.cancel() }
     let outcome = await withTaskCancellationHandler {
       await withDeadline(seconds: seconds) { await call.result }
     } onCancel: {
       call.cancel()
     }
     try Task.checkCancellation()
-    guard let outcome else {
-      call.cancel()
-      throw TimeoutError(seconds: seconds)
-    }
+    guard let outcome else { throw TimeoutError(seconds: seconds) }
     return try outcome.get()
   }
 
