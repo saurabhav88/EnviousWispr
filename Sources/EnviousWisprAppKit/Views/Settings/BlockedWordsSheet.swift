@@ -215,7 +215,12 @@ struct BlockedWordsSheet: View {
       note = Copy.removeFailed
       return
     }
-    if let next { focusedRow = next.key } else { searchFocused = true }
+    // The list was just refreshed: a neighbour another app copy removed meanwhile is gone.
+    if let next, customWords.blockedPairs.contains(next) {
+      focusedRow = next.key
+    } else {
+      searchFocused = true
+    }
   }
 
   private func undo() {

@@ -427,7 +427,10 @@ struct LearnMemoryTests {
       return
     }
     #expect(!memory.isBlocked(Self.cenit) && memory.isBlocked(Self.sify))
+    let url = dir.appendingPathComponent(LearnMemory.fileName)
+    let before = try Data(contentsOf: url)
     #expect(memory.removeBlocked(Self.cenit) == .committed(nil))
+    #expect(try Data(contentsOf: url) == before, "a miss writes nothing")
     #expect(Self.memory(dir).restoreBlocked(token) == .committed(true))
     #expect(memory.blockedPairs.map(\.heard).contains("Senate"))
   }

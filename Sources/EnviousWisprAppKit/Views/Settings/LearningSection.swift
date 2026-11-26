@@ -262,7 +262,9 @@ struct LearningSection: View {
     let fixOn = settings.wrappedValue.fixLearnedWords
     let statuses = checkerStatuses.flatMap { $0.key == key ? $0 : nil }
     let showsStatus = dictionaryOn && fixOn
-    let fileDiffers = key.file != key.dictation
+    // As before #5006: a file line only when its model AND its status differ, so one
+    // shared word-check failure offers one Try again, not two.
+    let fileDiffers = key.file != key.dictation && statuses.map { $0.file != $0.dictation } == true
     let word: LearnFromEditsSettingsPresentation.StatusWord? =
       !dictionaryOn ? .paused : !fixOn ? .off : statuses?.dictation.readiness
     return VStack(alignment: .leading, spacing: DesignSpacing.md) {
