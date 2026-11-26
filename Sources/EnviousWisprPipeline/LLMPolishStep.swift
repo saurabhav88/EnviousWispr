@@ -407,7 +407,7 @@ public final class LLMPolishStep: TextProcessingStep, PolishVocabularyConsumer {
     // to keep in step for no measured benefit, and the §3.7 length guard —
     // not the clock — is what bounds this provider's worst case.
     case .s1Mini: return .seconds(15)
-    case .appleIntelligence: return .seconds(10)
+    case .appleIntelligence: return .seconds(Self.appleBudgetSeconds)
     // #158 pre-merge latency receipt (30 real calls, Haiku + Sonnet 4.6,
     // short/medium/long): observed max 7.47s (Sonnet, long bucket), with
     // two Haiku calls over 4.6s. The shared backstop below was 5 s when this
@@ -517,6 +517,14 @@ public final class LLMPolishStep: TextProcessingStep, PolishVocabularyConsumer {
       Self.cloudBaseSeconds + Double(context.text.count) / Self.cloudCharsPerSecond
     return .seconds(min(Self.cloudMaxBudgetSeconds, scaled))
   }
+
+  /// Apple Intelligence's polish budget. The step also enforces it itself (#5026), because on
+  /// macOS 26 a cancelled call keeps running and the runner's task-group timeout waits for it.
+  private static let appleBudgetSeconds: Double = 10
+
+  /// Test seam: a shorter Apple deadline. Never read from settings, environment or launch
+  /// arguments; production always uses `appleBudgetSeconds`, and using it is logged.
+  package var appleDeadlineSecondsForTesting: Double?
 
   /// #2093: 5 -> 15. Rationale and the production distribution behind it live at
   /// the `.openAI, .gemini` arm of `maxDuration` above; not restated here so the
@@ -769,6 +777,38 @@ public final class LLMPolishStep: TextProcessingStep, PolishVocabularyConsumer {
     let result = try await polisher.polish(
       text: text, instructions: instructions, config: config, onToken: onToken)
     return (result, nil)
+  }
+
+  /// #5026: Apple's call returns at the deadline whether or not it honors cancellation, then
+  /// throws `TimeoutError` (the runner's silent skip). An abandoned call runs to its own end and
+  /// its result is dropped here. Cancelling this step still cancels the call.
+  private func polishAppleWithinDeadline(
+    _ polisher: any TranscriptPolisher, text: String, instructions: PolishInstructions,
+    config: LLMProviderConfig, claimed: (any Sendable)?
+  ) async throws -> (LLMResult, AppleIntelligenceConnector.AFMPrewarmOutcome?) {
+    let seconds = appleDeadlineSecondsForTesting ?? Self.appleBudgetSeconds
+    if appleDeadlineSecondsForTesting != nil {
+      await AppLogger.shared.log(
+        "Apple polish deadline overridden for testing: \(seconds)s", level: .info, category: "LLM")
+    }
+    try Task.checkCancellation()
+    // The Apple connector never calls `onToken`, so none is passed to the abandonable call.
+    let call = Task { @MainActor in
+      try await Self.polishApple(
+        polisher, text: text, instructions: instructions, config: config, onToken: nil,
+        claimed: claimed)
+    }
+    let outcome = await withTaskCancellationHandler {
+      await withDeadline(seconds: seconds) { await call.result }
+    } onCancel: {
+      call.cancel()
+    }
+    try Task.checkCancellation()
+    guard let outcome else {
+      call.cancel()
+      throw TimeoutError(seconds: seconds)
+    }
+    return try outcome.get()
   }
 
   /// Minimum word count to send to the LLM (Latin/Cyrillic/Indic/Arabic etc).
@@ -1162,9 +1202,9 @@ public final class LLMPolishStep: TextProcessingStep, PolishVocabularyConsumer {
       let result: LLMResult
       let prewarmOutcome: AppleIntelligenceConnector.AFMPrewarmOutcome?
       do {
-        (result, prewarmOutcome) = try await Self.polishApple(
+        (result, prewarmOutcome) = try await polishAppleWithinDeadline(
           polisher, text: userText, instructions: resolvedInstructions, config: config,
-          onToken: onToken, claimed: claimedAFMSession)
+          claimed: claimedAFMSession)
       } catch let afmErr as AFMPolishError {
         // #1448/#1461: some AFM errors classified silent by TextProcessingRunner
         // (outputLanguageDrift always; frameworkUnavailable when it reaches this
