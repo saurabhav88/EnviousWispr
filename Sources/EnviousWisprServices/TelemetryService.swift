@@ -4611,25 +4611,6 @@ public final class TelemetryService {
     PostHogSDK.shared.capture("meeting.setup", properties: props)
   }
 
-  /// #4565: one `guided_tour` row per tour action (offered, started, stop viewed, ended early,
-  /// completed, replayed). Two closed vocabularies; never a count or content. PostHog runs only
-  /// while "Share usage metrics" is on, so a switched-off install sends nothing.
-  public func trackGuidedTour(_ event: GuidedTourTelemetry) {
-    let props = Self.guidedTourProperties(event)
-    #if DEBUG
-      testEventHook?(
-        CapturedTelemetryEvent(
-          name: "guided_tour",
-          stringProps: props.compactMapValues { $0 as? String },
-          intProps: [:], doubleProps: [:], boolProps: [:]))
-    #endif
-    PostHogSDK.shared.capture("guided_tour", properties: props)
-  }
-
-  static func guidedTourProperties(_ event: GuidedTourTelemetry) -> [String: Any] {
-    ["action": event.action.rawValue, "stop": event.stop.rawValue]
-  }
-
   /// #4012 c1 C3: one `meeting.call_prompt` row per answered or timed-out call prompt, and per
   /// call started by itself. Closed enums only.
   public func trackMeetingCallPrompt(_ event: MeetingCallPromptTelemetry) {

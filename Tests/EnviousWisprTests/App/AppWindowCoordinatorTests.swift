@@ -35,7 +35,7 @@ struct AppWindowCoordinatorTests {
     #expect(session.components == nil)
   }
 
-  @Test("finishing Setup shows the main window, marks the handoff, and works with no prior open")
+  @Test("finishing Setup shows the main window and works with no prior open")
   func finishSetupShowsMain() {
     let effects = RecordingDesktopPresentationEffects()
     let coordinator = AppWindowCoordinator(
@@ -44,7 +44,6 @@ struct AppWindowCoordinatorTests {
     defer { tearDown(coordinator) }
     coordinator.finishSetup()
     #expect(coordinator.mainWindowPresenter.window?.isVisible == true)
-    #expect(coordinator.mainWindowVisitIsSetupHandoff)
     // The launch path that follows an interrupted visit's completion shows nothing more.
     let window = coordinator.mainWindowPresenter.window
     coordinator.openFirstSurfaceAtLaunch(automaticallyOpenSetup: true)

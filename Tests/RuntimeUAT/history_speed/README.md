@@ -77,9 +77,9 @@ banner jump itself is #4667. Its report is excluded from `summarize_baseline.py`
 
 ## Other page movers (#4784)
 
-- Every run starts a fresh throwaway profile, whose first launch would offer the recordings tour card
-  (#4791) above History. Every launch passes the app's own `recordingDisclosureAcknowledged=YES` as a
-  launch argument (nothing written), so no launch shows the card.
+- Every launch passes the app's own `recordingDisclosureAcknowledged=YES` as a launch argument
+  (nothing written), so the one-time History recordings notice never appears above History, even if
+  a profile counts as an upgrade. (It first hid the recordings tour card, #4791, removed in #5003.)
 - The app withdraws the catalog certificate while its launch re-check runs. A launch stopped before the
   re-check certifies again leaves the next launch uncertified, and that launch truthfully shows
   "Updating History…" (29 pt) above the list. `m5-speed-open.py --mode existing` therefore starts each

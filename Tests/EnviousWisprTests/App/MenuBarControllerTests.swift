@@ -185,7 +185,6 @@ struct MenuBarControllerTests {
         "Microphone",  // #3454 submenu parent
         "Appearance",  // #1047 submenu parent
         "",  // separator
-        "Take the Tour",  // #4565; replays the guided tour, same action as Help > Take the Tour
         "Help Center",  // #3454; no updater in this fixture, so no Check for Updates below it
         "",  // separator
         "Quit \(AppConstants.appName)",
@@ -201,7 +200,7 @@ struct MenuBarControllerTests {
     #expect(menu.items[7].isSeparatorItem)
     #expect(menu.items[10].isSeparatorItem)
     #expect(menu.items[13].isSeparatorItem)
-    #expect(menu.items[16].isSeparatorItem)
+    #expect(menu.items[15].isSeparatorItem)
     // #3454: Open EnviousWispr carries no key equivalent (Cmd+, means Settings); Quit carries "q".
     #expect(item(menu, id: MenuBarItemID.openApp)?.keyEquivalent == "")
     #expect(item(menu, id: MenuBarItemID.quit)?.keyEquivalent == "q")
@@ -1102,23 +1101,15 @@ struct MenuBarControllerTests {
     perform(item(menu, id: MenuBarItemID.transcribeFile))
     #expect(spy.fired == ["continueOnboarding", "openMainWindow", "openTranscribeFile"])
 
-    // #4565: Take the Tour replays the guided tour.
-    perform(item(menu, id: MenuBarItemID.takeTour))
-    #expect(
-      spy.fired == ["continueOnboarding", "openMainWindow", "openTranscribeFile", "takeTour"])
-
     // #3454: Help Center opens the help website.
     perform(item(menu, id: MenuBarItemID.helpCenter))
     #expect(
-      spy.fired == [
-        "continueOnboarding", "openMainWindow", "openTranscribeFile", "takeTour", "openHelpCenter",
-      ])
+      spy.fired == ["continueOnboarding", "openMainWindow", "openTranscribeFile", "openHelpCenter"])
 
     perform(item(menu, id: MenuBarItemID.quit))
     #expect(
       spy.fired == [
-        "continueOnboarding", "openMainWindow", "openTranscribeFile", "takeTour",
-        "openHelpCenter", "quit",
+        "continueOnboarding", "openMainWindow", "openTranscribeFile", "openHelpCenter", "quit",
       ])
 
     // toggleRecording dispatches through an async Task — yield so it runs.
@@ -1433,7 +1424,6 @@ struct MenuBarControllerTests {
       (MenuBarItemID.microphoneWarning, "Dictation disabled — Microphone access required"),
       (MenuBarItemID.microphone, "Microphone"),
       (MenuBarItemID.openApp, "Open \(AppConstants.appName)"),
-      (MenuBarItemID.takeTour, "Take the Tour"),
       (MenuBarItemID.helpCenter, "Help Center"),
       (MenuBarItemID.appearance, "Appearance"),
       (MenuBarItemID.quit, "Quit \(AppConstants.appName)"),
@@ -1577,7 +1567,6 @@ struct MenuBarControllerTests {
         },
         continueOnboarding: { spy.fired.append("continueOnboarding") },
         openMainWindow: { spy.fired.append("openMainWindow") },
-        takeTour: { spy.fired.append("takeTour") },
         openHelpCenter: { spy.fired.append("openHelpCenter") },
         microphoneChoices: {
           spy.microphoneChoiceReads += 1

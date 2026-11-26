@@ -215,8 +215,8 @@ struct SetupPracticeScreen: View {
   @State private var glow = false
 
   /// The screen scrolls only when it does not fit (long German copy), and otherwise fills the
-  /// height. #3147 C9's recording note no longer shows here (founder 2026-11-13: recordings are
-  /// taught in the post-install tour, #4565; #3147 plan §17).
+  /// height. #3147 C9's recording note no longer shows here (founder 2026-11-13; #3147 plan §17).
+  /// The tour that was to teach recordings instead was removed before release (#5003).
   var body: some View {
     GeometryReader { proxy in
       ScrollView {

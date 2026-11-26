@@ -11,7 +11,6 @@ final class NavigationCoordinator {
 
   func request(_ destination: SettingsDestination) {
     pendingSharedMedia = nil
-    pendingGuidedTour = false
     pendingDestination = destination
   }
 
@@ -24,7 +23,6 @@ final class NavigationCoordinator {
   func requestSharedMedia(_ claim: SharedMediaTransfer.Claim) -> Bool {
     guard pendingSharedMedia == nil else { return false }
     pendingDestination = nil
-    pendingGuidedTour = false
     pendingSharedMedia = claim
     return true
   }
@@ -38,20 +36,6 @@ final class NavigationCoordinator {
 
   func cancelSharedMedia() {
     pendingSharedMedia = nil
-  }
-
-  /// #4565: a replay of the guided tour asked for from a menu, for the window to accept once. The
-  /// latest request wins: it replaces a pending page or shared file, and each of those replaces it.
-  private(set) var pendingGuidedTour = false
-
-  func requestGuidedTour() {
-    pendingDestination = nil
-    pendingSharedMedia = nil
-    pendingGuidedTour = true
-  }
-
-  func consumeGuidedTour() {
-    pendingGuidedTour = false
   }
 
   /// #4353 D4: the model menu a screen should open when its card next appears or is already

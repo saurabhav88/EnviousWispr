@@ -2214,10 +2214,6 @@ package final class WisprBootstrapper {
           navigationCoordinator.request(.history)
           appWindowCoordinator.showWindow()
         },
-        takeTour: {
-          WisprBootstrapper.takeGuidedTour(
-            settings: settings, navigation: navigationCoordinator, windows: appWindowCoordinator)
-        },
         openHelpCenter: {
           if let url = URL(string: HelpCenter.rootURL) { NSWorkspace.shared.open(url) }
         },
@@ -4210,8 +4206,6 @@ package final class WisprBootstrapper {
     // durable. Deduped by the box's terminal guard (a clean finish or a prior
     // window-close abandon suppresses it).
     setupSession.stop(reason: "app_quit")
-    // #4565: a tour card on screen ends and reports once, before the telemetry flush below.
-    appWindowCoordinator.mainWindowPresenter.runQuitHandler()
     appLifecycleCoordinator.runWillTerminate()
     // #3849: LAST, synchronously, after every step above: free every transcribe.cpp model
     // (Whisper, Universal Live Preview) so the Metal device destructor at exit finds none
@@ -4238,26 +4232,6 @@ package final class WisprBootstrapper {
   /// #4842: the Window menu's EnviousWispr command (through `LiveApplication`).
   package func showMainWindow() {
     appWindowCoordinator.showWindow()
-  }
-
-  /// #4565: Help › Take the Tour (through `LiveApplication`).
-  package func takeGuidedTour() {
-    Self.takeGuidedTour(
-      settings: settings, navigation: navigationCoordinator, windows: appWindowCoordinator)
-  }
-
-  /// One action for both menus. Unfinished Setup opens Setup and ends there, storing no request.
-  /// Otherwise the replay is published BEFORE the window is raised, so it wins over the key-window
-  /// offer check, the way `openSharedMedia` orders its request.
-  static func takeGuidedTour(
-    settings: SettingsManager, navigation: NavigationCoordinator, windows: AppWindowCoordinator
-  ) {
-    guard settings.onboardingState == .completed else {
-      windows.openOnboardingWindow()
-      return
-    }
-    navigation.requestGuidedTour()
-    windows.showWindow()
   }
 
   // MARK: - Root content
