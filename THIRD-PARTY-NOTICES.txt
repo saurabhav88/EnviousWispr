@@ -524,7 +524,7 @@ SOFTWARE.
 
 --------------------------------------------------------------------------------
 Sentry Cocoa
-  Version: 9.30.1 + EnviousWispr patch (beaa5941)
+  Version: 9.35.0 + EnviousWispr patch (10950751)
   License: MIT
   Source:  https://github.com/saurabhav88/sentry-cocoa
 --------------------------------------------------------------------------------
