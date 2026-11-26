@@ -258,7 +258,7 @@ public enum MeetingSummaryProviders {
       if #available(macOS 26.0, *) {
         let model = SystemLanguageModel(guardrails: .permissiveContentTransformations)
         guard case .available = model.availability else { return nil }
-        return model.contextSize
+        return AppleIntelligenceConnector.usableContextWindow(reported: model.contextSize)
       }
     #endif
     return nil

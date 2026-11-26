@@ -131,6 +131,12 @@ public struct AppleIntelligenceConnector: TranscriptPolisher {
   /// without duplicating the literal.
   package static let afmContextWindowTokens = 4096
 
+  /// The window a live read reported, or the floor when it reported none: a model service that
+  /// drops its connection reads 0 (#5014), which would make a negative budget.
+  package static func usableContextWindow(reported: Int) -> Int {
+    reported > 0 ? reported : afmContextWindowTokens
+  }
+
   /// This Mac's LIVE on-device context budget: `SystemLanguageModel
   /// .contextSize` where available (`@backDeployed` to macOS 26.0, so no
   /// extra OS-version branch is needed — it works on 26.0-26.3 too, not only
@@ -143,7 +149,7 @@ public struct AppleIntelligenceConnector: TranscriptPolisher {
   package static var currentContextWindowTokens: Int {
     #if canImport(FoundationModels)
       if #available(macOS 26.0, *) {
-        return SystemLanguageModel.default.contextSize
+        return usableContextWindow(reported: SystemLanguageModel.default.contextSize)
       }
     #endif
     return afmContextWindowTokens
@@ -1013,7 +1019,8 @@ public struct AppleIntelligenceConnector: TranscriptPolisher {
       // 4,096 here, macOS 27 (AFM 3) reports 8,192. Using the static
       // `afmContextWindowTokens` floor instead would wrongly skip on-device
       // polish on long AFM 3 dictations that actually fit.
-      let budget = prepared.model.contextSize - afmContextSafetyMarginTokens
+      let budget =
+        Self.usableContextWindow(reported: prepared.model.contextSize) - afmContextSafetyMarginTokens
       // Advisory response cap, CLAMPED to the room actually left in the window
       // after instructions + prompt. Empirically this SDK does not reject a call
       // whose `maximumResponseTokens` would overrun the window (measured

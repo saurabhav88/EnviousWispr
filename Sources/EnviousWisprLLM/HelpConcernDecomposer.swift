@@ -135,7 +135,8 @@ public enum HelpConcernDecomposer {
           guard
             HelpConcernDecomposer.fits(
               instructionTokens: instructionTokens, promptTokens: promptTokens,
-              contextTokens: model.contextSize)
+              contextTokens: AppleIntelligenceConnector.usableContextWindow(
+                reported: model.contextSize))
           else { return .failed(.tooLong) }
           try Task.checkCancellation()
           let session = LanguageModelSession(model: model, instructions: instructions)
