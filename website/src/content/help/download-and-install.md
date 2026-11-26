@@ -36,10 +36,10 @@ The first time you open EnviousWispr, it walks you through setup in this order:
 
 ### Setup says the download is taking longer than expected
 
-Before the practice box, the **Almost ready** screen waits for your AI polish model to download. When the speech model is ready and Microphone and Accessibility are allowed, but the AI polish download is expected to take more than a minute, or a minute has already passed, the screen shows **This download is taking longer than expected.** with two buttons:
+Before the practice box, the **Almost ready** screen waits for your AI polish model to download. If you are still waiting there for the AI polish download after your speech model and permissions are ready, the screen can show **This download is taking longer than expected.** with two buttons:
 
 - **Skip ahead** takes you to the practice box now. AI polish keeps downloading while EnviousWispr is open and turns on by itself when it is done.
-- **Keep waiting** stays on the screen until the download finishes. A **Rather not wait? Skip ahead** link stays on the screen, so you can still skip ahead later.
+- **Keep waiting** stays on the screen until the download finishes. While the download is still running, a **Rather not wait? Skip ahead** link lets you skip ahead later.
 
 You will not see this choice when the download is fast, or when you use Apple Intelligence, a cloud model, or no AI polish.
 
