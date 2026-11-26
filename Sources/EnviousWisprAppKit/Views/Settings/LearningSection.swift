@@ -262,9 +262,11 @@ struct LearningSection: View {
     let fixOn = settings.wrappedValue.fixLearnedWords
     let statuses = checkerStatuses.flatMap { $0.key == key ? $0 : nil }
     let showsStatus = dictionaryOn && fixOn
-    // As before #5006: a file line only when its model AND its status differ, so one
-    // shared word-check failure offers one Try again, not two.
-    let fileDiffers = key.file != key.dictation && statuses.map { $0.file != $0.dictation } == true
+    // A different file model always gets its sentence in the "?"; its own Try again
+    // only when its status differs too, so one shared word-check failure offers one
+    // Try again, not two (as before #5006).
+    let fileModelDiffers = key.file != key.dictation
+    let fileRetrySeparate = fileModelDiffers && statuses.map { $0.file != $0.dictation } == true
     let word: LearnFromEditsSettingsPresentation.StatusWord? =
       !dictionaryOn ? .paused : !fixOn ? .off : statuses?.dictation.readiness
     return VStack(alignment: .leading, spacing: DesignSpacing.md) {
@@ -275,7 +277,7 @@ struct LearningSection: View {
             SettingsHelpText(text: String(localized: LearnFromEditsSettingsPresentation.fixesHelp))
             if showsStatus, let statuses {
               SettingsHelpText(text: statuses.dictation.line)
-              if fileDiffers {
+              if fileModelDiffers {
                 SettingsHelpText(text: Self.fileLine(statuses.file))
               }
             }
@@ -301,7 +303,7 @@ struct LearningSection: View {
         if statuses.dictation.canRetry {
           checkerStatusLine(statuses.dictation.line, status: statuses.dictation, model: key.dictation, key: key)
         }
-        if fileDiffers, statuses.file.canRetry {
+        if fileRetrySeparate, statuses.file.canRetry {
           checkerStatusLine(Self.fileLine(statuses.file), status: statuses.file, model: key.file, key: key)
         }
       }

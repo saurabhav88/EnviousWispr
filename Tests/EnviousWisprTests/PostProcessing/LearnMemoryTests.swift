@@ -428,9 +428,10 @@ struct LearnMemoryTests {
     }
     #expect(!memory.isBlocked(Self.cenit) && memory.isBlocked(Self.sify))
     let url = dir.appendingPathComponent(LearnMemory.fileName)
-    let before = try Data(contentsOf: url)
+    let identity = { try FileManager.default.attributesOfItem(atPath: url.path)[.systemFileNumber] as? Int }
+    let before = try identity()
     #expect(memory.removeBlocked(Self.cenit) == .committed(nil))
-    #expect(try Data(contentsOf: url) == before, "a miss writes nothing")
+    #expect(try identity() == before, "a miss writes nothing (every save replaces the file)")
     #expect(Self.memory(dir).restoreBlocked(token) == .committed(true))
     #expect(memory.blockedPairs.map(\.heard).contains("Senate"))
   }
