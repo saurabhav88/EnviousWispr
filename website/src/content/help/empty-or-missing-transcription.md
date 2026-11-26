@@ -4,7 +4,7 @@ description: "What to check when you finish a recording and no text appears."
 category: "troubleshooting"
 section: "Transcription Issues"
 order: 3
-keywords: ["nothing happens", "no text", "empty", "microphone not working", "mic not working", "not hearing me", "no output", "blank", "nothing appears", "not transcribing", "not working at all", "silent", "no sound", "meter is flat", "cant hear me"]
+keywords: ["nothing happens", "no text", "empty", "microphone not working", "mic not working", "not hearing me", "no output", "blank", "nothing appears", "not transcribing", "not working at all", "silent", "no sound", "meter is flat", "cant hear me", "not hearing anything", "isn't sending sound", "microphone silent"]
 related: ["choosing-your-microphone", "granting-permissions-microphone-accessibility-and-automation"]
 updated: 2026-11-05
 deflection: "show_but_always_send"
@@ -24,6 +24,18 @@ If EnviousWispr is not in the list, macOS has not been asked yet. Open **App Set
 ### Check for a hardware mute
 
 A physical mute switch stops your voice reaching the app even when everything else is set up correctly. Check the microphone itself, the cable, and any switch on a desk stand. Many headsets have a mute switch on the earcup or a button partway down the cable. A muted microphone still records, but it records only silence.
+
+### The pill says your microphone isn’t sending sound
+
+Some microphones stay connected but send only digital silence: no sound at all, not even room noise. A mute switch or a Bluetooth headset that has not woken up can cause it. When **Warn when the microphone is silent** is on (it is on unless you switched it off), the pill shows **We’re not hearing anything from your microphone.** after 5 seconds of digital silence in the middle of a dictation, or after 6 seconds when the microphone has been silent since you started. After 15 seconds it shows a stronger notice: **Your microphone isn’t sending sound. Stop and check it in Settings.**
+
+The recording keeps going, so what you said before the silence is kept. Words you say while the microphone is silent are not captured. When sound comes back, the notice goes away by itself.
+
+If you see it, check the mute switch, the cable or the Bluetooth connection, and the microphone picked on the **Microphone** tab of **Dictation Settings**.
+
+This notice is for a microphone that still looks connected but sends silence; a microphone that is switched off can look like that too. When EnviousWispr detects that the microphone was disconnected, or a recording starts without receiving any audio at all, the recording can end, and the pill tells you what happened instead.
+
+To hide the notice, switch off **Warn when the microphone is silent** on the **Microphone** tab. Digital silence still never ends a recording. To end recordings when you stop talking, use **Stop recording on silence**, which ends a dictation after the pause length you choose.
 
 ### Pick the right microphone
 

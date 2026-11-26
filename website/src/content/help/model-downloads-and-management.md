@@ -27,15 +27,25 @@ EnviousWispr retries some temporary network problems by itself. Anything else st
 2. **Find the download.** The download status and its buttons show under **Transcription Engine**, beside the summary of the engine you selected.
 3. **Use the button.** Click **Try Again** after a failure, or **Resume** after a pause. **Cancel** stops a download that is running.
 
+### AI polish download in the menu bar
+
+While your AI polish model downloads after setup, the EnviousWispr menu shows **AI polish downloading · NN%**. After setup, once the download finishes and the model is ready, EnviousWispr can show **AI polish download complete** once.
+
+The download continues only while EnviousWispr is open. If you quit before it finishes, the download is paused and its progress is kept. The menu then shows **AI polish download paused · Resume**; click it to continue from where it stopped.
+
 ### Other downloads
 
 The [Self-Learning Dictionary](/help/self-learning-dictionary/) has models of its own, downloaded after setup: one that spots your corrections, and a word check that uses the words you taught it. That article lists their sizes. **Settings** > **Dictionary** > **Learn from...** shows whether each is downloading, ready or needs a retry.
+
+[EnviousMeet](/help/enviousmeet-record-a-meeting/) downloads **Speaker labels** in two parts of about 199 MB each: one for live speaker labels and one for finished calls. Finishing EnviousMeet setup starts the download. Its **Download**, **Cancel** and **Remove** buttons are on the **Models** tab of the **EnviousMeet** page.
 
 ### Free up memory
 
 The speech model stays in your Mac's memory between dictations, so there is nothing to load next time. To get the memory back, go to **Dictation Settings** > **Engine** and change **Unload model after**.
 
 It is set to **Never** by default, so the model stays loaded. The other choices unload it after 2, 5, 10 or 15 minutes or 1 hour of not being used, or **Immediately** after every recording. Each one costs a short wait the next time you dictate.
+
+The on-Mac AI polish models, EG-1 and S1-mini, have their own choice: **Unload polish model after** in **Settings** > **AI Polish**. It is also **Never** by default. Your next dictation loads the model again, so the first one may take a moment longer.
 
 ### Free up disk space
 

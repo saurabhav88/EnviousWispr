@@ -1,0 +1,13 @@
+# release-probes v2.6.2: one exact on-screen string per new feature (each absent at v2.6.1).
+# Silent microphone notice switch (#4841): Settings > Dictation Settings > Microphone.
+Warn when the microphone is silent
+# Clipboard-only dictation (#4479): Settings > Dictation Settings > Clipboard.
+Paste dictations automatically
+# Blocked words window (#5006): its search field.
+Search blocked words
+# Unload the on-Mac polish model (#3853): Settings > AI Polish row.
+Unload polish model after
+# Setup Skip ahead (#4845): the slow-download card title.
+This download is taking longer than expected.
+# Dictation output language (#3181): Settings > AI Polish row.
+Dictation output language

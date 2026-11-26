@@ -178,7 +178,7 @@ On our own benchmark of 1,890 real dictation-cleanup cases, EG-1 passed 93.7%, a
 - 🧠 **Self-Learning Dictionary**: correct a dictation and EnviousWispr detects the change and adds the intended term to your dictionary
 - 📋 **Paste Last Dictation**: ⌃⌘V pastes your most recent dictation wherever your cursor is and ⌃⌘C copies it, both changeable in Keybinds
 - 🔇 **Media while you dictate**: choose whether your music and videos continue, lower, mute or pause while you talk
-- 🇩🇪 **English and German interface**: choose the app's language in App Settings > Appearance
+- 🌍 **English, German, Spanish and French interface**: choose the app's language in App Settings > Appearance
 - 💬 **Send Feedback**: tell us what works from inside the app, and it may suggest help articles that answer your question before you send
 - 🛡️ **Privacy controls**: choose whether to share usage metrics and crash reports in App Settings > Privacy
 - ➕ **Quick Add**: highlight a misheard word anywhere on macOS and save the right spelling to your dictionary with a keyboard shortcut or from the menu bar, without opening Settings
@@ -194,6 +194,17 @@ On our own benchmark of 1,890 real dictation-cleanup cases, EG-1 passed 93.7%, a
 
 EnviousWispr ships often. A few of the user-facing improvements from recent releases:
 
+- **Now in French and Spanish.** The EnviousWispr app is now available in French and Spanish, natively. Choose Français or Español in Settings > App Settings > Appearance > Language, then relaunch to apply. (v2.6.2)
+- **Better audio exporting capabilities.** Save your dictation and meeting recordings as audio files. In History, open the ··· menu and choose Save audio…. Saved dictations are named with the app and the time. (v2.6.2)
+- **More control over your Self-Learning Dictionary.** The Self-Learning Dictionary blocks a word after you undo or delete the same fix twice. You can now unblock those words yourself in Settings > Dictionary > Learn from.... (v2.6.2)
+- **Fixed a bug with dictations ending on their own.** We found out that certain microphones emit dead silence between speech, and that could trick the app into ending a dictation prematurely. We've now fixed this. (v2.6.2)
+- **Paste it yourself if you prefer.** Turn off Paste dictations automatically in Settings > Dictation Settings > Clipboard, and each dictation goes to your clipboard for you to paste with Cmd+V. (v2.6.2)
+- **Custom Words in meeting transcripts.** Finished EnviousMeet transcripts now use your Custom Words, so names and terms you added are spelled your way more often. (v2.6.2)
+- **Meeting recordings take less space.** Finished meeting recordings now use much less disk space on your Mac. Playback and everything else work as before. (v2.6.2)
+- **Better speaker labels in calls.** Speaker labels group voices better and find names in more Zoom and Teams calls. (v2.6.2)
+- **Free memory from the polish model.** With EG-1 or S1-mini, choose Unload polish model after in Settings > AI Polish to free its memory when you are not dictating. (v2.6.2)
+- **Fixed a bug with dictation models not working.** 2.6.1 introduced a bug where some users were no longer able to use the Parakeet dictation engine. We've now addressed this. (v2.6.2)
+- **Fixed freezes and other bugs.** Closing the main window no longer quits the app. We also fixed a few freezes and a case where Whisper could get stuck. (v2.6.2)
 - **A Brand New History Tab Experience.** The UX has been redesigned to make engaging with your Dictations, Transcripts and Meetings more natural and enjoyable. We added a bunch of new functionality as well for power users. (v2.6.1)
 - **Play back your dictations.** Introducing dictation playback. EnviousWispr now keeps a recording of your dictations on your Mac, so you can play it back in History. Recordings stay until you delete them, or for a keep period you choose in Settings > App Settings > Recordings. (v2.6.1)
 - **Brand new, faster EG-1.** Brand new EG-1 models are faster, and the full-size EG-1 is more accurate, in English and 10 more languages. Pick the size that fits your Mac in Settings > AI Polish: EG-1, EG-1 Mini or EG-1 Micro. If you turned polishing off because it felt slow, give it another try. (v2.6.1)

@@ -25,7 +25,9 @@ In three situations EnviousWispr does not put your old clipboard back, each to a
 
 ### Keep my dictation on the clipboard
 
-Three settings on the **Clipboard** tab control this. Open **Dictation Settings** > **Clipboard**. The first two are on by default.
+These settings on the **Clipboard** tab control this. Open **Dictation Settings** > **Clipboard**. All except the last are on by default.
+
+- **Paste dictations automatically.** Switch it off to have EnviousWispr put each dictation on the clipboard instead of pasting it, so you paste it yourself with Cmd+V.
 
 - **Restore clipboard after paste.** Puts what you had copied back after your dictation lands. Switch it off if you would rather keep the dictation on your clipboard to paste again somewhere else.
 - **Auto-copy to clipboard.** Copies your dictation to the clipboard whenever EnviousWispr is not pasting it into an app for you.

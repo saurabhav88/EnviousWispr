@@ -27,7 +27,7 @@ Click **Undo** and the pill says **Undone** for 1.5 seconds. A new word is remov
 
 If Undo says **Couldn’t undo**, the word stayed as it was. That notice stays for 3 seconds. Remove it in **Settings** > **Dictionary** > **Your Words** instead.
 
-Undo also tells EnviousWispr you did not want that fix. After one Undo, the same fix can still be learned again, so you can try the feature as often as you like. After a second "no" for the same fix, it is blocked: EnviousWispr never learns it again. Deleting a learned word, or removing a sound-alike it learned, counts as a "no" too, so one Undo and one delete also block the fix. To clear blocks, see [Forget what it remembers](#forget-what-it-remembers).
+Undo also tells EnviousWispr you did not want that fix. After one Undo, the same fix can still be learned again, so you can try the feature as often as you like. After a second "no" for the same fix, it is blocked: EnviousWispr never learns it again. Deleting a learned word, or removing a sound-alike it learned, counts as a "no" too, so one Undo and one delete also block the fix. To remove one block or clear them all, see [Forget what it remembers](#forget-what-it-remembers).
 
 ### Remove a word it learned
 
@@ -47,14 +47,14 @@ If the correction model says no to a fix after you clearly finished editing, Env
 
 If your edit was a real correction and nothing was learned, check these:
 
-- **You blocked that fix.** A fix you said "no" to twice (with Undo, or by deleting the learned word) is never learned again. Use [Forget what it remembers](#forget-what-it-remembers) to clear blocks.
+- **You blocked that fix.** A fix you said "no" to twice (with Undo, or by deleting the learned word) is never learned again. Remove it from the **Blocked words** list to let it be learned again. See [Forget what it remembers](#forget-what-it-remembers).
 
 - **The pill said Couldn’t save.** Nothing was written. The mishearing already belongs to another word as a trigger, the word it was about had been deleted in the meantime, or the dictionary file could not be updated. This pill also stays for 3 seconds.
 - **The app does not share its text.** Some apps and custom web editors never share their text with macOS accessibility. The dictation still pastes normally, but nothing is learned. In VS Code, Cursor and other editors built on VS Code, turn on [Screen Reader Optimized mode](#code-editors).
 - **The watch ended early.** EnviousWispr stops watching if you clear the text box, click into a different text box, dictate again, rewrite the text instead of fixing a word, or switch to another app before the watch begins. After two pauses in your editing, it also stops judging further fixes to that paste.
 - **You stopped without moving on.** If the only sign you were done was a pause or a switch to another app, the correction model has to be surer before it saves the word, because a half-typed word looks the same. Moving the cursor off the word right after your fix counts as done. Dictating again within a minute and before you leave that app does too, and so does sending the text in most apps (when sending clears or closes the text box): the usual check then applies.
 - **The text went to the clipboard.** EnviousWispr only follows text it pasted itself.
-- **The correction model is not ready.** Open **Settings** > **Dictionary** > **Learn from...**. The row shows a download line with progress while the model downloads, or a plain reason if it could not download or load, with a button to download, cancel or try again. Once the model is ready, that extra line goes away. EnviousWispr normally starts the download after first-run setup and your speech model finish. The model is about 300 MB. It runs on your Mac's own chip and answers in a fraction of a second.
+- **The correction model is not ready.** Open **Settings** > **Dictionary** > **Learn from...**. The **Learn new words** line shows a short status word: **Ready**, **Off**, **Not ready** or **Not available**. When you need to act, for example to start, cancel or retry the download, the line keeps its button. Other reasons are inside the **?** next to the title. EnviousWispr normally starts the download after first-run setup and your speech model finish. The model is about 300 MB. It runs on your Mac's own chip and answers in a fraction of a second.
 
 ### Which apps it works in
 
@@ -82,12 +82,13 @@ Dictation pastes into these editors the same way with the mode on or off.
 
 ### Learned words aren't fixing my dictations
 
-A learned word never replaces text on its own. When a later dictation contains a mishearing you corrected before, EnviousWispr asks a word check on your Mac one question about that spot: in this sentence, did you mean the learned word? Only the spots it approves change. That is how it swaps an ordinary word for your term where you meant the term, for example "Twist" to "Tuist", and leaves the ordinary word alone in a sentence where you meant it. A mishearing it has not seen yet is usually left alone until you correct it once. With **Enable Dictionary** on and a word check available, a learned phrase can also match known mishearings of another learned word inside it. For example, a username correction containing your first name plus initials can use the mishearings already learned for your first name. The word check decides which offered corrections to apply. When there are more spots than it checks in one dictation, it checks the earliest ones, and a longer match goes first at the same place. With **Enable Dictionary** off, learned corrections are not applied.
+A learned word never replaces text on its own. When a later dictation contains a mishearing you corrected before, EnviousWispr asks a word check on your Mac one question about that spot: in this sentence, did you mean the learned word? Only the spots it approves change. That is how it swaps an ordinary word for your term where you meant the term, for example "Twist" to "Tuist", and leaves the ordinary word alone in a sentence where you meant it. A mishearing it has not seen yet is usually left alone until you correct it once. With **Enable Dictionary** on and a word check available, a learned phrase can also match known mishearings of another learned word inside it. For example, a username correction containing your first name plus initials can use the mishearings already learned for your first name. The word check decides which offered corrections to apply. When there are more spots than it checks in one dictation, it checks the earliest ones, and a longer match goes first at the same place. With **Enable Dictionary** or **Fix words it learned** off, learned corrections are not applied.
 
 If learned words are not being applied, check these:
 
-- **Enable Dictionary is off.** Words are still learned then, but never applied, and the row under the switch in **Learn from...** shows no word check. Switch **Enable Dictionary** on in **Settings** > **Dictionary**.
-- **The row says Learn-only.** Look at the row under the switch in **Settings** > **Dictionary** > **Learn from...**. It shows which check is in use, for example **Checked by: Envious Word Check. Learned words are checked before they're used.** While the check is downloading, or if it could not download or is not ready, the row starts with **Learn-only**. New words are still learned and saved, and they start fixing dictations once the check is ready, as long as **Enable Dictionary** is on. When a download failed, or Envious Word Check could not load, a **Try again** button appears.
+- **Enable Dictionary is off.** Learning goes on while **Learn new words** is on and ready, but learned fixes are paused. In **Learn from...**, **Fix words it learned** says **Paused** and shows **Dictionary is off in Your Words.** Switch **Enable Dictionary** on in **Settings** > **Dictionary**.
+- **Fix words it learned is off.** Words are still learned and saved, and words you added yourself still work, but learned corrections are not applied. Switch on **Fix words it learned** in **Settings** > **Dictionary** > **Learn from...**.
+- **Fix words it learned is not Ready.** Look at **Fix words it learned** in **Settings** > **Dictionary** > **Learn from...**. It says **Ready** when a word check is in use; click the **?** to see which one, for example **Available with Envious Word Check**. While the check is downloading, or if it could not download or is not ready, it says **Not ready**, or **Not available** when your polish choice cannot check learned words. New words are still learned and saved, and they start fixing dictations once the check is ready. When a download failed, or Envious Word Check could not load, a **Try again** button appears.
 - **The check ran out of time.** If the word check cannot answer in time, your text arrives exactly as it would have without it. That costs at most about two and a half seconds for a dictation. For Transcribe a File, each part of a long file can wait up to about 1.2 seconds more, and a little more when a part is in a different language. A very short dictation after a quiet stretch may reach the check while it is still loading, and is then left as it would be without the check.
 
 The word check works in every dictation language, for dictation and for Transcribe a File.
@@ -122,20 +123,20 @@ Every word check runs locally, including when you use cloud polish. The word che
 EnviousWispr keeps a small memory on your Mac of the fixes the correction model said no to and the fixes you said no to. It stays on your Mac, next to your dictionary, and is never sent anywhere. A fix that is not blocked is forgotten after 90 days without being seen again. A blocked fix stays blocked until you clear it.
 
 1. Open **Settings** > **Dictionary** > **Learn from...**.
-2. When the memory holds something, a line under the switch shows how many fixes are blocked, for example **Learning memory: 2 blocked**, with a **Forget** button.
-3. Click **Forget**, then confirm. Blocked words may be learned again.
+2. When the memory holds something, a **Learning memory** row shows how many fixes are blocked, for example **2 blocked**. Click it to open the **Blocked words** window.
+3. Each blocked fix shows what was heard and the word it was fixed to. Type in **Search blocked words** to find one.
+4. To let one fix be learned again, click **Remove** beside it. While the window is open, **Undo** puts it back.
+5. To clear everything, click **Forget all**, then confirm. Blocked words may be learned again.
 
-Forget clears only this memory. Words already in Your Words stay there. If it says **Couldn’t forget. Try again.**, some of the memory may not have been cleared; click **Forget** again.
+Remove and Forget all change only this memory. Words already in Your Words stay there. If it says **Couldn’t forget. Try again.**, some of the memory may not have been cleared; try again.
 
 ### Turn off learning from my edits
 
 1. Open **Settings** > **Dictionary** > **Learn from...**.
-2. Switch off **Self-Learning Dictionary**.
+2. Switch off **Learn new words**. Click the **?** beside it for a short description and a **Learn more** link to this page.
 
-The row under the switch reads: Automatically detects when you correct a dictation and adds the corrected word to your dictionary. Undo it from the notification, or remove it later in Your Words.
-
-Turning it off stops new learning only. Words it already learned stay in Your Words and keep fixing dictations through the word check until you remove them or turn off **Enable Dictionary**. The **Auto-learned** filter finds them all.
+Turning it off stops new learning only. Words it already learned stay in Your Words and keep fixing dictations through the word check until you remove them, or turn off **Fix words it learned** or **Enable Dictionary**. The **Auto-learned** filter finds them all.
 
 ### Does it work on my Mac?
 
-The correction model is approved for every macOS that EnviousWispr supports, macOS 14 through macOS 27, so the Self-Learning Dictionary runs on any Apple silicon Mac. If a future macOS has not been examined yet, the row says **Not available on this version of macOS yet**. Your choice is kept and applies as soon as your Mac qualifies.
+The correction model is approved for every macOS that EnviousWispr supports, macOS 14 through macOS 27, so the Self-Learning Dictionary runs on any Apple silicon Mac. If a future macOS has not been examined yet, the **Learn new words** line says **Not available**, and its **?** says **Not available on this version of macOS yet**. Your choice is kept and applies as soon as your Mac qualifies.

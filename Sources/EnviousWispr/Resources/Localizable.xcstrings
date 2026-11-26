@@ -73946,66 +73946,6 @@
         }
       }
     },
-    "whatsNew.separate-dictionary-controls.title" : {
-      "comment" : "Settings > What's New: the title of one feature announcement (entry separate-dictionary-controls).",
-      "extractionState" : "manual",
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Separate controls for learned words"
-          }
-        },
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Lernen und Korrigieren getrennt steuern"
-          }
-        },
-        "fr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Contrôler séparément les mots appris"
-          }
-        },
-        "es" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Controles separados para las palabras aprendidas"
-          }
-        }
-      }
-    },
-    "whatsNew.separate-dictionary-controls.description" : {
-      "comment" : "Settings > What's New: the paragraph under one feature announcement's title (entry separate-dictionary-controls).",
-      "extractionState" : "manual",
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Choose whether your dictionary learns new words and whether it fixes words it already learned. Words you added yourself still work when learned fixes are off."
-          }
-        },
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Lege getrennt fest, ob dein Wörterbuch neue Wörter lernt und ob es gelernte Korrekturen anwendet. Solange das Wörterbuch aktiviert ist, werden selbst hinzugefügte Wörter auch ohne gelernte Korrekturen berücksichtigt."
-          }
-        },
-        "fr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Choisissez si votre dictionnaire apprend de nouveaux mots et s’il corrige les mots qu’il a déjà appris. Les mots que vous avez ajoutés vous-même continuent de fonctionner lorsque les corrections apprises sont désactivées."
-          }
-        },
-        "es" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Elige si quieres que tu diccionario aprenda palabras nuevas y si quieres que aplique las correcciones que ya ha aprendido. Las palabras que hayas añadido seguirán usándose aunque desactives esas correcciones."
-          }
-        }
-      }
-    },
     "whatsNew.enviouswispr-in-french.title" : {
       "comment" : "Settings > What's New: the title of one feature announcement (entry enviouswispr-in-french).",
       "extractionState" : "manual",
@@ -74013,25 +73953,25 @@
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Now available in French"
+            "value" : "Now in French and Spanish"
           }
         },
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Jetzt auch auf Französisch"
+            "value" : "Jetzt auf Französisch und Spanisch"
           }
         },
         "fr" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Désormais disponible en français"
+            "value" : "Désormais en français et en espagnol"
           }
         },
         "es" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Ya disponible en francés"
+            "value" : "Ahora en francés y español"
           }
         }
       }
@@ -74043,85 +73983,145 @@
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Choose Français in Settings > App Settings > Appearance > Language, then relaunch to apply. System default follows your Mac's language."
+            "value" : "The EnviousWispr app is now available in French and Spanish, natively. Choose Français or Español in Settings > App Settings > Appearance > Language, then relaunch to apply."
           }
         },
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Wähle „Français“ unter Einstellungen > App-Einstellungen > Erscheinungsbild > Sprache und starte die App dann neu. „Systemstandard“ folgt der Sprache deines Macs."
+            "value" : "Die EnviousWispr-App gibt es jetzt auch nativ auf Französisch und Spanisch. Wähle „Français“ oder „Español“ unter Einstellungen > App-Einstellungen > Erscheinungsbild > Sprache und starte die App dann neu."
           }
         },
         "fr" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Choisissez « Français » dans Réglages > Réglages de l’app > Apparence > Langue, puis redémarrez l’app pour appliquer le changement. « Par défaut du système » suit la langue de votre Mac."
+            "value" : "L’app EnviousWispr est désormais disponible en français et en espagnol, de façon native. Choisissez « Français » ou « Español » dans Réglages > Réglages de l’app > Apparence > Langue, puis redémarrez l’app pour appliquer le changement."
           }
         },
         "es" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Elige “Français” en Ajustes > Ajustes de la app > Aspecto > Idioma y vuelve a abrir la app para aplicar el cambio. “Predeterminado del sistema” usa el idioma de tu Mac."
+            "value" : "La app EnviousWispr ya está disponible de forma nativa en francés y español. Elige “Français” o “Español” en Ajustes > Ajustes de la app > Aspecto > Idioma y vuelve a abrir la app para aplicar el cambio."
           }
         }
       }
     },
-    "whatsNew.enviouswispr-in-spanish.title" : {
-      "comment" : "Settings > What's New: the title of one feature announcement (entry enviouswispr-in-spanish).",
+    "whatsNew.history-save-audio.title" : {
+      "comment" : "Settings > What's New: the title of one feature announcement (entry history-save-audio).",
       "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Now available in Spanish"
-          }
-        },
-        "es" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Ya disponible en español"
+            "value" : "Better audio exporting capabilities"
           }
         },
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Jetzt auch auf Spanisch"
+            "value" : "Besserer Audio-Export"
           }
         },
         "fr" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Désormais disponible en espagnol"
+            "value" : "Export audio amélioré"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Mejor exportación de audio"
           }
         }
       }
     },
-    "whatsNew.enviouswispr-in-spanish.description" : {
-      "comment" : "Settings > What's New: the paragraph under one feature announcement's title (entry enviouswispr-in-spanish).",
+    "whatsNew.history-save-audio.description" : {
+      "comment" : "Settings > What's New: the paragraph under one feature announcement's title (entry history-save-audio).",
       "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Choose Español in Settings > App Settings > Appearance > Language, then relaunch to apply. System default follows your Mac's language."
-          }
-        },
-        "es" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Elige “Español” en Ajustes > Ajustes de la app > Aspecto > Idioma y vuelve a abrir la app para aplicar el cambio. “Predeterminado del sistema” usa el idioma de tu Mac."
+            "value" : "Save your dictation and meeting recordings as audio files. In History, open the ··· menu and choose Save audio…. Saved dictations are named with the app and the time."
           }
         },
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Wähle „Español“ unter Einstellungen > App-Einstellungen > Erscheinungsbild > Sprache und starte die App dann neu. „Systemstandard“ folgt der Sprache deines Macs."
+            "value" : "Sichere deine Diktat- und Meeting-Aufnahmen als Audiodateien. Öffne im Verlauf das Menü ··· und wähle „Audio sichern…“. Die Dateinamen gesicherter Diktate enthalten den App-Namen und die Uhrzeit."
           }
         },
         "fr" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Choisissez « Español » dans Réglages > Réglages de l’app > Apparence > Langue, puis redémarrez l’app pour appliquer le changement. « Par défaut du système » suit la langue de votre Mac."
+            "value" : "Enregistrez vos dictées et vos réunions sous forme de fichiers audio. Dans l’Historique, ouvrez le menu ··· et choisissez « Enregistrer l’audio… ». Le nom des fichiers de dictée indique l’app et l’heure."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Guarda las grabaciones de tus dictados y reuniones como archivos de audio. En el Historial, abre el menú ··· y elige “Guardar audio…”. Los dictados guardados llevan el nombre de la app y la hora."
+          }
+        }
+      }
+    },
+    "whatsNew.blocked-words-list.title" : {
+      "comment" : "Settings > What's New: the title of one feature announcement (entry blocked-words-list).",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "More control over your Self-Learning Dictionary"
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Mehr Kontrolle über dein selbstlernendes Wörterbuch"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Mieux maîtriser votre Dictionnaire autoapprenant"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Más control sobre tu Diccionario de autoaprendizaje"
+          }
+        }
+      }
+    },
+    "whatsNew.blocked-words-list.description" : {
+      "comment" : "Settings > What's New: the paragraph under one feature announcement's title (entry blocked-words-list).",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "The Self-Learning Dictionary blocks a word after you undo or delete the same fix twice. You can now unblock those words yourself in Settings > Dictionary > Learn from...."
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Das selbstlernende Wörterbuch sperrt ein Wort, wenn du dieselbe Korrektur zweimal rückgängig machst oder löschst. Unter Einstellungen > Wörterbuch > Lernen aus... kannst du diese Wörter jetzt selbst wieder freigeben."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Le Dictionnaire autoapprenant bloque un mot une fois que vous avez annulé ou supprimé deux fois la même correction. Vous pouvez désormais débloquer ces mots vous-même dans Réglages > Dictionnaire > Apprendre de…"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "El Diccionario de autoaprendizaje bloquea una palabra cuando deshaces o eliminas la misma corrección dos veces. Ahora puedes desbloquear esas palabras por tu cuenta en Ajustes > Diccionario > Aprender de…"
           }
         }
       }
@@ -74133,25 +74133,25 @@
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Dictation keeps going when your microphone goes silent"
+            "value" : "Fixed a bug with dictations ending on their own"
           }
         },
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Das Diktat läuft weiter, wenn dein Mikrofon verstummt"
+            "value" : "Fehler behoben: Diktate endeten von selbst"
           }
         },
         "fr" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "La dictée continue même si votre micro reste silencieux"
+            "value" : "Correction : des dictées s’arrêtaient d’elles-mêmes"
           }
         },
         "es" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "El dictado continúa cuando tu micrófono se queda en silencio"
+            "value" : "Corregido un error por el que los dictados terminaban solos"
           }
         }
       }
@@ -74163,25 +74163,445 @@
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "If your microphone sends only digital silence, EnviousWispr keeps recording, and the pill warns you after 5 seconds (6 if it was silent from the start). Words you say during the silence are not captured. If you use Stop recording on silence, your dictation still ends once a pause reaches the length you chose. Turn the warning off in Settings > Dictation Settings > Microphone."
+            "value" : "We found out that certain microphones emit dead silence between speech, and that could trick the app into ending a dictation prematurely. We've now fixed this."
           }
         },
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Wenn dein Mikrofon nur digitale Stille liefert, nimmt EnviousWispr weiter auf, und die Aufnahmeanzeige warnt dich nach 5 Sekunden (nach 6, wenn die Stille schon seit Beginn der Aufnahme besteht). Was du sagst, solange das Mikrofon nur Stille liefert, wird nicht aufgenommen. Wenn du „Aufnahme bei Stille stoppen“ nutzt, endet dein Diktat wie bisher, sobald eine Pause so lang ist wie unter „Pausendauer“ eingestellt. Schalte die Warnung unter Einstellungen > Diktateinstellungen > Mikrofon aus."
+            "value" : "Wir haben festgestellt, dass manche Mikrofone in Sprechpausen völlige Stille senden. Dadurch konnte die App ein Diktat zu früh beenden. Das haben wir jetzt behoben."
           }
         },
         "fr" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Si votre micro n’envoie que du silence numérique, EnviousWispr continue d’enregistrer et la pastille d’enregistrement vous avertit après 5 secondes (6 secondes si ce silence dure depuis le début de l’enregistrement). Les mots prononcés pendant ce silence ne sont pas enregistrés. Si vous utilisez « Arrêter l’enregistrement en cas de silence », la dictée s’arrête comme avant dès qu’une pause atteint la durée choisie dans « Durée de la pause ». Désactivez l’avertissement dans Réglages > Réglages de dictée > Micro."
+            "value" : "Nous avons découvert que certains micros transmettent un silence total entre les prises de parole, ce qui pouvait amener l’app à arrêter une dictée trop tôt. C’est désormais corrigé."
           }
         },
         "es" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Si tu micrófono solo envía silencio digital, EnviousWispr sigue grabando y la píldora de grabación te avisa a los 5 segundos (a los 6 si el silencio dura desde el inicio de la grabación). Las palabras que digas durante ese silencio no se graban. Si usas «Detener la grabación al detectar silencio», el dictado se detiene como antes en cuanto una pausa alcanza la duración que elegiste en «Duración de la pausa». Desactiva el aviso en Ajustes > Ajustes del dictado > Micrófono."
+            "value" : "Descubrimos que algunos micrófonos producen silencio absoluto durante las pausas al hablar. Eso podía hacer que la app terminara un dictado antes de tiempo. Ya lo corregimos."
+          }
+        }
+      }
+    },
+    "whatsNew.paste-dictations-automatically.title" : {
+      "comment" : "Settings > What's New: the title of one feature announcement (entry paste-dictations-automatically).",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Paste it yourself if you prefer"
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Lieber selbst einfügen?"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Collez vous-même si vous préférez"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Pégalo tú si lo prefieres"
+          }
+        }
+      }
+    },
+    "whatsNew.paste-dictations-automatically.description" : {
+      "comment" : "Settings > What's New: the paragraph under one feature announcement's title (entry paste-dictations-automatically).",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Turn off Paste dictations automatically in Settings > Dictation Settings > Clipboard, and each dictation goes to your clipboard for you to paste with Cmd+V."
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Schalte „Diktate automatisch einfügen“ unter Einstellungen > Diktateinstellungen > Zwischenablage aus. Dann landet jedes Diktat in deiner Zwischenablage, und du fügst es mit Cmd+V ein."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Désactivez « Coller automatiquement les dictées » dans Réglages > Réglages de dictée > Presse-papiers : chaque dictée est alors copiée dans votre presse-papiers, à coller avec Cmd+V."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Desactiva “Pegar dictados automáticamente” en Ajustes > Ajustes del dictado > Portapapeles y cada dictado irá a tu portapapeles para que lo pegues con Cmd+V."
+          }
+        }
+      }
+    },
+    "whatsNew.meeting-custom-words.title" : {
+      "comment" : "Settings > What's New: the title of one feature announcement (entry meeting-custom-words).",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Custom Words in meeting transcripts"
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "„Deine Wörter“ in Meeting-Transkripten"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "« Vos mots » dans les transcriptions de réunion"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "“Tus palabras” en las transcripciones de reuniones"
+          }
+        }
+      }
+    },
+    "whatsNew.meeting-custom-words.description" : {
+      "comment" : "Settings > What's New: the paragraph under one feature announcement's title (entry meeting-custom-words).",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Finished EnviousMeet transcripts now use your Custom Words, so names and terms you added are spelled your way more often."
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Fertige EnviousMeet-Transkripte nutzen jetzt „Deine Wörter“. So erscheinen Namen und Begriffe, die du hinzugefügt hast, öfter in deiner Schreibweise."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Les transcriptions EnviousMeet terminées utilisent désormais « Vos mots » : les noms et les termes que vous avez ajoutés sont plus souvent écrits comme vous le souhaitez."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Las transcripciones terminadas de EnviousMeet ahora usan “Tus palabras”, así que los nombres y términos que añadiste se escriben a tu manera más a menudo."
+          }
+        }
+      }
+    },
+    "whatsNew.meeting-audio-smaller.title" : {
+      "comment" : "Settings > What's New: the title of one feature announcement (entry meeting-audio-smaller).",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Meeting recordings take less space"
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Meeting-Aufnahmen brauchen weniger Platz"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Les enregistrements de réunion prennent moins de place"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Las grabaciones de reuniones ocupan menos espacio"
+          }
+        }
+      }
+    },
+    "whatsNew.meeting-audio-smaller.description" : {
+      "comment" : "Settings > What's New: the paragraph under one feature announcement's title (entry meeting-audio-smaller).",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Finished meeting recordings now use much less disk space on your Mac. Playback and everything else work as before."
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Fertige Meeting-Aufnahmen belegen jetzt viel weniger Speicherplatz auf deinem Mac. Wiedergabe und alles andere funktionieren wie bisher."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Les enregistrements de réunion terminés occupent désormais beaucoup moins d’espace sur votre Mac. La lecture et tout le reste fonctionnent comme avant."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Las grabaciones de reuniones terminadas ahora ocupan mucho menos espacio en tu Mac. La reproducción y todo lo demás funcionan como antes."
+          }
+        }
+      }
+    },
+    "whatsNew.meeting-speaker-labels.title" : {
+      "comment" : "Settings > What's New: the title of one feature announcement (entry meeting-speaker-labels).",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Better speaker labels in calls"
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bessere Sprecherkennzeichnung in Anrufen"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "De meilleurs libellés des intervenants pendant les appels"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Mejores etiquetas de participantes en las llamadas"
+          }
+        }
+      }
+    },
+    "whatsNew.meeting-speaker-labels.description" : {
+      "comment" : "Settings > What's New: the paragraph under one feature announcement's title (entry meeting-speaker-labels).",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Speaker labels group voices better and find names in more Zoom and Teams calls."
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Die Sprecherkennzeichnung gruppiert Stimmen besser und findet Namen in mehr Zoom- und Teams-Anrufen."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Les libellés des intervenants regroupent mieux les voix et trouvent les noms dans davantage d’appels Zoom et Teams."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Las etiquetas de participantes agrupan mejor las voces y encuentran nombres en más llamadas de Zoom y Teams."
+          }
+        }
+      }
+    },
+    "whatsNew.unload-polish-model.title" : {
+      "comment" : "Settings > What's New: the title of one feature announcement (entry unload-polish-model).",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Free memory from the polish model"
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Speicher vom Polish-Modell freigeben"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Libérer la mémoire du modèle de retouche"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Libera memoria del modelo de Pulido"
+          }
+        }
+      }
+    },
+    "whatsNew.unload-polish-model.description" : {
+      "comment" : "Settings > What's New: the paragraph under one feature announcement's title (entry unload-polish-model).",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "With EG-1 or S1-mini, choose Unload polish model after in Settings > AI Polish to free its memory when you are not dictating."
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Wähle bei EG-1 oder S1-mini „Polish-Modell entladen nach“ unter Einstellungen > KI-Nachbearbeitung, um den Speicher freizugeben, wenn du nicht diktierst."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Avec EG-1 ou S1-mini, choisissez « Décharger le modèle de retouche après » dans Réglages > Retouche IA pour libérer la mémoire utilisée par le modèle quand vous ne dictez pas."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Con EG-1 o S1-mini, elige “Quitar modelo de Pulido de la RAM tras” en Ajustes > Pulido con IA para liberar la memoria que ocupa el modelo cuando no estés dictando."
+          }
+        }
+      }
+    },
+    "whatsNew.parakeet-ultra-after-update.title" : {
+      "comment" : "Settings > What's New: the title of one feature announcement (entry parakeet-ultra-after-update).",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Fixed a bug with dictation models not working"
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Fehler behoben: Diktiermodelle funktionierten nicht"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Correction : des modèles de dictée ne fonctionnaient plus"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Corregido un error que impedía usar los modelos de dictado"
+          }
+        }
+      }
+    },
+    "whatsNew.parakeet-ultra-after-update.description" : {
+      "comment" : "Settings > What's New: the paragraph under one feature announcement's title (entry parakeet-ultra-after-update).",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "2.6.1 introduced a bug where some users were no longer able to use the Parakeet dictation engine. We've now addressed this."
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Mit Version 2.6.1 ist ein Fehler hinzugekommen, durch den manche Nutzer die Diktier-Engine Parakeet nicht mehr verwenden konnten. Das haben wir jetzt behoben."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "À cause d’un bug introduit dans la version 2.6.1, certains utilisateurs ne pouvaient plus utiliser le moteur de dictée Parakeet. Ce bug est désormais corrigé."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "La versión 2.6.1 introdujo un error por el que algunos usuarios ya no podían usar el motor de dictado Parakeet. Ya lo hemos solucionado."
+          }
+        }
+      }
+    },
+    "whatsNew.steadier-whisper-and-settings.title" : {
+      "comment" : "Settings > What's New: the title of one feature announcement (entry steadier-whisper-and-settings).",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Fixed freezes and other bugs"
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hänger und andere Fehler behoben"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Blocages et autres bugs corrigés"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Corregidos bloqueos y otros errores"
+          }
+        }
+      }
+    },
+    "whatsNew.steadier-whisper-and-settings.description" : {
+      "comment" : "Settings > What's New: the paragraph under one feature announcement's title (entry steadier-whisper-and-settings).",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Closing the main window no longer quits the app. We also fixed a few freezes and a case where Whisper could get stuck."
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Wenn du das Hauptfenster schließt, läuft die App weiter. Außerdem haben wir einige Hänger behoben und einen Fehler, durch den Whisper hängen bleiben konnte."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "L’app reste ouverte quand vous fermez la fenêtre principale. Nous avons aussi corrigé quelques blocages et un cas où Whisper pouvait rester bloqué."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Cerrar la ventana principal ya no cierra la app. También corregimos algunos bloqueos y un caso en que Whisper podía quedarse atascado."
           }
         }
       }

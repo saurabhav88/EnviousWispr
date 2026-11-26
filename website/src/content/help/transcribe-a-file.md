@@ -116,6 +116,8 @@ A finished transcript is saved in [History](/help/transcript-history/); the **Sa
 
 In History, a transcript's card takes the name of the file it came from as its title until you rename it, so you can search for the recording by its file name. Imported transcripts are on the **Transcripts** tab of History. Click **Open** to read, play, transcribe again or delete one. For a shared file, choose **Locate original…** first to play it or transcribe it again. See [History](/help/transcript-history/).
 
+When the original file plays from History, click **···** and choose **Show in Finder** to see it in Finder. EnviousWispr does not keep its own copy of imported files; if the original was moved and History cannot find it, choose **Locate original…** and select the file where it is now.
+
 ### Does my recording leave my Mac?
 
 The recording stays on your Mac. Transcription and speaker detection always run locally, and so does the cleanup when you pick EG-1, Apple Intelligence, S1-mini or a downloaded Ollama model. If you pick OpenAI, Gemini, Claude or a hosted Ollama model, the transcript text goes to that provider for cleanup, along with the instructions and any applicable custom words and credentials. Your audio is not sent. The page names the provider while the file is running and again when it is done. What each provider receives is in [AI polish and cloud data](/help/ai-polish-and-cloud-data/).

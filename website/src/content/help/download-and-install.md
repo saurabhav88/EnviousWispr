@@ -34,6 +34,15 @@ The first time you open EnviousWispr, it walks you through setup in this order:
 3. On the **Ready to Wispr!** screen, you can change the keybind you hold while dictating. The default is Right Option.
 4. A practice box lets you try your first dictation before you leave setup. You can skip it and try dictation in a real app instead.
 
+### Setup says the download is taking longer than expected
+
+Before the practice box, the **Almost ready** screen waits for your AI polish model to download. If the download is expected to take more than a minute, or a minute has already passed, the screen shows **This download is taking longer than expected.** with two buttons:
+
+- **Skip ahead** takes you to the practice box now. AI polish keeps downloading while EnviousWispr is open and turns on by itself when it is done.
+- **Keep waiting** stays on the screen until the download finishes. A **Rather not wait? Skip ahead** link stays on the screen, so you can still skip ahead later.
+
+You will not see this choice when the download is fast, or when you use Apple Intelligence, a cloud model, or no AI polish.
+
 ### Find EnviousWispr after installing
 
 The EnviousWispr icon sits at the top right of your screen in the menu bar, near your system icons. Click it to open settings and history. EnviousWispr also shows in your Dock and in the Command-Tab app switcher like any Mac app, and choosing it there brings its window to the front.

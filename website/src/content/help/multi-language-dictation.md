@@ -52,7 +52,7 @@ What to expect:
 ### Mix languages, translate, and other limits
 
 - **Keep to one language per sentence.** Auto-detect handles one language at a time and struggles when you switch languages in the middle of a sentence.
-- **Dictation is not translation.** AI Polish cleans up grammar and filler words, but it does not translate. Dictating in French returns French text.
+- **Translation is a separate choice.** AI Polish cleans up grammar and filler words, but it does not translate on its own. Dictating in French returns French text. To get your dictation written in another language, choose Claude in **Settings** > **AI Polish** and set **Dictation output language** to English, German or Hindi. It starts on **Same as spoken**. Very short dictations stay in the language you spoke, and if a translation fails, your original-language text is kept.
 
 ### Filler words in other languages
 

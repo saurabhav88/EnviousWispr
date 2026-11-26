@@ -1,7 +1,7 @@
 ---
 // Languages (2.5.1 What's New): two engines' language coverage, English (UK)
 // spelling, addresses and links said in eight languages' own words, and the app
-// itself in English or German. Claims trace to help/multi-language-dictation.md,
+// itself in English, German, Spanish or French. Claims trace to help/multi-language-dictation.md,
 // help/numbers-dates-and-times.md, help/sounds-and-appearance.md,
 // help/filler-word-removal.md and help/choosing-a-speech-engine-parakeet-vs-whisperkit.md.
 // The 99+ Whisper count is enforced by scripts/check-language-count.mjs.
@@ -30,11 +30,11 @@ const faq = [
   },
   {
     q: 'Does EnviousWispr translate what I say?',
-    a: 'No. It writes what you said in the language you said it. AI polish cleans up grammar and filler words but does not translate, so dictating in French returns French text.',
+    a: 'Only if you ask it to. By default it writes what you said in the language you said it, so dictating in French returns French text. With Claude as your AI polish, Dictation output language can write your dictation in English, German or Hindi instead.',
   },
   {
-    q: 'Can I use the EnviousWispr app itself in German?',
-    a: 'Yes. Its menus, settings and messages come in English and German. Choose a language in App Settings, Appearance, Language, then relaunch. System default follows your Mac. This is separate from the language you dictate in.',
+    q: 'Can I use the EnviousWispr app itself in German, Spanish or French?',
+    a: 'Yes. Its menus, settings and messages come in English, German, Spanish and French. Choose a language in App Settings, Appearance, Language, then relaunch. System default follows your Mac. This is separate from the language you dictate in.',
   },
 ];
 ---
@@ -42,7 +42,7 @@ const faq = [
 <FeatureShell
   path="/features/languages/"
   title="Languages: dictate in your language on Mac, UK spelling too"
-  description="Dictate in 25 European languages with Parakeet or 99+ with Whisper, get British spelling with English (UK), and use EnviousWispr in English or German."
+  description="Dictate in 25 European languages with Parakeet or 99+ with Whisper, get British spelling, and use EnviousWispr in English, German, Spanish or French."
   ogImage="/images/og/languages.jpg"
   ogImageAlt="EnviousWispr Languages: dictate in your language, spelled the way you spell it"
 >
@@ -113,11 +113,13 @@ const faq = [
     </div>
   </section>
   <section class="matching-story plain wrap">
-    <h2>The app speaks<br /><span class="accent-ink">German too.</span></h2>
-    <p>EnviousWispr’s own menus, settings and messages come in English and German. Pick one under App Settings, Appearance, Language, or leave it on System default to follow your Mac. The language you dictate in is a separate setting, so you can use the app in German and dictate in English, or the other way round.</p>
+    <h2>The app speaks<br /><span class="accent-ink">your language too.</span></h2>
+    <p>EnviousWispr’s own menus, settings and messages come in English, German, Spanish and French. Pick one under App Settings, Appearance, Language, or leave it on System default to follow your Mac. The language you dictate in is a separate setting, so you can use the app in Spanish and dictate in English, or the other way round.</p>
     <div class="lang-chips" aria-label="App languages">
       <span lang="en">English</span>
       <span lang="de">Deutsch</span>
+      <span lang="es">Español</span>
+      <span lang="fr">Français</span>
     </div>
     <a class="story-link" href="/help/multi-language-dictation/">How to set your dictation language <span aria-hidden="true">→</span></a>
   </section>

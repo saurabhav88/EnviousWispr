@@ -56,33 +56,38 @@ enum WhatsNewContent {
   static let entries: [Entry] = [
     // MARK: - v2.6.2
 
-    Entry(
-      id: "separate-dictionary-controls",
-      icon: "text.book.closed",
-      title: "Separate controls for learned words",
-      description: "Choose whether your dictionary learns new words and whether it fixes words it already learned. Words you added yourself still work when learned fixes are off.",
-      version: "2.6.2"
-    ),
-
-    // #3142 French slice: French joins English and German as an interface language.
+    // #3142 French and Spanish slices: founder 2026-11-26 merged the two cards into one; his wording, verbatim apart from
+    // the dictation repair "NVIA's Wispr Eyes" -> "EnviousWispr" and the Settings path kept from the original cards.
     Entry(
       id: "enviouswispr-in-french",
       icon: "globe",
-      title: "Now available in French",
-      description: "Choose Français in Settings > App Settings > Appearance > Language, then relaunch to apply. System default follows your Mac's language.",
+      title: "Now in French and Spanish",
+      description: "The EnviousWispr app is now available in French and Spanish, natively. Choose Français or Español in Settings > App Settings > Appearance > Language, then relaunch to apply.",
       version: "2.6.2"
     ),
 
-    // #3142 Spanish slice: Spanish joins as an interface language (Gate 1: a second card in the
-    // French card's pattern; the French card stays as it is).
+
+    // #4799 / PR #4812; save names #5001 / PR #5008. Title by the founder 2026-11-26.
     Entry(
-      id: "enviouswispr-in-spanish",
-      icon: "globe",
-      title: "Now available in Spanish",
-      description: "Choose Español in Settings > App Settings > Appearance > Language, then relaunch to apply. System default follows your Mac's language.",
+      id: "history-save-audio",
+      icon: "square.and.arrow.down",
+      title: "Better audio exporting capabilities",
+      description: "Save your dictation and meeting recordings as audio files. In History, open the ··· menu and choose Save audio…. Saved dictations are named with the app and the time.",
       version: "2.6.2"
     ),
 
+
+    // #5006 / PR #5020 (and #4768). Founder wording 2026-11-26; repair: "after two dismisses" -> "after you undo or
+    // delete the same fix twice" (closing the pill keeps the word; LearnFromEditsSettingsPresentation.memoryHelp).
+    Entry(
+      id: "blocked-words-list",
+      icon: "hand.raised",
+      title: "More control over your Self-Learning Dictionary",
+      description: "The Self-Learning Dictionary blocks a word after you undo or delete the same fix twice. You can now unblock those words yourself in Settings > Dictionary > Learn from....",
+      version: "2.6.2"
+    ),
+
+    // Founder wording 2026-11-26, verbatim apart from the dictation repair "admit" -> "emit".
     // #4841: exact digital silence from the microphone never ends a dictation; the pill warns at
     // 5 s mid-take (6 s silent since the start) and more strongly at 15 s. Claims checked: the
     // take keeps recording (no exact-zero exit in RecordingSessionKernel); 5 / 6 s are
@@ -94,8 +99,72 @@ enum WhatsNewContent {
     Entry(
       id: "silent-microphone-keeps-recording",
       icon: "mic.slash",
-      title: "Dictation keeps going when your microphone goes silent",
-      description: "If your microphone sends only digital silence, EnviousWispr keeps recording, and the pill warns you after 5 seconds (6 if it was silent from the start). Words you say during the silence are not captured. If you use Stop recording on silence, your dictation still ends once a pause reaches the length you chose. Turn the warning off in Settings > Dictation Settings > Microphone.",
+      title: "Fixed a bug with dictations ending on their own",
+      description: "We found out that certain microphones emit dead silence between speech, and that could trick the app into ending a dictation prematurely. We've now fixed this.",
+      version: "2.6.2"
+    ),
+
+    // #4479 / PR #4775.
+    Entry(
+      id: "paste-dictations-automatically",
+      icon: "doc.on.clipboard",
+      title: "Paste it yourself if you prefer",
+      description: "Turn off Paste dictations automatically in Settings > Dictation Settings > Clipboard, and each dictation goes to your clipboard for you to paste with Cmd+V.",
+      version: "2.6.2"
+    ),
+
+    // #4429 / PR #4767.
+    Entry(
+      id: "meeting-custom-words",
+      icon: "person.2.wave.2",
+      title: "Custom Words in meeting transcripts",
+      description: "Finished EnviousMeet transcripts now use your Custom Words, so names and terms you added are spelled your way more often.",
+      version: "2.6.2"
+    ),
+
+    // #3147 PR4B / PR #4887 (about 85% smaller in the PR; no number shipped).
+    Entry(
+      id: "meeting-audio-smaller",
+      icon: "externaldrive",
+      title: "Meeting recordings take less space",
+      description: "Finished meeting recordings now use much less disk space on your Mac. Playback and everything else work as before.",
+      version: "2.6.2"
+    ),
+
+    // #4957, #4944/#4946/#4950, #4940, #4936 / #4985 / #4990.
+    Entry(
+      id: "meeting-speaker-labels",
+      icon: "person.wave.2",
+      title: "Better speaker labels in calls",
+      description: "Speaker labels group voices better and find names in more Zoom and Teams calls.",
+      version: "2.6.2"
+    ),
+
+    // #3853 / PR #4867.
+    Entry(
+      id: "unload-polish-model",
+      icon: "memorychip",
+      title: "Free memory from the polish model",
+      description: "With EG-1 or S1-mini, choose Unload polish model after in Settings > AI Polish to free its memory when you are not dictating.",
+      version: "2.6.2"
+    ),
+
+    // #4997 / PR #5002. Founder wording 2026-11-26; repairs: "2.61" -> "2.6.1", "the dictation engines" -> "the Parakeet
+    // dictation engine" (only Parakeet, for people whose only copy was Ultra).
+    Entry(
+      id: "parakeet-ultra-after-update",
+      icon: "waveform",
+      title: "Fixed a bug with dictation models not working",
+      description: "2.6.1 introduced a bug where some users were no longer able to use the Parakeet dictation engine. We've now addressed this.",
+      version: "2.6.2"
+    ),
+
+    // #4842/#4848 (window close), #4919/#4924 (Whisper), #4778, #4801, #4917 (freezes). Merged per founder 2026-11-26.
+    Entry(
+      id: "steadier-whisper-and-settings",
+      icon: "checkmark.seal",
+      title: "Fixed freezes and other bugs",
+      description: "Closing the main window no longer quits the app. We also fixed a few freezes and a case where Whisper could get stuck.",
       version: "2.6.2"
     ),
 

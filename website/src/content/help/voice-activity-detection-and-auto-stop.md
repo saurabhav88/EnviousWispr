@@ -11,6 +11,8 @@ deflection: "show_but_always_send"
 ---
 EnviousWispr can end a recording by itself once you stop talking, so you do not have to press your keybind again. This is off by default. Switch it on first.
 
+A connected microphone that sends only digital silence never ends a recording by itself; the pill shows a notice instead (when **Warn when the microphone is silent** is on). See [Empty or Missing Transcription](/help/empty-or-missing-transcription/).
+
 ### Turn on auto-stop
 
 1. Go to **Dictation Settings** \> **Engine**.
