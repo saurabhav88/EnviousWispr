@@ -15,7 +15,8 @@
 #       notes (.github/release-notes/v<V>.md) and the probe list (v<V>.probes) are final.
 #       Checks the version spots and that no skeleton is left, renders the app notes, builds
 #       the dev app (it takes the shared dev-app lock), syncs the String Catalog from that
-#       build, stops if German is missing or unreviewed, exports the settings map,
+#       build, stops if any German, French or Spanish translation is missing
+#       or unreviewed, exports the settings map,
 #       regenerates the help catalog and adds the README "(v<V>)" lines. Safe to re-run.
 #       CI's Release catalog check stays the authority (pr-check.yml).
 #
@@ -150,7 +151,7 @@ cmd_start() (
       || echo "   (could not ask GitHub; run: gh issue list --label release-action --state open)"
     for key in gemini-api-key azure-openai-key; do
       if [ -x "$HOME/.claude/bin/get-key" ] && ! "$HOME/.claude/bin/get-key" --check "$key" >/dev/null 2>&1; then
-        echo "==> WARNING: $key is not reachable; the German review needs it. Log in now:"
+        echo "==> WARNING: $key is not reachable; the translation review needs it. Log in now:"
         echo "    gcloud --configuration=business auth login --update-adc"
       fi
     done
@@ -192,15 +193,16 @@ cmd_prepare() {
     | python3 -c 'import json, sys; print(json.load(sys.stdin)["input_digest"])')"
   bash scripts/lib/l10n-catalog-sync.sh --update --configuration Dev \
     --derived-data "$top/.derivedData/Dev" --expect-inputs "$digest"
-  echo "==> [4/7] German"
+  echo "==> [4/7] Translations"
   local rc=0
   bash scripts/lib/l10n-catalog-sync.sh --check --configuration Dev \
     --derived-data "$top/.derivedData/Dev" --expect-inputs "$digest" || rc=$?
   case "$rc" in
     0) ;;
     1)
-      echo "release: German is missing or unreviewed (list above). Draft it, have the GPT + Gemini council" >&2
-      echo "         review it, mark it translated, then run scripts/release.sh prepare again." >&2
+      echo "release: a German, French or Spanish translation is missing or unreviewed (list above). Draft it," >&2
+      echo "         have the GPT + Gemini council review it, mark it translated, then run" >&2
+      echo "         scripts/release.sh prepare again." >&2
       exit 4 ;;
     *) die "the catalog check could not run (exit $rc, reason above)" ;;
   esac
