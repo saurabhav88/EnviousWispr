@@ -17,9 +17,14 @@ enum MeetingSummaryHighlights {
 
   static func select(from transcript: String) -> [String] {
     // A missing-audio marker is removed from every line; a line with nothing said after that is
-    // never a highlight, and with no line left the summary keeps its original failure. Known
-    // limits: a speaker whose own name contains ": " and who has only a marker shows as the
-    // name; a speaker name holding a bracketed time ("Jamie [UTC+05:30]") loses that bracket.
+    // never a highlight, and with no line left the summary keeps its original failure.
+    // Known limits (#5049 diff review rounds 4-7; a structured, per-turn source would close
+    // them): the selector reads the flattened transcript, so it guesses the speaker label as the
+    // text before the first ": ". A speaker name containing ": " with only a marker shows as the
+    // name, and such a name can change a line's rank; unlabeled speech ending in ":" that shares
+    // its turn with a marker is dropped; bracketed text holding a time inside speech or a name
+    // ("Jamie [UTC+05:30]", a Custom Word "Build [12:30]") is removed as a marker; a speaker
+    // name longer than the byte cap leaves an excerpt without speech.
     let candidates = lines(in: transcript).compactMap { original -> String? in
       let line = withoutGapMarkers(original)
       // Only a removed marker can leave a speaker label alone ("Call:"); speech that merely
@@ -103,8 +108,9 @@ enum MeetingSummaryHighlights {
   /// other bracketed text, such as a speaker named "Jamie [Legal]", stays.
   private static func withoutGapMarkers(_ line: String) -> String {
     guard line.contains("[") else { return line }
-    let stripped = line.replacing(/\[[^\[\]]*\d:\d\d[^\[\]]*\]/, with: "")
-    return stripped.split(whereSeparator: \.isWhitespace).joined(separator: " ")
+    // The marker and the one space the composer put beside it; other spacing stays as written.
+    return line.replacing(/\ ?\[[^\[\]]*\d:\d\d[^\[\]]*\]/, with: "")
+      .trimmingCharacters(in: .whitespaces)
   }
 
   private static func excerpt(_ line: String) -> String {

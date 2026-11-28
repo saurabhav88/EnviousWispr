@@ -126,10 +126,10 @@ struct MeetingSummaryTests {
     #expect(MeetingSummaryHighlights.select(from: "Here is what we agreed:") == ["Here is what we agreed:"])
     #expect(
       MeetingSummaryHighlights.select(
-        from: "Jamie [Legal]: We will send the signed agreement today."
+        from: "Jamie  Lee [Legal]: We will send the signed agreement today."
           + "\nYou: Here is what we agreed: [Could not transcribe from 2:00]")
         == [
-          "Jamie [Legal]: We will send the signed agreement today.",
+          "Jamie  Lee [Legal]: We will send the signed agreement today.",
           "You: Here is what we agreed:",
         ])
     #expect(
