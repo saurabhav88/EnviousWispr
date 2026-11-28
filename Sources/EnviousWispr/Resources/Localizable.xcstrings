@@ -27857,6 +27857,29 @@
         }
       }
     },
+    "Highlights" : {
+      "comment" : "Meeting summary heading when the local model could not write a summary and the app saved key transcript lines instead.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Highlights"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Points clés"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Momentos destacados"
+          }
+        }
+      }
+    },
     "Hindi" : {
       "comment" : "A language name (dictation language picker).",
       "localizations" : {
@@ -30782,6 +30805,29 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Se conservó la grabación recuperada"
+          }
+        }
+      }
+    },
+    "Key moments from the transcript. This model could not write a full summary of this meeting." : {
+      "comment" : "Meeting summary: the line under the Highlights heading, explaining the lines below are quoted from the transcript.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Wichtige Momente aus dem Transkript. Dieses Modell konnte keine vollständige Zusammenfassung dieses Meetings schreiben."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Moments clés de la transcription. Ce modèle n’a pas pu rédiger de résumé complet de cette réunion."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Momentos clave de la transcripción. Este modelo no ha podido escribir un resumen completo de esta reunión."
           }
         }
       }

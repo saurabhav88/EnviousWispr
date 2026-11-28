@@ -62,6 +62,107 @@ struct MeetingSummaryTests {
     ).text
   }
 
+  // MARK: - #5049 EG-1 highlights recovery
+
+  @Test(
+    "EG-1 recovers title-only and repeated overflow without another model call",
+    arguments: [false, true])
+  func highlightsUseNoModelCall(overflow: Bool) async throws {
+    let calls = Calls()
+    let transcript = "You: We agreed to ship Friday"
+    let contextError = LLMError.classified(.inputTooLong)
+    calls.answers =
+      overflow ? [.failure(contextError), .failure(contextError)] : [.success("**Title:** Launch")]
+    let window = MeetingSummary.Window(
+      contextTokens: 8_192, outputReserveTokens: 1_500, endReminder: true, recovery: .highlights)
+    let written = try await MeetingSummary.write(
+      transcript: transcript, notes: "Private note", facts: "Invited: Someone",
+      window: window, callTimeoutSeconds: 60,
+      admit: { calls.admissions += 1 }, complete: calls.complete)
+    #expect(written.text.hasPrefix("## Highlights\n"))
+    #expect(written.text.hasSuffix("- You: We agreed to ship Friday"))
+    #expect(written.inParts == false)
+    #expect(calls.prompts.count == (overflow ? 2 : 1))
+    #expect(calls.admissions == calls.prompts.count)
+    #expect(
+      calls.prompts.allSatisfy {
+        $0.contains("Invited: Someone") && $0.hasSuffix("Do not copy the transcript.")
+      })
+  }
+
+  @Test(
+    "EG-1 highlights keep cancellation and a typed refusal",
+    arguments: [MeetingSummary.Failure.cancelled, .rejected(.badRequest)])
+  func highlightsKeepStoppedWrites(failure: MeetingSummary.Failure) async throws {
+    let calls = Calls()
+    calls.answers = [.failure(failure)]
+    let window = MeetingSummary.Window(
+      contextTokens: 8_192, outputReserveTokens: 1_500, recovery: .highlights)
+    await #expect(throws: failure) {
+      _ = try await Self.write(calls, transcript: "We agreed to ship Friday.", window: window)
+    }
+    #expect(calls.prompts.count == 1)
+  }
+
+  @Test("highlights keep order, speaker labels and unsegmented text within a byte bound")
+  func highlightSelection() throws {
+    let labelled = "Megana Balentine (she/her): We will send the revised agreement."
+    let chinese = "我們星期五寄出更新後的合約文件。"
+    let unlabeled = "Budget: the vendor accepted the new price."
+    let text = ["You: Mm-hmm.", labelled, chinese, unlabeled, labelled].joined(separator: "\r\n")
+    #expect(MeetingSummaryHighlights.select(from: text) == [labelled, chinese, unlabeled])
+    let long = String(repeating: "会", count: 2_000)
+    let excerpt = try #require(MeetingSummaryHighlights.select(from: long).first)
+    #expect(excerpt.utf8.count <= MeetingSummaryHighlights.maxLineBytes)
+    #expect(excerpt.hasSuffix("…"))
+    #expect(MeetingSummaryHighlights.select(from: "Yes.") == ["Yes."])
+    #expect(MeetingSummaryHighlights.select(from: " \n").isEmpty)
+    // A missing-audio marker never outranks speech, and quotes render as written.
+    let gap = "[Could not transcribe 1:00 to 1:30]\nYou: Yes, ship it."
+    #expect(MeetingSummaryHighlights.select(from: gap) == ["You: Yes, ship it."])
+    #expect(MeetingSummaryHighlights.select(from: "[Could not transcribe 0:00 to 0:50]").isEmpty)
+    #expect(MeetingSummaryHighlights.select(from: "[Konnte 1:00 bis 1:30 nicht transkribieren]").isEmpty)
+    #expect(MeetingSummaryHighlights.select(from: "Call: [Could not transcribe from 2:00]").isEmpty)
+    #expect(MeetingSummaryHighlights.select(from: "Here is what we agreed:") == ["Here is what we agreed:"])
+    #expect(
+      MeetingSummaryHighlights.select(
+        from: "Jamie  Lee [Legal]: We will send the signed agreement today."
+          + "\nYou: Here is what we agreed: [Could not transcribe from 2:00]")
+        == [
+          "Jamie  Lee [Legal]: We will send the signed agreement today.",
+          "You: Here is what we agreed:",
+        ])
+    #expect(
+      MeetingSummaryHighlights.select(
+        from: "You: We agreed to ship the release Friday. [Could not transcribe from 2:00]")
+        == ["You: We agreed to ship the release Friday."])
+    // Rendered as History renders a bullet (inline only), the quote reads exactly as said.
+    let literal = "*️⃣Priority*️⃣: keep [label](value), ~~pending~~, &amp; <b>, `x`, *y* and _z_!"
+    let bullet = String(MeetingSummaryHighlights.markdown([literal]).split(separator: "\n").last!)
+    let rendered = try AttributedString(
+      markdown: String(bullet.dropFirst(2)),
+      options: .init(interpretedSyntax: .inlineOnlyPreservingWhitespace))
+    #expect(String(rendered.characters) == literal)
+  }
+
+  @Test("the reminder follows each part but not the final join")
+  func reminderOnPartsOnly() async throws {
+    let window = MeetingSummary.Window(
+      contextTokens: 4_096, outputReserveTokens: 1_500, endReminder: true, recovery: .highlights)
+    let calls = Calls()
+    _ = try await Self.write(
+      calls, transcript: String(repeating: "abc ", count: 2_000), window: window)
+    let parts = calls.prompts.dropLast()
+    try #require(parts.count > 1)
+    for (index, prompt) in parts.enumerated() {
+      #expect(prompt.hasSuffix(MeetingSummary.partReminder(index + 1, of: parts.count)))
+      #expect(Self.fitsInEstimate(prompt, window))
+    }
+    let final = try #require(calls.prompts.last)
+    #expect(final.contains("Join them into one summary"))
+    #expect(!final.contains("Do not copy the transcript."))
+  }
+
   @Test("every provider has a capability; cleanup models are refused under any provider")
   func capabilityMatrix() {
     let hosted = MeetingSummary.Capability.supported(.hosted)
