@@ -117,6 +117,12 @@ struct MeetingSummaryTests {
     #expect(excerpt.hasSuffix("…"))
     #expect(MeetingSummaryHighlights.select(from: "Yes.") == ["Yes."])
     #expect(MeetingSummaryHighlights.select(from: " \n").isEmpty)
+    // A missing-audio marker never outranks speech, and quotes render as written.
+    let gap = "[Could not transcribe 1:00 to 1:30]\nYou: Yes, ship it."
+    #expect(MeetingSummaryHighlights.select(from: gap) == ["You: Yes, ship it."])
+    #expect(
+      MeetingSummaryHighlights.markdown(["Keep [label](value)."])
+        .hasSuffix("- Keep \\[label\\](value)."))
   }
 
   @Test("the reminder follows each part but not the final join")

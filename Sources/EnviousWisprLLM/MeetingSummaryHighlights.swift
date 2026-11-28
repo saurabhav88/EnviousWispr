@@ -36,15 +36,32 @@ enum MeetingSummaryHighlights {
     return selected
   }
 
+  static var heading: String {
+    String(
+      localized: "Highlights",
+      comment: "Meeting summary heading when the local model could not write a summary and the app saved key transcript lines instead.")
+  }
+
+  static var explanation: String {
+    String(
+      localized: "Key moments from the transcript. This model could not write a full summary of this meeting.",
+      comment: "Meeting summary: the line under the Highlights heading, explaining the lines below are quoted from the transcript.")
+  }
+
   static func markdown(_ lines: [String]) -> String {
-    let bullets = lines.map { "- \($0)" }.joined(separator: "\n")
-    return """
-      ## Highlights
+    let bullets = lines.map { "- \(escaped($0))" }.joined(separator: "\n")
+    return "## \(heading)\n\n\(explanation)\n\n\(bullets)"
+  }
 
-      Key moments from the transcript. This model could not write a full summary of this meeting.
-
-      \(bullets)
-      """
+  /// The line as literal text: Markdown marks are escaped, so the summary view shows the quote
+  /// exactly as it was spoken (a `[label](value)` would otherwise render as a link).
+  static func escaped(_ line: String) -> String {
+    var out = ""
+    for character in line {
+      if "\\`*_[]<>#|".contains(character) { out.append("\\") }
+      out.append(character)
+    }
+    return out
   }
 
   private static func lines(in text: String) -> [String] {
@@ -59,7 +76,17 @@ enum MeetingSummaryHighlights {
     if let separator = line.range(of: ": "), line[..<separator.lowerBound].count <= 80 {
       words = line[separator.upperBound...]
     }
-    return words.lazy.filter { $0.isLetter || $0.isNumber }.prefix(64).count
+    // Text in square brackets is the app's own (a missing-audio marker, in any interface
+    // language); the speech engines write no brackets. It never counts as something said.
+    var count = 0
+    var depth = 0
+    for character in words {
+      if character == "[" { depth += 1; continue }
+      if character == "]" { depth = max(0, depth - 1); continue }
+      if depth == 0, character.isLetter || character.isNumber { count += 1 }
+      if count == 64 { break }
+    }
+    return count
   }
 
   private static func excerpt(_ line: String) -> String {
