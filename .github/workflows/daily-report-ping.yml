@@ -6,6 +6,18 @@ name: Daily Report
 on:
   workflow_dispatch:
     inputs:
+      target:
+        description: "Which report to run (choose one platform for a targeted backfill; performance is explicit)"
+        required: true
+        default: "sentry-windows"
+        type: choice
+        options:
+          - sentry-windows
+          - sentry-mac
+          - sentry-android
+          - all-sentry
+          - performance
+          - all
       date:
         description: "Optional YYYY-MM-DD Eastern-date override (manual recovery after a missed run)"
         required: false
@@ -39,6 +51,7 @@ permissions:
 
 jobs:
   ping:
+    if: ${{ inputs.target == 'performance' || inputs.target == 'all' }}
     runs-on: ubuntu-latest
     steps:
       - name: Trigger daily-report worker
@@ -93,15 +106,17 @@ jobs:
           fi
 
   sentry:
+    if: ${{ inputs.target != 'performance' }}
     name: Sentry write-up (${{ matrix.platform }})
     runs-on: ubuntu-latest
     strategy:
       # No needs dependency or sibling cancellation: failures are independent.
       fail-fast: false
       matrix:
-        platform: [mac, android]
+        platform: [mac, android, windows]
     steps:
       - name: Trigger Sentry write-up
+        if: ${{ inputs.target == 'all' || inputs.target == 'all-sentry' || inputs.target == format('sentry-{0}', matrix.platform) }}
         env:
           TRIGGER_SECRET: ${{ secrets.DAILY_REPORT_TRIGGER_SECRET }}
           DATE_OVERRIDE: ${{ github.event.inputs.date }}

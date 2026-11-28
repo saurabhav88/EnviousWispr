@@ -11,14 +11,17 @@ for (let i = 2; i < process.argv.length; i += 1) {
   else throw new Error("unsupported smoke argument");
 }
 if (!["performance", "sentry"].includes(report)
-    || (report === "sentry" && !["mac", "android"].includes(platform))
+    || (report === "sentry" && !["mac", "android", "windows"].includes(platform))
     || (report === "performance" && platform !== null)) throw new Error("invalid smoke mode");
 const MAC_CAPTURE = "https://smoke.invalid/mac";
 const ANDROID_CAPTURE = "https://smoke.invalid/android";
+const WINDOWS_CAPTURE = "https://smoke.invalid/windows";
 const env = {
   POSTHOG_PROJECT_ID: "354235", POSTHOG_PERSONAL_API_KEY: process.env.POSTHOG_KEY,
   APPCAST_URL: "https://enviouswispr.com/appcast.xml",
-  DISCORD_WEBHOOK_URL: MAC_CAPTURE, DISCORD_ANDROID_WEBHOOK_URL: ANDROID_CAPTURE,
+  DISCORD_WEBHOOK_URL: MAC_CAPTURE,
+  DISCORD_ANDROID_WEBHOOK_URL: ANDROID_CAPTURE,
+  DISCORD_WINDOWS_WEBHOOK_URL: WINDOWS_CAPTURE,
   SENTRY_ORG: "envious-labs-llc", SENTRY_PROJECT_ID: "4511097112428544", SENTRY_PROJECT_SLUG: "enviouswispr",
   SENTRY_AUTH_TOKEN: process.env.SENTRY_KEY,
 };
@@ -28,8 +31,9 @@ const realFetch = globalThis.fetch;
 const requests = [], captured = [];
 globalThis.fetch = async (target, init) => {
   const text = String(target), url = new URL(text);
-  if (text === MAC_CAPTURE || text === ANDROID_CAPTURE) {
-    requests.push("captured-discord:" + (text === MAC_CAPTURE ? "mac" : "android"));
+  if (text === MAC_CAPTURE || text === ANDROID_CAPTURE || text === WINDOWS_CAPTURE) {
+    const label = text === MAC_CAPTURE ? "mac" : text === ANDROID_CAPTURE ? "android" : "windows";
+    requests.push("captured-discord:" + label);
     captured.push(JSON.parse(init.body));
     return { status: 204 };
   }

@@ -6,7 +6,7 @@ import { readFileSync } from "node:fs";
 import worker from "../src/index.js";
 import { ENV, rig } from "../fixtures/sentry-writeup-fixture.js";
 
-const MODE_ENV = { ...ENV, TRIGGER_SECRET: "fixture-secret", DISCORD_WEBHOOK_URL: "https://discord.invalid/mac", DISCORD_ANDROID_WEBHOOK_URL: "https://discord.invalid/android" };
+const MODE_ENV = { ...ENV, TRIGGER_SECRET: "fixture-secret", DISCORD_WEBHOOK_URL: "https://discord.invalid/mac", DISCORD_ANDROID_WEBHOOK_URL: "https://discord.invalid/android", DISCORD_WINDOWS_WEBHOOK_URL: "https://discord.invalid/windows" };
 const endpoint = (query, secret = "fixture-secret") => new Request("https://worker.invalid/?date=2026-10-07&" + query, { headers: { "x-trigger-secret": secret } });
 
 async function withMode(overrides, action, env = MODE_ENV) {
@@ -75,6 +75,40 @@ test("missing Android destination refuses before any query without Mac fallback"
   });
 });
 
+test("Windows overrides stale Mac project bindings and delivers only to Windows without PostHog credentials", async () => {
+  await withMode({}, async ({ data, deliveries, env }) => {
+    const isolated = { ...env };
+    Object.defineProperty(isolated, "POSTHOG_PERSONAL_API_KEY", { get() { throw new Error("Sentry read a PostHog credential"); } });
+    Object.defineProperty(isolated, "APPCAST_URL", { get() { throw new Error("Sentry read performance release state"); } });
+    const result = await worker.fetch(endpoint("report=sentry&platform=windows"), isolated);
+    assert.equal(result.status, 200); assert.equal(deliveries.length, 1);
+    assert.equal(deliveries[0].url, MODE_ENV.DISCORD_WINDOWS_WEBHOOK_URL);
+    assert.match(deliveries[0].payload.content, /Sentry morning review \| Windows \| 2026-10-07/);
+    for (const url of data.requests.filter((u) => u.pathname.endsWith("/events/"))) assert.equal(url.searchParams.get("project"), "4512506748010496");
+    assert.equal(data.requests.some((u) => u.pathname === "/api/0/projects/envious-labs-llc/enviouswispr-windows/issues/"), true);
+  });
+});
+
+test("missing Windows destination refuses before any query without Mac fallback", async () => {
+  const env = { ...MODE_ENV }; delete env.DISCORD_WINDOWS_WEBHOOK_URL;
+  await withMode({}, async ({ data, deliveries }) => {
+    const result = await worker.fetch(endpoint("report=sentry&platform=windows"), env);
+    assert.equal(result.status, 500); assert.match(await result.text(), /Windows report destination/);
+    assert.equal(data.requests.length, 0); assert.equal(deliveries.length, 0);
+  });
+});
+
+test("empty Windows project renders a valid zero report distinctly from unavailable", async () => {
+  await withMode({ current: [], prior: [], matrix: [], currentHead: [], priorHead: [], firstSeen: [] }, async ({ deliveries, env }) => {
+    const result = await worker.fetch(endpoint("report=sentry&platform=windows"), env);
+    assert.equal(result.status, 200); assert.equal(deliveries.length, 1);
+    assert.equal(deliveries[0].url, MODE_ENV.DISCORD_WINDOWS_WEBHOOK_URL);
+    assert.equal(deliveries[0].payload.embeds[0].title, "Recorded crashes and errors");
+    assert.match(deliveries[0].payload.embeds[0].description, /No crash\/error events received\./);
+    assert.doesNotMatch(deliveries[0].payload.embeds[0].description, /unavailable today/i);
+  });
+});
+
 test("Sentry query failure emits one unavailable report and a failed status", async () => {
   await withMode({ currentStatus: 401 }, async ({ deliveries, env }) => {
     const result = await worker.fetch(endpoint("report=sentry&platform=mac"), env);
@@ -100,10 +134,11 @@ test("bad backfill dates refuse before vendor work", async () => {
   });
 });
 
-test("morning modes have no vendor needs dependency or sibling cancellation", () => {
+test("morning modes have explicit target selection and no vendor needs dependency or sibling cancellation", () => {
   const source = readFileSync(new URL("../../../.github/workflows/daily-report-ping.yml", import.meta.url), "utf8");
   assert.match(source, /report=performance/); assert.match(source, /report=sentry&platform=/);
-  assert.match(source, /platform: \[mac, android\]/); assert.match(source, /fail-fast: false/);
+  assert.match(source, /platform: \[mac, android, windows\]/); assert.match(source, /fail-fast: false/);
+  assert.match(source, /sentry-windows/); assert.match(source, /target:/);
   assert.doesNotMatch(source, /^\s+needs:/m); assert.match(source, /cancel-in-progress: false/);
   assert.doesNotMatch(source, /curl[^\n]*--retry/);
 });

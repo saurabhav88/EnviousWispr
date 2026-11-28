@@ -140,6 +140,8 @@ and fail on unavailable/incomplete data. No report is posted:
   node workers/daily-report/live-query-smoke.mjs --report sentry --platform mac [YYYY-MM-DD]
 ~/.claude/bin/get-key launch sentry-workers-readonly-token SENTRY_KEY -- \
   node workers/daily-report/live-query-smoke.mjs --report sentry --platform android [YYYY-MM-DD]
+~/.claude/bin/get-key launch sentry-workers-readonly-token SENTRY_KEY -- \
+  node workers/daily-report/live-query-smoke.mjs --report sentry --platform windows [YYYY-MM-DD]
 ```
 
 `SENTRY_KEY` is the same least-privilege token the deployed Worker holds
@@ -247,9 +249,9 @@ so the public `workers.dev` URL cannot be crawled into spamming Discord.
   as the default "yesterday" path.
 - Missing `report` selects `performance`; `report=performance` sends adoption and
   version scorecard only, without Sentry queries/credentials.
-- `report=sentry&platform=mac|android` sends a separate broader crash/error
+- `report=sentry&platform=mac|android|windows` sends a separate broader crash/error
   write-up for that fixed project/channel. It has no PostHog/appcast dependency.
-  Missing Android binding refuses delivery; it never falls back to Mac.
+  Missing Android or Windows bindings refuse delivery; they never fall back to Mac.
 - Unsupported/empty report modes and invalid Sentry platforms return 400 before
   outbound work; `platform` is invalid for performance mode.
 - QStash has independent performance and Mac/Android Sentry schedules;
@@ -266,6 +268,7 @@ Eastern daylight saving automatically. Their IDs are:
 - `enviouswispr-daily-performance`: `?report=performance`
 - `enviouswispr-daily-sentry-mac`: `?report=sentry&platform=mac`
 - `enviouswispr-daily-sentry-android`: `?report=sentry&platform=android`
+- `enviouswispr-daily-sentry-windows`: `?report=sentry&platform=windows`
 
 All call `https://enviouswispr-daily-report.saurabhav.workers.dev/` using POST,
 `CRON_TZ=America/New_York 12 9 * * *`, zero retries and a 15-minute timeout.
@@ -301,9 +304,11 @@ platform's job. Missing destination configuration or an invalid date fails
 before queries or delivery. A rejected delivery causes no second post.
 Other mode jobs remain independent.
 
-Default recovery requests run performance only. Recover each Sentry write-up
-separately with `report=sentry` and the appropriate `platform=mac` or
-`platform=android`, retaining the requested date and authentication.
+Manual GitHub Actions recovery requires an explicit `target` (`sentry-windows`,
+`sentry-mac`, `sentry-android`, `all-sentry`, `performance`, or `all`). For direct
+requests, recover each Sentry write-up separately with `report=sentry` and
+`platform=mac`, `platform=android`, or `platform=windows`, retaining the requested
+date and authentication.
 
 Three independent signals:
 

@@ -570,10 +570,11 @@ export function sentryWindowFor(context) {
 }
 
 // Fixed server-side identities; URL parameters and event tags cannot select a
-// destination or project. Missing Android configuration never falls back to Mac.
+// destination or project. Missing Android or Windows configuration never falls back to Mac.
 const SENTRY_PLATFORMS = Object.freeze({
   mac: Object.freeze({ id: "4511097112428544", slug: "enviouswispr", webhook: "DISCORD_WEBHOOK_URL", label: "Mac" }),
   android: Object.freeze({ id: "4512117176795136", slug: "enviouswispr-android", webhook: "DISCORD_ANDROID_WEBHOOK_URL", label: "Android" }),
+  windows: Object.freeze({ id: "4512506748010496", slug: "enviouswispr-windows", webhook: "DISCORD_WINDOWS_WEBHOOK_URL", label: "Windows" }),
 });
 
 export async function runSentryReport(env, platform, dateOverride = null, deps = {}) {
