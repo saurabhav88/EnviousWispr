@@ -121,7 +121,15 @@ struct MeetingSummaryTests {
     let gap = "[Could not transcribe 1:00 to 1:30]\nYou: Yes, ship it."
     #expect(MeetingSummaryHighlights.select(from: gap) == ["You: Yes, ship it."])
     #expect(MeetingSummaryHighlights.select(from: "[Could not transcribe 0:00 to 0:50]").isEmpty)
-    #expect(MeetingSummaryHighlights.select(from: "Sales: West: [Could not transcribe from 2:00]").isEmpty)
+    #expect(MeetingSummaryHighlights.select(from: "[Konnte 1:00 bis 1:30 nicht transkribieren]").isEmpty)
+    #expect(
+      MeetingSummaryHighlights.select(
+        from: "Jamie [Legal]: We will send the signed agreement today."
+          + "\nYou: Here is what we agreed: [Could not transcribe from 2:00]")
+        == [
+          "Jamie [Legal]: We will send the signed agreement today.",
+          "You: Here is what we agreed:",
+        ])
     #expect(
       MeetingSummaryHighlights.select(
         from: "You: We agreed to ship the release Friday. [Could not transcribe from 2:00]")

@@ -16,12 +16,11 @@ enum MeetingSummaryHighlights {
   static let maxLineBytes = 240
 
   static func select(from transcript: String) -> [String] {
-    // Text in square brackets is the app's own (a missing-audio marker, in any interface
-    // language); the speech engines write no brackets, so it is removed from every line. A line
-    // with nothing said after that is never a highlight; with no line left the summary keeps
-    // its original failure.
-    let candidates = lines(in: transcript).map(speechOnly)
-      .filter { !$0.isEmpty && !$0.hasSuffix(":") }
+    // A missing-audio marker is removed from every line; a line with nothing said after that is
+    // never a highlight, and with no line left the summary keeps its original failure. Known
+    // limit: a speaker whose own name contains ": " and who has only a marker shows as the name.
+    let candidates = lines(in: transcript).map(withoutGapMarkers)
+      .filter { !$0.isEmpty }
       .map { (line: excerpt($0), score: score($0)) }
       .filter { $0.score > 0 }
     let substantive = candidates.filter { $0.score >= minimumScore }
@@ -91,16 +90,13 @@ enum MeetingSummaryHighlights {
     return words.lazy.filter { $0.isLetter || $0.isNumber }.prefix(64).count
   }
 
-  /// The line without any bracketed text, spaces tidied.
-  private static func speechOnly(_ line: String) -> String {
-    var out = ""
-    var depth = 0
-    for character in line {
-      if character == "[" { depth += 1; continue }
-      if character == "]" { depth = max(0, depth - 1); continue }
-      if depth == 0 { out.append(character) }
-    }
-    return out.split(whereSeparator: \.isWhitespace).joined(separator: " ")
+  /// The line without missing-audio markers, spaces tidied. A marker is a bracketed span that
+  /// holds a meeting time ("[Could not transcribe 1:00 to 1:30]", in any interface language);
+  /// other bracketed text, such as a speaker named "Jamie [Legal]", stays.
+  private static func withoutGapMarkers(_ line: String) -> String {
+    guard line.contains("[") else { return line }
+    let stripped = line.replacing(/\[[^\[\]]*\d:\d\d[^\[\]]*\]/, with: "")
+    return stripped.split(whereSeparator: \.isWhitespace).joined(separator: " ")
   }
 
   private static func excerpt(_ line: String) -> String {
