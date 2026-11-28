@@ -1146,7 +1146,7 @@ struct OverlayReducer {
       break
     case .recording:
       effects.append(.recordingStateChanged(false))
-    case .notice, .bluetoothAwareness, .polishSetupCard, .parakeetUpgrade,
+    case .notice, .meetingSummaryLimit, .bluetoothAwareness, .polishSetupCard, .parakeetUpgrade,
       .polishDownloadComplete, .correctionLearnedSaveError, .retainedClipboardFallback:
       break
     case .correctionLearned(let shown):

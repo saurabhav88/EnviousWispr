@@ -167,7 +167,7 @@ enum PillCatalog {
       return .medium(model.announcement)
     }
     if case .meetingSummaryLimit(let provider) = request {
-      return .medium(MeetingSummaryLimitCopy.message(provider))
+      return .medium(MeetingSummaryLimitCopy.cardAnnouncement(provider))
     }
     if case .parakeetUpgrade(let model) = request {
       return .medium(DictationNarrator.parakeetUpgradeAnnouncement(for: model.phase))
@@ -261,11 +261,11 @@ enum PillCatalog {
         expiry: .after(seconds: 2.5), severity: .warning, isMultiline: true)  // NotificationStyle 2.5
 
     case .meetingSummaryLimit(let provider):
-      return notice(
-        id: id, kind: .notification, text: MeetingSummaryLimitCopy.message(provider),
-        width: .fixed(400), expiry: .after(seconds: 8), severity: .error, isMultiline: true,
-        action: NoticeAction(
-          label: MeetingSummaryLimitCopy.action, action: .chooseMeetingSummaryEngine))
+      // #5043 (founder 2026-11-28): the AI Polish card's look and lifetime: persistent until
+      // answered or replaced, a fixed 320 wide, height from its content.
+      return PillDefinition(
+        id: id, content: .meetingSummaryLimit(provider), expiry: .untilReplaced,
+        requestedWidth: .fixed(320))
 
     case .error(let reason):
       // #2549: `.permissionDenied` gets the richer badge+title+subtitle+button

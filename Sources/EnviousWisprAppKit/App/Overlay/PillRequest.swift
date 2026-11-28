@@ -46,6 +46,8 @@ enum PillAction: Equatable, Sendable {
   /// settings `openMicrophoneSettings` opens.
   case openMicrophoneHelp
   case chooseMeetingSummaryEngine
+  /// #5043: Not now on the meeting summary limit card.
+  case dismissMeetingSummaryLimit
   /// discardRecoveryHandler.
   case discardRecovery
   /// onEscapeRecoveryPaste, which takes the `CancelUndoPayload`.

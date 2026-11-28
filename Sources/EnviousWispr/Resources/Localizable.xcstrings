@@ -14612,6 +14612,29 @@
         }
       }
     },
+    "Choose engine…" : {
+      "comment" : "Meeting summary limit card: opens Summaries so the user can choose another engine.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Engine wählen…"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Choisir un moteur…"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Elegir motor…"
+          }
+        }
+      }
+    },
     "Choose file…" : {
       "comment" : "History transcript, Locate original: opens the file chooser after the confirmation.",
       "localizations" : {
@@ -38673,7 +38696,7 @@
       }
     },
     "Not now" : {
-      "comment" : "Card after a dictation: closes the card and leaves the setup for later.\nEnviousMeet setup: skips a permission for now.\nEnviousMeet: decline this recording offer; a later microphone-use opportunity may ask again after the cooldown.",
+      "comment" : "Card after a dictation: closes the card and leaves the setup for later.\nEnviousMeet setup: skips a permission for now.\nEnviousMeet: decline this recording offer; a later microphone-use opportunity may ask again after the cooldown.\nMeeting summary limit card: closes the card and keeps the selected engine.",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -61701,6 +61724,29 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Intentar de nuevo"
+          }
+        }
+      }
+    },
+    "Try another engine?" : {
+      "comment" : "Title of the card shown when a meeting summary hits an engine limit.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Andere Engine ausprobieren?"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Essayer un autre moteur ?"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "¿Probar otro motor?"
           }
         }
       }

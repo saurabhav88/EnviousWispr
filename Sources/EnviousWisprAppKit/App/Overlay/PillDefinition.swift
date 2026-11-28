@@ -446,6 +446,8 @@ enum OverlayContent: Equatable, Sendable {
   case recording(
     audioLevel: Float, isLocked: Bool, notice: InPanelNotice?, design: RecordingPillDesign)
   case notice(NoticeModel)
+  /// #5043: the card after a meeting summary hits an engine limit, drawn by `PolishSetupCardChrome`.
+  case meetingSummaryLimit(LLMProvider)
   case languageChip(payload: LanguageChipPayload)
   case bluetoothAwareness
   /// #3438: the AI polish setup card.
@@ -480,9 +482,7 @@ enum OverlayContent: Equatable, Sendable {
   var reChecksOwnerBeforeRender: Bool {
     if case .correctionLearned(let model) = self, case .learned = model.phase { return true }
     if case .retainedClipboardFallback = self { return true }
-    if case .notice(let notice) = self, notice.action?.action == .chooseMeetingSummaryEngine {
-      return true
-    }
+    if case .meetingSummaryLimit = self { return true }
     // #3546 A3: a Cancel can stop the download, or the switch can settle, before the first
     // render; the upgrade pill would then announce something no longer true.
     if case .parakeetUpgrade = self { return true }

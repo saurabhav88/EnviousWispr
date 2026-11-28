@@ -52,6 +52,7 @@ struct PillCatalogParityTests {
     switch content {
     case .recording: return "recording"
     case .notice: return "notice"
+    case .meetingSummaryLimit: return "meetingSummaryLimit"
     case .languageChip: return "languageChip"
     case .bluetoothAwareness: return "bluetoothAwareness"
     case .escapeRecovery: return "escapeRecovery"
@@ -104,6 +105,7 @@ struct PillCatalogParityTests {
     case .openMicrophoneSettings: return "openMicrophoneSettings"
     case .openMicrophoneHelp: return "openMicrophoneHelp"
     case .chooseMeetingSummaryEngine: return "chooseMeetingSummaryEngine"
+    case .dismissMeetingSummaryLimit: return "dismissMeetingSummaryLimit"
     case .discardRecovery: return "discardRecovery"
     case .pasteEscapeRecovery: return "pasteEscapeRecovery"
     case .lockLanguage: return "lockLanguage"
