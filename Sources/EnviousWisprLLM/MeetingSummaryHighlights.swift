@@ -20,10 +20,17 @@ enum MeetingSummaryHighlights {
     // never a highlight, and with no line left the summary keeps its original failure. Known
     // limits: a speaker whose own name contains ": " and who has only a marker shows as the
     // name; a speaker name holding a bracketed time ("Jamie [UTC+05:30]") loses that bracket.
-    let candidates = lines(in: transcript).map(withoutGapMarkers)
-      .filter { !$0.isEmpty }
-      .map { (line: excerpt($0), score: score($0)) }
-      .filter { $0.score > 0 }
+    let candidates = lines(in: transcript).compactMap { original -> String? in
+      let line = withoutGapMarkers(original)
+      // Only a removed marker can leave a speaker label alone ("Call:"); speech that merely
+      // ends in a colon stays.
+      if line != original, line.hasSuffix(":"), !line.contains(": "), line.count <= 81 {
+        return nil
+      }
+      return line.isEmpty ? nil : line
+    }
+    .map { (line: excerpt($0), score: score($0)) }
+    .filter { $0.score > 0 }
     let substantive = candidates.filter { $0.score >= minimumScore }
     if substantive.isEmpty {
       return candidates.max(by: { $0.score < $1.score }).map { [$0.line] } ?? []
@@ -87,9 +94,6 @@ enum MeetingSummaryHighlights {
     // A speaker label affects the score only; the saved line keeps it.
     if let separator = line.range(of: ": "), line[..<separator.lowerBound].count <= 80 {
       words = line[separator.upperBound...]
-    } else if line.hasSuffix(":"), line.count <= 81 {
-      // A speaker label left alone once its marker is gone ("Call:"): nothing was said.
-      return 0
     }
     return words.lazy.filter { $0.isLetter || $0.isNumber }.prefix(64).count
   }
