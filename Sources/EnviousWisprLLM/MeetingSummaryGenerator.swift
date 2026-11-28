@@ -68,7 +68,14 @@ public enum MeetingSummary {
     }
   }
 
-  /// The window one call runs in.
+  /// The format requested for part and combined answers (#5041): `.words` is the word target
+  /// every provider used before; `.bullets` asks Apple Intelligence for a bullet count.
+  public enum ListTarget: Equatable, Sendable {
+    case words
+    case bullets
+  }
+
+  /// The window and intermediate-answer format a provider uses.
   public struct Window: Equatable, Sendable {
     /// The model's context in tokens.
     public let contextTokens: Int
@@ -76,9 +83,14 @@ public enum MeetingSummary {
     /// Where a cap is sent, it is this value.
     public let outputReserveTokens: Int
 
-    public init(contextTokens: Int, outputReserveTokens: Int) {
+    public let listTarget: ListTarget
+
+    public init(
+      contextTokens: Int, outputReserveTokens: Int, listTarget: ListTarget = .words
+    ) {
       self.contextTokens = contextTokens
       self.outputReserveTokens = outputReserveTokens
+      self.listTarget = listTarget
     }
   }
 
@@ -505,7 +517,7 @@ public enum MeetingSummary {
         plan(
           transcript: transcript, notes: notes, facts: block, window: window, counting: counting,
           referencing: referencing),
-        transcript: transcript, facts: block, referencing: referencing,
+        transcript: transcript, facts: block, referencing: referencing, listTarget: window.listTarget,
         timeoutSeconds: callTimeoutSeconds, attempts: attempts, admit: admit, complete: complete)
       guard let references else { return written }
       return withReferences(written, references)
@@ -536,8 +548,8 @@ public enum MeetingSummary {
   }
 
   private static func write(
-    _ plan: Plan, transcript: String, facts: String, referencing: Bool, timeoutSeconds: Double,
-    attempts: AttemptCounter, admit: Admit, complete: @escaping Complete
+    _ plan: Plan, transcript: String, facts: String, referencing: Bool, listTarget: ListTarget,
+    timeoutSeconds: Double, attempts: AttemptCounter, admit: Admit, complete: @escaping Complete
   ) async throws -> Written {
     let counting = plan.counting
     let system = systemInstructions(referencing: referencing)
@@ -586,14 +598,24 @@ public enum MeetingSummary {
       guard tokens(shorter, counting) <= acceptedCap else { throw Failure.truncated }
       return shorter
     }
+    // Estimate an entire bullet line, including any tags. The actual answer checks below
+    // still decide whether to combine: wording, tags and the three-bullet floor can exceed it.
+    func bulletTarget(for answerCount: Int) -> Int {
+      let perBullet = counting == .bytes ? 120 : 40
+      let finalShare = plan.finalBudget / answerCount - answerHeaderTokens
+      return min(12, max(3, min(acceptedCap, finalShare) / perBullet))
+    }
+    let partFormat =
+      listTarget == .bullets
+      ? "as at most \(bulletTarget(for: pieces.count)) bullets, one line each, under 20 words each."
+      : "as short bullets, at most \(words) words."
     var answers: [String] = []
     for (index, piece) in pieces.enumerated() {
       let what = piece.source == .transcript ? "a meeting transcript" : "the user's own notes"
       let answer = try await ask(
         """
         This is part \(index + 1) of \(pieces.count) of \(what). List its key points, decisions \
-        and action items (with owners when stated) as short bullets, at most \(words) words.\
-        \(partClause)
+        and action items (with owners when stated) \(partFormat)\(partClause)
 
         Part:
         \(piece.text)
@@ -610,13 +632,18 @@ public enum MeetingSummary {
         }
         groups[groups.count - 1].append(answer)
       }
+      let combineFormat =
+        listTarget == .bullets
+        ? "at most \(bulletTarget(for: groups.count)) bullets, one line each, under 20 words each; "
+          + "keep every decision and action item; drop repeats."
+        : "one list of short bullets, at most \(words) words; drop repeats."
       var combined: [String] = []
       for group in groups {
         let answer = try await ask(
           factsPrefix(facts)
             + """
             Below are the key points of consecutive parts of a meeting, in order. Combine them \
-            into one list of short bullets, at most \(words) words; drop repeats.\(keepClause)
+            into \(combineFormat)\(keepClause)
 
             \(joined(group))
             """)

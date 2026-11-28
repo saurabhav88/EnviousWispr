@@ -154,9 +154,55 @@ struct MeetingSummaryTests {
     #expect(parts.allSatisfy { MeetingSummary.estimatedTokens($0) <= budget })
     #expect(parts.joined(separator: "\n") == transcript, "no words lost or added by the cut")
     #expect(long.prompts.count == parts.count + 1, "one call per part and one join")
+    #expect(long.prompts.first == """
+      This is part 1 of \(parts.count) of a meeting transcript. List its key points, decisions \
+      and action items (with owners when stated) as short bullets, at most 366 words.
+
+      Part:
+      \(parts[0])
+      """)
     #expect(long.prompts.last?.contains("Join them into one summary") == true)
     #expect(long.prompts.allSatisfy { Self.fitsInEstimate($0, Self.small) })
     #expect(long.admissions == long.prompts.count, "admitted before every attempt")
+  }
+
+  @Test(
+    "Apple sizes parts to the final call and still combines when three bullets do not fit",
+    arguments: [2, 6, 16])
+  func appleBulletTargets(pieceCount: Int) async throws {
+    let prepared = MeetingSummaryProviders.prepareApple(contextTokens: 4_096)
+    #expect(prepared.window.listTarget == .bullets)
+    let budget = try MeetingSummary.inputBudget(prepared.window, .estimate)
+    let transcript = String(repeating: "a", count: (pieceCount - 1) * budget * 3 + 1)
+    let expectedBullets = try #require([2: 12, 6: 7, 16: 3][pieceCount])
+    let line = "- " + Array(repeating: "detail", count: 16).joined(separator: " ")
+    let answer = Array(repeating: line, count: expectedBullets).joined(separator: "\n")
+    let calls = Calls()
+    calls.answers = Array(repeating: .success(answer), count: pieceCount)
+    _ = try await Self.write(
+      calls, transcript: transcript, notes: "Ask Priya", window: prepared.window)
+
+    let parts = calls.prompts.prefix { $0.hasPrefix("This is part") }
+    #expect(parts.count == pieceCount)
+    #expect(parts.allSatisfy { $0.contains("at most \(expectedBullets) bullets, one line each") })
+    let combine = calls.prompts.dropFirst(parts.count).dropLast()
+    #expect(combine.count == (pieceCount == 16 ? 2 : 0))
+    #expect(combine.allSatisfy { $0.contains("into at most 12 bullets, one line each") })
+    #expect(calls.prompts.last?.contains("The user's own notes:\nAsk Priya") == true)
+    #expect(calls.prompts.last?.contains("Join them into one summary") == true)
+  }
+
+  @Test("Apple recalculates its bullet target when an overflow forces a byte plan")
+  func appleByteBulletTarget() async throws {
+    let prepared = MeetingSummaryProviders.prepareApple(contextTokens: 4_096)
+    let calls = Calls()
+    calls.answers = [.failure(LLMError.classified(.inputTooLong))]
+    _ = try await Self.write(
+      calls, transcript: String(repeating: "a", count: 2_800), window: prepared.window)
+    try #require(calls.prompts.count == 5)
+    #expect(calls.prompts.first?.contains("Transcript:") == true)
+    #expect(calls.prompts[1...3].allSatisfy { $0.contains("at most 3 bullets, one line each") })
+    #expect(calls.prompts.last?.contains("Join them into one summary") == true)
   }
 
   static let lines = [
