@@ -181,7 +181,9 @@ final class RecordingSoundCuePlayer: Sendable {
         shouldAttempt,
         now() - enqueuedAt <= maxCueDelay,
         let data = resolvedData(pairing, moment),
+        now() - enqueuedAt <= maxCueDelay,
         let player = makePlayer(data),
+        now() - enqueuedAt <= maxCueDelay,
         player.play()
       else { return }
       // `AVAudioPlayer.play()` is asynchronous; a purely local `player` would be

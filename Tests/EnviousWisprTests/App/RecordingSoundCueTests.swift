@@ -187,13 +187,23 @@ struct RecordingSoundCueTests {
     private final class FakeCuePlayer: RecordingSoundPlayback, Sendable {
       let isPlaying = false
       private let ok: Bool
-      init(_ ok: Bool) { self.ok = ok }
-      func play() -> Bool { ok }
+      private let onPlay: @Sendable () -> Void
+      init(_ ok: Bool, onPlay: @escaping @Sendable () -> Void = {}) {
+        self.ok = ok
+        self.onPlay = onPlay
+      }
+      func play() -> Bool {
+        onPlay()
+        return ok
+      }
     }
 
     private func makeGatedPlayer(
       _ state: OSAllocatedUnfairLock<
-        (now: ContinuousClock.Instant, loads: Int, calls: Int, ok: Bool, gate: Bool, returned: Bool)
+        (
+          now: ContinuousClock.Instant, loads: Int, calls: Int, plays: Int, ok: Bool, gate: Bool,
+          returned: Bool
+        )
       >,
       _ entered: DispatchSemaphore, _ release: DispatchSemaphore, checkReturned: Bool = false,
       loc: SourceLocation = #_sourceLocation
@@ -213,7 +223,7 @@ struct RecordingSoundCueTests {
           #expect(release.wait(timeout: .now() + .seconds(1)) == .success, sourceLocation: loc)
           if checkReturned { #expect(state.withLock { $0.returned }, sourceLocation: loc) }
         }
-        return FakeCuePlayer(ok)
+        return FakeCuePlayer(ok) { state.withLock { $0.plays += 1 } }
       }
     }
 
@@ -221,7 +231,10 @@ struct RecordingSoundCueTests {
     func handleDoesNotBlockMainActor() throws {
       let (entered, release) = (DispatchSemaphore(value: 0), DispatchSemaphore(value: 0))
       let state = OSAllocatedUnfairLock(
-        initialState: (now: ContinuousClock.now, loads: 0, calls: 0, ok: true, gate: true, returned: false))
+        initialState: (
+          now: ContinuousClock.now, loads: 0, calls: 0, plays: 0, ok: true, gate: true,
+          returned: false
+        ))
       let player = makeGatedPlayer(state, entered, release, checkReturned: true)
       var cue = RecordingSoundCue(player: player)
       cue.handle(.recording, backend: .parakeet, enabled: true, selectedPairing: .airGlint)
@@ -236,7 +249,10 @@ struct RecordingSoundCueTests {
     func failedStartAndStaleParkedCuesDropCleanly() throws {
       let (entered, release) = (DispatchSemaphore(value: 0), DispatchSemaphore(value: 0))
       let state = OSAllocatedUnfairLock(
-        initialState: (now: ContinuousClock.now, loads: 0, calls: 0, ok: false, gate: false, returned: false))
+        initialState: (
+          now: ContinuousClock.now, loads: 0, calls: 0, plays: 0, ok: false, gate: false,
+          returned: false
+        ))
       let player = makeGatedPlayer(state, entered, release)
       var cue = RecordingSoundCue(player: player)
       cue.handle(.recording, backend: .parakeet, enabled: true, selectedPairing: .airGlint)
@@ -255,13 +271,15 @@ struct RecordingSoundCueTests {
       state.withLock { $0.now = $0.now.advanced(by: .milliseconds(600)) }
       release.signal()
       try #require(player.drainForTesting())
-      #expect(state.withLock { $0.calls } == 3 && state.withLock { $0.loads } == 1)
+      #expect(
+        state.withLock { $0.calls } == 3 && state.withLock { $0.plays } == 2
+          && state.withLock { $0.loads } == 1)
       #expect(
         player.hasStartedBackendForTesting(.parakeet) == false
           && player.hasStartedBackendForTesting(.whisper) == false)
       cue.handle(.transcribing, backend: .whisper, enabled: true, selectedPairing: .velvetTap)
       try #require(player.drainForTesting())
-      #expect(state.withLock { $0.calls } == 3)
+      #expect(state.withLock { $0.calls } == 3 && state.withLock { $0.plays } == 2)
     }
   #endif
 }
