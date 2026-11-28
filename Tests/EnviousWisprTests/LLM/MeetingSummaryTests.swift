@@ -121,9 +121,18 @@ struct MeetingSummaryTests {
     let gap = "[Could not transcribe 1:00 to 1:30]\nYou: Yes, ship it."
     #expect(MeetingSummaryHighlights.select(from: gap) == ["You: Yes, ship it."])
     #expect(MeetingSummaryHighlights.select(from: "[Could not transcribe 0:00 to 0:50]").isEmpty)
-    let literal = "Keep [label](value), ~~pending~~, &amp; <b>, `x`, *y*, 1. and #2 as said!"
-    let rendered = try AttributedString(markdown: MeetingSummaryHighlights.markdown([literal]))
-    #expect(String(rendered.characters).contains(literal))
+    #expect(MeetingSummaryHighlights.select(from: "Sales: West: [Could not transcribe from 2:00]").isEmpty)
+    #expect(
+      MeetingSummaryHighlights.select(
+        from: "You: We agreed to ship the release Friday. [Could not transcribe from 2:00]")
+        == ["You: We agreed to ship the release Friday."])
+    // Rendered as History renders a bullet (inline only), the quote reads exactly as said.
+    let literal = "*️⃣Priority*️⃣: keep [label](value), ~~pending~~, &amp; <b>, `x`, *y* and _z_!"
+    let bullet = String(MeetingSummaryHighlights.markdown([literal]).split(separator: "\n").last!)
+    let rendered = try AttributedString(
+      markdown: String(bullet.dropFirst(2)),
+      options: .init(interpretedSyntax: .inlineOnlyPreservingWhitespace))
+    #expect(String(rendered.characters) == literal)
   }
 
   @Test("the reminder follows each part but not the final join")

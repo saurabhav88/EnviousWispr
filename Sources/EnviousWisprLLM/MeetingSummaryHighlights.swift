@@ -16,9 +16,13 @@ enum MeetingSummaryHighlights {
   static let maxLineBytes = 240
 
   static func select(from transcript: String) -> [String] {
-    // A line with nothing said (only a missing-audio marker) is never a highlight; with no
-    // such line left the summary keeps its original failure.
-    let candidates = lines(in: transcript).map { (line: excerpt($0), score: score($0)) }
+    // Text in square brackets is the app's own (a missing-audio marker, in any interface
+    // language); the speech engines write no brackets, so it is removed from every line. A line
+    // with nothing said after that is never a highlight; with no line left the summary keeps
+    // its original failure.
+    let candidates = lines(in: transcript).map(speechOnly)
+      .filter { !$0.isEmpty && !$0.hasSuffix(":") }
+      .map { (line: excerpt($0), score: score($0)) }
       .filter { $0.score > 0 }
     let substantive = candidates.filter { $0.score >= minimumScore }
     if substantive.isEmpty {
@@ -59,16 +63,17 @@ enum MeetingSummaryHighlights {
   /// The line as literal text: Markdown marks are escaped, so the summary view shows the quote
   /// exactly as it was spoken (a `[label](value)` would otherwise render as a link).
   static func escaped(_ line: String) -> String {
-    var out = ""
-    for character in line {
+    var out = String.UnicodeScalarView()
+    // Scalars, not characters: a mark inside an emoji ("*️⃣") is still a mark to the parser.
+    for character in line.unicodeScalars {
       // The marks that change text inside a list item: escapes, code, emphasis, links and
       // images, raw HTML and autolinks, tables, strikethrough and entities. Line-start syntax
       // (headings, lists, quotes) cannot start here, after the "- " bullet. Fewer escapes keep
       // the saved file readable.
-      if "\\`*_[]<>|~&".contains(character) { out.append("\\") }
+      if "\\`*_[]<>|~&".unicodeScalars.contains(character) { out.append("\\") }
       out.append(character)
     }
-    return out
+    return String(out)
   }
 
   private static func lines(in text: String) -> [String] {
@@ -83,17 +88,19 @@ enum MeetingSummaryHighlights {
     if let separator = line.range(of: ": "), line[..<separator.lowerBound].count <= 80 {
       words = line[separator.upperBound...]
     }
-    // Text in square brackets is the app's own (a missing-audio marker, in any interface
-    // language); the speech engines write no brackets. It never counts as something said.
-    var count = 0
+    return words.lazy.filter { $0.isLetter || $0.isNumber }.prefix(64).count
+  }
+
+  /// The line without any bracketed text, spaces tidied.
+  private static func speechOnly(_ line: String) -> String {
+    var out = ""
     var depth = 0
-    for character in words {
+    for character in line {
       if character == "[" { depth += 1; continue }
       if character == "]" { depth = max(0, depth - 1); continue }
-      if depth == 0, character.isLetter || character.isNumber { count += 1 }
-      if count == 64 { break }
+      if depth == 0 { out.append(character) }
     }
-    return count
+    return out.split(whereSeparator: \.isWhitespace).joined(separator: " ")
   }
 
   private static func excerpt(_ line: String) -> String {
