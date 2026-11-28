@@ -152,10 +152,39 @@ test("delivery transport exceptions never leak webhook URL or token in the worke
     const result = await worker.fetch(endpoint("report=sentry&platform=windows"), env);
     assert.equal(result.status, 500);
     const body = await result.text();
-    assert.equal(capturedInit?.redirect, "error");
+    assert.equal(capturedInit?.redirect, "manual");
     assert.doesNotMatch(body, /SECRET_WEBHOOK_TOKEN_987654321/);
     assert.doesNotMatch(body, /discord\.invalid/);
     assert.match(body, /Discord delivery failed: transport error/);
+  } finally {
+    globalThis.fetch = original;
+  }
+});
+
+test("discord delivery rejects 3xx redirects under manual redirect mode without leaking webhook", async () => {
+  const secretUrl = "https://discord.invalid/api/webhooks/1576039882214871070/SECRET_REDIRECT_TOKEN_12345";
+  const env = { ...MODE_ENV, DISCORD_WINDOWS_WEBHOOK_URL: secretUrl };
+  const data = rig();
+  const original = globalThis.fetch;
+  let capturedInit = null;
+  let discordCalls = 0;
+  globalThis.fetch = async (target, init) => {
+    if (String(target) === secretUrl) {
+      discordCalls += 1;
+      capturedInit = init;
+      return new Response("", { status: 302, headers: { Location: "https://evil.invalid/steal" } });
+    }
+    return data.opts.fetchFn(target, init);
+  };
+  try {
+    const result = await worker.fetch(endpoint("report=sentry&platform=windows"), env);
+    assert.equal(result.status, 500);
+    const body = await result.text();
+    assert.equal(discordCalls, 1);
+    assert.equal(capturedInit?.redirect, "manual");
+    assert.doesNotMatch(body, /SECRET_REDIRECT_TOKEN_12345/);
+    assert.doesNotMatch(body, /evil\.invalid/);
+    assert.match(body, /Discord rejected the report: HTTP 302/);
   } finally {
     globalThis.fetch = original;
   }

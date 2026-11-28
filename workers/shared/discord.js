@@ -277,7 +277,9 @@ export async function deliverReport(webhookUrl, payload, { fetchFn = fetch } = {
   try {
     res = await fetchFn(webhookUrl, {
       method: "POST",
-      redirect: "error",
+      // Cloudflare Workers workerd supports only "follow" and "manual" ("error" throws TypeError).
+      // Under "manual", 3xx redirects are never followed and fail the 200/204 check below.
+      redirect: "manual",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(payload),
     });
