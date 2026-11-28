@@ -165,7 +165,10 @@ struct MeetingSummaryFactsBlockTests {
       transcript: transcript, notes: "", facts: Self.sentBlock, window: Self.small,
       counting: .estimate)
     let cap = MeetingSummary.partialCap(plan.budget)
-    let oversized = MeetingSummaryTests.answer(of: "- point xxxxxxxx", withinTokens: cap * 2)
+    let oversized = MeetingSummaryTests.answer(of: "- point xxxxxxxx", withinTokens: cap * 3)
+    #expect(
+      MeetingSummary.estimatedTokens(oversized) > MeetingSummary.acceptedAnswerCap(plan.budget),
+      "over the accepted limit (#5041)")
     let calls = Calls()
     calls.answers = [.success(oversized), .success("- short")]
     _ = try await Self.write(calls, transcript: transcript)
@@ -178,7 +181,9 @@ struct MeetingSummaryFactsBlockTests {
   @Test("after a reported overflow the byte plan carries the same facts text and fits in bytes")
   func byteReplan() async throws {
     let line = "Speaker 1: " + String(repeating: "word ", count: 40)
-    let transcript = Array(repeating: line, count: 150).joined(separator: "\n")
+    // 100 lines: within the byte plan's call limit, which counts two kept answers per combine
+    // group since #5041 (150 lines now needs more than 64 calls and is refused as too long).
+    let transcript = Array(repeating: line, count: 100).joined(separator: "\n")
     let calls = Calls()
     calls.answers = [.failure(LLMError.classified(.inputTooLong))]
     _ = try await Self.write(calls, transcript: transcript)

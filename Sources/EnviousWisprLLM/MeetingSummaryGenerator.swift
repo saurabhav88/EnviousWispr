@@ -91,7 +91,8 @@ public enum MeetingSummary {
   static let safetyMarginTokens = 128
   /// A window with fewer tokens than this for transcript and notes is refused, never enlarged.
   static let minimumInputTokens = 1_000
-  /// The most calls a plan may need when every answer is as long as it may be.
+  /// The most logical calls per plan, including shortening. Retries and re-planning
+  /// share the separate attempt limit.
   public static let maxCalls = 64
   /// The most attempts one summary may make, retries and the re-plan included.
   public static let maxAttempts = 80
@@ -106,8 +107,8 @@ public enum MeetingSummary {
     case providerFailed
     /// The provider answered with nothing.
     case empty
-    /// The provider stopped before the answer was finished, or a part answer stayed longer
-    /// than its share of the final call even after one request to shorten it (#3999).
+    /// The provider stopped before the answer was finished, or a part or combined answer
+    /// exceeded the accepted limit and could not be shortened to fit (#3999, #5041).
     case truncated
     case cancelled
     /// One call took longer than its time limit; not tried again.
@@ -120,8 +121,8 @@ public enum MeetingSummary {
     case rejected(PolishFailureReason)
   }
 
-  /// Thrown by a call whose prompt the model said was too long for its window; never leaves
-  /// `write`, which re-plans with the byte count or reports `.tooLong`.
+  /// Thrown when the provider reports a context overflow during a call. `write` re-plans
+  /// with the byte count and maps a second reported overflow to `.tooLong`.
   struct ContextExceeded: Error {}
 
   /// The instructions every call carries.
@@ -298,13 +299,15 @@ public enum MeetingSummary {
 
   static let factsFramingTokens = 4
 
-  /// The most tokens kept from one part answer: a quarter of the budget, so every combine call
-  /// holds at least three answers and each round of combining shrinks the list.
+  /// The quarter-budget target used to ask for short bullets and to size a shortening request.
   static func partialCap(_ budget: Int) -> Int { budget / 4 }
 
-  /// Tokens `joined` adds around each answer ("Part 12:" and the blank line, 11 bytes at
-  /// most below 1,000 parts), rounded up.
+  /// Upper bound in either counting mode on the header and separator `joined` adds per answer.
   static let answerHeaderTokens = 16
+
+  /// The largest part or combined answer we can carry forward (#5041). With its header it
+  /// uses at most half a combine budget and fits beside any notes kept for the final call.
+  static func acceptedAnswerCap(_ budget: Int) -> Int { budget / 2 - answerHeaderTokens }
 
   /// The parts of `text` for one call, cut at line ends where possible. Every iteration of the
   /// inner loop consumes at least one scalar (`prefix`), so it always ends.
@@ -359,7 +362,7 @@ public enum MeetingSummary {
     let finalBudget: Int
     /// Tokens of part answers one combine call may carry.
     let budget: Int
-    /// The most calls the plan can make when every answer is as long as it may be.
+    /// An upper bound on map, combine and final calls before any shortening or retries.
     let worstCaseCalls: Int
   }
 
@@ -391,12 +394,12 @@ public enum MeetingSummary {
       budget: budget, worstCaseCalls: worst)
   }
 
-  /// Calls made when every part answer is `partialCap` long: the map, each round of combining,
-  /// and the final call. The run below combines while `answerTokens` exceeds the final budget,
-  /// and its greedy groups hold at least `perGroup` answers, so it never makes more.
+  /// An upper bound for map, combine and final calls using the largest accepted answer.
+  /// Each non-final group fits at least `perGroup` answers, and the final group may be smaller.
+  /// A single answer fits the final budget even when notes use half the input budget.
   static func worstCaseCalls(pieces: Int, budget: Int, finalBudget: Int) -> Int {
-    let answer = partialCap(budget) + answerHeaderTokens
-    let perGroup = max(2, budget / answer)
+    let answer = acceptedAnswerCap(budget) + answerHeaderTokens
+    let perGroup = budget / answer
     var calls = pieces
     var count = pieces
     while count * answer > finalBudget {
@@ -477,8 +480,8 @@ public enum MeetingSummary {
 
   /// Writes the summary, one call after another (each finished before the next): one call for
   /// a meeting that fits; otherwise a call per part, rounds that combine the answers until they
-  /// fit, and the final call. Refused before any call when the window is too small or the worst
-  /// case needs more than `maxCalls`.
+  /// fit, and the final call. Each plan is refused before its first call if its window is too
+  /// small or its map, combine and final calls could exceed `maxCalls`.
   /// Returns the text and whether the successful plan used parts. If an overflow causes
   /// a byte-count re-plan, the returned flag describes that re-plan.
   /// `facts` (#4286) is the rendered facts block (`factsBlock`), or "" for none: the exact text
@@ -553,18 +556,19 @@ public enum MeetingSummary {
     }
     let cap = partialCap(plan.budget)
     // About three-quarters of a word per estimated token, or one word per six bytes when the
-    // plan counts bytes (an English word and its space); `fitted` below is the bound.
+    // plan counts bytes (an English word and its space).
     let words = counting == .bytes ? cap / 6 : cap * 3 / 4
-    // Calls the plan leaves unused when every answer is as long as it may be: the only room
-    // for a shortening request, so `worstCaseCalls` stays the bound (#3999).
+    let acceptedCap = acceptedAnswerCap(plan.budget)
+    // Reserve the worst-case map, combine and final calls. Shortening can use only the
+    // remaining calls so the plan stays within `maxCalls` (#3999).
     var headroom = maxCalls - plan.worstCaseCalls
-    /// A part answer within `cap` as written. A longer one is never clipped (that silently
-    /// dropped its later decisions and action items, #3999): the model is asked once to
-    /// shorten it, and an answer that still does not fit, or no room to ask, fails the
-    /// summary as `.truncated`.
+    /// Keep a part or combined answer within `acceptedCap` as written. Clipping silently dropped
+    /// later decisions and action items (#3999). Ask once to shorten an over-limit answer if the
+    /// request fits and there is a spare call. If either check fails or the answer is still too
+    /// long, fail the summary as `.truncated`.
     func fitted(_ answer: String) async throws -> String {
       let size = tokens(answer, counting)
-      guard size > cap else { return answer }
+      guard size > acceptedCap else { return answer }
       // A target measured from this answer, so an answer that already kept the word limit is
       // still asked for less; a share of its length holds in every script (#3999).
       let percent = max(1, cap * 80 / size)
@@ -579,7 +583,7 @@ public enum MeetingSummary {
       }
       headroom -= 1
       let shorter = try await ask(request)
-      guard tokens(shorter, counting) <= cap else { throw Failure.truncated }
+      guard tokens(shorter, counting) <= acceptedCap else { throw Failure.truncated }
       return shorter
     }
     var answers: [String] = []

@@ -294,9 +294,8 @@ public enum MeetingSummaryProviders {
           let response = try await session.respond(
             to: prompt, options: GenerationOptions(sampling: .greedy))
           return response.content
-        } catch let error as LanguageModelSession.GenerationError {
-          if case .exceededContextWindowSize = error { throw MeetingSummary.ContextExceeded() }
-          throw error
+        } catch let error where AppleContextOverflow.isOverflow(error) {
+          throw MeetingSummary.ContextExceeded()
         }
       }
     #endif
