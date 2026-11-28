@@ -2,6 +2,7 @@ import AVFoundation
 import EnviousWisprCore
 import Foundation
 import Testing
+import os
 
 @testable import EnviousWisprAppKit
 
@@ -181,4 +182,86 @@ struct RecordingSoundCueTests {
     #expect(
       events == ["airGlint:start", "airGlint:stop", "velvetTap:start", "velvetTap:stop"])
   }
+
+  #if DEBUG
+    private final class FakeCuePlayer: RecordingSoundPlayback, Sendable {
+      let isPlaying = false
+      private let ok: Bool
+      init(_ ok: Bool) { self.ok = ok }
+      func play() -> Bool { ok }
+    }
+
+    private func makeGatedPlayer(
+      _ state: OSAllocatedUnfairLock<
+        (now: ContinuousClock.Instant, loads: Int, calls: Int, ok: Bool, gate: Bool, returned: Bool)
+      >,
+      _ entered: DispatchSemaphore, _ release: DispatchSemaphore, checkReturned: Bool = false,
+      loc: SourceLocation = #_sourceLocation
+    ) -> RecordingSoundCuePlayer {
+      let load: @Sendable (RecordingSoundPairing, RecordingSoundMoment) -> Data? = { _, _ in
+        state.withLock { $0.loads += 1 }
+        return Data()
+      }
+      return RecordingSoundCuePlayer(now: { state.withLock { $0.now } }, loadData: load) { _ in
+        let (shouldGate, ok) = state.withLock { s -> (Bool, Bool) in
+          s.calls += 1
+          defer { s.gate = false }
+          return (s.gate, s.ok)
+        }
+        if shouldGate {
+          entered.signal()
+          #expect(release.wait(timeout: .now() + .seconds(1)) == .success, sourceLocation: loc)
+          if checkReturned { #expect(state.withLock { $0.returned }, sourceLocation: loc) }
+        }
+        return FakeCuePlayer(ok)
+      }
+    }
+
+    @Test("off-main cue dispatch returns immediately without blocking the caller")
+    func handleDoesNotBlockMainActor() throws {
+      let (entered, release) = (DispatchSemaphore(value: 0), DispatchSemaphore(value: 0))
+      let state = OSAllocatedUnfairLock(
+        initialState: (now: ContinuousClock.now, loads: 0, calls: 0, ok: true, gate: true, returned: false))
+      let player = makeGatedPlayer(state, entered, release, checkReturned: true)
+      var cue = RecordingSoundCue(player: player)
+      cue.handle(.recording, backend: .parakeet, enabled: true, selectedPairing: .airGlint)
+      state.withLock { $0.returned = true }
+      try #require(entered.wait(timeout: .now() + .seconds(1)) == .success)
+      #expect(player.drainForTesting(timeout: 0.02) == false)
+      release.signal()
+      try #require(player.drainForTesting())
+    }
+
+    @Test("failed start and stale parked cues clear #1342 markers and reuse cached WAV data")
+    func failedStartAndStaleParkedCuesDropCleanly() throws {
+      let (entered, release) = (DispatchSemaphore(value: 0), DispatchSemaphore(value: 0))
+      let state = OSAllocatedUnfairLock(
+        initialState: (now: ContinuousClock.now, loads: 0, calls: 0, ok: false, gate: false, returned: false))
+      let player = makeGatedPlayer(state, entered, release)
+      var cue = RecordingSoundCue(player: player)
+      cue.handle(.recording, backend: .parakeet, enabled: true, selectedPairing: .airGlint)
+      cue.handle(.transcribing, backend: .parakeet, enabled: true, selectedPairing: .airGlint)
+      try #require(player.drainForTesting())
+      #expect(state.withLock { $0.calls } == 1 && player.hasStartedBackendForTesting(.parakeet) == false)
+      state.withLock { $0.ok = true }
+      cue.handle(.recording, backend: .parakeet, enabled: true, selectedPairing: .airGlint)
+      try #require(player.drainForTesting())
+      #expect(player.hasStartedBackendForTesting(.parakeet) == true)
+      state.withLock { $0.gate = true }
+      player.enqueue(pairing: .airGlint, moment: .start, backend: nil)
+      try #require(entered.wait(timeout: .now() + .seconds(1)) == .success)
+      cue.handle(.idle, backend: .parakeet, enabled: true, selectedPairing: .airGlint)
+      cue.handle(.recording, backend: .whisper, enabled: true, selectedPairing: .velvetTap)
+      state.withLock { $0.now = $0.now.advanced(by: .milliseconds(600)) }
+      release.signal()
+      try #require(player.drainForTesting())
+      #expect(state.withLock { $0.calls } == 3 && state.withLock { $0.loads } == 1)
+      #expect(
+        player.hasStartedBackendForTesting(.parakeet) == false
+          && player.hasStartedBackendForTesting(.whisper) == false)
+      cue.handle(.transcribing, backend: .whisper, enabled: true, selectedPairing: .velvetTap)
+      try #require(player.drainForTesting())
+      #expect(state.withLock { $0.calls } == 3)
+    }
+  #endif
 }
