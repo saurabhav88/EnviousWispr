@@ -120,9 +120,10 @@ struct MeetingSummaryTests {
     // A missing-audio marker never outranks speech, and quotes render as written.
     let gap = "[Could not transcribe 1:00 to 1:30]\nYou: Yes, ship it."
     #expect(MeetingSummaryHighlights.select(from: gap) == ["You: Yes, ship it."])
-    #expect(
-      MeetingSummaryHighlights.markdown(["Keep [label](value)."])
-        .hasSuffix("- Keep \\[label\\](value)."))
+    #expect(MeetingSummaryHighlights.select(from: "[Could not transcribe 0:00 to 0:50]").isEmpty)
+    let literal = "Keep [label](value), ~~pending~~ and &amp; as said."
+    let rendered = try AttributedString(markdown: MeetingSummaryHighlights.markdown([literal]))
+    #expect(String(rendered.characters).contains(literal))
   }
 
   @Test("the reminder follows each part but not the final join")

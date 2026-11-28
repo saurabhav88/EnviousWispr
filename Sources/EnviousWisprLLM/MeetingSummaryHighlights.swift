@@ -16,7 +16,10 @@ enum MeetingSummaryHighlights {
   static let maxLineBytes = 240
 
   static func select(from transcript: String) -> [String] {
+    // A line with nothing said (only a missing-audio marker) is never a highlight; with no
+    // such line left the summary keeps its original failure.
     let candidates = lines(in: transcript).map { (line: excerpt($0), score: score($0)) }
+      .filter { $0.score > 0 }
     let substantive = candidates.filter { $0.score >= minimumScore }
     if substantive.isEmpty {
       return candidates.max(by: { $0.score < $1.score }).map { [$0.line] } ?? []
@@ -58,7 +61,7 @@ enum MeetingSummaryHighlights {
   static func escaped(_ line: String) -> String {
     var out = ""
     for character in line {
-      if "\\`*_[]<>#|".contains(character) { out.append("\\") }
+      if "\\`*_[]<>#|~&".contains(character) { out.append("\\") }
       out.append(character)
     }
     return out
