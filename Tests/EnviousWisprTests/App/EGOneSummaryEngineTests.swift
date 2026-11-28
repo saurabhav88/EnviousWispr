@@ -46,7 +46,7 @@ struct EGOneSummaryEngineTests {
     let probe = Probe()
     let engine: EGOneSummaryEngine
 
-    init(installed: Bool = true, manifest: Bool = true) {
+    init(installed: Bool = true, manifest: Bool = true, finishReason: String = "stop") {
       let egOne = LocalPolishRuntime(
         manifest: nil, serverBinaryURL: nil, delivery: nil,
         engine: TestLocalPolishEngine(),
@@ -79,7 +79,7 @@ struct EGOneSummaryEngineTests {
           await MainActor.run { probe.requests.append(request) }
           let json: [String: Any] = [
             "choices": [
-              ["message": ["content": "Title: Plan\n\nShip Friday."], "finish_reason": "stop"]
+              ["message": ["content": "Title: Plan\n\nShip Friday."], "finish_reason": finishReason]
             ]
           ]
           return LocalPolishHelperResponse(
@@ -93,6 +93,32 @@ struct EGOneSummaryEngineTests {
       throw CancellationError()
     }
     return prepared
+  }
+
+  @Test(
+    "a real EG-1 length stop leaves transcript highlights, not a failure",
+    .bug("https://github.com/saurabhav88/EnviousWispr/issues/5049"))
+  func lengthStopLeavesHighlights() async throws {
+    let fixture = Fixture(finishReason: "length")
+    let prepared = try Self.prepared(fixture)
+    let borrow = try #require(prepared.borrow)
+    let result: Result<MeetingSummary.Written, Error>
+    do {
+      result = .success(
+        try await MeetingSummary.write(
+          transcript: "You: We agreed to ship the release on Friday.", notes: "", facts: "",
+          window: prepared.window, callTimeoutSeconds: 60,
+          admit: { _ = try await borrow() }, complete: prepared.complete))
+    } catch {
+      result = .failure(error)
+    }
+    await prepared.finish()
+    let written = try result.get()
+    #expect(written.text.hasPrefix("## Highlights\n"))
+    #expect(written.text.hasSuffix("- You: We agreed to ship the release on Friday."))
+    #expect(MeetingSummary.splitTitle(written.text).title == nil)
+    #expect(fixture.probe.requests.count == 1)
+    #expect(fixture.set.summaryHeldProvider == nil)
   }
 
   @Test("preparation is cold, and refuses an EG-1 that is not installed or has no manifest")

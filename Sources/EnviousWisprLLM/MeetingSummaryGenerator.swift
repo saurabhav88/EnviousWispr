@@ -75,6 +75,13 @@ public enum MeetingSummary {
     case bullets
   }
 
+  /// #5049: what a summary does when its model cannot write one. `.highlights` (EG-1 only)
+  /// saves unchanged transcript lines instead of failing; `.none` keeps every failure.
+  public enum Recovery: Equatable, Sendable {
+    case none
+    case highlights
+  }
+
   /// The window and intermediate-answer format a provider uses.
   public struct Window: Equatable, Sendable {
     /// The model's context in tokens.
@@ -84,13 +91,20 @@ public enum MeetingSummary {
     public let outputReserveTokens: Int
 
     public let listTarget: ListTarget
+    /// #5049: ends the single-call and part prompts with a reminder to summarize, not copy
+    /// (EG-1 Mini and Micro, which otherwise rewrite the transcript).
+    public let endReminder: Bool
+    public let recovery: Recovery
 
     public init(
-      contextTokens: Int, outputReserveTokens: Int, listTarget: ListTarget = .words
+      contextTokens: Int, outputReserveTokens: Int, listTarget: ListTarget = .words,
+      endReminder: Bool = false, recovery: Recovery = .none
     ) {
       self.contextTokens = contextTokens
       self.outputReserveTokens = outputReserveTokens
       self.listTarget = listTarget
+      self.endReminder = endReminder
+      self.recovery = recovery
     }
   }
 
@@ -163,6 +177,14 @@ public enum MeetingSummary {
     ## Decisions (bullets)
     ## Action items (bullets; name the owner when someone said they would do it)
     """
+
+  /// #5049: the reminders `Window.endReminder` appends (measured on EG-1 Mini and Micro).
+  static let transcriptReminder =
+    "\n\nEnd of transcript. Now write the Title line and the summary sections described above. Do not copy the transcript."
+
+  static func partReminder(_ part: Int, of total: Int) -> String {
+    "\n\nEnd of part \(part) of \(total). Now write only the bullets. Do not copy the transcript."
+  }
 
   /// The longest AI title kept; a longer one is no title.
   public static let maxTitleLength = 80
@@ -295,11 +317,18 @@ public enum MeetingSummary {
   static func inputBudget(
     _ window: Window, _ counting: Counting, facts: String = "", referencing: Bool = false
   ) throws -> Int {
+    // #5049: both part numbers are bounded by maxCalls; reserve the larger suffix.
+    let reminderTokens =
+      window.endReminder
+      ? max(
+        tokens(transcriptReminder, counting),
+        tokens(partReminder(maxCalls, of: maxCalls), counting))
+      : 0
     let budget =
       window.contextTokens - window.outputReserveTokens
       - tokens(systemInstructions(referencing: referencing), counting)
       - tokens(finalShape, counting) - framingTokens - safetyMarginTokens
-      - factsTokens(facts, counting)
+      - factsTokens(facts, counting) - reminderTokens
     guard budget >= minimumInputTokens else { throw Failure.windowTooSmall }
     return budget
   }
@@ -518,12 +547,36 @@ public enum MeetingSummary {
           transcript: transcript, notes: notes, facts: block, window: window, counting: counting,
           referencing: referencing),
         transcript: transcript, facts: block, referencing: referencing, listTarget: window.listTarget,
-        timeoutSeconds: callTimeoutSeconds, attempts: attempts, admit: admit, complete: complete)
+        endReminder: window.endReminder, timeoutSeconds: callTimeoutSeconds, attempts: attempts,
+        admit: admit, complete: complete)
       guard let references else { return written }
       return withReferences(written, references)
     }
-    do { return try await run(.estimate) } catch is ContextExceeded {}
-    do { return try await run(.bytes) } catch is ContextExceeded { throw Failure.tooLong }
+    func runWithReplan() async throws -> Written {
+      do { return try await run(.estimate) } catch is ContextExceeded {}
+      do { return try await run(.bytes) } catch is ContextExceeded { throw Failure.tooLong }
+    }
+    guard window.recovery == .highlights, !referencing else {
+      return try await runWithReplan()
+    }
+    // #5049: a model that cannot write the summary leaves Highlights, never a failure. No
+    // model call: the lines are the transcript's own words.
+    do {
+      let written = try await runWithReplan()
+      if Task.isCancelled { throw Failure.cancelled }
+      guard !splitTitle(written.text).summary.isEmpty else { throw Failure.empty }
+      return written
+    } catch let failure as Failure {
+      if Task.isCancelled { throw Failure.cancelled }
+      switch failure {
+      case .truncated, .tooLong, .empty, .providerFailed, .timedOut, .windowTooSmall:
+        let lines = MeetingSummaryHighlights.select(from: transcript)
+        guard !lines.isEmpty else { throw failure }
+        return Written(text: MeetingSummaryHighlights.markdown(lines), inParts: false)
+      case .cancelled, .rejected:
+        throw failure
+      }
+    }
   }
 
   /// The answer without its tags, and the document its tags describe. The document is built
@@ -549,7 +602,8 @@ public enum MeetingSummary {
 
   private static func write(
     _ plan: Plan, transcript: String, facts: String, referencing: Bool, listTarget: ListTarget,
-    timeoutSeconds: Double, attempts: AttemptCounter, admit: Admit, complete: @escaping Complete
+    endReminder: Bool, timeoutSeconds: Double, attempts: AttemptCounter, admit: Admit,
+    complete: @escaping Complete
   ) async throws -> Written {
     let counting = plan.counting
     let system = systemInstructions(referencing: referencing)
@@ -562,8 +616,9 @@ public enum MeetingSummary {
     }
     guard let pieces = plan.pieces else {
       // The whole transcript, which `plan` has just measured against the budget.
-      let text = try await ask(
-        finalPrompt(notes: plan.inlineNotes, facts: facts, body: "Transcript:\n\(transcript)"))
+      let prompt = finalPrompt(
+        notes: plan.inlineNotes, facts: facts, body: "Transcript:\n\(transcript)")
+      let text = try await ask(prompt + (endReminder ? transcriptReminder : ""))
       return Written(text: text, inParts: false)
     }
     let cap = partialCap(plan.budget)
@@ -612,14 +667,15 @@ public enum MeetingSummary {
     var answers: [String] = []
     for (index, piece) in pieces.enumerated() {
       let what = piece.source == .transcript ? "a meeting transcript" : "the user's own notes"
-      let answer = try await ask(
-        """
+      let prompt = """
         This is part \(index + 1) of \(pieces.count) of \(what). List its key points, decisions \
         and action items (with owners when stated) \(partFormat)\(partClause)
 
         Part:
         \(piece.text)
-        """)
+        """
+      let suffix = endReminder ? partReminder(index + 1, of: pieces.count) : ""
+      let answer = try await ask(prompt + suffix)
       answers.append(try await fitted(answer))
     }
     while answerTokens(answers, counting) > plan.finalBudget {

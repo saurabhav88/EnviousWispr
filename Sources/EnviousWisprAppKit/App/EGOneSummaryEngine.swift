@@ -89,8 +89,11 @@ final class EGOneSummaryEngine {
     return .success(
       MeetingSummaryProviders.Prepared(
         execution: .local,
+        // #5049: every size leaves Highlights rather than a failure; Mini and Micro also get the
+        // reminder that stopped their title-only answers.
         window: MeetingSummary.Window(
-          contextTokens: manifest.contextTokens, outputReserveTokens: MeetingSummary.outputTokens),
+          contextTokens: manifest.contextTokens, outputReserveTokens: MeetingSummary.outputTokens,
+          endReminder: model.size == .mini || model.size == .micro, recovery: .highlights),
         complete: { instructions, prompt in
           try await attempt.complete(instructions: instructions, prompt: prompt)
         },
