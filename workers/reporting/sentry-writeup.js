@@ -6,7 +6,7 @@ import { classifyProblem, ERROR_CATEGORIES, parseReleaseVersion, windowInstant }
 const QUERY = "(event.type:error OR event.type:default) level:[error,fatal]";
 const COHORTS = ["release", "development", "unknown"];
 const COHORT_LABELS = { release: "Customer releases", development: "Developer builds", unknown: "Unknown build" };
-const PLATFORM_LABELS = { mac: "Mac", android: "Android" };
+const PLATFORM_LABELS = { mac: "Mac", android: "Android", windows: "Windows" };
 const GROUP_FIELDS = ["issue", "environment", "app.build_type", "count()", "count_unique(user)"];
 const MATRIX_FIELDS = ["issue", "environment", "app.build_type", "release", "error.category", "level", "count()"];
 const HEAD_FIELDS = ["environment", "app.build_type", "count()", "count_unique(user)"];

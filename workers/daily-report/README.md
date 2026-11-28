@@ -140,6 +140,8 @@ and fail on unavailable/incomplete data. No report is posted:
   node workers/daily-report/live-query-smoke.mjs --report sentry --platform mac [YYYY-MM-DD]
 ~/.claude/bin/get-key launch sentry-workers-readonly-token SENTRY_KEY -- \
   node workers/daily-report/live-query-smoke.mjs --report sentry --platform android [YYYY-MM-DD]
+~/.claude/bin/get-key launch sentry-workers-readonly-token SENTRY_KEY -- \
+  node workers/daily-report/live-query-smoke.mjs --report sentry --platform windows [YYYY-MM-DD]
 ```
 
 `SENTRY_KEY` is the same least-privilege token the deployed Worker holds
@@ -185,9 +187,10 @@ cd workers/daily-report
 npx wrangler deploy
 
 # 3. verify each deployed mode (these DO post real reports).
-# The default request is performance only; also check both Sentry modes with
-# ?report=sentry&platform=mac&date=YYYY-MM-DD and
-# ?report=sentry&platform=android&date=YYYY-MM-DD under the same header secret.
+# The default request is performance only; also check all three Sentry modes with
+# ?report=sentry&platform=mac&date=YYYY-MM-DD,
+# ?report=sentry&platform=android&date=YYYY-MM-DD, and
+# ?report=sentry&platform=windows&date=YYYY-MM-DD under the same header secret.
 # -f is load-bearing: without it curl exits 0 on a 401/500, so a failed verify
 # reads as a passed one - the exact false-success this section exists to stop.
 # Operational triggers use the header; never put the secret in a URL.
@@ -216,6 +219,8 @@ cd workers/daily-report
 # secrets (never committed):
 ~/.claude/bin/get-key launch posthog-personal-api-key V -- sh -c 'printf "%s" "$V" | npx wrangler secret put POSTHOG_PERSONAL_API_KEY'
 security find-generic-password -w -a m4pro_sv -s enviouswispr.discord-webhook-session-logs | npx wrangler secret put DISCORD_WEBHOOK_URL
+security find-generic-password -w -a m4pro_sv -s enviouswispr-android.discord-webhook-session-logs | npx wrangler secret put DISCORD_ANDROID_WEBHOOK_URL
+~/.claude/bin/get-key launch discord-webhook-windows-session-logs V -- sh -c 'printf "%s" "$V" | npx wrangler secret put DISCORD_WINDOWS_WEBHOOK_URL'
 # TRIGGER_SECRET gates the public trigger. Source of truth is GCP Secret
 # Manager (`daily-report-trigger-secret`); deployed copies in QStash and the
 # GitHub manual-recovery secret must follow rotations. NOT the
@@ -230,8 +235,9 @@ for w in daily-report weekly-digest; do
      sh -c 'printf "%s" "$V" | npx wrangler secret put SENTRY_AUTH_TOKEN')
 done
 
-# verify (posts a REAL report to EnviousNotes) - needs the token:
-curl -fsS "https://enviouswispr-daily-report.saurabhav.workers.dev/?token=<TRIGGER_SECRET>"
+# verify (posts a REAL report) - pass the trigger secret in the header, never in the URL:
+~/.claude/bin/get-key launch daily-report-trigger-secret V -- sh -c \
+  'curl -fsS -H "x-trigger-secret: $V" "https://enviouswispr-daily-report.saurabhav.workers.dev/?report=sentry&platform=windows"'
 ```
 
 The `fetch` trigger fails closed with 401 if the token is missing or wrong,
@@ -247,12 +253,12 @@ so the public `workers.dev` URL cannot be crawled into spamming Discord.
   as the default "yesterday" path.
 - Missing `report` selects `performance`; `report=performance` sends adoption and
   version scorecard only, without Sentry queries/credentials.
-- `report=sentry&platform=mac|android` sends a separate broader crash/error
+- `report=sentry&platform=mac|android|windows` sends a separate broader crash/error
   write-up for that fixed project/channel. It has no PostHog/appcast dependency.
-  Missing Android binding refuses delivery; it never falls back to Mac.
+  Missing Android or Windows bindings refuse delivery; they never fall back to Mac.
 - Unsupported/empty report modes and invalid Sentry platforms return 400 before
   outbound work; `platform` is invalid for performance mode.
-- QStash has independent performance and Mac/Android Sentry schedules;
+- QStash has independent performance and Mac/Android/Windows Sentry schedules;
   no report depends on another report succeeding.
 - 401 body: `"unauthorized\n"`. Request body is ignored. Never logs the
   trigger secret, a PostHog response body, or a Discord response body —
@@ -260,19 +266,22 @@ so the public `workers.dev` URL cannot be crawled into spamming Discord.
 
 ## Scheduling (QStash, #3570)
 
-Three independent schedules run daily at **09:12 America/New_York**, following
-Eastern daylight saving automatically. Their IDs are:
+Four independent schedules exist at **09:12 America/New_York**, following
+Eastern daylight saving automatically (`enviouswispr-daily-performance` is
+paused by founder decision 2026-10-14; the three Sentry schedules run active).
+Their IDs are:
 
 - `enviouswispr-daily-performance`: `?report=performance`
 - `enviouswispr-daily-sentry-mac`: `?report=sentry&platform=mac`
 - `enviouswispr-daily-sentry-android`: `?report=sentry&platform=android`
+- `enviouswispr-daily-sentry-windows`: `?report=sentry&platform=windows`
 
 All call `https://enviouswispr-daily-report.saurabhav.workers.dev/` using POST,
 `CRON_TZ=America/New_York 12 9 * * *`, zero retries and a 15-minute timeout.
 QStash EU (`https://qstash-eu-central-1.upstash.io`) authenticates with the
 GCP `qstash-token`; forward the GCP `daily-report-trigger-secret` as
 `Upstash-Forward-x-trigger-secret`. Never put either value in a file or URL.
-Rotate the forwarded header on all three schedule IDs when rotating the secret.
+Rotate the forwarded header on all four schedule IDs when rotating the secret.
 
 The account is shared with EnviousStaging/marketing. Only edit these exact
 EnviousWispr IDs; never bulk-delete schedules or change shared queues, keys,
@@ -301,9 +310,11 @@ platform's job. Missing destination configuration or an invalid date fails
 before queries or delivery. A rejected delivery causes no second post.
 Other mode jobs remain independent.
 
-Default recovery requests run performance only. Recover each Sentry write-up
-separately with `report=sentry` and the appropriate `platform=mac` or
-`platform=android`, retaining the requested date and authentication.
+Manual GitHub Actions recovery requires an explicit `target` (`sentry-windows`,
+`sentry-mac`, `sentry-android`, `all-sentry`, `performance`, or `all`). For direct
+requests, recover each Sentry write-up separately with `report=sentry` and
+`platform=mac`, `platform=android`, or `platform=windows`, retaining the requested
+date and authentication.
 
 Three independent signals:
 
@@ -371,7 +382,7 @@ not serialize QStash or direct HTTP requests. Avoid overlapping recovery calls.
 
 ## Rollback
 
-For #3547 rollback, pause the three EnviousWispr QStash morning schedules and
+For rollback, pause all four EnviousWispr QStash morning schedules and
 inspect/drain their queued messages plus recorded direct invocations. Restore
 the pinned previous reporting deployment while paused, restore its matching
 report mode/trigger contract, then resume exactly one scheduling owner.

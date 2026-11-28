@@ -263,3 +263,19 @@ test("invalid issue identity and duplicate grouping rows are loud", async () => 
   await assert.rejects(read(rig({ current: [{ ...problem(1, 5, 2), "issue.id": "1" }] })), /invalid issue identity/);
   await assert.rejects(read(rig({ current: [problem(1, 2, 1), problem(1, 3, 1)] })), /duplicate grouping row/);
 });
+
+test("Windows write-up formats Windows header and MSIX release version under Customer releases", async () => {
+  const r = rig({
+    current: [problem(1, 3, 2, "production", "release")],
+    prior: [],
+    matrix: [{ ...detail(1, 3, "production", "release"), release: "EnviousLabsLLC.EnviousWispr@0.19.0" }],
+    currentHead: [head(3, 2, "production", "release")],
+    priorHead: [],
+    firstSeen: [],
+  });
+  const data = await read(r);
+  const payload = formatSentryWriteup(data, { platform: "windows", date: "2026-10-07" });
+  assert.equal(payload.content, "Sentry morning review | Windows | 2026-10-07");
+  assert.match(payload.embeds[0].description, /\*\*Customer releases\*\*\n3 events \(\+3 vs prior day\); 2 reported users/);
+  assert.match(payload.embeds[0].description, /0\.19\.0/);
+});

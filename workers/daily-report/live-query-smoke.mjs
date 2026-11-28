@@ -11,25 +11,30 @@ for (let i = 2; i < process.argv.length; i += 1) {
   else throw new Error("unsupported smoke argument");
 }
 if (!["performance", "sentry"].includes(report)
-    || (report === "sentry" && !["mac", "android"].includes(platform))
+    || (report === "sentry" && !["mac", "android", "windows"].includes(platform))
     || (report === "performance" && platform !== null)) throw new Error("invalid smoke mode");
 const MAC_CAPTURE = "https://smoke.invalid/mac";
 const ANDROID_CAPTURE = "https://smoke.invalid/android";
+const WINDOWS_CAPTURE = "https://smoke.invalid/windows";
 const env = {
   POSTHOG_PROJECT_ID: "354235", POSTHOG_PERSONAL_API_KEY: process.env.POSTHOG_KEY,
   APPCAST_URL: "https://enviouswispr.com/appcast.xml",
-  DISCORD_WEBHOOK_URL: MAC_CAPTURE, DISCORD_ANDROID_WEBHOOK_URL: ANDROID_CAPTURE,
+  DISCORD_WEBHOOK_URL: MAC_CAPTURE,
+  DISCORD_ANDROID_WEBHOOK_URL: ANDROID_CAPTURE,
+  DISCORD_WINDOWS_WEBHOOK_URL: WINDOWS_CAPTURE,
   SENTRY_ORG: "envious-labs-llc", SENTRY_PROJECT_ID: "4511097112428544", SENTRY_PROJECT_SLUG: "enviouswispr",
   SENTRY_AUTH_TOKEN: process.env.SENTRY_KEY,
 };
 if (report === "performance" && !env.POSTHOG_PERSONAL_API_KEY) throw new Error("POSTHOG_KEY required for performance smoke");
 if (report === "sentry" && !env.SENTRY_AUTH_TOKEN) throw new Error("SENTRY_KEY required for Sentry smoke");
 const realFetch = globalThis.fetch;
-const requests = [], captured = [];
+const requests = [], captured = [], destinations = [];
 globalThis.fetch = async (target, init) => {
   const text = String(target), url = new URL(text);
-  if (text === MAC_CAPTURE || text === ANDROID_CAPTURE) {
-    requests.push("captured-discord:" + (text === MAC_CAPTURE ? "mac" : "android"));
+  if (text === MAC_CAPTURE || text === ANDROID_CAPTURE || text === WINDOWS_CAPTURE) {
+    const label = text === MAC_CAPTURE ? "mac" : text === ANDROID_CAPTURE ? "android" : "windows";
+    requests.push("captured-discord:" + label);
+    destinations.push(label);
     captured.push(JSON.parse(init.body));
     return { status: 204 };
   }
@@ -55,7 +60,9 @@ for (const payload of captured) {
 }
 const problems = [];
 if (failure) problems.push("run failed: " + failure.message);
+const expectedDestination = report === "performance" ? "mac" : platform;
 if (captured.length !== 1) problems.push("expected exactly one captured report");
+if (destinations.length !== 1 || destinations[0] !== expectedDestination) problems.push("captured destination mismatch: got " + destinations.join(",") + ", expected " + expectedDestination);
 if (quality && Object.values(quality).some((v) => v !== true)) problems.push("Sentry detail query incomplete");
 for (const payload of captured) for (const embed of payload.embeds || []) {
   if (/unavailable today/.test(embed.title) || /temporarily unavailable/.test(embed.description)) problems.push("required section degraded");

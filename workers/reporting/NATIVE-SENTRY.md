@@ -15,6 +15,7 @@ Organization: `envious-labs-llc`, US region. Existing Discord installation
 |---|---|---|---|
 | Mac | `4511097112428544`, `enviouswispr` | `1486542034830495938` | `6139071` / `6139072` / `6139070` |
 | Android | `4512117176795136`, `enviouswispr-android` | `1543122962792849470` | `6139068` / `6139069` / `6139067` |
+| Windows | `4512506748010496`, `enviouswispr-windows` | `1576039766602948841` | `6419280` / `6419281` / `6419282` |
 
 First errors: `first_seen_event`, error category, level error or fatal, frequency
 0. Returns: regression or reappearance, same filters, frequency 30. Feedback:
@@ -30,15 +31,16 @@ The existing Daily Report Worker serves independent authenticated modes:
 - Default or `?report=performance`: PostHog adoption/version report, Mac channel.
 - `?report=sentry&platform=mac`: Mac crash/error write-up, Mac channel.
 - `?report=sentry&platform=android`: Android crash/error write-up, Android channel.
+- `?report=sentry&platform=windows`: Windows crash/error write-up, Windows channel.
 
 All accept `&date=YYYY-MM-DD` for a completed Eastern-day backfill. Otherwise
 they report the previous `America/New_York` day, including DST. Send the existing
 trigger secret in `x-trigger-secret`; do not put it in a URL. Invalid modes or
-platforms refuse before external work. Android's missing destination fails,
-never falls back to the Mac channel.
+platforms refuse before external work. Missing Android or Windows destinations fail,
+never falling back to the Mac channel.
 
-QStash schedules the three daily reports independently at 09:12
-America/New_York (#3570). The schedule IDs and recovery contract live in
+QStash schedules the daily reports independently at 09:12
+America/New_York (#3570; Windows Sentry added 2026-11-27, performance paused 2026-10-14). The schedule IDs and recovery contract live in
 `../daily-report/README.md`; GitHub is manual recovery only and was disabled
 at cutover. A PostHog failure cannot prevent a Sentry job. Reports keep zero
 outer retries because errors can follow Discord delivery.
@@ -100,8 +102,8 @@ native workflows enabled, KV/integration retained and relay absent.
 
 ## Rollback
 
-First disable all six replacement native Discord workflows and pause/drain all
-three morning jobs and any direct report invocations. Restore the pinned relay
+First disable the native Discord workflows (Mac/Android/Windows) and pause/drain all
+four morning schedules (`enviouswispr-daily-performance`, `enviouswispr-daily-sentry-mac`, `enviouswispr-daily-sentry-android`, `enviouswispr-daily-sentry-windows`) and any direct report invocations. Restore the pinned relay
 source/bindings to the original account before restoring its custom consumers.
 The saved source bundles and deployment/settings receipts are in the local
 audit directory; canonical runtime credentials are restored through approved
