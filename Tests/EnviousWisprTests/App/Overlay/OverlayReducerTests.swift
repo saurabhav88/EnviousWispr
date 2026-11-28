@@ -22,23 +22,31 @@ import Testing
 @Suite(.tags(.productOutcome))
 struct OverlayReducerTests {
 
-  @Test("a summary limit names the engine and takes only an idle, empty slot")
-  func meetingSummaryLimitNotice() throws {
+  @Test("a summary limit takes only an idle, empty slot and stays until replaced")
+  func meetingSummaryLimitCard() throws {
     var reducer = OverlayReducer()
+    _ = reducer.reduce(.pipeline(.processing(phase: .transcribing)))
+    #expect(reducer.reduce(.meetingSummaryLimit(.egOne)) == .noChange)
+    _ = reducer.reduce(.pipeline(.hidden))
+
     _ = reducer.reduce(.importStatus(message: "Importing"))
     #expect(reducer.reduce(.meetingSummaryLimit(.egOne)) == .noChange)
     _ = reducer.reduce(.pipeline(.hidden))
+
     let plan = reducer.reduce(.meetingSummaryLimit(.egOne))
     let shown = try #require(plan.presentation)
-    guard case .notice(let notice) = shown.content else {
-      Issue.record("the model limit did not produce a notice")
-      return
-    }
-    #expect(notice.text == "EG-1 couldn't summarize this meeting.")
-    #expect(notice.action?.action == .chooseMeetingSummaryEngine)
-    #expect(notice.action?.label == "Choose another engine")
-    #expect(plan.announcement == .medium(notice.text))
+    #expect(shown.requestedWidth == .fixed(320))
+    #expect(shown.expiry == .untilReplaced)
+    #expect(shown.reservesFixedHeight == nil)
+    #expect(shown.content == .meetingSummaryLimit(.egOne))
     #expect(shown.content.reChecksOwnerBeforeRender)
+    #expect(plan.announcement == .medium("Try another engine? EG-1 couldn't summarize this meeting."))
+    #expect(reducer.reduce(.expiryFired(shown.id)) == .noChange)
+    #expect(reducer.reduce(.meetingSummaryLimit(.claude)) == .noChange)
+    #expect(reducer.state.current?.id == shown.id)
+
+    let replacement = reducer.reduce(.bluetoothAwareness)
+    #expect(replacement.presentation?.content == .bluetoothAwareness)
   }
 
   /// Deterministic ids, so identity can be asserted rather than inferred.

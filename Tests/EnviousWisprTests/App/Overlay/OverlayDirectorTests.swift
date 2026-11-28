@@ -425,6 +425,30 @@ struct OverlayDirectorTests {
 
   // MARK: - Exactly one action binding
 
+  @Test("both summary card answers dismiss silently and only Choose engine navigates")
+  func meetingSummaryLimitActions() throws {
+    let (director, host, sink) = Self.pressableDirector()
+    var choices = 0
+    let request = PillRequest.meetingSummaryLimit(
+      provider: .egOne, isStillWanted: { true },
+      onChooseEngine: {
+        #expect(host.isShowing == false)
+        choices += 1
+      })
+
+    let declined = try #require(director.present(request))
+    try host.sendUserActionThroughRoot(.dismissMeetingSummaryLimit, for: declined)
+    #expect(host.isShowing == false)
+    #expect(choices == 0)
+
+    let accepted = try #require(director.present(request))
+    try host.sendUserActionThroughRoot(.chooseMeetingSummaryEngine, for: accepted)
+    try host.sendUserActionThroughRoot(.chooseMeetingSummaryEngine, for: accepted)
+    #expect(host.isShowing == false)
+    #expect(choices == 1)
+    #expect(sink.announcements.count == 2)
+  }
+
   // **`actionReachesItsOwner` was DELETED** (#2292 C5c). It installed a test
   // observer through the generic ingress's `actions:` parameter, which no
   // longer exists — an action's owner now arrives with the request, so the

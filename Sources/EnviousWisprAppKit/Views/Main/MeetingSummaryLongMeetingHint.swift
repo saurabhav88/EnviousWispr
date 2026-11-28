@@ -56,6 +56,30 @@ enum MeetingSummaryLimitCopy {
       localized: "Choose another engine",
       comment: "After a meeting summary hits a model limit: opens Summaries and highlights Change summary engine.")
   }
+
+  /// #5043: the card shown when a summary hits an engine limit.
+  static var cardTitle: String {
+    String(
+      localized: "Try another engine?",
+      comment: "Title of the card shown when a meeting summary hits an engine limit.")
+  }
+
+  static var cardChooseEngine: String {
+    String(
+      localized: "Choose engine…",
+      comment: "Meeting summary limit card: opens Summaries so the user can choose another engine.")
+  }
+
+  static var cardNotNow: String {
+    String(
+      localized: "Not now",
+      comment: "Meeting summary limit card: closes the card and keeps the selected engine.")
+  }
+
+  /// What VoiceOver reads when the card appears: its title, then its line.
+  static func cardAnnouncement(_ provider: LLMProvider) -> String {
+    "\(cardTitle) \(message(provider))"
+  }
 }
 
 /// #4287: opens EnviousMeet's Summaries tab, where the summary engine is chosen.

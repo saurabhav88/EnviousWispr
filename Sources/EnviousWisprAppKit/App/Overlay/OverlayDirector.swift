@@ -1762,9 +1762,17 @@ extension OverlayDirector: OverlayPresenting {
         .meetingSummaryLimit(provider),
         binding: .install(
           deliver: { [weak self] action in
-            guard case .chooseMeetingSummaryEngine = action else { return }
-            self?.dismissSilently()
-            onChooseEngine()
+            // #5043: both answers leave silently; only Choose engine navigates, after the card
+            // has gone.
+            switch action {
+            case .chooseMeetingSummaryEngine:
+              self?.dismissSilently()
+              onChooseEngine()
+            case .dismissMeetingSummaryLimit:
+              self?.dismissSilently()
+            default:
+              break
+            }
           },
           onExpire: nil, isStillWanted: isStillWanted),
         relay: relay)

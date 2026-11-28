@@ -21,6 +21,7 @@
     case clipboardFallback
     case warning
     case error
+    case meetingSummaryLimit
     case advisory
     case interruption
     case cachingModel
@@ -78,7 +79,8 @@
       case .processing: return .processing
       case .clipboardFallback: return .clipboardFallback
       case .warning: return .warning
-      case .error, .meetingSummaryLimit: return .error
+      case .error: return .error
+      case .meetingSummaryLimit: return .meetingSummaryLimit
       case .advisory: return .advisory
       case .interruption: return .interruption
       case .cachingModel: return .cachingModel
@@ -116,7 +118,8 @@
             reason:
               "Showing it uses up the once-per-session Accessibility prompt, and its Grant button asks macOS for permission."
           ))
-      case .processing, .clipboardFallback, .warning, .error, .advisory, .interruption,
+      case .processing, .clipboardFallback, .warning, .error, .meetingSummaryLimit, .advisory,
+        .interruption,
         .cachingModel, .engineReady, .recoverySucceeded, .importStatus, .recoveryNotice,
         .languageChip, .bluetoothAwareness, .parakeetUpgrade, .polishDownloadComplete,
         .polishSetupCard,
@@ -385,6 +388,13 @@
         })
 
       // Cards and chips.
+      rows.append(
+        row("meetingSummaryLimit", .meetingSummaryLimit, "Cards and chips", "Meeting summary limit") {
+          note in
+          .meetingSummaryLimit(
+            provider: .egOne, isStillWanted: { true },
+            onChooseEngine: { note("Choose engine pressed (preview only)") })
+        })
       rows.append(
         row("chip.ask", .languageChip, "Cards and chips", "Language chip (ask to lock)") { note in
           .languageChip(

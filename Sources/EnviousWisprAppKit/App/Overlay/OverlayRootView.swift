@@ -158,6 +158,20 @@ struct OverlayRootView: View {
     case .notice(let notice):
       notices(notice, on: presentation)
 
+    case .meetingSummaryLimit(let provider):
+      // #5043 (founder 2026-11-28): the AI Polish card's look, with the summary's own words.
+      PolishSetupCardChrome(
+        title: MeetingSummaryLimitCopy.cardTitle,
+        line: MeetingSummaryLimitCopy.message(provider),
+        primary: .init(id: 0, title: MeetingSummaryLimitCopy.cardChooseEngine) {
+          press(.chooseMeetingSummaryEngine, on: presentation)
+        },
+        secondary: [
+          .init(id: 1, title: MeetingSummaryLimitCopy.cardNotNow) {
+            press(.dismissMeetingSummaryLimit, on: presentation)
+          }
+        ])
+
     case .retainedClipboardFallback(let notice, _):
       // #3106 PR B: the same notice, through the same view, as a clipboard-only delivery.
       notices(notice, on: presentation)
