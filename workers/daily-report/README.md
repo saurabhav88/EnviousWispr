@@ -188,8 +188,9 @@ npx wrangler deploy
 
 # 3. verify each deployed mode (these DO post real reports).
 # The default request is performance only; also check both Sentry modes with
-# ?report=sentry&platform=mac&date=YYYY-MM-DD and
-# ?report=sentry&platform=android&date=YYYY-MM-DD under the same header secret.
+# ?report=sentry&platform=mac&date=YYYY-MM-DD,
+# ?report=sentry&platform=android&date=YYYY-MM-DD, and
+# ?report=sentry&platform=windows&date=YYYY-MM-DD under the same header secret.
 # -f is load-bearing: without it curl exits 0 on a 401/500, so a failed verify
 # reads as a passed one - the exact false-success this section exists to stop.
 # Operational triggers use the header; never put the secret in a URL.
@@ -254,7 +255,7 @@ so the public `workers.dev` URL cannot be crawled into spamming Discord.
   Missing Android or Windows bindings refuse delivery; they never fall back to Mac.
 - Unsupported/empty report modes and invalid Sentry platforms return 400 before
   outbound work; `platform` is invalid for performance mode.
-- QStash has independent performance and Mac/Android Sentry schedules;
+- QStash has independent performance and Mac/Android/Windows Sentry schedules;
   no report depends on another report succeeding.
 - 401 body: `"unauthorized\n"`. Request body is ignored. Never logs the
   trigger secret, a PostHog response body, or a Discord response body —
@@ -262,8 +263,10 @@ so the public `workers.dev` URL cannot be crawled into spamming Discord.
 
 ## Scheduling (QStash, #3570)
 
-Three independent schedules run daily at **09:12 America/New_York**, following
-Eastern daylight saving automatically. Their IDs are:
+Four independent schedules exist at **09:12 America/New_York**, following
+Eastern daylight saving automatically (`enviouswispr-daily-performance` is
+paused by founder decision 2026-10-14; the three Sentry schedules run active).
+Their IDs are:
 
 - `enviouswispr-daily-performance`: `?report=performance`
 - `enviouswispr-daily-sentry-mac`: `?report=sentry&platform=mac`
@@ -275,7 +278,7 @@ All call `https://enviouswispr-daily-report.saurabhav.workers.dev/` using POST,
 QStash EU (`https://qstash-eu-central-1.upstash.io`) authenticates with the
 GCP `qstash-token`; forward the GCP `daily-report-trigger-secret` as
 `Upstash-Forward-x-trigger-secret`. Never put either value in a file or URL.
-Rotate the forwarded header on all three schedule IDs when rotating the secret.
+Rotate the forwarded header on all four schedule IDs when rotating the secret.
 
 The account is shared with EnviousStaging/marketing. Only edit these exact
 EnviousWispr IDs; never bulk-delete schedules or change shared queues, keys,
@@ -376,7 +379,7 @@ not serialize QStash or direct HTTP requests. Avoid overlapping recovery calls.
 
 ## Rollback
 
-For #3547 rollback, pause the three EnviousWispr QStash morning schedules and
+For rollback, pause all four EnviousWispr QStash morning schedules and
 inspect/drain their queued messages plus recorded direct invocations. Restore
 the pinned previous reporting deployment while paused, restore its matching
 report mode/trigger contract, then resume exactly one scheduling owner.

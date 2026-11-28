@@ -273,11 +273,19 @@ export async function deliverReport(webhookUrl, payload, { fetchFn = fetch } = {
   }
   assertDeliverable(payload);
 
-  const res = await fetchFn(webhookUrl, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(payload),
-  });
+  let res;
+  try {
+    res = await fetchFn(webhookUrl, {
+      method: "POST",
+      redirect: "error",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    });
+  } catch {
+    // Never forward a native fetch exception verbatim: malformed-URL or
+    // transport errors can include the webhook URL/token in err.message.
+    throw new DiscordDeliveryError("Discord delivery failed: transport error");
+  }
 
   // Discord answers a webhook with 204, or 200 when `wait` is requested.
   // Anything else - including a redirect or a 2xx we do not recognise - is a

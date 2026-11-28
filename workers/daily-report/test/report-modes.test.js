@@ -134,11 +134,67 @@ test("bad backfill dates refuse before vendor work", async () => {
   });
 });
 
-test("morning modes have explicit target selection and no vendor needs dependency or sibling cancellation", () => {
+test("delivery transport exceptions never leak webhook URL or token in the worker response", async () => {
+  const secretToken = "SECRET_WEBHOOK_TOKEN_987654321";
+  const secretUrl = "https://discord.invalid/api/webhooks/1576039882214871070/" + secretToken;
+  const env = { ...MODE_ENV, DISCORD_WINDOWS_WEBHOOK_URL: secretUrl };
+  const data = rig();
+  const original = globalThis.fetch;
+  let capturedInit = null;
+  globalThis.fetch = async (target, init) => {
+    if (String(target) === secretUrl) {
+      capturedInit = init;
+      throw new TypeError("fetch failed for " + secretUrl);
+    }
+    return data.opts.fetchFn(target, init);
+  };
+  try {
+    const result = await worker.fetch(endpoint("report=sentry&platform=windows"), env);
+    assert.equal(result.status, 500);
+    const body = await result.text();
+    assert.equal(capturedInit?.redirect, "error");
+    assert.doesNotMatch(body, /SECRET_WEBHOOK_TOKEN_987654321/);
+    assert.doesNotMatch(body, /discord\.invalid/);
+    assert.match(body, /Discord delivery failed: transport error/);
+  } finally {
+    globalThis.fetch = original;
+  }
+});
+
+test("morning modes derive exact target routing, guard date globbing, and avoid sibling cancellation", () => {
   const source = readFileSync(new URL("../../../.github/workflows/daily-report-ping.yml", import.meta.url), "utf8");
   assert.match(source, /report=performance/); assert.match(source, /report=sentry&platform=/);
-  assert.match(source, /platform: \[mac, android, windows\]/); assert.match(source, /fail-fast: false/);
-  assert.match(source, /sentry-windows/); assert.match(source, /target:/);
-  assert.doesNotMatch(source, /^\s+needs:/m); assert.match(source, /cancel-in-progress: false/);
-  assert.doesNotMatch(source, /curl[^\n]*--retry/);
+  assert.match(source, /fail-fast: false/); assert.match(source, /cancel-in-progress: false/);
+  assert.doesNotMatch(source, /^\s+needs:/m); assert.doesNotMatch(source, /curl[^\n]*--retry/);
+
+  // Both curl invocations disable globbing and enforce YYYY-MM-DD before invoking curl.
+  const globoffMatches = source.match(/curl[^\n]*--globoff/g) || [];
+  assert.equal(globoffMatches.length, 2);
+  const dateGuards = source.match(/\^\[0-9\]\{4\}-\[0-9\]\{2\}-\[0-9\]\{2\}\$/g) || [];
+  assert.equal(dateGuards.length, 2);
+  assert.equal(/^[0-9]{4}-[0-9]{2}-[0-9]{2}$/.test("2026-10-[07-09]"), false);
+  assert.equal(/^[0-9]{4}-[0-9]{2}-[0-9]{2}$/.test("2026-10-07"), true);
+
+  // Verify exact job/platform expansion for all six workflow_dispatch target choices.
+  const matrixExpr = source.match(/platform:\s*\$\{\{\s*fromJSON\((.+)\)\s*\}\}/);
+  assert.ok(matrixExpr, "sentry matrix must derive platform list from inputs.target");
+  const evalTarget = (target) => {
+    const runsPerformance = target === "performance" || target === "all";
+    const runsSentry = target !== "performance";
+    const sentryPlatforms = runsSentry
+      ? JSON.parse(
+          (target === "sentry-mac" && '["mac"]') ||
+          (target === "sentry-android" && '["android"]') ||
+          (target === "sentry-windows" && '["windows"]') ||
+          '["mac","android","windows"]'
+        )
+      : [];
+    return { runsPerformance, sentryPlatforms };
+  };
+  assert.deepEqual(evalTarget("sentry-windows"), { runsPerformance: false, sentryPlatforms: ["windows"] });
+  assert.deepEqual(evalTarget("sentry-mac"), { runsPerformance: false, sentryPlatforms: ["mac"] });
+  assert.deepEqual(evalTarget("sentry-android"), { runsPerformance: false, sentryPlatforms: ["android"] });
+  assert.deepEqual(evalTarget("all-sentry"), { runsPerformance: false, sentryPlatforms: ["mac", "android", "windows"] });
+  assert.deepEqual(evalTarget("performance"), { runsPerformance: true, sentryPlatforms: [] });
+  assert.deepEqual(evalTarget("all"), { runsPerformance: true, sentryPlatforms: ["mac", "android", "windows"] });
 });

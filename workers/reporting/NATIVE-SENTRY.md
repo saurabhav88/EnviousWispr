@@ -39,8 +39,8 @@ trigger secret in `x-trigger-secret`; do not put it in a URL. Invalid modes or
 platforms refuse before external work. Missing Android or Windows destinations fail,
 never falling back to the Mac channel.
 
-QStash schedules the three daily reports independently at 09:12
-America/New_York (#3570). The schedule IDs and recovery contract live in
+QStash schedules the daily reports independently at 09:12
+America/New_York (#3570; Windows Sentry added 2026-11-27, performance paused 2026-10-14). The schedule IDs and recovery contract live in
 `../daily-report/README.md`; GitHub is manual recovery only and was disabled
 at cutover. A PostHog failure cannot prevent a Sentry job. Reports keep zero
 outer retries because errors can follow Discord delivery.
@@ -102,8 +102,8 @@ native workflows enabled, KV/integration retained and relay absent.
 
 ## Rollback
 
-First disable all six replacement native Discord workflows and pause/drain all
-three morning jobs and any direct report invocations. Restore the pinned relay
+First disable the native Discord workflows (Mac/Android/Windows) and pause/drain all
+four morning schedules (`enviouswispr-daily-performance`, `enviouswispr-daily-sentry-mac`, `enviouswispr-daily-sentry-android`, `enviouswispr-daily-sentry-windows`) and any direct report invocations. Restore the pinned relay
 source/bindings to the original account before restoring its custom consumers.
 The saved source bundles and deployment/settings receipts are in the local
 audit directory; canonical runtime credentials are restored through approved
