@@ -226,14 +226,7 @@ public enum MeetingSummaryProviders {
           complete: envelope(connector, config)))
     case .appleIntelligence:
       guard let context = appleContextTokens() else { return .failure(.notReady) }
-      return .success(
-        Prepared(
-          execution: .local,
-          window: MeetingSummary.Window(
-            contextTokens: context, outputReserveTokens: MeetingSummary.outputTokens),
-          complete: { instructions, prompt in
-            try await apple(instructions: instructions, prompt: prompt)
-          }))
+      return .success(prepareApple(contextTokens: context))
     // EG-1 is prepared by the AppKit wiring, which can lend it the bundled server (#4319);
     // reaching here means a caller skipped that route, so it is refused rather than run against
     // a server nobody reserved.
@@ -250,6 +243,19 @@ public enum MeetingSummaryProviders {
     case .ollama, .appleIntelligence, .egOne, .s1Mini, .none:
       return false
     }
+  }
+
+  /// #5041: Apple Intelligence asks for a bullet count sized to the final call (`.bullets`),
+  /// because it restates instead of condensing when combine rounds run.
+  static func prepareApple(contextTokens: Int) -> Prepared {
+    Prepared(
+      execution: .local,
+      window: MeetingSummary.Window(
+        contextTokens: contextTokens, outputReserveTokens: MeetingSummary.outputTokens,
+        listTarget: .bullets),
+      complete: { instructions, prompt in
+        try await apple(instructions: instructions, prompt: prompt)
+      })
   }
 
   /// Apple Intelligence's live context window in tokens, or nil where it is unavailable.
@@ -294,9 +300,8 @@ public enum MeetingSummaryProviders {
           let response = try await session.respond(
             to: prompt, options: GenerationOptions(sampling: .greedy))
           return response.content
-        } catch let error as LanguageModelSession.GenerationError {
-          if case .exceededContextWindowSize = error { throw MeetingSummary.ContextExceeded() }
-          throw error
+        } catch let error where AppleContextOverflow.isOverflow(error) {
+          throw MeetingSummary.ContextExceeded()
         }
       }
     #endif

@@ -31,7 +31,7 @@ public struct AFMPolishError: Error, Sendable {
 /// transcript + reserved output) would exceed Apple Intelligence's 4,096-token
 /// context window (#1055). `.predicted` = the token-count preflight stopped it
 /// before the model call; `.caught` = the model still threw
-/// `exceededContextWindowSize` at generation (the preflight under-counted).
+/// a context overflow at generation (the preflight under-counted).
 ///
 /// Deliberately NOT an `AFMPolishError` and NOT an `LLMError`: it propagates
 /// untyped through `LLMPolishStep.process()`. `TextProcessingRunner` treats it
@@ -986,7 +986,7 @@ public struct AppleIntelligenceConnector: TranscriptPolisher {
     /// transcript + a reserved output budget; if that exceeds the window minus
     /// the safety margin, throws `AFMContextWindowExceeded(.predicted)` WITHOUT
     /// calling the model. Otherwise calls `respond(...)` and, if the model still
-    /// throws `exceededContextWindowSize`, reclassifies it as `.caught`. Returns
+    /// reports a context overflow, reclassifies it as `.caught`. Returns
     /// the raw generated content. All other generation errors propagate.
     @available(macOS 26.0, *)
     private static func generateGuardingContextWindow(
@@ -1047,16 +1047,15 @@ public struct AppleIntelligenceConnector: TranscriptPolisher {
           options: GenerationOptions(sampling: .greedy, maximumResponseTokens: maxOutputTokens)
         )
         return response.content
-      } catch let genErr as LanguageModelSession.GenerationError {
-        if case .exceededContextWindowSize = genErr {
-          Task {
-            await AppLogger.shared.log(
-              "AFM context overflow caught at generation (preflight under-counted); skipping on-device polish",
-              level: .info, category: "LLM"
-            )
-          }
-          throw AFMContextWindowExceeded(stage: .caught)
+      } catch let error where AppleContextOverflow.isOverflow(error) {
+        Task {
+          await AppLogger.shared.log(
+            "AFM context overflow caught at generation (preflight under-counted); skipping on-device polish",
+            level: .info, category: "LLM"
+          )
         }
+        throw AFMContextWindowExceeded(stage: .caught)
+      } catch let genErr as LanguageModelSession.GenerationError {
         // #1525 PR I-B: every other GenerationError case gets a pinned Sentry
         // identity instead of bridging via Swift's ordinal-derived NSError.
         throw AFMGenerationSentryError(mapping: genErr)

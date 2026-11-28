@@ -147,9 +147,10 @@ public enum HelpConcernDecomposer {
             Concern(summary: $0.summary, evidence: $0.evidence, kind: $0.kind.rawValue)
           }
           return .concerns(Array(concerns), hitCap: concerns.count >= maxConcerns)
+        } catch let error where AppleContextOverflow.isOverflow(error) {
+          return .failed(.tooLong)
         } catch let error as LanguageModelSession.GenerationError {
           if case .guardrailViolation = error { return .failed(.refused) }
-          if case .exceededContextWindowSize = error { return .failed(.tooLong) }
           if case .unsupportedLanguageOrLocale = error { return .failed(.unsupportedLanguage) }
           return .failed(.error)
         } catch {

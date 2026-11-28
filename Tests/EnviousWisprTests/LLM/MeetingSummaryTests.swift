@@ -6,6 +6,10 @@ import os
 @testable import EnviousWisprLLM
 import EnviousWisprAppKitTestSupport
 
+#if canImport(FoundationModels)
+  import FoundationModels
+#endif
+
 /// #3972 R39, R44 (build chunk C12): when these fail, a summary is written by a model that
 /// cannot summarize, a long meeting overflows the model's window or loses words silently, a cut
 /// answer is saved as a summary, a bad key is retried, or a local model starts work while the
@@ -150,9 +154,55 @@ struct MeetingSummaryTests {
     #expect(parts.allSatisfy { MeetingSummary.estimatedTokens($0) <= budget })
     #expect(parts.joined(separator: "\n") == transcript, "no words lost or added by the cut")
     #expect(long.prompts.count == parts.count + 1, "one call per part and one join")
+    #expect(long.prompts.first == """
+      This is part 1 of \(parts.count) of a meeting transcript. List its key points, decisions \
+      and action items (with owners when stated) as short bullets, at most 366 words.
+
+      Part:
+      \(parts[0])
+      """)
     #expect(long.prompts.last?.contains("Join them into one summary") == true)
     #expect(long.prompts.allSatisfy { Self.fitsInEstimate($0, Self.small) })
     #expect(long.admissions == long.prompts.count, "admitted before every attempt")
+  }
+
+  @Test(
+    "Apple sizes parts to the final call and still combines when three bullets do not fit",
+    arguments: [2, 6, 16])
+  func appleBulletTargets(pieceCount: Int) async throws {
+    let prepared = MeetingSummaryProviders.prepareApple(contextTokens: 4_096)
+    #expect(prepared.window.listTarget == .bullets)
+    let budget = try MeetingSummary.inputBudget(prepared.window, .estimate)
+    let transcript = String(repeating: "a", count: (pieceCount - 1) * budget * 3 + 1)
+    let expectedBullets = try #require([2: 12, 6: 7, 16: 3][pieceCount])
+    let line = "- " + Array(repeating: "detail", count: 16).joined(separator: " ")
+    let answer = Array(repeating: line, count: expectedBullets).joined(separator: "\n")
+    let calls = Calls()
+    calls.answers = Array(repeating: .success(answer), count: pieceCount)
+    _ = try await Self.write(
+      calls, transcript: transcript, notes: "Ask Priya", window: prepared.window)
+
+    let parts = calls.prompts.prefix { $0.hasPrefix("This is part") }
+    #expect(parts.count == pieceCount)
+    #expect(parts.allSatisfy { $0.contains("at most \(expectedBullets) bullets, one line each") })
+    let combine = calls.prompts.dropFirst(parts.count).dropLast()
+    #expect(combine.count == (pieceCount == 16 ? 2 : 0))
+    #expect(combine.allSatisfy { $0.contains("into at most 12 bullets, one line each") })
+    #expect(calls.prompts.last?.contains("The user's own notes:\nAsk Priya") == true)
+    #expect(calls.prompts.last?.contains("Join them into one summary") == true)
+  }
+
+  @Test("Apple recalculates its bullet target when an overflow forces a byte plan")
+  func appleByteBulletTarget() async throws {
+    let prepared = MeetingSummaryProviders.prepareApple(contextTokens: 4_096)
+    let calls = Calls()
+    calls.answers = [.failure(LLMError.classified(.inputTooLong))]
+    _ = try await Self.write(
+      calls, transcript: String(repeating: "a", count: 2_800), window: prepared.window)
+    try #require(calls.prompts.count == 5)
+    #expect(calls.prompts.first?.contains("Transcript:") == true)
+    #expect(calls.prompts[1...3].allSatisfy { $0.contains("at most 3 bullets, one line each") })
+    #expect(calls.prompts.last?.contains("Join them into one summary") == true)
   }
 
   static let lines = [
@@ -169,10 +219,11 @@ struct MeetingSummaryTests {
     let parts = MeetingSummary.parts(of: transcript, budget: budget, .estimate)
     #expect(parts.joined(separator: "\n") == transcript)
     let long = Calls()
-    // As long as a part answer may be, so the answers need combining without any shortening.
-    long.answers = Array(
-      repeating: .success(Self.answer(of: line, withinTokens: MeetingSummary.partialCap(budget))),
-      count: 200)
+    // As long as an answer may be kept (#5041), so the answers need combining without any
+    // shortening and the packing bound in `worstCaseCalls` is the one tested.
+    let longest = Self.answer(of: line, withinTokens: MeetingSummary.acceptedAnswerCap(budget))
+    #expect(MeetingSummary.estimatedTokens(longest) > MeetingSummary.partialCap(budget))
+    long.answers = Array(repeating: .success(longest), count: 200)
     let summary = try await Self.write(
       long, transcript: transcript, notes: "Ask Priya", window: Self.small)
     #expect(!long.prompts.contains { $0.hasPrefix("Shorten") })
@@ -244,6 +295,22 @@ struct MeetingSummaryTests {
     #expect(calls.prompts.allSatisfy { Self.fitsInEstimate($0, Self.small) })
   }
 
+  @Test("#5041: a part answer over the quarter target but within the accepted limit is kept as written")
+  func answerWithinAcceptedLimitIsKept() async throws {
+    let meeting = try Self.longMeeting()
+    // Apple Intelligence wrote answers like this and returned them unchanged when asked to
+    // shorten, which failed the whole summary.
+    let kept = Self.answer(
+      of: "- point " + String(repeating: "x", count: 60), withinTokens: meeting.cap * 3 / 2)
+    #expect(MeetingSummary.estimatedTokens(kept) > meeting.cap, "over the quarter target")
+    let calls = Calls()
+    calls.answers = [.success(kept)]
+    _ = try await Self.write(calls, transcript: meeting.transcript, window: Self.small)
+    #expect(!calls.prompts.contains { $0.hasPrefix("Shorten") }, "no shortening call")
+    let join = try #require(calls.prompts.last)
+    #expect(join.contains("Part 1:\n" + kept.trimmingCharacters(in: .whitespacesAndNewlines)))
+  }
+
   @Test("a combined answer too long for the final call is shortened too")
   func longCombinedAnswerIsShortened() async throws {
     let line = "Speaker 1: " + String(repeating: "word ", count: 40)
@@ -256,10 +323,13 @@ struct MeetingSummaryTests {
     // Full-length part answers force a combine round; its first answer is too long.
     calls.answers =
       Array(repeating: .success(Self.answer(of: line, withinTokens: cap)), count: pieces)
-      + [.success(Self.answer(of: line, withinTokens: cap * 2)), .success("- combined")]
+      + [.success(Self.answer(of: line, withinTokens: cap * 3)), .success("- combined")]
     _ = try await Self.write(calls, transcript: transcript, window: Self.small)
     #expect(calls.prompts[pieces].hasPrefix("Below are the key points"), "a combine call")
     #expect(calls.prompts[pieces + 1].hasPrefix("Shorten these bullets"))
+    #expect(
+      MeetingSummary.estimatedTokens(Self.answer(of: line, withinTokens: cap * 3))
+        > MeetingSummary.acceptedAnswerCap(plan.budget), "over the accepted limit (#5041)")
   }
 
   @Test("a shortening request is retried and admitted like any other call")
@@ -297,9 +367,13 @@ struct MeetingSummaryTests {
     let bytes = try MeetingSummary.plan(
       transcript: meeting.transcript, notes: "", window: Self.small, counting: .bytes)
     let cap = MeetingSummary.partialCap(bytes.budget)
-    // Few words, just over the byte share: it kept any word limit and is still too long.
+    // Few long words, just over the accepted byte limit (#5041): it kept the word limit and is
+    // still too long.
     var answer = "-"
-    while answer.utf8.count <= cap { answer += " word" }
+    while answer.utf8.count <= MeetingSummary.acceptedAnswerCap(bytes.budget) {
+      answer += " " + String(repeating: "x", count: 30)
+    }
+    #expect(answer.split(separator: " ").count - 1 <= cap / 6, "within the word limit")
     let calls = Calls()
     calls.answers = [
       .failure(LLMError.classified(.inputTooLong)), .success(answer), .success("- short"),
@@ -335,6 +409,22 @@ struct MeetingSummaryTests {
     #expect(calls.prompts.count == 1)
   }
 
+  #if canImport(FoundationModels)
+    @Test("#5041: both Apple context-overflow errors read as an overflow, other errors do not")
+    func appleOverflowIsRecognized() {
+      guard #available(macOS 26.0, *) else { return }
+      let old = LanguageModelSession.GenerationError.exceededContextWindowSize(
+        .init(debugDescription: "unused"))
+      #expect(AppleContextOverflow.isOverflow(old))
+      #expect(!AppleContextOverflow.isOverflow(LLMError.classified(.rateLimited)))
+      if #available(macOS 27.0, *) {
+        let new = LanguageModelError.contextSizeExceeded(
+          .init(contextSize: 8_192, tokenCount: 8_194, debugDescription: "unused"))
+        #expect(AppleContextOverflow.isOverflow(new))
+      }
+    }
+  #endif
+
   @Test("shortening requests use only the calls the plan leaves unused; then the summary fails")
   func shorteningStaysInsideTheCallLimit() async throws {
     // The most parts the call limit allows on this window: the least room left over.
@@ -355,7 +445,10 @@ struct MeetingSummaryTests {
     let pieces = try #require(meeting.plan.pieces).count
     #expect(headroom < pieces, "fewer spare calls than parts")
     let cap = MeetingSummary.partialCap(meeting.plan.budget)
-    let oversized = Self.answer(of: line, withinTokens: cap * 2)
+    let oversized = Self.answer(of: line, withinTokens: cap * 3)
+    #expect(
+      MeetingSummary.estimatedTokens(oversized)
+        > MeetingSummary.acceptedAnswerCap(meeting.plan.budget))
     let calls = Calls()
     // Every part answer is too long; every shortening answer fits.
     calls.answers = (0..<(headroom + 1)).flatMap { _ in
