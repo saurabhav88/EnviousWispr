@@ -187,7 +187,7 @@ cd workers/daily-report
 npx wrangler deploy
 
 # 3. verify each deployed mode (these DO post real reports).
-# The default request is performance only; also check both Sentry modes with
+# The default request is performance only; also check all three Sentry modes with
 # ?report=sentry&platform=mac&date=YYYY-MM-DD,
 # ?report=sentry&platform=android&date=YYYY-MM-DD, and
 # ?report=sentry&platform=windows&date=YYYY-MM-DD under the same header secret.
@@ -219,6 +219,8 @@ cd workers/daily-report
 # secrets (never committed):
 ~/.claude/bin/get-key launch posthog-personal-api-key V -- sh -c 'printf "%s" "$V" | npx wrangler secret put POSTHOG_PERSONAL_API_KEY'
 security find-generic-password -w -a m4pro_sv -s enviouswispr.discord-webhook-session-logs | npx wrangler secret put DISCORD_WEBHOOK_URL
+security find-generic-password -w -a m4pro_sv -s enviouswispr-android.discord-webhook-session-logs | npx wrangler secret put DISCORD_ANDROID_WEBHOOK_URL
+~/.claude/bin/get-key launch discord-webhook-windows-session-logs V -- sh -c 'printf "%s" "$V" | npx wrangler secret put DISCORD_WINDOWS_WEBHOOK_URL'
 # TRIGGER_SECRET gates the public trigger. Source of truth is GCP Secret
 # Manager (`daily-report-trigger-secret`); deployed copies in QStash and the
 # GitHub manual-recovery secret must follow rotations. NOT the
@@ -233,8 +235,9 @@ for w in daily-report weekly-digest; do
      sh -c 'printf "%s" "$V" | npx wrangler secret put SENTRY_AUTH_TOKEN')
 done
 
-# verify (posts a REAL report to EnviousNotes) - needs the token:
-curl -fsS "https://enviouswispr-daily-report.saurabhav.workers.dev/?token=<TRIGGER_SECRET>"
+# verify (posts a REAL report) - pass the trigger secret in the header, never in the URL:
+~/.claude/bin/get-key launch daily-report-trigger-secret V -- sh -c \
+  'curl -fsS -H "x-trigger-secret: $V" "https://enviouswispr-daily-report.saurabhav.workers.dev/?report=sentry&platform=windows"'
 ```
 
 The `fetch` trigger fails closed with 401 if the token is missing or wrong,

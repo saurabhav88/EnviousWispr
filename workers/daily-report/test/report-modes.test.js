@@ -175,26 +175,29 @@ test("morning modes derive exact target routing, guard date globbing, and avoid 
   assert.equal(/^[0-9]{4}-[0-9]{2}-[0-9]{2}$/.test("2026-10-[07-09]"), false);
   assert.equal(/^[0-9]{4}-[0-9]{2}-[0-9]{2}$/.test("2026-10-07"), true);
 
-  // Verify exact job/platform expansion for all six workflow_dispatch target choices.
-  const matrixExpr = source.match(/platform:\s*\$\{\{\s*fromJSON\((.+)\)\s*\}\}/);
-  assert.ok(matrixExpr, "sentry matrix must derive platform list from inputs.target");
-  const evalTarget = (target) => {
-    const runsPerformance = target === "performance" || target === "all";
-    const runsSentry = target !== "performance";
-    const sentryPlatforms = runsSentry
-      ? JSON.parse(
-          (target === "sentry-mac" && '["mac"]') ||
-          (target === "sentry-android" && '["android"]') ||
-          (target === "sentry-windows" && '["windows"]') ||
-          '["mac","android","windows"]'
-        )
-      : [];
+  // Extract and evaluate the ACTUAL workflow job conditions and matrix expression for all six choices.
+  const pingIfMatch = source.match(/\n  ping:\n    if:\s*\$\{\{\s*([^\n]+?)\s*\}\}/);
+  const sentryIfMatch = source.match(/\n  sentry:\n    if:\s*\$\{\{\s*([^\n]+?)\s*\}\}/);
+  const matrixExprMatch = source.match(/platform:\s*\$\{\{\s*fromJSON\(([^\n]+)\)\s*\}\}/);
+  assert.ok(pingIfMatch, "ping job must gate on inputs.target");
+  assert.ok(sentryIfMatch, "sentry job must gate on inputs.target");
+  assert.ok(matrixExprMatch, "sentry matrix must derive platform list from inputs.target");
+  const evalGhaExpr = (expr, target) => {
+    // Only allow safe GitHub Actions boolean/comparison/string expressions over inputs.target.
+    assert.match(expr, /^[a-zA-Z0-9_.\s'"=&|!\[\],-]+$/);
+    const fn = new Function("inputs", "return (" + expr + ");");
+    return fn({ target });
+  };
+  const evalWorkflowFor = (target) => {
+    const runsPerformance = Boolean(evalGhaExpr(pingIfMatch[1], target));
+    const runsSentry = Boolean(evalGhaExpr(sentryIfMatch[1], target));
+    const sentryPlatforms = runsSentry ? JSON.parse(evalGhaExpr(matrixExprMatch[1], target)) : [];
     return { runsPerformance, sentryPlatforms };
   };
-  assert.deepEqual(evalTarget("sentry-windows"), { runsPerformance: false, sentryPlatforms: ["windows"] });
-  assert.deepEqual(evalTarget("sentry-mac"), { runsPerformance: false, sentryPlatforms: ["mac"] });
-  assert.deepEqual(evalTarget("sentry-android"), { runsPerformance: false, sentryPlatforms: ["android"] });
-  assert.deepEqual(evalTarget("all-sentry"), { runsPerformance: false, sentryPlatforms: ["mac", "android", "windows"] });
-  assert.deepEqual(evalTarget("performance"), { runsPerformance: true, sentryPlatforms: [] });
-  assert.deepEqual(evalTarget("all"), { runsPerformance: true, sentryPlatforms: ["mac", "android", "windows"] });
+  assert.deepEqual(evalWorkflowFor("sentry-windows"), { runsPerformance: false, sentryPlatforms: ["windows"] });
+  assert.deepEqual(evalWorkflowFor("sentry-mac"), { runsPerformance: false, sentryPlatforms: ["mac"] });
+  assert.deepEqual(evalWorkflowFor("sentry-android"), { runsPerformance: false, sentryPlatforms: ["android"] });
+  assert.deepEqual(evalWorkflowFor("all-sentry"), { runsPerformance: false, sentryPlatforms: ["mac", "android", "windows"] });
+  assert.deepEqual(evalWorkflowFor("performance"), { runsPerformance: true, sentryPlatforms: [] });
+  assert.deepEqual(evalWorkflowFor("all"), { runsPerformance: true, sentryPlatforms: ["mac", "android", "windows"] });
 });
