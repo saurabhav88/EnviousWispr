@@ -61,7 +61,11 @@ enum MeetingSummaryHighlights {
   static func escaped(_ line: String) -> String {
     var out = ""
     for character in line {
-      if "\\`*_[]<>#|~&".contains(character) { out.append("\\") }
+      // The marks that change text inside a list item: escapes, code, emphasis, links and
+      // images, raw HTML and autolinks, tables, strikethrough and entities. Line-start syntax
+      // (headings, lists, quotes) cannot start here, after the "- " bullet. Fewer escapes keep
+      // the saved file readable.
+      if "\\`*_[]<>|~&".contains(character) { out.append("\\") }
       out.append(character)
     }
     return out
